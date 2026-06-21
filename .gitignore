@@ -2,4 +2,11 @@ node_modules
 dist
 .env
 *.env
+.env.local
 .DS_Store
+*.tsbuildinfo
+
+# Claude Code
+.claude/
+CLAUDE.md
+AGENTS.md
