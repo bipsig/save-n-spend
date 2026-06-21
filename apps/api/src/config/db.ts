@@ -1,6 +1,6 @@
 import mongoose from 'mongoose'
 
-const connectDB = async () => {
+const connectDB = async (): Promise<void> => {
 
   const MONGO_URI = `mongodb+srv://${process.env.DB_USERNAME}:${process.env.DB_PASSWORD}@cluster0.fhe4x2y.mongodb.net/?appName=Cluster0`
   

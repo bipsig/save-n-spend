@@ -1,5 +1,5 @@
 {
-  "name": "@savnspend/api",
+  "name": "@save-n-spend/api",
   "version": "1.0.0",
   "scripts": {
     "dev": "nodemon --exec ts-node src/server.ts",
