@@ -16,10 +16,10 @@ const sizes = {
   "2xl": 32,
 }
 
-const weights = {
-  regular: "400" as const,
-  bold: "700" as const,
-  black: "900" as const,
+const fontFamilies = {
+  regular: "Lato_400Regular",
+  bold: "Lato_700Bold",
+  black: "Lato_900Black"
 }
 
 export const AppText = ({ weight = "regular", size = "md", color = "#101828", style, children, ...rest }: Props) => {
@@ -28,7 +28,7 @@ export const AppText = ({ weight = "regular", size = "md", color = "#101828", st
       style={[
         {
           fontSize: sizes[size],
-          fontWeight: weights[weight],
+          fontFamily: fontFamilies[weight],
           color,
         },
         style,
