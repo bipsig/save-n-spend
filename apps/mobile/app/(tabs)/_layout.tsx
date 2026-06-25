@@ -1,3 +1,4 @@
+import { theme } from "@/theme";
 import { Tabs } from "expo-router"
 
 const TabsLayout = () => {
@@ -5,8 +6,8 @@ const TabsLayout = () => {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: "#625FFF",
-        tabBarInactiveTintColor: "#99a1af"
+        tabBarActiveTintColor: theme.colors.indigo,
+        tabBarInactiveTintColor: theme.colors.gray400
       }}
     >
       <Tabs.Screen name="index" options = {{ title: "Home" }} />
