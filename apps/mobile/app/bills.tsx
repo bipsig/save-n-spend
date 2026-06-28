@@ -3,7 +3,7 @@ import { AppText } from "@/components/ui/AppText"
 
 const BillsScreen = () => {
   return (
-    <ScreenScaffold title="Bills" name="Sagnik">
+    <ScreenScaffold title="Bills">
       <AppText color="gray500">
         Coming soon.
       </AppText>

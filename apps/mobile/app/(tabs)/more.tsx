@@ -10,7 +10,7 @@ const MoreScreen = () => {
   const menuItems = moreItems;
 
   return (
-    <ScreenScaffold title="More" name="Sagnik">
+    <ScreenScaffold title="More">
       {menuItems.map((item) => {
         return (
           <Pressable

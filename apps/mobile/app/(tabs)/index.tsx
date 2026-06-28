@@ -13,9 +13,9 @@ const HomeScreen = () => {
 
   return (
     <ScreenScaffold
-      title="Home"
-      name="Sagnik"
-      onBellPress={() => console.log("Bell pressed")}
+      header={
+        <AppHeader name="Sagnik" onBellPress={() => console.log("Bell pressed")} />
+      }
     >
       <Button
         label="Add Transaction"
