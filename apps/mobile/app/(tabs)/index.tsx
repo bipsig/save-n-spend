@@ -1,4 +1,4 @@
-import { View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { AppText } from "../../components/ui/AppText";
 import Button from "@/components/ui/Button";
 import Icon from "@/components/ui/Icon";
@@ -7,6 +7,7 @@ import { useState } from "react";
 import Badge from "@/components/ui/Badge";
 import AppHeader from "@/components/shell/AppHeader";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
+import SummaryCard from "@/components/data/SummaryCard";
 
 const HomeScreen = () => {
   const [amount, setAmount] = useState("");
@@ -17,6 +18,27 @@ const HomeScreen = () => {
         <AppHeader name="Sagnik" onBellPress={() => console.log("Bell pressed")} />
       }
     >
+      <View style={styles.summaryStyles}>
+        <SummaryCard
+          icon="income"
+          iconColor="success"
+          iconBg="successSoft"
+          label="Income"
+          amount="Rs 52,500"
+          caption="+12% vs last month"
+          captionColor="success"
+        />
+        <SummaryCard 
+          icon="savings" 
+          iconColor="info" 
+          iconBg="infoSoft"
+          label="Savings" 
+          amount="₹21,120" 
+          caption="40% saved" 
+          captionColor="info" 
+        />
+      </View>
+
       <Button
         label="Add Transaction"
         variant="primary"
@@ -42,5 +64,12 @@ const HomeScreen = () => {
     </ScreenScaffold>
   );
 };
+
+const styles = StyleSheet.create({
+  summaryStyles: {
+    flexDirection: "row",
+    gap: 12
+  }
+})
 
 export default HomeScreen;
