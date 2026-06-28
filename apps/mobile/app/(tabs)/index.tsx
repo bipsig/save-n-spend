@@ -9,6 +9,7 @@ import AppHeader from "@/components/shell/AppHeader";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import SummaryCard from "@/components/data/SummaryCard";
 import HealthScoreCard from "@/components/data/HealthScoreCard";
+import formatMoney from "@/lib/money";
 
 const HomeScreen = () => {
   const [amount, setAmount] = useState("");
