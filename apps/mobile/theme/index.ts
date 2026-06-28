@@ -2,6 +2,7 @@ import { colors } from './colors'
 import { spacing, radius } from './spacing'
 import { fontFamily, fontSize } from './typography'
 import { shadows } from './shadows'
+import { gradients } from './gradients'
 
 export const theme = {
   colors,
@@ -10,11 +11,13 @@ export const theme = {
   fontFamily,
   fontSize,
   shadows,
+  gradients,
 } as const;
 
-export { colors, spacing, radius, fontFamily, fontSize, shadows }
+export { colors, spacing, radius, fontFamily, fontSize, shadows, gradients }
 
 export type { ColorToken } from './colors'
 export type { SpacingToken, RadiusToken } from './spacing'
 export type { FontWeightToken, FontSizeToken } from './typography'
 export type { ShadowToken } from './shadows'
+export type { GradientToken } from './gradients'

@@ -26,6 +26,7 @@ export const colors = {
   primary: '#615FFF',
   primaryInk: '#372AAC',
   accent: '#7B68EE', // "primary-2" in the Figma — decorative brand accent
+  accentLight: '#9F8FFF', // gradient end for purple hero cards
   accentSoft: '#F0E9FF',
 
   // Semantic — base / ink (dark text) / soft (tinted background)
