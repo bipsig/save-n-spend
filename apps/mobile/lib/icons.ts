@@ -16,6 +16,7 @@ export const iconMap = {
   close: 'close',
   chevronRight: 'chevron-right',
   settings: 'settings',
+  trophy: 'emoji-events',
 
   // Spending categories
   food: 'restaurant',

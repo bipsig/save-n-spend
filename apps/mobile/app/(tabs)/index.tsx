@@ -8,6 +8,7 @@ import Badge from "@/components/ui/Badge";
 import AppHeader from "@/components/shell/AppHeader";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import SummaryCard from "@/components/data/SummaryCard";
+import HealthScoreCard from "@/components/data/HealthScoreCard";
 
 const HomeScreen = () => {
   const [amount, setAmount] = useState("");
@@ -15,7 +16,10 @@ const HomeScreen = () => {
   return (
     <ScreenScaffold
       header={
-        <AppHeader name="Sagnik" onBellPress={() => console.log("Bell pressed")} />
+        <AppHeader
+          name="Sagnik"
+          onBellPress={() => console.log("Bell pressed")}
+        />
       }
     >
       <View style={styles.summaryStyles}>
@@ -28,14 +32,26 @@ const HomeScreen = () => {
           caption="+12% vs last month"
           captionColor="success"
         />
-        <SummaryCard 
-          icon="savings" 
-          iconColor="info" 
+        <SummaryCard
+          icon="savings"
+          iconColor="info"
           iconBg="infoSoft"
-          label="Savings" 
-          amount="₹21,120" 
-          caption="40% saved" 
-          captionColor="info" 
+          label="Savings"
+          amount="₹21,120"
+          caption="40% saved"
+          captionColor="info"
+        />
+      </View>
+
+      <View>
+        <HealthScoreCard
+          score={85}
+          rating="Excellent"
+          stats={[
+            { label: "Savings", value: "Good" },
+            { label: "Budget", value: "On Track" },
+            { label: "Debt", value: "Low" },
+          ]}
         />
       </View>
 
@@ -68,8 +84,8 @@ const HomeScreen = () => {
 const styles = StyleSheet.create({
   summaryStyles: {
     flexDirection: "row",
-    gap: 12
-  }
-})
+    gap: 12,
+  },
+});
 
 export default HomeScreen;
