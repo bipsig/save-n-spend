@@ -8,6 +8,7 @@ type Props = {
   subtitle?: string;
   headerRight?: React.ReactNode;
   header?: React.ReactNode;
+  scroll?: boolean;
   children: React.ReactNode;
 };
 
@@ -16,6 +17,7 @@ const ScreenScaffold = ({
   subtitle,
   headerRight,
   header,
+  scroll=true,
   children,
 }: Props) => {
   // Only take the top/bottom insets from the safe area — the horizontal margin
@@ -46,13 +48,17 @@ const ScreenScaffold = ({
           )}
         </View>
       )}
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        {children}
-      </ScrollView>
+      {scroll ? (
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+        >
+          {children}
+        </ScrollView>
+      ) : (
+        children
+      )}
     </View>
   );
 };
