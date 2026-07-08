@@ -7,8 +7,65 @@ import { useState } from "react";
 import { categories, Category } from "@/lib/categories";
 import Search from "@/components/ui/Search";
 import Chip from "@/components/ui/Chip";
+import GradientCard from "@/components/shell/GradientCard";
+import { AppText } from "@/components/ui/AppText";
+import formatMoney from "@/lib/money";
+import EmptyState from "@/components/states/EmptyState";
+
+type Props = {
+  income: number,
+  expense: number,
+  savings: number
+}
 
 const Separator = () => <View style={styles.separator} />;
+
+const TransactionsSummaryCard = ({
+  income,
+  expense,
+  savings
+}: Props) => {
+  const currentMonth = new Date().toLocaleString('default', { month: "long"});
+  const currentYear = new Date().getFullYear();
+  return (
+    <GradientCard gradient="brand" style={styles.summary}>
+      <AppText color="surface" size="sm" style={styles.summaryLabel}>
+        {currentMonth} {currentYear}
+      </AppText>
+
+      <View style={styles.summaryRow}>
+        <View style={styles.summaryCol}>
+          <AppText color="surface" size="xs" style={styles.summaryLabel}>
+            Total Income
+          </AppText>
+          <AppText color="surface" size="xl" weight="bold">
+            {formatMoney(income)}
+          </AppText>
+        </View>
+
+        <View style={styles.summaryCol}>
+          <AppText color="surface" size="xs" style={styles.summaryLabel}>
+            Total Expenses
+          </AppText>
+          <AppText color="surface" size="xl" weight="bold">
+            {formatMoney(Math.abs(expense))}
+          </AppText>
+        </View>
+      </View>
+
+      <View style={styles.summaryDivider} />
+
+      <View style={styles.netRow}>
+        <AppText color="surface" size="md" style={styles.summaryLabel}>
+          Net Savings
+        </AppText>
+        <AppText color="surface" size="xl" weight="bold">
+          {formatMoney(savings)}
+        </AppText>
+      </View>
+    </GradientCard>
+  )
+}
 
 const ActivityScreen = () => {
   const [query, setQuery] = useState("");
@@ -21,6 +78,10 @@ const ActivityScreen = () => {
   filteredTransactions = query === "" ? filteredTransactions : filteredTransactions.filter((transaction) => {
     return transaction.title.toLowerCase().includes(query.trim().toLowerCase());
   })
+
+  const income = transactions.filter(transaction => transaction.amount > 0).reduce((total, transaction) => total + transaction.amount, 0);
+  const expense = transactions.filter(transaction => transaction.amount < 0).reduce((total, transaction) => total + transaction.amount, 0);
+  const savings = income + expense;
 
   return (
     <ScreenScaffold title="All Activity" scroll={false}>
@@ -61,6 +122,19 @@ const ActivityScreen = () => {
         ItemSeparatorComponent={Separator}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        ListHeaderComponent={
+          <TransactionsSummaryCard 
+            expense={expense}
+            income={income}
+            savings={savings}
+          />
+        }
+        ListEmptyComponent={
+          <EmptyState
+            title="No Transactions"
+            subtitle="Try a different search or filter"
+          />
+        }
         style={styles.list}
       />
     </ScreenScaffold>
@@ -83,7 +157,30 @@ const styles = StyleSheet.create({
   chipRow: {
     flexDirection: "row",
     gap: spacing.sm,
-  }
+  },
+  summary: {
+    gap: spacing.md,
+    marginBottom: spacing.md, // separate the header card from the first row
+  },
+  summaryLabel: {
+    opacity: 0.8, // muted white label on the gradient
+  },
+  summaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  summaryCol: {
+    gap: spacing.xs,
+  },
+  summaryDivider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.25)",
+  },
+  netRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
 });
 
 export default ActivityScreen;
