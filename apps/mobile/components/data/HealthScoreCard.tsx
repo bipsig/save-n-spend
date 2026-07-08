@@ -43,6 +43,7 @@ const HealthScoreCard = ({
         </View>
       </View>
       <ProgressBar value={score} color="surface" trackColor="successInk"/>
+      <View style={styles.divider} />
       <View style={styles.stats}>
         {stats.map ((stat) => {
           return (
@@ -78,9 +79,13 @@ const styles = StyleSheet.create ({
   score: {
     alignItems: "flex-end"
   },
+  divider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.2)"
+  },
   stats: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    gap: spacing["2xl"],
   }
 })
 

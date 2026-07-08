@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, View } from "react-native"
 import Avatar from "../ui/Avatar"
 import { AppText } from "../ui/AppText"
 import Icon from "../ui/Icon"
-import { spacing } from "@/theme"
+import { colors, spacing } from "@/theme"
 
 type Props = {
   name: string,
@@ -12,7 +12,7 @@ type Props = {
 }
 
 const AppHeader = ({
-  name, 
+  name,
   greeting = "Good Evening",
   initials,
   onBellPress
@@ -32,10 +32,12 @@ const AppHeader = ({
         <Avatar
           initials={displayInitials}
           size="md"
+          background="primary"
+          textColor="surface"
         />
         <View>
           <AppText size="sm" color="gray500">
-            {greeting},
+            {greeting}
           </AppText>
           <AppText weight="bold" size="md">
             {name}
@@ -43,15 +45,15 @@ const AppHeader = ({
         </View>
       </View>
 
-      <View>
-        <Pressable onPress={onBellPress}>
-          <Icon
-            name="bell"
-            color="gray400"
-            container="circle" 
-          />
-        </Pressable>
-      </View>
+      <Pressable onPress={onBellPress} style={styles.bell}>
+        <Icon
+          name="bell"
+          color="gray700"
+          container="circle"
+          containerColor="surface"
+        />
+        <View style={styles.dot} />
+      </Pressable>
     </View>
   )
 }
@@ -66,6 +68,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md
+  },
+  bell: {
+    position: "relative"
+  },
+  dot: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.danger,
+    borderWidth: 2,
+    borderColor: colors.surface
   }
 })
 

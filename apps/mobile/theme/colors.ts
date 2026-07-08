@@ -18,7 +18,7 @@ export const colors = {
   lineSoft: '#EEF1F4',
 
   // Surfaces
-  bg: '#F7F8FA',
+  bg: '#F3F1FB', // soft lavender tint (Figma app background)
   surface: '#FFFFFF',
   surface2: '#F3F4F6',
 

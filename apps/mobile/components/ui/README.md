@@ -178,9 +178,11 @@ Type is inferred from which prop you pass: `uri` → photo, `initials` → initi
 | `initials` | `string` (first 2 chars) | — |
 | `iconName` | `IconName` | `home` |
 | `background` | `ColorToken` | `accentSoft` |
+| `textColor` | `ColorToken` (initials / glyph color) | `primary` |
 
 ```tsx
 <Avatar initials="JD" size="lg" />
+<Avatar initials="JD" background="primary" textColor="surface" />   {/* filled */}
 <Avatar uri="https://…/me.jpg" />
 <Avatar iconName="food" />
 ```

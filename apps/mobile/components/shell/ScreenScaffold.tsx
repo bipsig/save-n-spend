@@ -18,12 +18,13 @@ const ScreenScaffold = ({
   header,
   children,
 }: Props) => {
-  const { top, bottom, left, right } = useSafeAreaInsets();
+  // Only take the top/bottom insets from the safe area — the horizontal margin
+  // comes from the container's paddingHorizontal. Setting paddingLeft/Right here
+  // (0 in portrait) would override paddingHorizontal and glue content to the edges.
+  const { top, bottom } = useSafeAreaInsets();
   const stylesPadding = {
     paddingTop: top,
     paddingBottom: bottom,
-    paddingLeft: left,
-    paddingRight: right,
   };
 
   return (

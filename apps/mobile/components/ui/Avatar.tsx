@@ -13,6 +13,7 @@ type Props = {
   initials?: string // e.g. "JD"
   iconName?: IconName // fallback glyph
   background?: ColorToken
+  textColor?: ColorToken // color of the initials / fallback glyph
 }
 
 const diameters: Record<Size, number> = {
@@ -22,7 +23,7 @@ const diameters: Record<Size, number> = {
 }
 
 // type is inferred from which prop you pass: uri -> photo, initials -> initials, else icon.
-const Avatar = ({ size = 'md', uri, initials, iconName, background = 'accentSoft' }: Props) => {
+const Avatar = ({ size = 'md', uri, initials, iconName, background = 'accentSoft', textColor = 'primary' }: Props) => {
   const d = diameters[size]
   const base = { width: d, height: d, borderRadius: radius.full }
 
@@ -33,11 +34,11 @@ const Avatar = ({ size = 'md', uri, initials, iconName, background = 'accentSoft
   return (
     <View style={[base, styles.center, { backgroundColor: colors[background] }]}>
       {initials ? (
-        <AppText weight="bold" size={size === 'lg' ? 'lg' : 'sm'} color="primary">
+        <AppText weight="bold" size={size === 'lg' ? 'lg' : 'sm'} color={textColor}>
           {initials.slice(0, 2).toUpperCase()}
         </AppText>
       ) : (
-        <Icon name={iconName ?? 'home'} size={d * 0.5} color="primary" />
+        <Icon name={iconName ?? 'home'} size={d * 0.5} color={textColor} />
       )}
     </View>
   )
