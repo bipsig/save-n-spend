@@ -27,6 +27,8 @@ export const iconMap = {
   health: 'favorite',
   income: 'attach-money',
   savings: 'savings',
+  expenses: 'trending-down',
+  investments: 'money',
 
   // Assistant
   chat: 'chat-bubble-outline',
