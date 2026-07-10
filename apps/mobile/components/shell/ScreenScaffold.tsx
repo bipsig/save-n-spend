@@ -1,7 +1,9 @@
 import { ScrollView, StyleSheet, View } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppText } from "../ui/AppText";
-import { colors, spacing } from "@/theme";
+import GlowBackground from "./GlowBackground";
+import { spacing } from "@/theme";
 
 type Props = {
   title?: string;
@@ -17,56 +19,61 @@ const ScreenScaffold = ({
   subtitle,
   headerRight,
   header,
-  scroll=true,
+  scroll = true,
   children,
 }: Props) => {
-  // Only take the top/bottom insets from the safe area — the horizontal margin
-  // comes from the container's paddingHorizontal. Setting paddingLeft/Right here
-  // (0 in portrait) would override paddingHorizontal and glue content to the edges.
   const { top, bottom } = useSafeAreaInsets();
-  const stylesPadding = {
-    paddingTop: top,
-    paddingBottom: bottom,
-  };
 
   return (
-    <View style={[styles.container, stylesPadding]}>
-      {header ? (
-        header
-      ) : (
-        <View style={styles.titleBlock}>
-          <View style={styles.titleRow}>
-            <AppText weight="black" size="2xl">
-              {title}
-            </AppText>
-            {headerRight}
+    // Full-bleed dark ground + glow — no padding here, so the glow reaches the
+    // screen edges. Padding lives on the inner content wrapper.
+    <LinearGradient
+      colors={["#151129", "#0C0A16"]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.fill}
+    >
+      <GlowBackground />
+      <View style={[styles.inner, { paddingTop: top, paddingBottom: bottom }]}>
+        {header ? (
+          header
+        ) : (
+          <View style={styles.titleBlock}>
+            <View style={styles.titleRow}>
+              <AppText weight="black" size="2xl">
+                {title}
+              </AppText>
+              {headerRight}
+            </View>
+            {subtitle && (
+              <AppText size="sm" color="gray500">
+                {subtitle}
+              </AppText>
+            )}
           </View>
-          {subtitle && (
-            <AppText size="sm" color="gray500">
-              {subtitle}
-            </AppText>
-          )}
-        </View>
-      )}
-      {scroll ? (
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-        >
-          {children}
-        </ScrollView>
-      ) : (
-        children
-      )}
-    </View>
+        )}
+        {scroll ? (
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={styles.content}
+            showsVerticalScrollIndicator={false}
+          >
+            {children}
+          </ScrollView>
+        ) : (
+          children
+        )}
+      </View>
+    </LinearGradient>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  fill: {
     flex: 1,
-    backgroundColor: colors.bg,
+  },
+  inner: {
+    flex: 1,
     paddingHorizontal: spacing.lg,
     gap: spacing.md,
   },

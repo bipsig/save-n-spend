@@ -1,11 +1,10 @@
 // Gradient definitions for LinearGradient (expo-linear-gradient).
-// The Figma leans heavily on gradients for hero surfaces — keep them here as
-// named tokens so a GradientCard just takes a `gradient` name.
+// Vivid on the dark ground — these are the "colored glass" hero surfaces.
 // Each value is the array of stop colors passed to <LinearGradient colors={...} />.
 
 export const gradients = {
-  brand: ['#7B68EE', '#9F8FFF'], // purple — Monthly Budget, month summary, profile
-  health: ['#00C950', '#03A84A'], // green — Finance Health Score banner (approx; refine from screenshot)
+  brand: ['#8B7BFF', '#6D5CF6'],  // violet — Monthly Budget, month summary, profile
+  health: ['#2FE08A', '#12B981'], // green — Finance Health Score banner
 } as const
 
 export type GradientToken = keyof typeof gradients

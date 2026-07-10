@@ -25,10 +25,12 @@ export const iconMap = {
   bills: 'receipt-long',
   entertainment: 'movie',
   health: 'favorite',
-  income: 'attach-money',
-  savings: 'savings',
+  income: 'trending-up',        // up-trend (was a $ glyph — clashed with ₹)
+  savings: 'savings',           // piggy — goals
+  wallet: 'account-balance-wallet', // savings summary tile
   expenses: 'trending-down',
-  investments: 'money',
+  investments: 'show-chart',    // market line (was dollar bills)
+  healthPulse: 'monitor-heart', // finance health score
 
   receipt: "receipt",
   date: "calendar-month",

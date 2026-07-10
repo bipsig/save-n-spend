@@ -26,11 +26,12 @@ const HealthScoreCard = ({
       <View style={styles.topContainer}>
         <View style={styles.left}>
           <Icon
-            name="trophy"
-            size={36}
+            name="healthPulse"
+            size={30}
             container="square"
-            color="surface"
-            containerColor="successInk"
+            color="bg"
+            containerColor="success"
+            glow
           />
           <View>
             <AppText size="sm" color="surface">Finance Health Score</AppText>
@@ -42,7 +43,7 @@ const HealthScoreCard = ({
           <AppText size="sm" color="surface">/100</AppText>
         </View>
       </View>
-      <ProgressBar value={score} color="surface" trackColor="successInk"/>
+      <ProgressBar value={score} color="success" trackColor="line"/>
       <View style={styles.divider} />
       <View style={styles.stats}>
         {stats.map ((stat) => {

@@ -1,48 +1,49 @@
-// Brand palette — single source of truth for color.
-// Named by ROLE (primary/success/danger…), not by hue, so the same token can
-// resolve to a different hex in dark mode later. Never reference raw hex in a component.
-// `as const` freezes these to literal types so consumers get autocomplete + type-safety.
+// Brand palette — single source of truth for color. MIDNIGHT GLASS (dark-first).
+// Named by ROLE, not hue. Screens read these tokens, so changing values here
+// restyles the whole app. `surface` stays white for foreground-on-color usages
+// (text/icons on gradients); card/input/chip backgrounds use the translucent
+// `glass` / `surface2` tokens.
 
 export const colors = {
-  // Text / ink
-  ink: '#101828',
-  inkSecondary: '#1F2937',
+  // Text / ink (light, on the dark ground)
+  ink: '#F5F4FC',
+  inkSecondary: '#D8D5E8',
 
-  // Neutrals
-  gray700: '#374151',
-  gray600: '#4A5563',
-  gray500: '#6A7282',
-  gray400: '#99A1AF',
-  gray300: '#D1D5DB',
-  line: '#E5E7EB',
-  lineSoft: '#EEF1F4',
+  // Neutrals — muted, tuned for dark
+  gray700: '#BAB6CE',
+  gray600: '#A29EB8',
+  gray500: '#8A879F',
+  gray400: '#706D86',
+  gray300: '#524F68',
+  line: 'rgba(255,255,255,0.10)',
+  lineSoft: 'rgba(255,255,255,0.06)',
 
   // Surfaces
-  bg: '#F3F1FB', // soft lavender tint (Figma app background)
-  surface: '#FFFFFF',
-  surface2: '#F3F4F6',
+  bg: '#0C0A16',                        // deep charcoal-violet ground
+  surface: '#FFFFFF',                   // opaque white FOREGROUND (on colored/gradient surfaces)
+  surface2: 'rgba(255,255,255,0.06)',   // subtle glass (inputs, chips, search)
+  glass: 'rgba(255,255,255,0.10)',      // card glass fill
+  glassBorder: 'rgba(255,255,255,0.14)',
+  darkBg: '#0C0A16',
 
-  // Brand
-  primary: '#615FFF',
-  primaryInk: '#372AAC',
-  accent: '#7B68EE', // "primary-2" in the Figma — decorative brand accent
-  accentLight: '#9F8FFF', // gradient end for purple hero cards
-  accentSoft: '#F0E9FF',
+  // Brand — brightened for dark; Ink variants stay deep (used on vivid gradients)
+  primary: '#9B8CFF',
+  primaryInk: '#4B3BB8',
+  accent: '#7B68EE',
+  accentLight: '#9F8FFF',
+  accentSoft: 'rgba(155,140,255,0.18)',
 
-  // Semantic — base / ink (dark text) / soft (tinted background)
-  success: '#00C950',
-  successInk: '#047A36',
-  successSoft: '#E7F8EE',
-  danger: '#FB2C36',
+  // Semantic — base (bright) / ink (deep, for gradient chips + tracks) / soft (translucent tint)
+  success: '#34E0A1',
+  successInk: '#0E7A50',
+  successSoft: 'rgba(52,224,161,0.16)',
+  danger: '#FF6B74',
   dangerInk: '#B1060F',
-  dangerSoft: '#FDEAEB',
-  warning: '#FF6900',
-  warningSoft: '#FFF0E5',
-  info: '#2B7FFF',
-  infoSoft: '#E9F1FF',
-
-  // Reserved for dark mode (not used yet)
-  darkBg: '#1A192B',
+  dangerSoft: 'rgba(255,107,116,0.16)',
+  warning: '#FFB15C',
+  warningSoft: 'rgba(255,177,92,0.16)',
+  info: '#68A8FF',
+  infoSoft: 'rgba(104,168,255,0.16)',
 } as const
 
 export type ColorToken = keyof typeof colors

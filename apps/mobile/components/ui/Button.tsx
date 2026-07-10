@@ -27,8 +27,8 @@ type SizeStyle = {
 
 const variantStyles: Record<Variant, VariantStyle> = {
   primary: { background: "primary", text: "surface" },
-  secondary: { background: "surface", text: "ink", border: "line" },
-  ghost: { background: "surface", text: "primary" },
+  secondary: { background: "surface2", text: "ink", border: "line" },
+  ghost: { background: "surface2", text: "primary" },
   danger: { background: "danger", text: "surface" }
 };
 

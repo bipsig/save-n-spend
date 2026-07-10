@@ -76,7 +76,7 @@ const HomeScreen = () => {
 
         <View style={styles.gridRow}>
           <SummaryCard
-            icon="savings"
+            icon="wallet"
             iconColor="info"
             iconBg="infoSoft"
             label="Savings"

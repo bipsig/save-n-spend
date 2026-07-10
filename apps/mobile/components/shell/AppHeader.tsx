@@ -50,7 +50,7 @@ const AppHeader = ({
           name="bell"
           color="gray700"
           container="circle"
-          containerColor="surface"
+          containerColor="surface2"
         />
         <View style={styles.dot} />
       </Pressable>

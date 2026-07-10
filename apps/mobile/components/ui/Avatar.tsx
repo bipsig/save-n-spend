@@ -32,7 +32,21 @@ const Avatar = ({ size = 'md', uri, initials, iconName, background = 'accentSoft
   }
 
   return (
-    <View style={[base, styles.center, { backgroundColor: colors[background] }]}>
+    <View
+      style={[
+        base,
+        styles.center,
+        {
+          backgroundColor: colors[background],
+          // soft glow in the avatar's own color (artifact treatment)
+          shadowColor: colors[background],
+          shadowOpacity: 0.5,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: 3 },
+          elevation: 6,
+        },
+      ]}
+    >
       {initials ? (
         <AppText weight="bold" size={size === 'lg' ? 'lg' : 'sm'} color={textColor}>
           {initials.slice(0, 2).toUpperCase()}

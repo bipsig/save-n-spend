@@ -9,6 +9,7 @@ type Props = {
   color?: ColorToken
   container?: "none" | "circle" | "square"
   containerColor?: ColorToken
+  glow?: boolean // soft shadow in the container's color (dark-glass accent chips)
 }
 
 const Icon = ({
@@ -16,7 +17,8 @@ const Icon = ({
   size = 24,
   color = "ink",
   container = "none",
-  containerColor = "accentSoft"
+  containerColor = "accentSoft",
+  glow = false
 }: Props) => {
   const glyph = <MaterialIcons name={iconMap[name]} size={size} color={colors[color]} />
 
@@ -32,6 +34,13 @@ const Icon = ({
           backgroundColor: colors[containerColor],
           borderRadius: container === "circle" ? radius.full : radius.sm,
           padding: size*0.4
+        },
+        glow && {
+          shadowColor: colors[containerColor],
+          shadowOpacity: 0.55,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 4 },
+          elevation: 8,
         },
       ]}
     >

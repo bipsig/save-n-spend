@@ -53,7 +53,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     fontFamily: fontFamily.regular,
     color: colors.ink,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surface2,
   },
 })
 
