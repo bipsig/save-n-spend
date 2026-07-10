@@ -4,8 +4,8 @@ import type { DashboardSummary } from "./types";
 export const dashboard: DashboardSummary = {
   healthScore: 85,
   rating: "Excellent",
-  income: 52400,
-  expenses: 31280,
-  savings: 21120,
-  investments: 145000,
+  income: 5240000,
+  expenses: 3128000,
+  savings: 2112000,
+  investments: 14500000,
 };

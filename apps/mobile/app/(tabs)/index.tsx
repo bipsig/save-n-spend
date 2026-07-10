@@ -1,14 +1,18 @@
-import { StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import AppHeader from "@/components/shell/AppHeader";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import SummaryCard from "@/components/data/SummaryCard";
 import HealthScoreCard from "@/components/data/HealthScoreCard";
-import formatMoney from "@/lib/money";
+import formatMoney, { parseMoney } from "@/lib/money";
 import { dashboard } from "@/lib/mock";
 import { spacing } from "@/theme";
+import Icon from "@/components/ui/Icon";
+import { AppText } from "@/components/ui/AppText";
+import { useRouter } from "expo-router";
 
 const HomeScreen = () => {
-  // `_value` is unused for now — rename to `value` once the real caption logic lands.
+
+  const router = useRouter();
   const generateIncomeCaption = (_value: number): string => {
     // Logic to generate the caption
     return "+12% vs last month";
@@ -90,7 +94,19 @@ const HomeScreen = () => {
             captionColor="success"
           />
         </View>
+        <Pressable
+          onPress={() => {
+            console.log("Pressed");
+            console.log (parseMoney("₹1233"));
+            router.push("/add-transaction");
+          }}
+        >
+          <AppText>
+            Click Here
+          </AppText>
+        </Pressable>
       </View>
+
     </ScreenScaffold>
   );
 };

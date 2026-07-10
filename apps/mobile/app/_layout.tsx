@@ -22,7 +22,9 @@ const RootLayout = () => {
       <Stack screenOptions={{
         headerShown: false
       }}
-      />
+      >
+        <Stack.Screen name="add-transaction" options={{ presentation: "modal" }} />
+      </Stack>
     </SafeAreaProvider>
   )
 }
