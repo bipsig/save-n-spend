@@ -34,6 +34,11 @@ export const iconMap = {
   date: "calendar-month",
   location: "location-pin",
 
+  //budget
+  budgetOk: "check-circle",
+  budgetWarning: "pending-actions",
+  budgetOver: "warning",
+
   // Assistant
   chat: 'chat-bubble-outline',
 } satisfies Record<string, GlyphName>
