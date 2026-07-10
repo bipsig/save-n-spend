@@ -1,13 +1,16 @@
-import type { Transaction } from "./types";
+import type { ITransaction } from "@save-n-spend/types";
+import { defaultAccountId } from "./accounts";
 
-// Sample transactions matching the Figma Activity screen.
-// amount is integer paise (e.g. -45000 = -₹450). Negative = money out, positive = money in.
-export const transactions: Transaction[] = [
-  { id: "t1", title: "Starbucks",        category: "food",          amount: -45000,   date: "Today, 2:30 PM",  location: "CP",          hasReceipt: true },
-  { id: "t2", title: "Metro Recharge",   category: "transport",     amount: -50000,   date: "Today, 9:15 AM",  location: "Rajiv Chowk" },
-  { id: "t3", title: "Electricity Bill", category: "bills",         amount: -125000,  date: "Jan 25",          location: "Online",      hasReceipt: true },
-  { id: "t4", title: "Amazon Purchase",  category: "shopping",      amount: -289900,  date: "Jan 24",          location: "Online",      hasReceipt: true },
-  { id: "t5", title: "Netflix",          category: "entertainment", amount: -64900,   date: "Jan 23",          location: "Subscription" },
-  { id: "t6", title: "Uber",             category: "transport",     amount: -18500,   date: "Jan 23",          location: "MG Road" },
-  { id: "t7", title: "Freelance Project", category: "income",       amount: 1500000,  date: "Jan 22",          location: "PayPal" },
+// amount is integer paise and ALWAYS POSITIVE — `type` decides direction.
+// occurredAt is an ISO string; the display label is derived via formatTxnDate.
+const hoursAgo = (h: number): string => new Date(Date.now() - h * 3_600_000).toISOString();
+
+export const transactions: ITransaction[] = [
+  { _id: "t1", userId: "u1", type: "expense", amount: 45000,   account: defaultAccountId, category: "cat-food",          title: "Starbucks",         location: "CP",           receiptUrl: "receipt://t1", occurredAt: hoursAgo(3) },
+  { _id: "t2", userId: "u1", type: "expense", amount: 50000,   account: defaultAccountId, category: "cat-transport",     title: "Metro Recharge",    location: "Rajiv Chowk",                              occurredAt: hoursAgo(6) },
+  { _id: "t3", userId: "u1", type: "expense", amount: 125000,  account: defaultAccountId, category: "cat-bills",         title: "Electricity Bill",  location: "Online",       receiptUrl: "receipt://t3", occurredAt: "2026-01-25T10:00:00.000Z" },
+  { _id: "t4", userId: "u1", type: "expense", amount: 289900,  account: defaultAccountId, category: "cat-shopping",      title: "Amazon Purchase",   location: "Online",       receiptUrl: "receipt://t4", occurredAt: "2026-01-24T14:00:00.000Z" },
+  { _id: "t5", userId: "u1", type: "expense", amount: 64900,   account: defaultAccountId, category: "cat-entertainment", title: "Netflix",           location: "Subscription",                             occurredAt: "2026-01-23T09:00:00.000Z" },
+  { _id: "t6", userId: "u1", type: "expense", amount: 18500,   account: defaultAccountId, category: "cat-transport",     title: "Uber",              location: "MG Road",                                  occurredAt: "2026-01-23T20:00:00.000Z" },
+  { _id: "t7", userId: "u1", type: "income",  amount: 1500000, account: defaultAccountId, category: "cat-income",        title: "Freelance Project", location: "PayPal",                                   occurredAt: "2026-01-22T12:00:00.000Z" },
 ];

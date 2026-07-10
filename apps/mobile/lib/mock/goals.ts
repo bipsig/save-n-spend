@@ -1,8 +1,7 @@
-import type { Goal } from "./types";
+import type { IGoal } from "@save-n-spend/types";
 
-// Savings goals (Figma Home goals + Savings Goals screen).
-// saved / target are integer paise (e.g. 8500000 = ₹85,000).
-export const goals: Goal[] = [
-  { id: "g1", name: "Europe Trip",    icon: "savings", saved: 8500000,  target: 15000000 },
-  { id: "g2", name: "Emergency Fund", icon: "health",  saved: 12000000, target: 20000000 },
+// saved / target are integer paise.
+export const goals: IGoal[] = [
+  { _id: "g1", userId: "u1", name: "Europe Trip",    target: 15000000, saved: 8500000,  icon: "savings", color: "info" },
+  { _id: "g2", userId: "u1", name: "Emergency Fund", target: 20000000, saved: 12000000, icon: "health",  color: "success" },
 ];

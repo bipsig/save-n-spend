@@ -3,6 +3,8 @@
 export type TransactionType = 'expense' | 'income' | 'transfer'
 export type AccountType = 'bank' | 'credit_card' | 'cash' | 'wallet'
 export type CategoryKind = 'expense' | 'income'
+export type BillStatus = 'pending' | 'paid' | 'overdue'
+export type BillFrequency = 'monthly' | 'yearly'
 
 export interface IUser {
   _id: string
@@ -50,6 +52,41 @@ export interface ITransaction {
   category: string | null
   title?: string
   note?: string
+  location?: string      // UI: where it happened ("Connaught Place")
+  receiptUrl?: string    // UI: attached receipt; presence drives the "Receipt" tag
   paymentMode?: 'cash' | 'card' | 'upi' | 'transfer'
   occurredAt: string     // ISO date string on the wire
+}
+
+export interface IBudget {
+  _id: string
+  userId: string
+  category: string       // Category._id
+  month: string          // 'YYYY-MM'
+  limit: number          // paise cap for the month (spent is computed, not stored)
+}
+
+export interface IBill {
+  _id: string
+  userId: string
+  name: string
+  amount: number         // paise
+  category: string | null
+  account?: string
+  dueDate: string        // ISO date string
+  status: BillStatus
+  recurring?: boolean
+  frequency?: BillFrequency
+  reminderDays?: number
+}
+
+export interface IGoal {
+  _id: string
+  userId: string
+  name: string
+  target: number         // paise
+  saved: number          // paise, clamped at target
+  icon?: string
+  color?: string
+  deadline?: string      // ISO date string
 }

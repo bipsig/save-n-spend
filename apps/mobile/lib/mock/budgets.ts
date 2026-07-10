@@ -1,6 +1,18 @@
-import type { BudgetCategory } from "./types";
+import type { IBudget } from "@save-n-spend/types";
 
-// Money fields are integer paise (e.g. 4500000 = ₹45,000). daysLeft is a plain count.
+const MONTH = "2026-01";
+
+// Per-category monthly LIMITS only (paise). `spent` is NOT stored — it's computed
+// by aggregating transactions for the category/month (matches the real endpoint).
+export const budgets: IBudget[] = [
+  { _id: "bud-food",          userId: "u1", category: "cat-food",          month: MONTH, limit: 600000 },
+  { _id: "bud-shopping",      userId: "u1", category: "cat-shopping",      month: MONTH, limit: 700000 },
+  { _id: "bud-transport",     userId: "u1", category: "cat-transport",     month: MONTH, limit: 300000 },
+  { _id: "bud-entertainment", userId: "u1", category: "cat-entertainment", month: MONTH, limit: 350000 },
+  { _id: "bud-bills",         userId: "u1", category: "cat-bills",         month: MONTH, limit: 800000 },
+];
+
+// Computed monthly-budget summary (a mock of the aggregate API response). Paise.
 export const monthlyBudget = {
   total: 4500000,
   spent: 3128000,
@@ -8,12 +20,3 @@ export const monthlyBudget = {
   dailyLimit: 228700,
   status: "On Track",
 };
-
-// Per-category budgets. Shopping is intentionally over budget (red in Figma).
-export const budgetCategories: BudgetCategory[] = [
-  { category: "food",          spent: 450000, budget: 600000 },
-  { category: "shopping",      spent: 820000, budget: 700000 },
-  { category: "transport",     spent: 180000, budget: 300000 },
-  { category: "entertainment", spent: 280000, budget: 350000 },
-  { category: "bills",         spent: 620000, budget: 800000 },
-];

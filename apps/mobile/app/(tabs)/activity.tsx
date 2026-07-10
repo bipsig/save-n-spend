@@ -4,7 +4,7 @@ import TransactionRow from "@/components/rows/TransactionRow";
 import { transactions } from "@/lib/mock";
 import { spacing } from "@/theme";
 import { useState } from "react";
-import { categories, Category } from "@/lib/categories";
+import { categories } from "@/lib/categories";
 import Search from "@/components/ui/Search";
 import Chip from "@/components/ui/Chip";
 import GradientCard from "@/components/shell/GradientCard";
@@ -48,7 +48,7 @@ const TransactionsSummaryCard = ({
             Total Expenses
           </AppText>
           <AppText color="surface" size="xl" weight="bold">
-            {formatMoney(Math.abs(expense))}
+            {formatMoney(expense)}
           </AppText>
         </View>
       </View>
@@ -69,19 +69,20 @@ const TransactionsSummaryCard = ({
 
 const ActivityScreen = () => {
   const [query, setQuery] = useState("");
-  const [activeCategory, setActiveCategory] = useState<Category | "all">("all");
+  const [activeCategory, setActiveCategory] = useState<string>("all");
 
   let filteredTransactions = activeCategory === "all" ? transactions : transactions.filter((transaction) => {
     return transaction.category === activeCategory
   })
 
   filteredTransactions = query === "" ? filteredTransactions : filteredTransactions.filter((transaction) => {
-    return transaction.title.toLowerCase().includes(query.trim().toLowerCase());
+    return (transaction.title ?? "").toLowerCase().includes(query.trim().toLowerCase());
   })
 
-  const income = transactions.filter(transaction => transaction.amount > 0).reduce((total, transaction) => total + transaction.amount, 0);
-  const expense = transactions.filter(transaction => transaction.amount < 0).reduce((total, transaction) => total + transaction.amount, 0);
-  const savings = income + expense;
+  // amounts are positive; `type` gives direction. Income vs expense totals for the month.
+  const income = transactions.filter(t => t.type === "income").reduce((total, t) => total + t.amount, 0);
+  const expense = transactions.filter(t => t.type === "expense").reduce((total, t) => total + t.amount, 0);
+  const savings = income - expense;
 
   return (
     <ScreenScaffold title="All Activity" scroll={false}>
@@ -103,21 +104,19 @@ const ActivityScreen = () => {
           selected={activeCategory === "all"}
           onPress={() => setActiveCategory("all")}
         />
-        {(Object.keys(categories) as Category[]).map((category) => {
-          return (
-            <Chip
-              key={category}
-              label={categories[category].label}
-              selected={activeCategory === category}
-              onPress={() => setActiveCategory(category)}
-            />
-          )
-        })}
+        {categories.map((category) => (
+          <Chip
+            key={category._id}
+            label={category.name}
+            selected={activeCategory === category._id}
+            onPress={() => setActiveCategory(category._id)}
+          />
+        ))}
       </ScrollView>
 
       <FlatList
         data={filteredTransactions}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => item._id}
         renderItem={({ item }) => <TransactionRow transaction={item} />}
         ItemSeparatorComponent={Separator}
         contentContainerStyle={styles.content}

@@ -1,43 +1,21 @@
-import type { Category } from "../categories";
-import type { IconName } from "../icons";
+// Mobile mirrors the shared API contract. Import entity types from
+// @save-n-spend/types (type-only, so they erase at runtime — no bundler wiring).
+// This file only adds mobile-only view/response shapes.
+export type {
+  ITransaction,
+  IAccount,
+  ICategory,
+  IBudget,
+  IBill,
+  IGoal,
+  TransactionType,
+  AccountType,
+  CategoryKind,
+  BillStatus,
+  BillFrequency,
+} from "@save-n-spend/types";
 
-// All amounts are integer rupees. Negative = money out, positive = money in.
-
-export type Transaction = {
-  id: string
-  title: string
-  category: Category
-  amount: number
-  date: string        // display string, e.g. "Today, 2:30 PM" or "Jan 25"
-  location?: string
-  hasReceipt?: boolean
-};
-
-export type BudgetCategory = {
-  category: Category
-  spent: number
-  budget: number
-};
-
-export type BillStatus = "paid" | "pending" | "overdue";
-
-export type Bill = {
-  id: string
-  name: string
-  category: Category
-  amount: number
-  dueLabel: string    // "Due in 3 days"
-  status: BillStatus
-};
-
-export type Goal = {
-  id: string
-  name: string
-  icon: IconName
-  saved: number
-  target: number
-};
-
+// Computed dashboard response (an aggregate, not a stored entity). Paise.
 export type DashboardSummary = {
   healthScore: number
   rating: string

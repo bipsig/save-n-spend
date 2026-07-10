@@ -9,7 +9,8 @@ import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
-import { categories, Category } from "@/lib/categories";
+import { categories } from "@/lib/categories";
+import { defaultAccountId } from "@/lib/mock";
 import Chip from "@/components/ui/Chip";
 import { spacing } from "@/theme";
 
@@ -22,7 +23,7 @@ const schema = z.object({
   type: z.enum(["income", "expense"]),
   category: z
     .string()
-    .refine((c) => c in categories, "Select a category"),
+    .refine((c) => categories.some((cat) => cat._id === c), "Select a category"),
 });
 
 type FormValues = z.infer<typeof schema>
@@ -35,12 +36,16 @@ const AddTransaction = () => {
   })
 
   const onSubmit = (data: FormValues) => {
-    const paise = parseMoney(data.amount);
-    console.log({
+    // Build a payload shaped like ITransaction: positive amount, `type` gives direction.
+    const newTransaction = {
+      type: data.type,
+      amount: parseMoney(data.amount), // paise, positive
+      category: data.category,
+      account: defaultAccountId,
       title: data.title,
-      amount: data.type === "expense" ? -paise : paise,
-      category: data.category
-    });
+      occurredAt: new Date().toISOString(),
+    };
+    console.log(newTransaction);
     router.back();
   }
 
@@ -122,12 +127,12 @@ const AddTransaction = () => {
               style={styles.chipScroll}
               contentContainerStyle={styles.row}
             >
-              {(Object.keys(categories) as Category[]).map((category) => (
+              {categories.map((category) => (
                 <Chip
-                  key={category}
-                  label={categories[category].label}
-                  selected={value === category}
-                  onPress={() => onChange(category)}
+                  key={category._id}
+                  label={category.name}
+                  selected={value === category._id}
+                  onPress={() => onChange(category._id)}
                 />
               ))}
             </ScrollView>
