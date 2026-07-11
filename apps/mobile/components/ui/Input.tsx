@@ -10,6 +10,9 @@ type Props = TextInputProps & {
   label?: string
   error?: string
   size?: Size
+  // Swap the underlying field — e.g. gorhom's BottomSheetTextInput when the input
+  // lives inside a bottom sheet (so the keyboard and the sheet cooperate).
+  InputComponent?: React.ComponentType<TextInputProps>
 }
 
 const sizeStyles: Record<Size, { paddingVertical: number; fontSize: number }> = {
@@ -18,7 +21,7 @@ const sizeStyles: Record<Size, { paddingVertical: number; fontSize: number }> = 
   lg: { paddingVertical: spacing.lg, fontSize: fontSize.lg },
 }
 
-const Input = ({ label, error, size = 'md', style, ...rest }: Props) => {
+const Input = ({ label, error, size = 'md', style, InputComponent = TextInput, ...rest }: Props) => {
   const [focused, setFocused] = useState(false)
   const s = sizeStyles[size]
 
@@ -28,7 +31,7 @@ const Input = ({ label, error, size = 'md', style, ...rest }: Props) => {
     <View style={styles.wrapper}>
       {label && <AppText weight="bold" size="sm" color="gray600">{label}</AppText>}
 
-      <TextInput
+      <InputComponent
         placeholderTextColor={colors.gray400}
         {...rest}
         style={[
