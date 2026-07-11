@@ -2,7 +2,7 @@ import { ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import type { ViewProps } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { colors, radius, spacing } from "@/theme";
+import { colors, radius } from "@/theme";
 
 type Props = ViewProps & {
   children: ReactNode
@@ -48,7 +48,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.14)",
   },
   padded: {
-    padding: spacing.lg,
+    padding: 18, // spec .rowcard / .hero 14px × device scale
   },
 })
 

@@ -8,11 +8,15 @@ const TabsLayout = () => {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: theme.colors.primary,
-        tabBarInactiveTintColor: theme.colors.gray400,
+        tabBarActiveTintColor: "#A394FF", // spec .tabi.on — violet
+        tabBarInactiveTintColor: theme.colors.inkDim,
         tabBarStyle: {
           backgroundColor: "#100E1C",
-          borderTopColor: theme.colors.line,
+          borderTopColor: "rgba(255,255,255,0.09)",
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: "600",
         },
       }}
     >

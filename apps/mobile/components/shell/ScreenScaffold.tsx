@@ -11,6 +11,8 @@ type Props = {
   headerRight?: React.ReactNode;
   header?: React.ReactNode;
   scroll?: boolean;
+  /** Rendered above the scroll content, pinned to the screen (e.g. the FAB). */
+  floating?: React.ReactNode;
   children: React.ReactNode;
 };
 
@@ -20,6 +22,7 @@ const ScreenScaffold = ({
   headerRight,
   header,
   scroll = true,
+  floating,
   children,
 }: Props) => {
   const { top, bottom } = useSafeAreaInsets();
@@ -40,13 +43,14 @@ const ScreenScaffold = ({
         ) : (
           <View style={styles.titleBlock}>
             <View style={styles.titleRow}>
-              <AppText weight="black" size="2xl">
+              {/* Spec .titlerow .t — 24 / 800 / −.02em */}
+              <AppText weight="black" size="xl">
                 {title}
               </AppText>
               {headerRight}
             </View>
             {subtitle && (
-              <AppText size="sm" color="gray500">
+              <AppText size="sm" color="inkDim">
                 {subtitle}
               </AppText>
             )}
@@ -64,6 +68,7 @@ const ScreenScaffold = ({
           children
         )}
       </View>
+      {floating}
     </LinearGradient>
   );
 };
@@ -74,8 +79,8 @@ const styles = StyleSheet.create({
   },
   inner: {
     flex: 1,
-    paddingHorizontal: spacing.lg,
-    gap: spacing.md,
+    paddingHorizontal: 20, // spec 15px screen padding × device scale
+    gap: spacing.lg,
   },
   titleBlock: {
     gap: spacing.xs,
@@ -89,7 +94,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    gap: spacing.lg,
+    gap: spacing.lg, // spec .ui-stack 12px rhythm × device scale
     paddingBottom: spacing.xl,
   },
 });

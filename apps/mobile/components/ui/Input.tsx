@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { StyleSheet, TextInput, View } from 'react-native'
 import type { TextInputProps } from 'react-native'
 import { AppText } from './AppText'
-import { colors, fontFamily, fontSize, radius, spacing } from '@/theme'
+import { colors, fontSize, radius, spacing } from '@/theme'
 
 type Size = "sm" | "md" | "lg"
 
@@ -29,7 +29,11 @@ const Input = ({ label, error, size = 'md', style, InputComponent = TextInput, .
 
   return (
     <View style={styles.wrapper}>
-      {label && <AppText weight="bold" size="sm" color="gray600">{label}</AppText>}
+      {label && (
+        <AppText weight="bold" size="xs" color="inkDim" style={styles.label}>
+          {label.toUpperCase()}
+        </AppText>
+      )}
 
       <InputComponent
         placeholderTextColor={colors.gray400}
@@ -49,14 +53,17 @@ const Input = ({ label, error, size = 'md', style, InputComponent = TextInput, .
 }
 
 const styles = StyleSheet.create({
-  wrapper: { gap: spacing.xs, width: '100%' },
+  wrapper: { gap: spacing.sm, width: '100%' },
+  // Spec .flabel — tiny caps, wide tracking, dim ink.
+  label: { letterSpacing: 1.3 },
+  // Spec .finput × device scale — radius 16, faint white fill, hairline border.
   input: {
     borderWidth: 1,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.md,
-    fontFamily: fontFamily.regular,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    fontWeight: '600',
     color: colors.ink,
-    backgroundColor: colors.surface2,
+    backgroundColor: 'rgba(255,255,255,0.07)',
   },
 })
 

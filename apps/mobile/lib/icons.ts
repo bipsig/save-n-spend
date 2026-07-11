@@ -43,6 +43,14 @@ export const iconMap = {
 
   // Assistant
   chat: 'chat-bubble-outline',
+
+  // More / settings hub
+  help: 'help-outline',
+  logout: 'logout',
+  star: 'star-border',
+
+  // Add Transaction numpad
+  backspace: 'backspace',
 } satisfies Record<string, GlyphName>
 
 export type IconName = keyof typeof iconMap;

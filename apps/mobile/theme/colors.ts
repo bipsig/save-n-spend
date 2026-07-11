@@ -8,6 +8,7 @@ export const colors = {
   // Text / ink (light, on the dark ground)
   ink: '#F5F4FC',
   inkSecondary: '#D8D5E8',
+  inkDim: 'rgba(245,244,252,0.58)',     // spec ink-dim — subs, meta, captions
 
   // Neutrals — muted, tuned for dark
   gray700: '#BAB6CE',

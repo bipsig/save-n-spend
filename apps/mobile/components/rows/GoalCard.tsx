@@ -14,50 +14,55 @@ type Props = {
   onPress?: () => void
 };
 
+// Deadline → "Dec 2026" pace label (client-derived; absent → "No deadline").
+const deadlineLabel = (iso?: string): string =>
+  iso
+    ? new Date(iso).toLocaleDateString("en-US", { month: "short", year: "numeric" })
+    : "No deadline";
+
+// Spec GoalCard: gradient icon chip (goal color, glowing) · name 15/700 ·
+// "saved / target" sub · % colored per goal · pace line · tinted gradient bar.
 const GoalCard = ({ goal, onPress }: Props) => {
   const color = (goal.color ?? "accent") as ColorToken;
   const percent = Math.min(Math.round((goal.saved / goal.target) * 100), 100);
-  const remaining = Math.max(goal.target - goal.saved, 0);
   const achieved = goal.saved >= goal.target;
 
   return (
     <Pressable onPress={onPress} disabled={!onPress}>
       <Card style={styles.card}>
-      <View style={styles.header}>
-        <Icon
-          name={(goal.icon ?? "savings") as IconName}
-          size={22}
-          container="square"
-          containerColor="glass"
-          color={color}
-        />
-        <View style={styles.info}>
-          <AppText size="md" weight="bold">
-            {goal.name}
-          </AppText>
-          <AppText size="sm" color="gray500">
-            {`${formatMoney(goal.saved)} of ${formatMoney(goal.target)}`}
-          </AppText>
+        <View style={styles.header}>
+          <Icon
+            name={(goal.icon ?? "savings") as IconName}
+            size={22}
+            containerSize={44}
+            container="square"
+            gradient={color}
+          />
+          <View style={styles.info}>
+            <AppText size="md" weight="bold">
+              {goal.name}
+            </AppText>
+            <AppText size="sm" color="inkDim">
+              {`${formatMoney(goal.saved)} / ${formatMoney(goal.target)}`}
+            </AppText>
+          </View>
+          <View style={styles.right}>
+            <AppText size="md" weight="black" color={achieved ? "success" : color}>
+              {`${percent}%`}
+            </AppText>
+            {achieved ? (
+              <AppText size="xs" weight="bold" color="success">
+                Achieved ✦
+              </AppText>
+            ) : (
+              <AppText size="xs" weight="semibold" color="inkDim">
+                {deadlineLabel(goal.deadline)}
+              </AppText>
+            )}
+          </View>
         </View>
-        <AppText size="lg" weight="black" color={achieved ? "success" : color}>
-          {`${percent}%`}
-        </AppText>
-      </View>
 
-      <ProgressBar value={percent} color={achieved ? "success" : color} />
-
-      {achieved ? (
-        <View style={styles.footer}>
-          <Icon name="budgetOk" size={16} color="success" />
-          <AppText size="sm" color="success" weight="bold">
-            Goal reached
-          </AppText>
-        </View>
-      ) : (
-        <AppText size="sm" color="gray500">
-          {`${formatMoney(remaining)} to go`}
-        </AppText>
-      )}
+        <ProgressBar value={percent} color={achieved ? "success" : color} />
       </Card>
     </Pressable>
   );
@@ -70,16 +75,15 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
+    gap: 14, // spec .rowcard .top gap × device scale
   },
   info: {
     flex: 1,
-    gap: spacing.xs,
+    gap: 3,
   },
-  footer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
+  right: {
+    alignItems: "flex-end",
+    gap: 3,
   },
 });
 

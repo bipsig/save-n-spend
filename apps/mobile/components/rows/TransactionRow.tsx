@@ -1,9 +1,9 @@
 import { StyleSheet, View } from "react-native"
-import { categoryById, categoryBg } from "@/lib/categories"
+import { categoryById } from "@/lib/categories"
 import type { ITransaction } from "@/lib/mock"
 import type { IconName } from "@/lib/icons"
 import type { ColorToken } from "@/theme"
-import { shadows, spacing } from "@/theme"
+import { spacing } from "@/theme"
 import { formatTxnDate } from "@/lib/date"
 import Icon from "../ui/Icon"
 import { AppText } from "../ui/AppText"
@@ -18,20 +18,22 @@ type Props = {
 const MetaItem = ({
   icon,
   label,
-  color = "gray500",
+  color = "inkDim",
 }: {
   icon: IconName
   label: string
   color?: ColorToken
 }) => (
   <View style={styles.metaItem}>
-    <Icon name={icon} size={13} color={color} />
-    <AppText size="xs" color={color}>
+    <Icon name={icon} size={14} color={color} />
+    <AppText size="xs" color={color} weight={color === "primary" ? "bold" : "regular"}>
       {label}
     </AppText>
   </View>
 )
 
+// Spec .rowcard: gradient category chip · name 15/700 · sub 12 dim ·
+// tiny meta row · signed amount 15/800 colored by type. Flat glass, no shadow.
 const TransactionRow = ({ transaction }: Props) => {
   const category = categoryById(transaction.category)
   const isIncome = transaction.type === "income"
@@ -42,16 +44,16 @@ const TransactionRow = ({ transaction }: Props) => {
       <Icon
         name={(category?.icon ?? "more") as IconName}
         container="square"
-        containerColor={categoryBg(category?.color)}
-        color={(category?.color ?? "gray500") as ColorToken}
-        size={24}
+        gradient={(category?.color ?? "accent") as ColorToken}
+        size={22}
+        containerSize={44}
       />
 
       <View style={styles.details}>
         <AppText size="md" weight="bold">
           {transaction.title}
         </AppText>
-        <AppText size="sm" color="gray500">
+        <AppText size="sm" color="inkDim">
           {category?.name ?? "Uncategorized"}
         </AppText>
         <View style={styles.metaRow}>
@@ -65,7 +67,7 @@ const TransactionRow = ({ transaction }: Props) => {
         </View>
       </View>
 
-      <AppText size="md" weight="bold" color={isIncome ? "success" : "danger"}>
+      <AppText size="md" weight="black" color={isIncome ? "success" : "danger"}>
         {isIncome ? `+${money}` : `-${money}`}
       </AppText>
     </Card>
@@ -76,24 +78,23 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.md,
-    ...shadows.md, // softer, more visible drop than Card's default sm — matches Figma
+    gap: 14, // spec .rowcard .top gap × device scale
   },
   details: {
     flex: 1,
-    gap: spacing.xs,
+    gap: 3,
   },
   metaRow: {
     flexDirection: "row",
     alignItems: "center",
     flexWrap: "wrap",
-    gap: spacing.md,
+    gap: 12,
     marginTop: spacing.xs,
   },
   metaItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: 4,
   },
 })
 

@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { z } from "zod/v4";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { LinearGradient } from "expo-linear-gradient";
 import {
   BottomSheetModal,
   BottomSheetTextInput,
@@ -15,8 +16,9 @@ import Icon from "@/components/ui/Icon";
 import { AppText } from "@/components/ui/AppText";
 import { parseMoney } from "@/lib/money";
 import type { IconName } from "@/lib/icons";
-import { colors, spacing } from "@/theme";
+import { spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
+import { chipGradients, chipTintFor } from "@/theme/gradients";
 
 // Goal identity options (visual pickers, not free text).
 const ICONS: IconName[] = ["savings", "health", "trophy", "wallet", "investments", "transport"];
@@ -63,9 +65,15 @@ const NewGoalSheet = forwardRef<BottomSheetModal>((_props, ref) => {
 
   return (
     <AppSheet ref={ref} onDismiss={() => reset()}>
-      <AppText size="xl" weight="black">
-        New goal
-      </AppText>
+      {/* Spec .shead — title + ✕ */}
+      <View style={styles.head}>
+        <AppText size="lg" weight="black">
+          New Goal
+        </AppText>
+        <Pressable onPress={() => dismiss()} hitSlop={8} accessibilityLabel="Close">
+          <Icon name="close" size={16} containerSize={32} container="circle" containerColor="glass" color="inkDim" />
+        </Pressable>
+      </View>
 
       <Controller
         control={control}
@@ -73,7 +81,7 @@ const NewGoalSheet = forwardRef<BottomSheetModal>((_props, ref) => {
         render={({ field: { value, onChange, onBlur } }) => (
           <Input
             InputComponent={BottomSheetTextInput}
-            label="Goal name"
+            label="Name"
             placeholder="e.g. Europe Trip"
             value={value}
             onChangeText={onChange}
@@ -89,7 +97,7 @@ const NewGoalSheet = forwardRef<BottomSheetModal>((_props, ref) => {
         render={({ field: { value, onChange, onBlur } }) => (
           <Input
             InputComponent={BottomSheetTextInput}
-            label="Target amount"
+            label="Target"
             placeholder="₹0"
             value={value}
             onChangeText={onChange}
@@ -101,27 +109,26 @@ const NewGoalSheet = forwardRef<BottomSheetModal>((_props, ref) => {
         )}
       />
 
-      {/* Icon picker */}
+      {/* Icon picker — spec .ipick: 42px cells, radius 13; selected = violet ring + glow */}
       <Controller
         control={control}
         name="icon"
         render={({ field: { value, onChange } }) => (
           <View style={styles.field}>
-            <AppText size="sm" weight="bold" color="gray600">
-              Icon
+            <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
+              ICON
             </AppText>
             <View style={styles.row}>
               {ICONS.map((name) => {
                 const selected = value === name;
                 return (
-                  <Pressable key={name} onPress={() => onChange(name)} hitSlop={4}>
-                    <Icon
-                      name={name}
-                      size={22}
-                      container="square"
-                      containerColor={selected ? "accentSoft" : "surface2"}
-                      color={selected ? "primary" : "gray500"}
-                    />
+                  <Pressable
+                    key={name}
+                    onPress={() => onChange(name)}
+                    hitSlop={4}
+                    style={[styles.iconCell, selected && styles.iconCellOn]}
+                  >
+                    <Icon name={name} size={22} color={selected ? "surface" : "inkDim"} />
                   </Pressable>
                 );
               })}
@@ -130,14 +137,14 @@ const NewGoalSheet = forwardRef<BottomSheetModal>((_props, ref) => {
         )}
       />
 
-      {/* Color picker */}
+      {/* Colour picker — spec .swrow: 29px gradient swatches, white ring when on */}
       <Controller
         control={control}
         name="color"
         render={({ field: { value, onChange } }) => (
           <View style={styles.field}>
-            <AppText size="sm" weight="bold" color="gray600">
-              Color
+            <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
+              COLOUR
             </AppText>
             <View style={styles.row}>
               {COLORS.map((token) => {
@@ -147,12 +154,15 @@ const NewGoalSheet = forwardRef<BottomSheetModal>((_props, ref) => {
                     key={token}
                     onPress={() => onChange(token)}
                     hitSlop={4}
-                    style={[
-                      styles.swatch,
-                      { backgroundColor: colors[token] },
-                      selected && styles.swatchSelected,
-                    ]}
-                  />
+                    style={[styles.swatchRing, selected && styles.swatchRingOn]}
+                  >
+                    <LinearGradient
+                      colors={[...chipGradients[chipTintFor(token)]]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 0.8, y: 1 }}
+                      style={styles.swatch}
+                    />
+                  </Pressable>
                 );
               })}
             </View>
@@ -161,7 +171,7 @@ const NewGoalSheet = forwardRef<BottomSheetModal>((_props, ref) => {
       />
 
       <Button
-        label="Create goal"
+        label="Create Goal"
         onPress={handleSubmit(onSubmit)}
         disabled={!isValid}
       />
@@ -172,23 +182,58 @@ const NewGoalSheet = forwardRef<BottomSheetModal>((_props, ref) => {
 NewGoalSheet.displayName = "NewGoalSheet";
 
 const styles = StyleSheet.create({
+  head: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
   field: {
     gap: spacing.sm,
+  },
+  label: {
+    letterSpacing: 1.3, // spec .flabel
   },
   row: {
     flexDirection: "row",
     gap: spacing.sm,
     flexWrap: "wrap",
   },
-  swatch: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+  iconCell: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.055)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+  },
+  iconCellOn: {
+    backgroundColor: "rgba(139,123,255,0.2)",
+    borderWidth: 1.5,
+    borderColor: "#A394FF",
+    shadowColor: "#8B7BFF",
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 6,
+  },
+  swatchRing: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 2,
     borderColor: "transparent",
   },
-  swatchSelected: {
-    borderColor: colors.ink,
+  swatchRingOn: {
+    borderColor: "#FFFFFF",
+  },
+  swatch: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
   },
 });
 

@@ -90,9 +90,9 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   grabber: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
+    width: 44,
+    height: 5,
+    borderRadius: 3,
     backgroundColor: "rgba(255,255,255,0.28)",
   },
   content: {

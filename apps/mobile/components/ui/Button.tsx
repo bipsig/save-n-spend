@@ -1,6 +1,9 @@
-import { colors, ColorToken, FontSizeToken, radius, spacing } from "@/theme";
+import { colors, ColorToken, FontSizeToken, gradients, radius, spacing } from "@/theme";
 import { ActivityIndicator, Pressable, PressableProps, StyleSheet, View } from "react-native"
+import { LinearGradient } from "expo-linear-gradient";
 import { AppText } from "./AppText";
+import Icon from "./Icon";
+import type { IconName } from "@/lib/icons";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 type Size = "sm" | "md" | "lg";
@@ -10,6 +13,9 @@ type Props = PressableProps & {
   variant?: Variant
   size?: Size
   loading?: boolean
+  /** Spec `.pillbtn` — small glowing violet gradient pill (header actions). */
+  pill?: boolean
+  icon?: IconName
   onPress?: () => void
 }
 
@@ -34,24 +40,32 @@ const variantStyles: Record<Variant, VariantStyle> = {
 
 const sizeStyles: Record<Size, SizeStyle> = {
   sm: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, fontSize: "sm" },
-  md: { paddingVertical: spacing.md, paddingHorizontal: spacing.lg, fontSize: "md" },
-  lg: { paddingVertical: spacing.lg, paddingHorizontal: spacing.xl, fontSize: "lg" }
+  md: { paddingVertical: spacing.lg, paddingHorizontal: spacing.xl, fontSize: "md" },
+  lg: { paddingVertical: 20, paddingHorizontal: spacing.xl, fontSize: "lg" }
 }
+
+// Spec: primary actions are the violet gradient with a glow, never a flat fill.
+const GRADIENT_VARIANTS: Variant[] = ["primary"];
 
 const Button = ({
   label = "Button",
   variant = "primary",
-  size="md",
+  size = "md",
   loading = false,
+  pill = false,
+  icon,
   disabled,
   onPress,
   ...rest
 }: Props) => {
 
   const v = variantStyles[variant];
-  const s = sizeStyles[size];
+  const s = pill
+    ? { paddingVertical: 9, paddingHorizontal: spacing.lg, fontSize: "sm" as FontSizeToken }
+    : sizeStyles[size];
 
   const isDisabled = disabled || loading;
+  const gradient = GRADIENT_VARIANTS.includes(variant);
 
   return (
     <Pressable
@@ -59,24 +73,38 @@ const Button = ({
       disabled={isDisabled}
       style={({ pressed }) => [
         styles.base,
+        pill ? styles.pill : null,
         {
-          backgroundColor: colors[v.background],
+          backgroundColor: gradient ? "transparent" : colors[v.background],
           borderColor: v.border ? colors[v.border] : "transparent",
           borderWidth: v.border ? 1 : 0,
           paddingVertical: s.paddingVertical,
           paddingHorizontal: s.paddingHorizontal,
-          opacity: isDisabled ? 0.5 : pressed ? 0.85 : 1,
+          opacity: isDisabled ? 0.45 : pressed ? 0.85 : 1,
         },
+        gradient && styles.glow,
       ]}
-      {...rest} 
+      {...rest}
     >
-      <View style = {styles.content}>
+      {gradient && (
+        <LinearGradient
+          colors={[...gradients.brand]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0.8, y: 1 }}
+          style={[StyleSheet.absoluteFill, pill ? styles.pill : styles.base]}
+          pointerEvents="none"
+        />
+      )}
+      <View style={styles.content}>
         {loading ? (
           <ActivityIndicator color={colors[v.text]} />
         ) : (
-          <AppText weight="bold" size={s.fontSize} color={v.text}>
-            {label}
-          </AppText>
+          <>
+            {icon && <Icon name={icon} size={pill ? 17 : 21} color={v.text} />}
+            <AppText weight="bold" size={s.fontSize} color={v.text}>
+              {label}
+            </AppText>
+          </>
         )}
       </View>
     </Pressable>
@@ -86,12 +114,25 @@ const Button = ({
 const styles = StyleSheet.create({
   base: {
     borderRadius: radius.md,
+    overflow: "hidden",
+  },
+  pill: {
+    borderRadius: radius.full,
+    alignSelf: "flex-start",
+  },
+  // Violet halo under gradient buttons (spec: 0 8px 22px rgba(109,92,255,.45)).
+  glow: {
+    shadowColor: "#6D5CFF",
+    shadowOpacity: 0.45,
+    shadowRadius: 11,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 8,
   },
   content: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.sm,
+    gap: 5,
   },
 })
 

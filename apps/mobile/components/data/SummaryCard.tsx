@@ -25,18 +25,23 @@ const SummaryCard = ({
   captionColor = "gray500"
 }: Props) => {
   
+  // Spec .sum tile: 26px soft chip + 10.5 dim cap · 17/800 amount · 10 delta.
   return (
     <Card style={styles.card}>
       <View style={styles.container}>
         <Icon
           name={icon}
+          size={17}
+          containerSize={32}
+          containerRadius={10}
           color={iconColor}
           container="square"
           containerColor={iconBg}
         />
         <AppText
-          size="sm"
-          color="gray500"
+          size="xs"
+          weight="semibold"
+          color="inkDim"
         >
           {label}
         </AppText>
@@ -45,7 +50,7 @@ const SummaryCard = ({
         {amount}
       </AppText>
       {caption && (
-        <AppText weight="regular" size="xs" color={captionColor}>
+        <AppText weight="semibold" size="xs" color={captionColor}>
           {caption}
         </AppText>
       )}
@@ -56,12 +61,13 @@ const SummaryCard = ({
 const styles = StyleSheet.create({
   card: {
     flex: 1,
-    gap: spacing.sm
+    gap: 8, // spec .sum gap × device scale
+    padding: 15,
   },
   container: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm
+    gap: 9, // spec .sum .head gap × device scale
   }
 })
 

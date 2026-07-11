@@ -5,27 +5,29 @@ import ScreenScaffold from "@/components/shell/ScreenScaffold"
 import { AppText } from "@/components/ui/AppText"
 import { monthlyBudget, budgetSummary } from "@/lib/mock"
 import formatMoney from "@/lib/money";
-import { spacing } from "@/theme";
 import { StyleSheet, View } from "react-native";
 
 type BudgetStatProps = {
   label: string,
-  stat: string
+  stat: string,
+  right?: boolean
 };
 
-const BudgetStat = ({ label, stat }: BudgetStatProps) => {
+const BudgetStat = ({ label, stat, right }: BudgetStatProps) => {
   return (
-    <View>
-      <AppText size="xs" color="surface" style={styles.muted}>
+    <View style={right && styles.statRight}>
+      <AppText size="xs" color="inkDim">
         {label}
       </AppText>
-      <AppText weight="bold" color="surface">
+      <AppText size="sm" weight="bold">
         {stat}
       </AppText>
     </View>
   )
 }
 
+// Spec budget hero: violet-tinted glass · caps labels · 24/800 total ·
+// white bar · hairline · status / days-left / daily-limit stats.
 const MonthlyBudgetCard = () => {
   const remaining = monthlyBudget.total - monthlyBudget.spent;
   const percentageUsed = Math.round((monthlyBudget.spent / monthlyBudget.total) * 1000) / 10;
@@ -34,28 +36,28 @@ const MonthlyBudgetCard = () => {
     <GradientCard style={styles.card}>
       <View style={styles.topRow}>
         <View>
-          <AppText size="sm" color="surface" style={styles.muted}>
-            Monthly Budget
+          <AppText size="xs" weight="semibold" color="inkDim" style={styles.capsLabel}>
+            MONTHLY BUDGET
           </AppText>
-          <AppText size="2xl" weight="black" color="surface">
+          <AppText size="xl" weight="black">
             {formatMoney(monthlyBudget.total)}
           </AppText>
         </View>
         <View style={styles.spentCol}>
-          <AppText size="xs" color="surface" style={styles.muted}>
-            Spent
+          <AppText size="xs" weight="semibold" color="inkDim" style={styles.capsLabel}>
+            SPENT
           </AppText>
-          <AppText size="lg" weight="black" color="surface">
+          <AppText size="lg" weight="black">
             {formatMoney(monthlyBudget.spent)}
           </AppText>
         </View>
       </View>
 
       <View style={styles.remainingRow}>
-        <AppText color="surface" size="sm" style={styles.muted}>
+        <AppText color="inkDim" size="xs">
           {`Remaining: ${formatMoney(remaining)}`}
         </AppText>
-        <AppText color="surface" size="sm" style={styles.muted}>
+        <AppText color="inkDim" size="xs">
           {`${percentageUsed}% used`}
         </AppText>
       </View>
@@ -67,7 +69,7 @@ const MonthlyBudgetCard = () => {
       <View style={styles.statsRow}>
         <BudgetStat label="Budget Status" stat={monthlyBudget.status} />
         <BudgetStat label="Days Left" stat={`${monthlyBudget.daysLeft} days`} />
-        <BudgetStat label="Daily Limit" stat={formatMoney(monthlyBudget.dailyLimit)} />
+        <BudgetStat label="Daily Limit" stat={formatMoney(monthlyBudget.dailyLimit)} right />
       </View>
     </GradientCard>
   )
@@ -87,10 +89,13 @@ const BudgetScreen = () => {
 
 const styles = StyleSheet.create({
   card: {
-    gap: spacing.md,
+    gap: 12, // spec .hero gap × device scale
   },
-  muted: {
-    opacity: 0.85,
+  capsLabel: {
+    letterSpacing: 1.2,
+  },
+  statRight: {
+    alignItems: "flex-end",
   },
   topRow: {
     flexDirection: "row",

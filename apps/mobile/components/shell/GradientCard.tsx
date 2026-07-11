@@ -1,7 +1,7 @@
 import { StyleSheet, View } from "react-native";
 import type { ViewProps } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { colors, gradients, radius, spacing } from "@/theme";
+import { colors, gradients, radius } from "@/theme";
 import type { GradientToken } from "@/theme";
 
 type Props = ViewProps & {
@@ -61,7 +61,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.16)",
   },
   padded: {
-    padding: spacing.lg,
+    padding: 18, // spec .hero 14px × device scale
   },
 })
 

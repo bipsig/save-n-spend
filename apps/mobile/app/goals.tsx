@@ -1,15 +1,15 @@
 import { useRef, useState } from "react";
-import { FlatList, Pressable, StyleSheet, View } from "react-native";
+import { FlatList, StyleSheet, View } from "react-native";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { IGoal } from "@save-n-spend/types";
 import GoalCard from "@/components/rows/GoalCard";
-import GradientCard from "@/components/shell/GradientCard";
+import Card from "@/components/data/Card";
 import ProgressBar from "@/components/data/ProgressBar";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import EmptyState from "@/components/states/EmptyState";
 import NewGoalSheet from "@/components/sheets/NewGoalSheet";
 import ContributeSheet from "@/components/sheets/ContributeSheet";
-import Icon from "@/components/ui/Icon";
+import Button from "@/components/ui/Button";
 import { AppText } from "@/components/ui/AppText";
 import { goals, goalsSummary } from "@/lib/mock";
 import formatMoney from "@/lib/money";
@@ -17,40 +17,32 @@ import { spacing } from "@/theme";
 
 const Separator = () => <View style={styles.separator} />;
 
+// Spec hero: glass card · "TOTAL SAVED · N GOALS" caps label ·
+// "₹X of ₹Y" + green % on one baseline · green gradient bar.
 const GoalsSummaryCard = () => {
   const { totalSaved, totalTarget, count } = goalsSummary();
   const percent = totalTarget === 0 ? 0 : Math.round((totalSaved / totalTarget) * 100);
 
   return (
-    <GradientCard gradient="brand" style={styles.summary}>
-      <View style={styles.topRow}>
-        <View style={styles.savedCol}>
-          <AppText color="surface" size="sm" style={styles.muted}>
-            Total Saved
+    <Card style={styles.summary}>
+      <AppText size="xs" weight="semibold" color="inkDim" style={styles.heroLabel}>
+        {`TOTAL SAVED · ${count} ${count === 1 ? "GOAL" : "GOALS"}`}
+      </AppText>
+
+      <View style={styles.rowSplit}>
+        <AppText size="xl" weight="black">
+          {formatMoney(totalSaved)}
+          <AppText size="sm" weight="semibold" color="inkDim">
+            {`  of ${formatMoney(totalTarget)}`}
           </AppText>
-          <AppText color="surface" size="2xl" weight="black">
-            {formatMoney(totalSaved)}
-          </AppText>
-          <AppText color="surface" size="sm" style={styles.muted}>
-            {`of ${formatMoney(totalTarget)} target`}
-          </AppText>
-        </View>
-        <View style={styles.countCol}>
-          <AppText color="surface" size="2xl" weight="black">
-            {count}
-          </AppText>
-          <AppText color="surface" size="xs" style={styles.muted}>
-            {count === 1 ? "goal" : "goals"}
-          </AppText>
-        </View>
+        </AppText>
+        <AppText size="md" weight="bold" color="success">
+          {`${percent}%`}
+        </AppText>
       </View>
 
-      <ProgressBar value={percent} color="surface" trackColor="primaryInk" />
-
-      <AppText color="surface" size="sm" style={styles.muted}>
-        {`${percent}% of your goals funded`}
-      </AppText>
-    </GradientCard>
+      <ProgressBar value={percent} color="success" />
+    </Card>
   );
 };
 
@@ -69,11 +61,7 @@ const GoalsScreen = () => {
     <ScreenScaffold
       title="Goals"
       scroll={false}
-      headerRight={
-        <Pressable onPress={openNewGoal} hitSlop={8}>
-          <Icon name="add" container="circle" containerColor="accentSoft" color="primary" />
-        </Pressable>
-      }
+      headerRight={<Button pill icon="add" label="New Goal" onPress={openNewGoal} />}
     >
       <FlatList
         data={goals}
@@ -83,12 +71,19 @@ const GoalsScreen = () => {
         )}
         ItemSeparatorComponent={Separator}
         ListHeaderComponent={goals.length > 0 ? <GoalsSummaryCard /> : null}
+        ListFooterComponent={
+          goals.length > 0 ? (
+            <AppText size="xs" color="inkDim" style={styles.hint}>
+              Tap a goal to add money
+            </AppText>
+          ) : null
+        }
         ListEmptyComponent={
           <EmptyState
             icon="savings"
-            title="No goals yet"
-            subtitle="Set a savings target and watch it grow."
-            actionLabel="New goal"
+            title="Save toward something real"
+            subtitle="Set a savings target and watch it fill."
+            actionLabel="Create your first goal"
             onAction={openNewGoal}
           />
         }
@@ -111,25 +106,23 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl,
   },
   separator: {
-    height: spacing.md,
+    height: spacing.lg,
   },
   summary: {
-    gap: spacing.md,
-    marginBottom: spacing.md,
+    gap: 12, // spec .hero gap × device scale
+    marginBottom: spacing.lg,
   },
-  muted: {
-    opacity: 0.85,
+  heroLabel: {
+    letterSpacing: 1.2, // spec .lbl caps tracking
   },
-  topRow: {
+  rowSplit: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
-  savedCol: {
-    gap: spacing.xs,
-  },
-  countCol: {
     alignItems: "flex-end",
+  },
+  hint: {
+    textAlign: "center",
+    paddingTop: spacing.md,
   },
 });
 

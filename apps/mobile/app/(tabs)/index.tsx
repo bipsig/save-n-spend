@@ -1,18 +1,34 @@
 import { Pressable, StyleSheet, View } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AppHeader from "@/components/shell/AppHeader";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import SummaryCard from "@/components/data/SummaryCard";
 import HealthScoreCard from "@/components/data/HealthScoreCard";
-import formatMoney, { parseMoney } from "@/lib/money";
+import formatMoney from "@/lib/money";
 import { dashboard } from "@/lib/mock";
-import { spacing } from "@/theme";
+import { gradients, spacing } from "@/theme";
 import Icon from "@/components/ui/Icon";
-import { AppText } from "@/components/ui/AppText";
 import { useRouter } from "expo-router";
+
+// Spec .fab — the one global action: glowing violet +, → Add Transaction.
+const Fab = ({ onPress }: { onPress: () => void }) => (
+  <Pressable onPress={onPress} style={styles.fab} accessibilityLabel="Add transaction">
+    <LinearGradient
+      colors={[...gradients.brand]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 0.8, y: 1 }}
+      style={[StyleSheet.absoluteFill, styles.fabRound]}
+      pointerEvents="none"
+    />
+    <Icon name="add" size={26} color="surface" />
+  </Pressable>
+);
 
 const HomeScreen = () => {
 
   const router = useRouter();
+  const { bottom } = useSafeAreaInsets();
   const generateIncomeCaption = (_value: number): string => {
     // Logic to generate the caption
     return "+12% vs last month";
@@ -40,6 +56,11 @@ const HomeScreen = () => {
           name="Sagnik Das"
           onBellPress={() => console.log("Bell pressed")}
         />
+      }
+      floating={
+        <View style={[styles.fabWrap, { bottom: bottom + spacing.lg }]}>
+          <Fab onPress={() => router.push("/add-transaction")} />
+        </View>
       }
     >
       <HealthScoreCard
@@ -94,17 +115,6 @@ const HomeScreen = () => {
             captionColor="success"
           />
         </View>
-        <Pressable
-          onPress={() => {
-            console.log("Pressed");
-            console.log (parseMoney("₹1233"));
-            router.push("/add-transaction");
-          }}
-        >
-          <AppText>
-            Click Here
-          </AppText>
-        </Pressable>
       </View>
 
     </ScreenScaffold>
@@ -113,11 +123,32 @@ const HomeScreen = () => {
 
 const styles = StyleSheet.create({
   grid: {
-    gap: spacing.md,
+    gap: 12, // spec .grid2 gap × device scale
   },
   gridRow: {
     flexDirection: "row",
-    gap: spacing.md,
+    gap: 12,
+  },
+  fabWrap: {
+    position: "absolute",
+    right: 20,
+  },
+  fab: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    // spec: 0 8px 24px rgba(109,92,255,.55)
+    shadowColor: "#6D5CFF",
+    shadowOpacity: 0.55,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
+  },
+  fabRound: {
+    borderRadius: 29,
   },
 });
 

@@ -27,27 +27,29 @@ const TransactionsSummaryCard = ({
 }: Props) => {
   const currentMonth = new Date().toLocaleString('default', { month: "long"});
   const currentYear = new Date().getFullYear();
+  // Spec month summary: violet-tinted glass · caps month label · 18/800 totals ·
+  // hairline · net savings in pale green.
   return (
     <GradientCard gradient="brand" style={styles.summary}>
-      <AppText color="surface" size="sm" style={styles.summaryLabel}>
-        {currentMonth} {currentYear}
+      <AppText color="inkDim" size="xs" weight="semibold" style={styles.summaryLabel}>
+        {`${currentMonth} ${currentYear}`.toUpperCase()}
       </AppText>
 
       <View style={styles.summaryRow}>
         <View style={styles.summaryCol}>
-          <AppText color="surface" size="xs" style={styles.summaryLabel}>
+          <AppText color="inkDim" size="xs">
             Total Income
           </AppText>
-          <AppText color="surface" size="xl" weight="bold">
+          <AppText size="lg" weight="black">
             {formatMoney(income)}
           </AppText>
         </View>
 
-        <View style={styles.summaryCol}>
-          <AppText color="surface" size="xs" style={styles.summaryLabel}>
+        <View style={[styles.summaryCol, styles.summaryColRight]}>
+          <AppText color="inkDim" size="xs">
             Total Expenses
           </AppText>
-          <AppText color="surface" size="xl" weight="bold">
+          <AppText size="lg" weight="black">
             {formatMoney(expense)}
           </AppText>
         </View>
@@ -56,10 +58,10 @@ const TransactionsSummaryCard = ({
       <View style={styles.summaryDivider} />
 
       <View style={styles.netRow}>
-        <AppText color="surface" size="md" style={styles.summaryLabel}>
+        <AppText color="inkDim" size="xs">
           Net Savings
         </AppText>
-        <AppText color="surface" size="xl" weight="bold">
+        <AppText size="lg" weight="black" style={styles.netAmount}>
           {formatMoney(savings)}
         </AppText>
       </View>
@@ -148,7 +150,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl,
   },
   separator: {
-    height: spacing.md,
+    height: spacing.lg,
   },
   chipScroll: {
     flexGrow: 0, // keep the row at chip height; don't let it eat vertical space
@@ -158,27 +160,33 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   summary: {
-    gap: spacing.md,
-    marginBottom: spacing.md, // separate the header card from the first row
+    gap: 12, // spec .hero gap × device scale
+    marginBottom: spacing.lg, // separate the header card from the first row
   },
   summaryLabel: {
-    opacity: 0.8, // muted white label on the gradient
+    letterSpacing: 1.2, // spec .lbl caps tracking
   },
   summaryRow: {
     flexDirection: "row",
     justifyContent: "space-between",
   },
   summaryCol: {
-    gap: spacing.xs,
+    gap: 3,
+  },
+  summaryColRight: {
+    alignItems: "flex-end",
   },
   summaryDivider: {
     height: 1,
-    backgroundColor: "rgba(255,255,255,0.25)",
+    backgroundColor: "rgba(255,255,255,0.2)",
   },
   netRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+  },
+  netAmount: {
+    color: "#8EFFC9", // spec — pale green net savings
   },
 });
 

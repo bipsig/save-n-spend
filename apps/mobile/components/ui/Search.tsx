@@ -1,4 +1,4 @@
-import { colors, fontFamily, fontSize, radius, spacing } from "@/theme";
+import { colors, fontSize, radius, spacing } from "@/theme";
 import { useState } from "react";
 import { StyleSheet, TextInput, TextInputProps, View } from "react-native";
 import Icon from "./Icon";
@@ -45,11 +45,10 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   input: {
-    flex: 1,                       
-    fontFamily: fontFamily.regular,
-    fontSize: fontSize.md,
+    flex: 1,
+    fontSize: fontSize.sm,
     color: colors.ink,
-    padding: 0, 
+    padding: 0,
   },
 })
 

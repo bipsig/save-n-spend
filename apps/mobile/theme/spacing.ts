@@ -8,10 +8,11 @@ export const spacing = {
   '3xl': 48,
 } as const;
 
+// Spec radii ×1.25 device scale: icon chip 15 · CTA 20 · card 26 · pill 999.
 export const radius = {
-  sm: 12,
-  md: 18,
-  lg: 24,
+  sm: 15,
+  md: 20,
+  lg: 26,
   full: 9999,
 } as const;
 

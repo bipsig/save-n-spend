@@ -26,31 +26,30 @@ const AppHeader = ({
     )
   )
 
+  // Spec .topbar — gradient avatar, 10.5 dim greeting over 14/700 name,
+  // 36px glass bell circle with a glowing red alert dot.
   return (
     <View style={styles.container}>
       <View style={styles.leftContainer}>
-        <Avatar
-          initials={displayInitials}
-          size="md"
-          background="primary"
-          textColor="surface"
-        />
+        <Avatar initials={displayInitials} size="md" gradient />
         <View>
-          <AppText size="sm" color="gray500">
+          <AppText size="xs" color="inkDim">
             {greeting}
           </AppText>
-          <AppText weight="bold" size="md">
+          <AppText weight="bold" size="sm">
             {name}
           </AppText>
         </View>
       </View>
 
-      <Pressable onPress={onBellPress} style={styles.bell}>
+      <Pressable onPress={onBellPress} style={styles.bell} accessibilityLabel="Alerts">
         <Icon
           name="bell"
-          color="gray700"
+          size={20}
+          containerSize={44}
+          color="ink"
           container="circle"
-          containerColor="surface2"
+          containerColor="glass"
         />
         <View style={styles.dot} />
       </Pressable>
@@ -67,21 +66,24 @@ const styles = StyleSheet.create({
   leftContainer: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md
+    gap: 12 // spec .who gap × device scale
   },
   bell: {
     position: "relative"
   },
   dot: {
     position: "absolute",
-    top: 4,
-    right: 4,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    top: 10,
+    right: 10,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
     backgroundColor: colors.danger,
-    borderWidth: 2,
-    borderColor: colors.surface
+    shadowColor: colors.danger,
+    shadowOpacity: 0.9,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 4,
   }
 })
 

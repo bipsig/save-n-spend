@@ -13,20 +13,24 @@ type Props = {
   onAction?: () => void
 }
 
+// Spec .emptyblock — soft violet icon disc, one headline, one human sentence,
+// one CTA.
 const EmptyState = ({ icon = "search", title, subtitle, actionLabel, onAction }: Props) => {
   return (
     <View style={styles.container}>
-      <Icon name={icon} size={32} color="gray400" container="circle" containerColor="surface2" />
-      <AppText weight="bold" size="lg">
+      <View style={styles.disc}>
+        <Icon name={icon} size={30} color="accentLight" />
+      </View>
+      <AppText weight="black" size="md">
         {title}
       </AppText>
       {subtitle && (
-        <AppText size="sm" color="gray500" style={styles.text}>
+        <AppText size="sm" color="inkDim" style={styles.text}>
           {subtitle}
         </AppText>
       )}
       {actionLabel && onAction && (
-        <Button label={actionLabel} variant="primary" size="sm" onPress={onAction} />
+        <Button label={actionLabel} variant="primary" size="sm" pill onPress={onAction} />
       )}
     </View>
   )
@@ -39,8 +43,19 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingVertical: spacing["3xl"]
   },
+  disc: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(139,123,255,0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(163,148,255,0.3)",
+  },
   text: {
-    textAlign: "center"
+    textAlign: "center",
+    maxWidth: 220,
   }
 })
 

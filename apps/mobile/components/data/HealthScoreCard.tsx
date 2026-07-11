@@ -1,9 +1,8 @@
 import { StyleSheet, View } from "react-native"
 import ProgressBar from "./ProgressBar"
-import GradientCard from "../shell/GradientCard"
+import Card from "./Card"
 import { AppText } from "../ui/AppText"
 import Icon from "../ui/Icon"
-import { spacing } from "@/theme"
 
 type Stats = {
   label: string,
@@ -16,77 +15,79 @@ type Props = {
   stats: Stats[]
 }
 
+// Spec dashboard hero: plain GLASS card (not a green wash) — the color lives in
+// the glowing green icon chip, the score bar, and nothing else.
 const HealthScoreCard = ({
   score,
   rating,
   stats
 }: Props) => {
   return (
-    <GradientCard gradient="health" style={styles.card}>
+    <Card style={styles.card}>
       <View style={styles.topContainer}>
-        <View style={styles.left}>
-          <Icon
-            name="healthPulse"
-            size={30}
-            container="square"
-            color="bg"
-            containerColor="success"
-            glow
-          />
-          <View>
-            <AppText size="sm" color="surface">Finance Health Score</AppText>
-            <AppText size="xl" color="surface" weight="black">{rating}</AppText>
-          </View>
+        <Icon
+          name="healthPulse"
+          size={24}
+          containerSize={47}
+          container="square"
+          gradient="green"
+        />
+        <View style={styles.titleCol}>
+          <AppText size="xs" weight="semibold" color="inkDim" style={styles.label}>
+            FINANCE HEALTH SCORE
+          </AppText>
+          <AppText size="lg" weight="black">{rating}</AppText>
         </View>
         <View style={styles.score}>
-          <AppText size="2xl" color="surface" weight="black">{score}</AppText>
-          <AppText size="sm" color="surface">/100</AppText>
+          <AppText size="xl" weight="black">
+            {score}
+            <AppText size="xs" weight="semibold" color="inkDim">/100</AppText>
+          </AppText>
         </View>
       </View>
-      <ProgressBar value={score} color="success" trackColor="line"/>
-      <View style={styles.divider} />
+
+      <ProgressBar value={score} color="success" />
+
       <View style={styles.stats}>
         {stats.map ((stat) => {
           return (
             <View key={stat.label}>
-              <AppText weight="regular" size="sm" color="surface">
+              <AppText size="xs" color="inkDim">
                 {stat.label}
               </AppText>
-              <AppText weight="bold" size="md" color="surface">
+              <AppText weight="bold" size="sm">
                 {stat.value}
               </AppText>
             </View>
           )
         })}
       </View>
-    </GradientCard>
+    </Card>
   )
 }
 
 const styles = StyleSheet.create ({
   card: {
-    gap: spacing.md
+    gap: 12, // spec .hero gap × device scale
   },
   topContainer: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center"
-  },
-  left: {
-    flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm
+    gap: 12,
+  },
+  titleCol: {
+    flex: 1,
+    gap: 3,
+  },
+  label: {
+    letterSpacing: 1,
   },
   score: {
-    alignItems: "flex-end"
-  },
-  divider: {
-    height: 1,
-    backgroundColor: "rgba(255,255,255,0.2)"
+    alignItems: "flex-end",
   },
   stats: {
     flexDirection: "row",
-    gap: spacing["2xl"],
+    gap: 28, // spec .hstats gap × device scale
   }
 })
 

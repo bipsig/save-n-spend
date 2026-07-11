@@ -1,46 +1,98 @@
-import { Pressable, StyleSheet } from 'react-native'
-import type { PressableProps } from 'react-native'
+import { Pressable, StyleSheet, View } from 'react-native'
+import type { PressableProps, ViewStyle } from 'react-native'
+import { LinearGradient } from 'expo-linear-gradient'
 import { AppText } from './AppText'
-import { colors, radius, spacing } from '@/theme'
+import Icon from './Icon'
+import type { IconName } from '@/lib/icons'
+import { colors, gradients, radius, spacing } from '@/theme'
 
 type Props = PressableProps & {
   label: string
   selected?: boolean
+  /** Stretch to fill its row — the spec's segmented-control cell. */
+  grow?: boolean
+  /** Small leading glyph (spec's category filter chips). */
+  icon?: IconName
 }
 
-const Chip = ({ label, selected = false, disabled, onPress, ...rest }: Props) => {
+// Spec .fchip — glass pill, hairline border, dim 600 text; selected = violet
+// gradient, white 700 text, glow.
+const Chip = ({ label, selected = false, grow = false, icon, disabled, onPress, ...rest }: Props) => {
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
       style={({ pressed }) => [
         styles.base,
+        grow ? styles.grow : styles.hug,
         {
-          backgroundColor: selected ? colors.primary : colors.surface2,
-          borderColor: selected ? colors.primary : colors.line,
+          backgroundColor: selected ? 'transparent' : colors.surface2,
+          borderColor: selected ? 'transparent' : colors.line,
           opacity: disabled ? 0.4 : pressed ? 0.85 : 1,
         },
+        selected && styles.glow,
       ]}
       {...rest}
     >
-      <AppText
-        weight={selected ? 'bold' : 'regular'}
-        size="sm"
-        color={selected ? 'surface' : 'gray700'}
-      >
-        {label}
-      </AppText>
+      {selected && (
+        <LinearGradient
+          colors={[...gradients.brand]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0.8, y: 1 }}
+          style={[StyleSheet.absoluteFill, styles.gradient]}
+          pointerEvents="none"
+        />
+      )}
+      <View style={styles.content}>
+        {icon && (
+          <Icon name={icon} size={14} color={selected ? 'surface' : 'inkDim'} />
+        )}
+        <AppText
+          weight={selected ? 'bold' : 'semibold'}
+          size="sm"
+          color={selected ? 'surface' : 'inkDim'}
+          style={styles.label}
+        >
+          {label}
+        </AppText>
+      </View>
     </Pressable>
   )
 }
 
 const styles = StyleSheet.create({
   base: {
-    alignSelf: 'flex-start',
     borderWidth: 1,
     borderRadius: radius.full,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.lg,
+    overflow: 'hidden',
+  } as ViewStyle,
+  gradient: {
+    borderRadius: radius.full,
+  },
+  content: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  hug: {
+    alignSelf: 'flex-start',
+  },
+  grow: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  label: {
+    textAlign: 'center',
+  },
+  glow: {
+    shadowColor: '#6D5CFF',
+    shadowOpacity: 0.4,
+    shadowRadius: 7,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
   },
 })
 
