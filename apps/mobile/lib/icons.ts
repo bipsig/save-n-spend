@@ -34,6 +34,7 @@ export const iconMap = {
 
   receipt: "receipt",
   date: "calendar-month",
+  clock: "schedule",
   location: "location-pin",
 
   //budget

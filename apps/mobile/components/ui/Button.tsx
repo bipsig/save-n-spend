@@ -1,11 +1,12 @@
 import { colors, ColorToken, FontSizeToken, gradients, radius, spacing } from "@/theme";
+import type { GradientToken } from "@/theme";
 import { ActivityIndicator, Pressable, PressableProps, StyleSheet, View } from "react-native"
 import { LinearGradient } from "expo-linear-gradient";
 import { AppText } from "./AppText";
 import Icon from "./Icon";
 import type { IconName } from "@/lib/icons";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger";
+type Variant = "primary" | "success" | "secondary" | "ghost" | "danger";
 type Size = "sm" | "md" | "lg";
 
 type Props = PressableProps & {
@@ -33,6 +34,7 @@ type SizeStyle = {
 
 const variantStyles: Record<Variant, VariantStyle> = {
   primary: { background: "primary", text: "surface" },
+  success: { background: "success", text: "surface" },
   secondary: { background: "surface2", text: "ink", border: "line" },
   ghost: { background: "surface2", text: "primary" },
   danger: { background: "danger", text: "surface" }
@@ -44,8 +46,16 @@ const sizeStyles: Record<Size, SizeStyle> = {
   lg: { paddingVertical: 20, paddingHorizontal: spacing.xl, fontSize: "lg" }
 }
 
-// Spec: primary actions are the violet gradient with a glow, never a flat fill.
-const GRADIENT_VARIANTS: Variant[] = ["primary"];
+// Spec: primary/confirm actions are a gradient with a glow, never a flat fill.
+// primary = violet brand, success = green (positive confirms, e.g. Mark as Paid).
+const GRADIENT_BY_VARIANT: Partial<Record<Variant, GradientToken>> = {
+  primary: "brand",
+  success: "health",
+};
+const GLOW_BY_VARIANT: Partial<Record<Variant, string>> = {
+  primary: "#6D5CFF",
+  success: "#12B981",
+};
 
 const Button = ({
   label = "Button",
@@ -65,7 +75,8 @@ const Button = ({
     : sizeStyles[size];
 
   const isDisabled = disabled || loading;
-  const gradient = GRADIENT_VARIANTS.includes(variant);
+  const gradientToken = GRADIENT_BY_VARIANT[variant];
+  const gradient = !!gradientToken;
 
   return (
     <Pressable
@@ -82,13 +93,13 @@ const Button = ({
           paddingHorizontal: s.paddingHorizontal,
           opacity: isDisabled ? 0.45 : pressed ? 0.85 : 1,
         },
-        gradient && styles.glow,
+        gradient && { ...styles.glow, shadowColor: GLOW_BY_VARIANT[variant] ?? "#6D5CFF" },
       ]}
       {...rest}
     >
-      {gradient && (
+      {gradientToken && (
         <LinearGradient
-          colors={[...gradients.brand]}
+          colors={[...gradients[gradientToken]]}
           start={{ x: 0, y: 0 }}
           end={{ x: 0.8, y: 1 }}
           style={[StyleSheet.absoluteFill, pill ? styles.pill : styles.base]}

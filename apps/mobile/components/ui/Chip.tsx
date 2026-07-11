@@ -9,9 +9,7 @@ import { colors, gradients, radius, spacing } from '@/theme'
 type Props = PressableProps & {
   label: string
   selected?: boolean
-  /** Stretch to fill its row — the spec's segmented-control cell. */
   grow?: boolean
-  /** Small leading glyph (spec's category filter chips). */
   icon?: IconName
 }
 
