@@ -9,6 +9,7 @@ import { AppText } from "@/components/ui/AppText";
 import { moneyItems, appItems } from "@/data/menu";
 import type { MoreItem } from "@/data/menu";
 import { bills, goalsSummary, monthlyBudget } from "@/lib/mock";
+import { useSession } from "@/store/session";
 import { spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
 
@@ -138,10 +139,10 @@ const MoreScreen = () => {
         ))}
       </Card>
 
-      {/* Log out — isolated danger card (spec .srow.danger). Session wiring
-          lands with the auth milestone; mock phase logs the intent. */}
+      {/* Log out — isolated danger card (spec .srow.danger). signOut() clears the
+          token + resets the session; the root gate redirects to Login. */}
       <Card padded={false} style={styles.group}>
-        <Pressable onPress={() => console.log("Log out")}>
+        <Pressable onPress={() => useSession.getState().signOut()}>
           <View style={styles.row}>
             <Icon
               name="logout"

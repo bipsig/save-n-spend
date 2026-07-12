@@ -8,7 +8,6 @@ import { generateAccessToken } from '../utils/generateAccessToken';
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   const { name, email, password } = registerSchema.parse(req.body);
-  // console.log (userData);
 
   const existingUser = await User.findOne({
     email
@@ -21,7 +20,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
   const saltRounds: number = Number(process.env.SALT_ROUNDS) || 12;
   const hashedPassword: string = await bcrypt.hash(password, saltRounds);
 
-  const savedUser = await User.create ({ 
+  const savedUser = await User.create ({
     name,
     email,
     password: hashedPassword,

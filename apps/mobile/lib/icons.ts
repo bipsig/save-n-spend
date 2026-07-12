@@ -15,7 +15,10 @@ export const iconMap = {
   add: 'add',
   close: 'close',
   chevronRight: 'chevron-right',
+  chevronLeft: 'chevron-left',
   settings: 'settings',
+  eye: 'visibility',
+  eyeOff: 'visibility-off',
   trophy: 'emoji-events',
 
   // Spending categories

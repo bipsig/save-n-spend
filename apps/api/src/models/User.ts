@@ -78,7 +78,12 @@ UserSchema.set('toJSON', {
   },
 });
 
-UserSchema.index({ googleId: 1 }, { unique: true, sparse: true });
+// Partial (not sparse): only index real Google accounts, so the many local
+// users with googleId:null are never indexed and can't collide on unique.
+UserSchema.index(
+  { googleId: 1 },
+  { unique: true, partialFilterExpression: { googleId: { $type: 'string' } } }
+);
 UserSchema.index({ resetTokenExpiry: 1 });
 
 export default mongoose.model<IUser>('User', UserSchema);
