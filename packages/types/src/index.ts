@@ -13,10 +13,16 @@ export interface IUser {
   currency: string
   pushToken?: string
   prefs: {
-    darkMode: boolean
-    notifications: boolean
-    defaultAccount?: string
-  }
+    defaultAccount?: string;
+    budgetCycleDay: number;
+    notifications: {
+      enabled: boolean;
+      billReminderLead: number;
+      budgetAlerts: boolean;
+      goalMilestones: boolean;
+      weeklySummary: boolean;
+    }
+  };
 }
 
 export interface IAccount {

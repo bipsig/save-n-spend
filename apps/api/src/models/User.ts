@@ -6,23 +6,29 @@ export interface IUser extends Document {
   currency: string;
   pushToken?: string;
   prefs: {
-    darkMode: boolean;
-    notifications: boolean;
     defaultAccount?: mongoose.Types.ObjectId | null;
+    budgetCycleDay: number;
+    notifications: {
+      enabled: boolean;
+      billReminderLead: number;
+      budgetAlerts: boolean;
+      goalMilestones: boolean;
+      weeklySummary: boolean;
+    }
   };
   // local auth
   password?: string;
   authProvider: 'local' | 'google';
   resetToken?: string | null;
   resetTokenExpiry?: Date | null;
-  
+
   // google auth
   googleId?: string | null;
 
   // totp 2fa (post-MVP)
   totpSecret?: string | null;
   totpEnabled: boolean;
-  
+
   // timestamps
   createdAt: Date;
   updatedAt: Date;
@@ -36,9 +42,15 @@ const UserSchema = new Schema<IUser>(
     pushToken: { type: String },
 
     prefs: {
-      darkMode: { type: Boolean, default: false },
-      notifications: { type: Boolean, default: true },
       defaultAccount: { type: Schema.Types.ObjectId, ref: 'Account', default: null },
+      budgetCycleDay: { type: Number, min: 1, max: 28, default: 1 },
+      notifications: {
+        enabled: { type: Boolean, default: true },
+        billReminderLead: { type: Number, enum: [1, 3, 7], default: 3 },
+        budgetAlerts: { type: Boolean, default: true },
+        goalMilestones: { type: Boolean, default: true },
+        weeklySummary: { type: Boolean, default: false }
+      }
     },
 
     password: { type: String },
