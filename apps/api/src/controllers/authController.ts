@@ -5,6 +5,10 @@ import { AppError } from '../utils/AppError';
 import * as reply from '../utils/response';
 import { loginSchema, registerSchema } from '../schemas/authSchema';
 import { generateAccessToken } from '../utils/generateAccessToken';
+import mongoose from 'mongoose';
+import Account from '../models/Account';
+import { defaultCategories } from '../data/defaultCategories';
+import Category from '../models/Category';
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   const { name, email, password } = registerSchema.parse(req.body);
@@ -20,14 +24,51 @@ export const register = async (req: Request, res: Response): Promise<void> => {
   const saltRounds: number = Number(process.env.SALT_ROUNDS) || 12;
   const hashedPassword: string = await bcrypt.hash(password, saltRounds);
 
-  const savedUser = await User.create ({
-    name,
-    email,
-    password: hashedPassword,
-    authProvider: "local"
-  });
+  let createdUser;
+  const session = await mongoose.startSession();
+  try {
+    (await session.withTransaction(async () => {
+      // Transaction 1: Initial Registration of User
+      const [newUser] = await User.create([{
+        name,
+        email,
+        password: hashedPassword,
+        authProvider: "local"
+      }], { session }); 
 
-  reply.created(res, savedUser, 'User registered successfully!');
+      createdUser = newUser; 
+
+      // Transaction 2: Default Account Creation
+      const [newAccount] = await Account.create([{
+        userId: newUser._id,
+        name: "Cash",
+        type: "cash",
+        balance: 0,
+        startingBalance: 0
+      }], { session });
+
+      // Transaction 3: Categories Seeding
+      for (const category of defaultCategories) {
+        const [newCategory] = await Category.create([{
+          userId: newUser._id,
+          name: category.name,
+          parent: null,
+          kind: category.kind,
+          icon: category.icon,
+          color: category.color
+        }], { session });
+      }
+
+      // Transaction 4: Setting Default Account
+      newUser.prefs.defaultAccount = newAccount._id;
+      createdUser = await newUser.save({ session });
+    }))
+  }
+  finally {
+    session.endSession();
+  }
+
+  reply.created(res, createdUser, 'User registered successfully!');
 }
 
 export const login = async (req: Request, res: Response): Promise<void> => {
