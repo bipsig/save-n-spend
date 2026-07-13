@@ -10,7 +10,7 @@ import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
-import { categories } from "@/lib/categories";
+import { useCategories } from "@/lib/categories";
 import { accounts, defaultAccountId } from "@/lib/mock";
 import Chip from "@/components/ui/Chip";
 import type { IconName } from "@/lib/icons";
@@ -23,9 +23,9 @@ const schema = z.object({
     .regex(/^\s*₹?\s*[\d,]+(\.\d{1,2})?\s*$/, "Enter a valid amount")
     .refine((v) => parseMoney(v) > 0, "Enter a valid amount"),
   type: z.enum(["income", "expense"]),
-  category: z
-    .string()
-    .refine((c) => categories.some((cat) => cat._id === c), "Select a category"),
+  // The picker only renders real categories (kind-filtered), so a non-empty
+  // selection is a valid one; the server is the source of truth on save.
+  category: z.string().min(1, "Select a category"),
 });
 
 type FormValues = z.infer<typeof schema>
@@ -55,6 +55,7 @@ const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "back"] as 
 
 const AddTransaction = () => {
   const router = useRouter();
+  const categories = useCategories();
   const { control, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { title: "", amount: "", category: "", type: "expense" }
@@ -204,36 +205,69 @@ const AddTransaction = () => {
         )}
       />
 
-      {/* Category — spec .fchip chips with the category's own glyph */}
+      {/* Category — two tiers: top-level chips, then the selected parent's
+          sub-categories reveal below. The stored value is the deepest chip
+          tapped (parent, or a child if you drilled in). */}
       <Controller
         control={control}
         name="category"
-        render={({ field: { value, onChange } }) => (
-          <View style={styles.field}>
-            <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>CATEGORY</AppText>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.chipScroll}
-              contentContainerStyle={styles.row}
-            >
-              {categories
-                .filter((category) => category.kind === type)
-                .map((category) => (
+        render={({ field: { value, onChange } }) => {
+          const parents = categories.filter((c) => c.parent === null && c.kind === type);
+          const selectedCat = categories.find((c) => c._id === value);
+          // The parent whose children we reveal: the selection itself if it's
+          // top-level, else the selected child's parent.
+          const expandedParentId = selectedCat ? selectedCat.parent ?? selectedCat._id : null;
+          const children = expandedParentId
+            ? categories.filter((c) => c.parent === expandedParentId)
+            : [];
+
+          return (
+            <View style={styles.field}>
+              <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>CATEGORY</AppText>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.chipScroll}
+                contentContainerStyle={styles.row}
+              >
+                {parents.map((parent) => (
                   <Chip
-                    key={category._id}
-                    label={category.name}
-                    icon={category.icon as IconName}
-                    selected={value === category._id}
-                    onPress={() => onChange(category._id)}
+                    key={parent._id}
+                    label={parent.name}
+                    icon={parent.icon as IconName}
+                    selected={value === parent._id}
+                    // Lit as a "trail" when the real selection is one of its children.
+                    active={selectedCat?.parent === parent._id}
+                    onPress={() => onChange(parent._id)}
                   />
                 ))}
-            </ScrollView>
-            {errors.category && (
-              <AppText size="xs" color="danger">{errors.category.message}</AppText>
-            )}
-          </View>
-        )}
+              </ScrollView>
+
+              {children.length > 0 && (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.chipScroll}
+                  contentContainerStyle={[styles.row, styles.subRow]}
+                >
+                  {children.map((child) => (
+                    <Chip
+                      key={child._id}
+                      label={child.name}
+                      icon={child.icon as IconName}
+                      selected={value === child._id}
+                      onPress={() => onChange(child._id)}
+                    />
+                  ))}
+                </ScrollView>
+              )}
+
+              {errors.category && (
+                <AppText size="xs" color="danger">{errors.category.message}</AppText>
+              )}
+            </View>
+          );
+        }}
       />
 
       {/* Date row — spec .selrow. Picker sub-sheet is a later milestone;
@@ -336,6 +370,10 @@ const styles = StyleSheet.create({
   },
   chipScroll: {
     flexGrow: 0,
+  },
+  // Sub-category row sits slightly indented so the hierarchy reads at a glance.
+  subRow: {
+    paddingLeft: spacing.md,
   },
   // Spec .selrow — glass strip with icon · value · chevron
   selRow: {

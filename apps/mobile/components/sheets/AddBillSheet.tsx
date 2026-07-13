@@ -17,11 +17,9 @@ import { AppText } from "@/components/ui/AppText";
 import type { IconName } from "@/lib/icons";
 import { parseMoney } from "@/lib/money";
 import { formatFullDate } from "@/lib/date";
-import { categories } from "@/lib/categories";
+import { useCategories } from "@/lib/categories";
 import { defaultAccountId } from "@/lib/mock";
 import { colors, spacing } from "@/theme";
-
-const expenseCategories = categories.filter((c) => c.kind === "expense");
 
 // "Once" = one-off (recurring:false); Monthly/Yearly map to BillFrequency.
 type Repeats = "once" | "monthly" | "yearly";
@@ -37,13 +35,14 @@ const schema = z.object({
     .string()
     .regex(/^\s*₹?\s*[\d,]+(\.\d{1,2})?\s*$/, "Enter a valid amount")
     .refine((v) => parseMoney(v) > 0, "Enter a valid amount"),
-  category: z.string().refine((c) => expenseCategories.some((cat) => cat._id === c), "Select a category"),
+  category: z.string().min(1, "Select a category"),
 });
 
 type FormValues = z.infer<typeof schema>;
 
 const AddBillSheet = forwardRef<BottomSheetModal>((_props, ref) => {
   const { dismiss } = useBottomSheetModal();
+  const expenseCategories = useCategories().filter((c) => c.kind === "expense");
   const [repeats, setRepeats] = useState<Repeats>("monthly");
   const [remind, setRemind] = useState(true);
 

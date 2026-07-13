@@ -1,22 +1,23 @@
 import type { ICategory } from "@save-n-spend/types";
 import type { ColorToken } from "@/theme";
+import { useCategoryStore } from "@/store/categories";
 
-// Mock SYSTEM-DEFAULT categories (userId: null). In the real app these come from
-// the API — defaults + the user's own — per the categories model. Shape = ICategory.
-export const categories: ICategory[] = [
-  { _id: "cat-food",          userId: null, name: "Food & Dining",     parent: null, kind: "expense", icon: "food",          color: "success", isArchived: false },
-  { _id: "cat-shopping",      userId: null, name: "Shopping",          parent: null, kind: "expense", icon: "shopping",      color: "danger",  isArchived: false },
-  { _id: "cat-transport",     userId: null, name: "Transportation",    parent: null, kind: "expense", icon: "transport",     color: "info",    isArchived: false },
-  { _id: "cat-bills",         userId: null, name: "Bills & Utilities", parent: null, kind: "expense", icon: "bills",         color: "accent",  isArchived: false },
-  { _id: "cat-entertainment", userId: null, name: "Entertainment",     parent: null, kind: "expense", icon: "entertainment", color: "warning", isArchived: false },
-  { _id: "cat-health",        userId: null, name: "Healthcare",        parent: null, kind: "expense", icon: "health",        color: "success", isArchived: false },
-  { _id: "cat-income",        userId: null, name: "Income",            parent: null, kind: "income",  icon: "income",        color: "success", isArchived: false },
-  { _id: "cat-others",        userId: null, name: "Others",            parent: null, kind: "expense", icon: "more",          color: "gray500", isArchived: false },
-];
+// Categories are DB entities (defaults + the user's own), fetched into the
+// categories store after login. These helpers read that store — reactive hooks
+// for render, a sync lookup for imperative code.
 
-// Look up a category by id (transaction.category is a categoryId or null).
+// The full list, reactive — re-renders the caller when categories load/change.
+// Use in screens and pickers (filter chips, the category picker).
+export const useCategories = (): ICategory[] => useCategoryStore((s) => s.list);
+
+// One category by id, reactive — for rows that render a category's icon/name.
+export const useCategoryById = (id: string | null): ICategory | undefined =>
+  useCategoryStore((s) => (id ? s.list.find((c) => c._id === id) : undefined));
+
+// One category by id, NON-reactive — for imperative code outside render
+// (form logic, submit handlers) that just needs the current value once.
 export const categoryById = (id: string | null): ICategory | undefined =>
-  categories.find((c) => c._id === id);
+  id ? useCategoryStore.getState().list.find((c) => c._id === id) : undefined;
 
 // The soft background token that pairs with a category's color (behind its icon).
 const SOFT_BG: Record<string, ColorToken> = {

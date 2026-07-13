@@ -4,7 +4,7 @@ import TransactionRow from "@/components/rows/TransactionRow";
 import { transactions } from "@/lib/mock";
 import { spacing } from "@/theme";
 import { useState } from "react";
-import { categories } from "@/lib/categories";
+import { useCategories } from "@/lib/categories";
 import Search from "@/components/ui/Search";
 import Chip from "@/components/ui/Chip";
 import GradientCard from "@/components/shell/GradientCard";
@@ -70,6 +70,7 @@ const TransactionsSummaryCard = ({
 }
 
 const ActivityScreen = () => {
+  const categories = useCategories();
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("all");
 

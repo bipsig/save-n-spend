@@ -6,7 +6,7 @@ import AppSheet from "./AppSheet";
 import Button from "@/components/ui/Button";
 import Icon from "@/components/ui/Icon";
 import { AppText } from "@/components/ui/AppText";
-import { categoryById } from "@/lib/categories";
+import { useCategoryById } from "@/lib/categories";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { spacing } from "@/theme";
@@ -34,7 +34,7 @@ const Effect = ({ icon, color, children }: { icon: IconName; color: ColorToken; 
 const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onPaid }, ref) => {
   const { dismiss } = useBottomSheetModal();
 
-  const category = bill ? categoryById(bill.category) : undefined;
+  const category = useCategoryById(bill?.category ?? null);
 
   const confirm = () => {
     if (!bill) return;

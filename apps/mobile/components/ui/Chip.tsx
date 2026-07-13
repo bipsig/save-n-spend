@@ -9,13 +9,16 @@ import { colors, gradients, radius, spacing } from '@/theme'
 type Props = PressableProps & {
   label: string
   selected?: boolean
+  active?: boolean
   grow?: boolean
   icon?: IconName
 }
 
 // Spec .fchip — glass pill, hairline border, dim 600 text; selected = violet
-// gradient, white 700 text, glow.
-const Chip = ({ label, selected = false, grow = false, icon, disabled, onPress, ...rest }: Props) => {
+// gradient, white 700 text, glow. `active` = the "trail" state (a violet
+// outline, no fill) for a parent whose child is the real selection.
+const Chip = ({ label, selected = false, active = false, grow = false, icon, disabled, onPress, ...rest }: Props) => {
+  const tint = selected ? 'surface' : active ? 'primary' : 'inkDim'
   return (
     <Pressable
       onPress={onPress}
@@ -24,8 +27,8 @@ const Chip = ({ label, selected = false, grow = false, icon, disabled, onPress, 
         styles.base,
         grow ? styles.grow : styles.hug,
         {
-          backgroundColor: selected ? 'transparent' : colors.surface2,
-          borderColor: selected ? 'transparent' : colors.line,
+          backgroundColor: selected ? 'transparent' : active ? 'rgba(139,123,255,0.14)' : colors.surface2,
+          borderColor: selected ? 'transparent' : active ? colors.primary : colors.line,
           opacity: disabled ? 0.4 : pressed ? 0.85 : 1,
         },
         selected && styles.glow,
@@ -43,12 +46,12 @@ const Chip = ({ label, selected = false, grow = false, icon, disabled, onPress, 
       )}
       <View style={styles.content}>
         {icon && (
-          <Icon name={icon} size={14} color={selected ? 'surface' : 'inkDim'} />
+          <Icon name={icon} size={14} color={tint} />
         )}
         <AppText
-          weight={selected ? 'bold' : 'semibold'}
+          weight={selected || active ? 'bold' : 'semibold'}
           size="sm"
-          color={selected ? 'surface' : 'inkDim'}
+          color={tint}
           style={styles.label}
         >
           {label}

@@ -10,6 +10,7 @@ import type { IUser } from "@save-n-spend/types";
 import { queryClient } from "@/lib/queryClient";
 import { get } from "@/lib/api";
 import { useSession } from "@/store/session";
+import { useCategoryStore } from "@/store/categories";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -43,6 +44,13 @@ const RootLayout = () => {
   // Splash: hold it until boot decides, so the correct group is the first paint.
   useEffect(() => {
     if (status !== "loading") SplashScreen.hideAsync();
+  }, [status]);
+
+  // Categories follow the session: load the user's set once they're authed
+  // (covers both boot-with-token and a fresh login), clear it on sign-out.
+  useEffect(() => {
+    if (status === "authed") useCategoryStore.getState().load();
+    else if (status === "guest") useCategoryStore.getState().reset();
   }, [status]);
 
   // The gate — the only place the app swaps between (auth) and (tabs).

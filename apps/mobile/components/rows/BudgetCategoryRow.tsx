@@ -4,7 +4,7 @@ import Card from "../data/Card";
 import { AppText } from "../ui/AppText";
 import ProgressBar from "../data/ProgressBar";
 import Icon from "../ui/Icon";
-import { categoryById } from "@/lib/categories";
+import { useCategoryById } from "@/lib/categories";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { spacing } from "@/theme";
@@ -24,7 +24,7 @@ type StatusIcon = {
 // status (ok ✓ green / ≥80% clock amber / ≥100% alert red) driving icon + pace
 // text · over rows get a red-tinted card border.
 const BudgetCategoryRow = ({ budget, spent }: Props) => {
-  const category = categoryById(budget.category);
+  const category = useCategoryById(budget.category);
 
   const percentage = Math.min((spent / budget.limit) * 100, 100);
   const over = percentage >= 100;

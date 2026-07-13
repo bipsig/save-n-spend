@@ -1,5 +1,5 @@
 import { StyleSheet, View } from "react-native"
-import { categoryById } from "@/lib/categories"
+import { useCategoryById } from "@/lib/categories"
 import type { ITransaction } from "@/lib/mock"
 import type { IconName } from "@/lib/icons"
 import type { ColorToken } from "@/theme"
@@ -35,7 +35,7 @@ const MetaItem = ({
 // Spec .rowcard: gradient category chip · name 15/700 · sub 12 dim ·
 // tiny meta row · signed amount 15/800 colored by type. Flat glass, no shadow.
 const TransactionRow = ({ transaction }: Props) => {
-  const category = categoryById(transaction.category)
+  const category = useCategoryById(transaction.category)
   const isIncome = transaction.type === "income"
   const money = formatMoney(transaction.amount) // amount is positive; type gives the sign
 

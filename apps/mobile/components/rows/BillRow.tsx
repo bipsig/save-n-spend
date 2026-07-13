@@ -4,7 +4,7 @@ import Card from "../data/Card";
 import { AppText } from "../ui/AppText";
 import Icon from "../ui/Icon";
 import Badge from "../ui/Badge";
-import { categoryById } from "@/lib/categories";
+import { useCategoryById } from "@/lib/categories";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { spacing } from "@/theme";
@@ -17,7 +17,7 @@ type Props = {
 };
 
 const BillRow = ({ bill, onMarkPaid }: Props) => {
-  const category = categoryById(bill.category);
+  const category = useCategoryById(bill.category);
 
   const dueLabel = formatDueLabel(bill.dueDate, bill.status);
   const meta = bill.recurring && bill.frequency ? `${dueLabel} · ${bill.frequency}` : dueLabel;
