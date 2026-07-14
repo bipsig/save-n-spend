@@ -1,17 +1,31 @@
 import z from "zod/v4";
 
-export const createTransactionSchema = z.object({
-    type: z.enum(["expense", "income"]),
+const baseTransaction = z.object({
     amount: z.number().int().positive(),
-    account: z.string(),
-    category: z.string(),
-    title: z.string().min(1),
     note: z.string().optional(),
     location: z.string().optional(),
     receiptUrl: z.string().optional(),
     paymentMode: z.enum(["cash", "upi", "card", "transfer"]).optional(),
-    occurredAt: z.string().optional()
+    occurredAt: z.string().optional(),
+});
+
+const spendTransaction = baseTransaction.extend({
+    type: z.enum(["expense", "income"]),
+    account: z.string(),
+    category: z.string(),
+    title: z.string().min(1),
 }).strict();
+
+const transferTransaction = baseTransaction.extend({
+    type: z.literal("transfer"),
+    account: z.string(),
+    toAccount: z.string()
+}).strict();
+
+export const createTransactionSchema = z.discriminatedUnion("type", [
+    spendTransaction,
+    transferTransaction
+]);
 
 export const listTransactionQuerySchema = z.object({
     startDate: z.iso.date().optional(),

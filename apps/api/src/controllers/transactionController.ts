@@ -10,14 +10,21 @@ import Category from "../models/Category";
 
 export const createTransaction = async (req: Request, res: Response): Promise<void> => {
     const reqBody = createTransactionSchema.parse(req.body);
+    const accountIds = [reqBody.account];
+    if (reqBody.type === "transfer") {
+        if (reqBody.account === reqBody.toAccount) {
+            throw AppError.badRequest("Cannot transfer to same account");
+        }
+        accountIds.push(reqBody.toAccount);
+    }
 
-    const account = await Account.findOne({
-        _id: reqBody.account,
+    const actualAccounts = await Account.find({
+        _id: { $in: accountIds },
         userId: req.user?.userId,
         isArchived: false
     });
 
-    if (!account) {
+    if (actualAccounts.length !== accountIds.length) {
         throw AppError.badRequest("Account not found");
     }
 
