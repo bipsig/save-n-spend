@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { createTransactionSchema, listTransactionQuerySchema } from "../schemas/transactionSchema";
+import { createTransactionSchema, listTransactionQuerySchema, updateTransactionSchema } from "../schemas/transactionSchema";
 import mongoose from "mongoose";
 import Account from "../models/Account";
 import { AppError } from "../utils/AppError";
@@ -103,4 +103,88 @@ export const filterTransactions = async (req: Request, res: Response): Promise<v
     );
 
     reply.ok(res, filteredTransactions, "Transactions fetched");
+}
+
+export const updateTransaction = async (req: Request, res: Response): Promise<void> => {
+    const { id: transactionId } = req.params;
+    const reqBody = updateTransactionSchema.parse(req.body);
+
+    const transaction = await Transaction.findOne({
+        _id: transactionId,
+        userId:  req.user?.userId
+    });
+
+    if (!transaction) {
+        throw AppError.notFound("Transaction not found");
+    }
+
+    if (reqBody.account) {
+        const account = await Account.findOne({
+            _id: reqBody.account,
+            userId: req.user?.userId,
+            isArchived: false
+        });
+        if (!account) {
+            throw AppError.badRequest("Account not found");
+        }
+    }
+    if (reqBody.toAccount) {
+        const account = await Account.findOne({
+            _id: reqBody.toAccount,
+            userId: req.user?.userId,
+            isArchived: false
+        });
+        if (!account) {
+            throw AppError.badRequest("Account not found");
+        }
+    }
+
+
+    const session = await mongoose.startSession();
+    try {
+        await session.withTransaction(async () => {
+            await applyEffects (transaction, "revert", session);
+            
+            transaction.set(reqBody);
+
+            await applyEffects (transaction, "add", session);
+
+            await transaction.save({ session })
+        })
+    }
+    finally {
+        session.endSession();
+    }
+
+    reply.ok(res, transaction, "Transaction updated!");
+
+}
+
+export const deleteTransaction = async (req: Request, res: Response) : Promise<void> => {
+    const { id: transactionId } = req.params;
+
+    const transaction = await Transaction.findOne({
+        _id: transactionId,
+        userId:  req.user?.userId
+    });
+
+    if (!transaction) {
+        throw AppError.notFound("Transaction not found");
+    }
+
+    const session = await mongoose.startSession();
+    try {
+        await session.withTransaction(async () => {
+            await applyEffects(transaction, "revert", session);
+
+            await Transaction.deleteOne({
+                _id: transactionId
+            },{ session });
+        })
+    }
+    finally {
+        session.endSession();
+    }
+
+    reply.ok(res, null, "Transaction Deleted");
 }

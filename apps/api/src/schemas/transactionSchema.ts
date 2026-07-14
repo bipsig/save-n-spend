@@ -39,3 +39,16 @@ export const listTransactionQuerySchema = z.object({
     message: "startDate and endDate must be provided together",
     path: ["endDate"]
 });
+
+export const updateTransactionSchema = z.object({
+    amount: z.number().int().positive().optional(),
+    account: z.string().optional(),
+    toAccount: z.string().optional(),
+    category: z.string().optional(),
+    title: z.string().min(1).optional(),
+    note: z.string().optional(),
+    location: z.string().optional(),
+    receiptUrl: z.string().optional(),
+    paymentMode: z.enum(["cash", "upi", "card", "transfer"]).optional(),
+    occurredAt: z.string().optional(),
+}).strict()
