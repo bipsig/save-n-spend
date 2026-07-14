@@ -6,6 +6,7 @@ import { AppError } from "../utils/AppError";
 import Transaction from "../models/Transaction";
 import { applyEffects } from "../services/transactionService";
 import * as reply from "../utils/response";
+import Category from "../models/Category";
 
 export const createTransaction = async (req: Request, res: Response): Promise<void> => {
     const reqBody = createTransactionSchema.parse(req.body);
@@ -50,7 +51,17 @@ export const filterTransactions = async (req: Request, res: Response): Promise<v
     };
 
     if (category) {
-        filters.category = category;
+        const children = await Category.find({
+            parent: category,
+            userId: req.user?.userId
+        }, { _id: 1 });
+        
+        const reqCategories = children.map((child) => {
+            return child._id.toString();
+        });
+        reqCategories.push (category);
+
+        filters.category = { $in: reqCategories };
     }
     if (type) {
         filters.type = type;
