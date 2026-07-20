@@ -1,6 +1,6 @@
 // Shared types used by both API and Mobile
 
-export type TransactionType = 'expense' | 'income' | 'transfer'
+export type TransactionType = 'expense' | 'income' | 'transfer' | 'positiveAdjustment' | 'negativeAdjustment'
 export type AccountType = 'bank' | 'credit_card' | 'cash' | 'wallet'
 export type CategoryKind = 'expense' | 'income'
 export type BillStatus = 'pending' | 'paid' | 'overdue'

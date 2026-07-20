@@ -11,9 +11,11 @@ export const getEffectOf = (transaction: ITransaction): Effect[] => {
 
     switch (transaction.type) {
         case "expense":
+        case "negativeAdjustment":
             return [{ account: transaction.account, delta: -transaction.amount }]
 
-        case "income":
+            case "income":
+            case "positiveAdjustment":
             return [{ account: transaction.account, delta: transaction.amount }]
 
         case "transfer":

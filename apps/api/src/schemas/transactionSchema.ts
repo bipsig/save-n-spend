@@ -22,9 +22,16 @@ const transferTransaction = baseTransaction.extend({
     toAccount: z.string()
 }).strict();
 
+const adjustmentTransaction = baseTransaction.extend({
+    type: z.enum(["positiveAdjustment", "negativeAdjustment"]),
+    account: z.string(),
+    title: z.string().min(1).optional(),
+}).strict();
+
 export const createTransactionSchema = z.discriminatedUnion("type", [
     spendTransaction,
-    transferTransaction
+    transferTransaction,
+    adjustmentTransaction,
 ]);
 
 export const listTransactionQuerySchema = z.object({
