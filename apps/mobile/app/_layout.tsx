@@ -11,6 +11,7 @@ import { queryClient } from "@/lib/queryClient";
 import { get } from "@/lib/api";
 import { useSession } from "@/store/session";
 import { useCategoryStore } from "@/store/categories";
+import { useAccountStore } from "@/store/accounts";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -49,8 +50,14 @@ const RootLayout = () => {
   // Categories follow the session: load the user's set once they're authed
   // (covers both boot-with-token and a fresh login), clear it on sign-out.
   useEffect(() => {
-    if (status === "authed") useCategoryStore.getState().load();
-    else if (status === "guest") useCategoryStore.getState().reset();
+    if (status === "authed") {
+      useCategoryStore.getState().load();
+      useAccountStore.getState().load();
+    }
+    else if (status === "guest") {
+      useCategoryStore.getState().reset();
+      useAccountStore.getState().reset();
+    } 
   }, [status]);
 
   // The gate — the only place the app swaps between (auth) and (tabs).
