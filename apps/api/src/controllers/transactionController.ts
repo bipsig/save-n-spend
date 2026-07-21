@@ -98,7 +98,6 @@ export const filterTransactions = async (req: Request, res: Response): Promise<v
             page,
             limit,
             sort: { occurredAt: -1 },
-            populate: { path: "category" }
         }
     );
 
