@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
@@ -11,10 +11,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 import { useCategories } from "@/lib/categories";
-import { accounts, defaultAccountId } from "@/lib/mock";
 import Chip from "@/components/ui/Chip";
 import type { IconName } from "@/lib/icons";
 import { spacing } from "@/theme";
+import { useDefaultAccount } from "@/lib/accounts";
+import { post } from "@/lib/api";
 
 const schema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -61,12 +62,15 @@ const AddTransaction = () => {
     defaultValues: { title: "", amount: "", category: "", type: "expense" }
   })
 
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
   // Spec: the CTA label is live — it names what you're saving.
   const type = watch("type");
   const amountRaw = watch("amount");
 
   // Balance preview — a values-in-hand derivation from the default account.
-  const account = accounts.find((a) => a._id === defaultAccountId);
+  const account = useDefaultAccount();
   const entered = parseMoney(amountRaw);
   const balanceLine = useMemo(() => {
     if (!account) return null;
@@ -117,18 +121,34 @@ const AddTransaction = () => {
     setAmount(cur + key);
   };
 
-  const onSubmit = (data: FormValues) => {
+  const onSubmit = async (data: FormValues) => {
     // Build a payload shaped like ITransaction: positive amount, `type` gives direction.
+
+    if (!account) {
+      setSubmitError("Account is missing");
+      return;
+    }
+
     const newTransaction = {
       type: data.type,
       amount: parseMoney(data.amount), // paise, positive
       category: data.category,
-      account: defaultAccountId,
+      account: account._id,
       title: data.title,
-      occurredAt: new Date().toISOString(),
     };
-    console.log(newTransaction);
-    router.back();
+
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      await post("/transactions", newTransaction);
+      router.back();
+    }
+    catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Error creating new transaction");
+    }
+    finally {
+      setSubmitting(false);
+    }
   }
 
   // Spec .shead — ✕ on the left, centered title, balancing spacer on the right.
@@ -308,8 +328,14 @@ const AddTransaction = () => {
         ))}
       </View>
 
+      {submitError && (
+        <AppText size="xs" color="danger">
+          {submitError}
+        </AppText>
+      )}
       <Button
         onPress={handleSubmit(onSubmit)}
+        loading={submitting}
         label={type === "income" ? "Save Income" : "Save Expense"}
       />
     </ScreenScaffold>
