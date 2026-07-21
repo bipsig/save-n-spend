@@ -1,9 +1,8 @@
 import { FlatList, ScrollView, StyleSheet, View } from "react-native";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import TransactionRow from "@/components/rows/TransactionRow";
-import { transactions } from "@/lib/mock";
-import { spacing } from "@/theme";
-import { useState } from "react";
+import { radius, spacing } from "@/theme";
+import { useCallback, useState } from "react";
 import { useCategories } from "@/lib/categories";
 import Search from "@/components/ui/Search";
 import Chip from "@/components/ui/Chip";
@@ -11,6 +10,10 @@ import GradientCard from "@/components/shell/GradientCard";
 import { AppText } from "@/components/ui/AppText";
 import formatMoney from "@/lib/money";
 import EmptyState from "@/components/states/EmptyState";
+import { useTransactions } from "@/lib/transactions";
+import ErrorState from "@/components/states/ErrorState";
+import { useFocusEffect } from "expo-router";
+import SkeletonState from "@/components/states/SkeletonState";
 
 type Props = {
   income: number,
@@ -74,6 +77,12 @@ const ActivityScreen = () => {
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("all");
 
+  const { items: transactions , loading, error, refetch } = useTransactions();
+
+  useFocusEffect(useCallback(() => {
+    refetch();
+  }, [refetch]));
+
   let filteredTransactions = activeCategory === "all" ? transactions : transactions.filter((transaction) => {
     return transaction.category === activeCategory
   })
@@ -86,6 +95,26 @@ const ActivityScreen = () => {
   const income = transactions.filter(t => t.type === "income").reduce((total, t) => total + t.amount, 0);
   const expense = transactions.filter(t => t.type === "expense").reduce((total, t) => total + t.amount, 0);
   const savings = income - expense;
+
+  if (error) {
+    return (
+      <ScreenScaffold title="All Activity">
+        <ErrorState message={error} onRetry={refetch} />
+      </ScreenScaffold>
+    )
+  }
+
+  if (loading && transactions.length === 0) {
+    return (
+      <ScreenScaffold title="All Activity">
+        <View style={styles.skeletonCol}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonState key={i} height={64} borderRadius={radius.md} />
+          ))}
+        </View>
+      </ScreenScaffold>
+    )
+  }
 
   return (
     <ScreenScaffold title="All Activity" scroll={false}>
@@ -132,10 +161,19 @@ const ActivityScreen = () => {
           />
         }
         ListEmptyComponent={
-          <EmptyState
-            title="No Transactions"
-            subtitle="Try a different search or filter"
-          />
+          transactions.length === 0
+          ? (
+            <EmptyState
+              title="No Transactions yet"
+              subtitle="Add your first one with + button"
+            />
+          )
+          : (
+            <EmptyState
+              title="No Transactions"
+              subtitle="Try a different search or filter"
+            />
+          )
         }
         style={styles.list}
       />
@@ -152,6 +190,9 @@ const styles = StyleSheet.create({
   },
   separator: {
     height: spacing.lg,
+  },
+  skeletonCol: {
+    gap: spacing.lg, // mirror the real list's row rhythm so the swap doesn't jump
   },
   chipScroll: {
     flexGrow: 0, // keep the row at chip height; don't let it eat vertical space
