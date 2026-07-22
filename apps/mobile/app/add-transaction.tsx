@@ -1,11 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
 import { z } from "zod/v4";
-import formatMoney, { parseMoney } from "@/lib/money";
+import formatMoney, { paiseToInput, parseMoney } from "@/lib/money";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Input from "@/components/ui/Input";
@@ -15,7 +15,8 @@ import Chip from "@/components/ui/Chip";
 import type { IconName } from "@/lib/icons";
 import { spacing } from "@/theme";
 import { useDefaultAccount } from "@/lib/accounts";
-import { post } from "@/lib/api";
+import { get, patch, post } from "@/lib/api";
+import { ITransaction } from "@save-n-spend/types";
 
 const schema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -56,14 +57,38 @@ const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "back"] as 
 
 const AddTransaction = () => {
   const router = useRouter();
+  const { id } = useLocalSearchParams<{ id?: string }>();
+  const isEdit = !!id;
+
   const categories = useCategories();
-  const { control, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormValues>({
+  const { control, handleSubmit, watch, setValue, reset, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { title: "", amount: "", category: "", type: "expense" }
   })
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!id) {
+      return;
+    }
+
+    (async () => {
+      try {
+        const transaction = await get<ITransaction>(`/transactions/${id}`);
+        reset({
+          title: transaction.title ?? "",
+          amount: paiseToInput(transaction.amount),
+          type: transaction.type as FormValues["type"],
+          category: transaction.category ?? ""
+        });
+      }
+      catch (err) {
+        setSubmitError(err instanceof Error ? err.message : "Couldn't load transaction");
+      }
+    })();
+  }, [id, reset])
 
   // Spec: the CTA label is live — it names what you're saving.
   const type = watch("type");
@@ -74,12 +99,13 @@ const AddTransaction = () => {
   const entered = parseMoney(amountRaw);
   const balanceLine = useMemo(() => {
     if (!account) return null;
+    if (isEdit) return null;
     if (!(entered > 0)) {
       return `From ${account.name} · ${formatMoney(account.balance)} available`;
     }
     const after = type === "income" ? account.balance + entered : account.balance - entered;
     return `${type === "income" ? "To" : "From"} ${account.name} · ${formatMoney(after)} ${type === "income" ? "after this" : "left after this"}`;
-  }, [account, entered, type]);
+  }, [account, entered, type, isEdit]);
 
   // occurredAt is stamped "now" on save — the date row states that honestly.
   const dateLabel = useMemo(() => {
@@ -92,7 +118,9 @@ const AddTransaction = () => {
 
   // The category row is kind-filtered; switching type drops a selection
   // that no longer belongs (an income can't keep a Food category).
+  // Edit mode: type is immutable — the segment ignores taps.
   const switchType = (next: FormValues["type"]) => {
+    if (isEdit) return;
     setValue("type", next);
     const selected = categories.find((c) => c._id === watch("category"));
     if (selected && selected.kind !== next) {
@@ -140,7 +168,16 @@ const AddTransaction = () => {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      await post("/transactions", newTransaction);
+      if (isEdit) {
+        await patch(`/transactions/${id}`, {
+          title: data.title,
+          amount: parseMoney(data.amount),
+          category: data.category
+        });
+      }
+      else {
+        await post("/transactions", newTransaction);
+      }
       router.back();
     }
     catch (err) {
@@ -158,7 +195,7 @@ const AddTransaction = () => {
         <Icon name="close" size={16} containerSize={32} container="circle" containerColor="glass" color="inkDim" />
       </Pressable>
       <AppText weight="black" size="lg">
-        Add Transaction
+        {isEdit ? "Edit Transaction" : "Add Transaction"}
       </AppText>
       <View style={styles.headerSpacer} />
     </View>
@@ -166,12 +203,13 @@ const AddTransaction = () => {
 
   return (
     <ScreenScaffold header={header}>
-      {/* Income / Expense — spec .seg full-width segmented control */}
+      {/* Income / Expense — spec .seg full-width segmented control.
+          Edit mode: type is immutable → segment dims and ignores taps. */}
       <Controller
         control={control}
         name="type"
         render={({ field: { value } }) => (
-          <View style={styles.segRow}>
+          <View style={[styles.segRow, isEdit && styles.segRowLocked]}>
             <Chip
               grow
               label="Expense"
@@ -336,7 +374,7 @@ const AddTransaction = () => {
       <Button
         onPress={handleSubmit(onSubmit)}
         loading={submitting}
-        label={type === "income" ? "Save Income" : "Save Expense"}
+        label={isEdit ? "Save Changes" : type === "income" ? "Save Income" : "Save Expense"}
       />
     </ScreenScaffold>
   );
@@ -360,6 +398,10 @@ const styles = StyleSheet.create({
   segRow: {
     flexDirection: "row",
     gap: 8, // spec .seg gap × device scale
+  },
+  // Edit mode — the immutable type segment reads as inert, not interactive
+  segRowLocked: {
+    opacity: 0.55,
   },
   heroAmt: {
     alignItems: "center",

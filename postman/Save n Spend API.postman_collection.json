@@ -1,0 +1,633 @@
+{
+  "info": {
+    "_postman_id": "a7c1f2e4-savnspend-api-v1",
+    "name": "Save n Spend API",
+    "description": "Local API for the Save n Spend app (Express + Mongo, port 7019).\n\n## Setup\n1. Start the API: `cd apps/api && npm run dev`\n2. (Optional) seed test data: `npm run seed` — creates **sagnik@email.com / sagnik123** and **bipasha@email.com / bipasha123**\n3. Run **Auth → Login (Sagnik)** once — its test script stores `accessToken` as a collection variable and every other request inherits it via Bearer auth.\n\n## Conventions\n- Every response uses the envelope `{ success, statusCode, message, data }`.\n- **Money is integer paise** (₹1 = 100 paise). `amount` is always positive; `type` gives the sign.\n- All `/:id` routes are ownership-scoped: another user's id returns 404, leaking nothing.\n- Create/POST helper scripts store `accountId` / `categoryId` / `transactionId` collection variables so the `/:id` requests chain without copy-pasting ids.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "HOST", "value": "http://localhost:7019", "type": "string" },
+    { "key": "BASE_URL", "value": "{{HOST}}/api/v1", "type": "string" },
+    { "key": "accessToken", "value": "", "type": "string" },
+    { "key": "accountId", "value": "", "type": "string" },
+    { "key": "categoryId", "value": "", "type": "string" },
+    { "key": "transactionId", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "description": "Liveness probe — outside /api/v1, no auth.",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{HOST}}/health", "host": ["{{HOST}}"], "path": ["health"] },
+            "description": "Returns `{ ok: true }` when the server is up. Does not touch the DB."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": { "method": "GET", "header": [], "url": { "raw": "{{HOST}}/health", "host": ["{{HOST}}"], "path": ["health"] } },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"ok\": true\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "description": "Register does NOT auto-login (separate flows by design). Login's test script auto-saves `accessToken`.",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test User\",\n  \"email\": \"test@email.com\",\n  \"password\": \"test1234\"\n}"
+            },
+            "url": { "raw": "{{BASE_URL}}/auth/register", "host": ["{{BASE_URL}}"], "path": ["auth", "register"] },
+            "description": "Body: `name` (min 2 chars), `email`, `password` (min 8 chars).\n\nAtomic register-seeding inside a Mongo transaction: creates the user → a starter **Cash** account → copies the default category set (per-user copies) → sets `prefs.defaultAccount` to the Cash account. All-or-nothing.\n\nDoes NOT return a token — log in afterwards."
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{BASE_URL}}/auth/register", "host": ["{{BASE_URL}}"], "path": ["auth", "register"] } },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"statusCode\": 201,\n  \"message\": \"User registered successfully!\",\n  \"data\": {\n    \"_id\": \"6a568001927536ee5cba3c9d\",\n    \"name\": \"Test User\",\n    \"email\": \"test@email.com\",\n    \"currency\": \"INR\",\n    \"prefs\": {\n      \"defaultAccount\": \"6a568002927536ee5cba3cbd\",\n      \"budgetCycleDay\": 1,\n      \"notifications\": {\n        \"enabled\": true,\n        \"billReminderLead\": 3,\n        \"budgetAlerts\": true,\n        \"goalMilestones\": true,\n        \"weeklySummary\": true\n      }\n    },\n    \"createdAt\": \"2026-07-14T18:29:22.041Z\",\n    \"updatedAt\": \"2026-07-14T18:29:22.041Z\"\n  }\n}"
+            },
+            {
+              "name": "409 Conflict (duplicate email)",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{BASE_URL}}/auth/register", "host": ["{{BASE_URL}}"], "path": ["auth", "register"] } },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 409,\n  \"message\": \"Duplicate value for a unique field\",\n  \"data\": null\n}"
+            }
+          ]
+        },
+        {
+          "name": "Login (Sagnik)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Auto-populate the collection's accessToken from a successful login.",
+                  "const json = pm.response.json();",
+                  "if (pm.response.code === 200 && json?.data?.accessToken) {",
+                  "  pm.collectionVariables.set('accessToken', json.data.accessToken);",
+                  "  console.log('accessToken saved — all requests are now authenticated.');",
+                  "} else {",
+                  "  console.warn('Login failed — accessToken NOT updated.');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"sagnik@email.com\",\n  \"password\": \"sagnik123\"\n}"
+            },
+            "url": { "raw": "{{BASE_URL}}/auth/login", "host": ["{{BASE_URL}}"], "path": ["auth", "login"] },
+            "description": "Seed test user 1. On 200, the test script stores `data.accessToken` into the `accessToken` collection variable — every protected request inherits it via the collection-level Bearer auth. Token expiry: 7 days."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{BASE_URL}}/auth/login", "host": ["{{BASE_URL}}"], "path": ["auth", "login"] } },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"statusCode\": 200,\n  \"message\": \"User logged in successfully!\",\n  \"data\": {\n    \"accessToken\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9....\",\n    \"user\": {\n      \"_id\": \"6a568001927536ee5cba3c9d\",\n      \"name\": \"Sagnik\",\n      \"email\": \"sagnik@email.com\"\n    }\n  }\n}"
+            },
+            {
+              "name": "401 Unauthorized (wrong password)",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{BASE_URL}}/auth/login", "host": ["{{BASE_URL}}"], "path": ["auth", "login"] } },
+              "status": "Unauthorized",
+              "code": 401,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 401,\n  \"message\": \"Invalid credentials\",\n  \"data\": null\n}"
+            }
+          ]
+        },
+        {
+          "name": "Login (Bipasha)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Switch the whole collection to Bipasha's session (handy for IDOR/404 checks).",
+                  "const json = pm.response.json();",
+                  "if (pm.response.code === 200 && json?.data?.accessToken) {",
+                  "  pm.collectionVariables.set('accessToken', json.data.accessToken);",
+                  "  console.log('accessToken saved (Bipasha).');",
+                  "} else {",
+                  "  console.warn('Login failed — accessToken NOT updated.');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"bipasha@email.com\",\n  \"password\": \"bipasha123\"\n}"
+            },
+            "url": { "raw": "{{BASE_URL}}/auth/login", "host": ["{{BASE_URL}}"], "path": ["auth", "login"] },
+            "description": "Seed test user 2. Use to verify ownership scoping: log in here, then hit a `/:id` saved from Sagnik's session — it must 404."
+          },
+          "response": []
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/auth/me", "host": ["{{BASE_URL}}"], "path": ["auth", "me"] },
+            "description": "Returns the logged-in user (from the Bearer token). The mobile app calls this on boot to validate a stored token."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": { "method": "GET", "header": [], "url": { "raw": "{{BASE_URL}}/auth/me", "host": ["{{BASE_URL}}"], "path": ["auth", "me"] } },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"statusCode\": 200,\n  \"message\": \"User fetched successfully\",\n  \"data\": {\n    \"_id\": \"6a568001927536ee5cba3c9d\",\n    \"name\": \"Sagnik\",\n    \"email\": \"sagnik@email.com\",\n    \"currency\": \"INR\",\n    \"prefs\": {\n      \"defaultAccount\": \"6a568002927536ee5cba3cbd\",\n      \"budgetCycleDay\": 1,\n      \"notifications\": {\n        \"enabled\": true,\n        \"billReminderLead\": 3,\n        \"budgetAlerts\": true,\n        \"goalMilestones\": true,\n        \"weeklySummary\": true\n      }\n    }\n  }\n}"
+            },
+            {
+              "name": "401 Unauthorized (missing/expired token)",
+              "originalRequest": { "method": "GET", "header": [], "url": { "raw": "{{BASE_URL}}/auth/me", "host": ["{{BASE_URL}}"], "path": ["auth", "me"] } },
+              "status": "Unauthorized",
+              "code": 401,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 401,\n  \"message\": \"Not authorized, token failed\",\n  \"data\": null\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "description": "Profile & preferences.",
+      "item": [
+        {
+          "name": "Update me (prefs)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prefs\": {\n    \"defaultAccount\": \"{{accountId}}\",\n    \"budgetCycleDay\": 1,\n    \"notifications\": {\n      \"enabled\": true,\n      \"billReminderLead\": 3,\n      \"budgetAlerts\": true,\n      \"goalMilestones\": true,\n      \"weeklySummary\": false\n    }\n  }\n}"
+            },
+            "url": { "raw": "{{BASE_URL}}/users/me", "host": ["{{BASE_URL}}"], "path": ["users", "me"] },
+            "description": "Strict body — unknown keys are rejected.\n- `prefs.defaultAccount`: account id or null\n- `prefs.budgetCycleDay`: 1–28\n- `prefs.notifications.billReminderLead`: 1 | 3 | 7 (days)\n- `pushToken`: optional string (Expo push token)\n\nAll fields optional — send only what changes."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": { "method": "PATCH", "header": [], "url": { "raw": "{{BASE_URL}}/users/me", "host": ["{{BASE_URL}}"], "path": ["users", "me"] } },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"statusCode\": 200,\n  \"message\": \"Profile Updated\",\n  \"data\": {\n    \"_id\": \"6a568001927536ee5cba3c9d\",\n    \"name\": \"Sagnik\",\n    \"email\": \"sagnik@email.com\",\n    \"prefs\": {\n      \"defaultAccount\": \"6a568002927536ee5cba3cbd\",\n      \"budgetCycleDay\": 1,\n      \"notifications\": {\n        \"enabled\": true,\n        \"billReminderLead\": 3,\n        \"budgetAlerts\": true,\n        \"goalMilestones\": true,\n        \"weeklySummary\": false\n      }\n    }\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Accounts",
+      "description": "Per-user accounts. Balances are in integer paise. Delete = archive (`isArchived: true`), never a hard delete — transactions reference accounts.",
+      "item": [
+        {
+          "name": "List accounts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/accounts", "host": ["{{BASE_URL}}"], "path": ["accounts"] },
+            "description": "Active (non-archived) accounts for the logged-in user."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": { "method": "GET", "header": [], "url": { "raw": "{{BASE_URL}}/accounts", "host": ["{{BASE_URL}}"], "path": ["accounts"] } },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"statusCode\": 200,\n  \"message\": \"Accounts fetched successfully\",\n  \"data\": [\n    {\n      \"_id\": \"6a568002927536ee5cba3cbd\",\n      \"userId\": \"6a568001927536ee5cba3c9d\",\n      \"name\": \"Cash\",\n      \"type\": \"cash\",\n      \"balance\": 1011000,\n      \"startingBalance\": 1000000,\n      \"icon\": \"wallet\",\n      \"color\": \"success\",\n      \"isArchived\": false\n    },\n    {\n      \"_id\": \"6a568002927536ee5cba3cbf\",\n      \"userId\": \"6a568001927536ee5cba3c9d\",\n      \"name\": \"HDFC Bank\",\n      \"type\": \"bank\",\n      \"balance\": 12535200,\n      \"startingBalance\": 5000000,\n      \"icon\": \"bank\",\n      \"color\": \"info\",\n      \"isArchived\": false\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (pm.response.code === 201 && json?.data?._id) {",
+                  "  pm.collectionVariables.set('accountId', json.data._id);",
+                  "  console.log('accountId saved:', json.data._id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"ICICI Savings\",\n  \"type\": \"bank\",\n  \"startingBalance\": 2500000,\n  \"icon\": \"bank\",\n  \"color\": \"info\"\n}"
+            },
+            "url": { "raw": "{{BASE_URL}}/accounts", "host": ["{{BASE_URL}}"], "path": ["accounts"] },
+            "description": "Strict body.\n- `type`: bank | credit_card | cash | wallet\n- `startingBalance`: integer paise (₹25,000 = 2500000). Becomes the initial `balance`.\n- Credit cards use **signed negative balances** (negative = owed) — start one at 0 or negative.\n\nTest script saves `data._id` → `{{accountId}}` for the `/:id` requests below."
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{BASE_URL}}/accounts", "host": ["{{BASE_URL}}"], "path": ["accounts"] } },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"statusCode\": 201,\n  \"message\": \"Account created successfully\",\n  \"data\": {\n    \"_id\": \"6a5fd0aa11223344556677aa\",\n    \"userId\": \"6a568001927536ee5cba3c9d\",\n    \"name\": \"ICICI Savings\",\n    \"type\": \"bank\",\n    \"balance\": 2500000,\n    \"startingBalance\": 2500000,\n    \"icon\": \"bank\",\n    \"color\": \"info\",\n    \"isArchived\": false\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get account by id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/accounts/{{accountId}}", "host": ["{{BASE_URL}}"], "path": ["accounts", "{{accountId}}"] },
+            "description": "Ownership-scoped: another user's id → 404."
+          },
+          "response": [
+            {
+              "name": "404 Not Found (foreign or missing id)",
+              "originalRequest": { "method": "GET", "header": [], "url": { "raw": "{{BASE_URL}}/accounts/{{accountId}}", "host": ["{{BASE_URL}}"], "path": ["accounts", "{{accountId}}"] } },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 404,\n  \"message\": \"Account not found\",\n  \"data\": null\n}"
+            }
+          ]
+        },
+        {
+          "name": "Update account",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"ICICI Salary\",\n  \"color\": \"accent\"\n}"
+            },
+            "url": { "raw": "{{BASE_URL}}/accounts/{{accountId}}", "host": ["{{BASE_URL}}"], "path": ["accounts", "{{accountId}}"] },
+            "description": "Editable: `name`, `type`, `icon`, `color` — all optional, strict.\n\n**No `balance` here by design** — balances only move via transactions (use an adjustment transaction to reconcile)."
+          },
+          "response": []
+        },
+        {
+          "name": "Archive account",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/accounts/{{accountId}}", "host": ["{{BASE_URL}}"], "path": ["accounts", "{{accountId}}"] },
+            "description": "Soft delete: sets `isArchived: true`. Archived accounts drop out of List but historical transactions keep referencing them."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Categories",
+      "description": "Per-user copies (defaults seeded at register). 2-level tree via `parent` (null = top-level); the 2-level limit is enforced in the controller. Delete = archive.",
+      "item": [
+        {
+          "name": "List categories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/categories", "host": ["{{BASE_URL}}"], "path": ["categories"] },
+            "description": "The user's full active set — parents and children in one flat list (`parent` links them)."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": { "method": "GET", "header": [], "url": { "raw": "{{BASE_URL}}/categories", "host": ["{{BASE_URL}}"], "path": ["categories"] } },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"statusCode\": 200,\n  \"message\": \"Categories fetched successfully\",\n  \"data\": [\n    {\n      \"_id\": \"6a568001927536ee5cba3c9f\",\n      \"userId\": \"6a568001927536ee5cba3c9d\",\n      \"name\": \"Food & Dining\",\n      \"parent\": null,\n      \"kind\": \"expense\",\n      \"icon\": \"food\",\n      \"color\": \"warning\",\n      \"isArchived\": false\n    },\n    {\n      \"_id\": \"6a568001927536ee5cba3ca1\",\n      \"userId\": \"6a568001927536ee5cba3c9d\",\n      \"name\": \"Groceries\",\n      \"parent\": \"6a568001927536ee5cba3c9f\",\n      \"kind\": \"expense\",\n      \"icon\": \"shopping\",\n      \"color\": \"success\",\n      \"isArchived\": false\n    },\n    {\n      \"_id\": \"6a568001927536ee5cba3ca5\",\n      \"userId\": \"6a568001927536ee5cba3c9d\",\n      \"name\": \"Salary\",\n      \"parent\": null,\n      \"kind\": \"income\",\n      \"icon\": \"income\",\n      \"color\": \"success\",\n      \"isArchived\": false\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create category",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (pm.response.code === 201 && json?.data?._id) {",
+                  "  pm.collectionVariables.set('categoryId', json.data._id);",
+                  "  console.log('categoryId saved:', json.data._id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Streaming\",\n  \"kind\": \"expense\",\n  \"parent\": null,\n  \"icon\": \"entertainment\",\n  \"color\": \"accent\"\n}"
+            },
+            "url": { "raw": "{{BASE_URL}}/categories", "host": ["{{BASE_URL}}"], "path": ["categories"] },
+            "description": "Strict body.\n- `kind`: expense | income (fixed at creation)\n- `parent`: a **top-level** category id, or null/omitted. Passing a child id as parent → 400 (only 2 levels).\n\nTest script saves `data._id` → `{{categoryId}}`."
+          },
+          "response": [
+            {
+              "name": "400 Bad Request (3rd level attempted)",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{BASE_URL}}/categories", "host": ["{{BASE_URL}}"], "path": ["categories"] } },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 400,\n  \"message\": \"Categories can only be 2 levels deep\",\n  \"data\": null\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get category by id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/categories/{{categoryId}}", "host": ["{{BASE_URL}}"], "path": ["categories", "{{categoryId}}"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Update category",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Streaming & OTT\",\n  \"color\": \"info\"\n}"
+            },
+            "url": { "raw": "{{BASE_URL}}/categories/{{categoryId}}", "host": ["{{BASE_URL}}"], "path": ["categories", "{{categoryId}}"] },
+            "description": "Editable: `name`, `icon`, `color`. `kind` and `parent` are immutable — recreate instead."
+          },
+          "response": []
+        },
+        {
+          "name": "Archive category",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/categories/{{categoryId}}", "host": ["{{BASE_URL}}"], "path": ["categories", "{{categoryId}}"] },
+            "description": "Soft delete (`isArchived: true`). Historical transactions keep the reference."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Transactions",
+      "description": "The balance engine: every create/edit/delete atomically moves account balances inside a Mongo transaction.\n- expense: −amount on `account`\n- income: +amount on `account`\n- transfer: −amount on `account`, +amount on `toAccount` (ONE document)\n- positiveAdjustment / negativeAdjustment: ±amount on `account` (reconciliation; excluded from spending insights)\n\n`amount` is always positive integer paise. `type` is immutable after creation.",
+      "item": [
+        {
+          "name": "List transactions (filters + pagination)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/transactions?page=1&limit=20",
+              "host": ["{{BASE_URL}}"],
+              "path": ["transactions"],
+              "query": [
+                { "key": "page", "value": "1", "description": "Default 1" },
+                { "key": "limit", "value": "20", "description": "Default 20, max 100" },
+                { "key": "type", "value": "expense", "description": "expense | income | transfer", "disabled": true },
+                { "key": "category", "value": "{{categoryId}}", "description": "Filtering by a parent automatically includes its children", "disabled": true },
+                { "key": "search", "value": "starbucks", "description": "Case-insensitive title regex", "disabled": true },
+                { "key": "startDate", "value": "2026-07-01", "description": "ISO date — must be paired with endDate", "disabled": true },
+                { "key": "endDate", "value": "2026-07-31", "description": "ISO date — must be paired with startDate", "disabled": true }
+              ]
+            },
+            "description": "Paginated (mongoose-paginate-v2) — `data.docs` holds the rows, plus `totalDocs/page/limit/totalPages/hasNextPage/...`.\n\nGotchas:\n- Query values are NOT quoted: `?type=income`, never `?type=\"income\"`.\n- `startDate`/`endDate` must be sent together (single one → 400).\n- `category` is a plain id in each doc (no populate) — the client resolves names from its own store."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": { "method": "GET", "header": [], "url": { "raw": "{{BASE_URL}}/transactions?page=1&limit=20", "host": ["{{BASE_URL}}"], "path": ["transactions"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "20" }] } },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"statusCode\": 200,\n  \"message\": \"Transactions fetched\",\n  \"data\": {\n    \"docs\": [\n      {\n        \"_id\": \"6a5fcad5abf73860c118ea63\",\n        \"userId\": \"6a568001927536ee5cba3c9d\",\n        \"type\": \"expense\",\n        \"amount\": 45000,\n        \"account\": \"6a568002927536ee5cba3cbd\",\n        \"category\": \"6a568001927536ee5cba3c9f\",\n        \"title\": \"Starbucks\",\n        \"occurredAt\": \"2026-07-21T14:30:00.000Z\",\n        \"createdAt\": \"2026-07-21T14:30:01.534Z\",\n        \"updatedAt\": \"2026-07-21T14:30:01.534Z\"\n      }\n    ],\n    \"totalDocs\": 43,\n    \"limit\": 20,\n    \"page\": 1,\n    \"totalPages\": 3,\n    \"hasNextPage\": true,\n    \"hasPrevPage\": false,\n    \"nextPage\": 2,\n    \"prevPage\": null\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create expense",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (pm.response.code === 201 && json?.data?._id) {",
+                  "  pm.collectionVariables.set('transactionId', json.data._id);",
+                  "  console.log('transactionId saved:', json.data._id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"expense\",\n  \"amount\": 45000,\n  \"account\": \"{{accountId}}\",\n  \"category\": \"{{categoryId}}\",\n  \"title\": \"Starbucks\",\n  \"note\": \"Cold brew with friends\",\n  \"location\": \"Connaught Place\",\n  \"paymentMode\": \"upi\",\n  \"occurredAt\": \"2026-07-21T14:30:00.000Z\"\n}"
+            },
+            "url": { "raw": "{{BASE_URL}}/transactions", "host": ["{{BASE_URL}}"], "path": ["transactions"] },
+            "description": "expense/income branch (discriminated union): requires `account`, `category`, `title`. Optional: `note`, `location`, `receiptUrl`, `paymentMode` (cash|upi|card|transfer), `occurredAt` (ISO — server stamps now when omitted).\n\n₹450 = 45000 paise, debited from the account atomically.\n\nTest script saves `data._id` → `{{transactionId}}`."
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{BASE_URL}}/transactions", "host": ["{{BASE_URL}}"], "path": ["transactions"] } },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"statusCode\": 201,\n  \"message\": \"Transaction created!\",\n  \"data\": {\n    \"_id\": \"6a5fcad5abf73860c118ea63\",\n    \"userId\": \"6a568001927536ee5cba3c9d\",\n    \"type\": \"expense\",\n    \"amount\": 45000,\n    \"account\": \"6a568002927536ee5cba3cbd\",\n    \"category\": \"6a568001927536ee5cba3c9f\",\n    \"title\": \"Starbucks\",\n    \"note\": \"Cold brew with friends\",\n    \"location\": \"Connaught Place\",\n    \"paymentMode\": \"upi\",\n    \"occurredAt\": \"2026-07-21T14:30:00.000Z\"\n  }\n}"
+            },
+            {
+              "name": "400 Bad Request (account not found / archived)",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{BASE_URL}}/transactions", "host": ["{{BASE_URL}}"], "path": ["transactions"] } },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 400,\n  \"message\": \"Account not found\",\n  \"data\": null\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create income",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"income\",\n  \"amount\": 1500000,\n  \"account\": \"{{accountId}}\",\n  \"category\": \"{{categoryId}}\",\n  \"title\": \"Freelance Project\",\n  \"paymentMode\": \"transfer\"\n}"
+            },
+            "url": { "raw": "{{BASE_URL}}/transactions", "host": ["{{BASE_URL}}"], "path": ["transactions"] },
+            "description": "Same branch as expense — `type: income` credits the account instead. Use an income-kind category id."
+          },
+          "response": []
+        },
+        {
+          "name": "Create transfer",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"transfer\",\n  \"amount\": 200000,\n  \"account\": \"SOURCE_ACCOUNT_ID\",\n  \"toAccount\": \"DEST_ACCOUNT_ID\"\n}"
+            },
+            "url": { "raw": "{{BASE_URL}}/transactions", "host": ["{{BASE_URL}}"], "path": ["transactions"] },
+            "description": "Transfer branch: `account` (source) + `toAccount` (destination), NO `category`/`title` (strict — they're rejected). ONE document; the engine debits source and credits destination atomically.\n\nSame-account transfer → 400 \"Cannot transfer to same account\". Replace the placeholder ids with two real account ids."
+          },
+          "response": [
+            {
+              "name": "400 Bad Request (same account)",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{BASE_URL}}/transactions", "host": ["{{BASE_URL}}"], "path": ["transactions"] } },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 400,\n  \"message\": \"Cannot transfer to same account\",\n  \"data\": null\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create adjustment (reconcile balance)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"positiveAdjustment\",\n  \"amount\": 5000,\n  \"account\": \"{{accountId}}\",\n  \"title\": \"Balance correction\"\n}"
+            },
+            "url": { "raw": "{{BASE_URL}}/transactions", "host": ["{{BASE_URL}}"], "path": ["transactions"] },
+            "description": "Adjustment branch: `type` = positiveAdjustment | negativeAdjustment, `account` required, `title` optional, NO category/toAccount.\n\nReconciliation flow: client computes `delta = target − current`; positive delta → positiveAdjustment, negative → negativeAdjustment, `amount = |delta|`. Moves the balance but is auto-excluded from spending insights."
+          },
+          "response": []
+        },
+        {
+          "name": "Get transaction by id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/transactions/{{transactionId}}", "host": ["{{BASE_URL}}"], "path": ["transactions", "{{transactionId}}"] },
+            "description": "Ownership-scoped single fetch — powers the mobile Edit prefill. Foreign id → 404."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": { "method": "GET", "header": [], "url": { "raw": "{{BASE_URL}}/transactions/{{transactionId}}", "host": ["{{BASE_URL}}"], "path": ["transactions", "{{transactionId}}"] } },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"statusCode\": 200,\n  \"message\": \"Transaction fetched!\",\n  \"data\": {\n    \"_id\": \"6a5fcad5abf73860c118ea63\",\n    \"userId\": \"6a568001927536ee5cba3c9d\",\n    \"type\": \"expense\",\n    \"amount\": 45000,\n    \"account\": \"6a568002927536ee5cba3cbd\",\n    \"category\": \"6a568001927536ee5cba3c9f\",\n    \"title\": \"Starbucks\",\n    \"occurredAt\": \"2026-07-21T14:30:00.000Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Update transaction",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 52000,\n  \"title\": \"Starbucks (corrected)\"\n}"
+            },
+            "url": { "raw": "{{BASE_URL}}/transactions/{{transactionId}}", "host": ["{{BASE_URL}}"], "path": ["transactions", "{{transactionId}}"] },
+            "description": "Strict body — editable: `amount`, `account`, `toAccount`, `category`, `title`, `note`, `location`, `receiptUrl`, `paymentMode`, `occurredAt`. **`type` is immutable** (delete + recreate to change kind).\n\nThe engine reverts the OLD effects, applies the NEW ones — balances stay exact. Verify: check the account balance before/after; it should shift by exactly the delta."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete transaction",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/transactions/{{transactionId}}", "host": ["{{BASE_URL}}"], "path": ["transactions", "{{transactionId}}"] },
+            "description": "HARD delete (transactions are leaf records — nothing references them) with a balance revert: the account gets the money back before the doc is removed, atomically."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": { "method": "DELETE", "header": [], "url": { "raw": "{{BASE_URL}}/transactions/{{transactionId}}", "host": ["{{BASE_URL}}"], "path": ["transactions", "{{transactionId}}"] } },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"statusCode\": 200,\n  \"message\": \"Transaction Deleted\",\n  \"data\": null\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

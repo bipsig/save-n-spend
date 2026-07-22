@@ -45,5 +45,9 @@ export const parseMoney = (value: string): number => {
   return paiseValue;
 }
 
+export const paiseToInput = (paise: number): string => {
+  return paise % 100 === 0 ? String(paise/100) : String((paise/100).toFixed(2));
+}
+
 
 export default formatMoney;

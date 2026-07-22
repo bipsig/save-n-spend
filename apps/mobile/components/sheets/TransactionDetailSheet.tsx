@@ -15,6 +15,7 @@ import Button from "../ui/Button";
 import { formatFullDate } from "@/lib/date";
 import { categoryBg } from "@/lib/categories";
 import { del } from "@/lib/api";
+import { useRouter } from "expo-router";
 
 // Spec .selrow — boxed glass strip: leading icon · (caps label over bold value) · optional ›
 const SelRow = ({
@@ -59,6 +60,8 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
 }, ref) => {
   const { dismiss } = useBottomSheetModal();
 
+  const router = useRouter();
+
   const account = useAccountById(transaction?.account);
   const category = useCategoryById(transaction?.category);
 
@@ -67,6 +70,16 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const amount = !transaction ? 0 : transaction?.type === "expense" ? -transaction.amount : transaction?.amount;
+
+  const handleEdit = () => {
+    dismiss();
+    router.push({
+      pathname: "/add-transaction",
+      params: {
+        id: transaction?._id
+      }
+    });
+  }
 
   const handleDelete = async () => {
     if (!transaction) {
@@ -136,13 +149,17 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
             </View>
 
             <View style={styles.actions}>
-              <View style={styles.actionBtn}>
-                <Button
-                  label="Edit"
-                  variant="secondary"
-                  icon="edit"
-                />
-              </View>
+              {/* Transfers can't be edited (the form has no transfer mode yet) — delete + recreate */}
+              {transaction.type !== "transfer" && (
+                <View style={styles.actionBtn}>
+                  <Button
+                    label="Edit"
+                    variant="secondary"
+                    icon="edit"
+                    onPress={() => handleEdit()}
+                  />
+                </View>
+              )}
               <View style={styles.actionBtn}>
                 <Button label="Delete" variant="dangerGhost" icon="delete" onPress={() => setConfirmView(true)} />
               </View>
