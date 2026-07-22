@@ -11,7 +11,7 @@ import { useCategoryStore } from "@/store/categories";
 export const useCategories = (): ICategory[] => useCategoryStore((s) => s.list);
 
 // One category by id, reactive — for rows that render a category's icon/name.
-export const useCategoryById = (id: string | null): ICategory | undefined =>
+export const useCategoryById = (id: string | null | undefined): ICategory | undefined =>
   useCategoryStore((s) => (id ? s.list.find((c) => c._id === id) : undefined));
 
 // One category by id, NON-reactive — for imperative code outside render

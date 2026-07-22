@@ -6,7 +6,7 @@ import { AppText } from "./AppText";
 import Icon from "./Icon";
 import type { IconName } from "@/lib/icons";
 
-type Variant = "primary" | "success" | "secondary" | "ghost" | "danger";
+type Variant = "primary" | "success" | "secondary" | "ghost" | "danger" | "dangerGhost";
 type Size = "sm" | "md" | "lg";
 
 type Props = PressableProps & {
@@ -37,7 +37,9 @@ const variantStyles: Record<Variant, VariantStyle> = {
   success: { background: "success", text: "surface" },
   secondary: { background: "surface2", text: "ink", border: "line" },
   ghost: { background: "surface2", text: "primary" },
-  danger: { background: "danger", text: "surface" }
+  danger: { background: "danger", text: "surface" },
+  // Spec .cta.ghost red variant — glass fill, red text + hairline (detail-sheet Delete)
+  dangerGhost: { background: "surface2", text: "danger", border: "danger" }
 };
 
 const sizeStyles: Record<Size, SizeStyle> = {

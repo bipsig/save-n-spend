@@ -1,4 +1,4 @@
-import { StyleSheet, View } from "react-native"
+import { Pressable, StyleSheet, View } from "react-native"
 import { useCategoryById } from "@/lib/categories"
 import type { ITransaction } from "@/lib/mock"
 import type { IconName } from "@/lib/icons"
@@ -11,7 +11,8 @@ import Card from "../data/Card"
 import formatMoney from "@/lib/money"
 
 type Props = {
-  transaction: ITransaction
+  transaction: ITransaction,
+  onPress?: () => void
 }
 
 // One icon + label pair on the meta row (date / location / receipt).
@@ -34,43 +35,45 @@ const MetaItem = ({
 
 // Spec .rowcard: gradient category chip · name 15/700 · sub 12 dim ·
 // tiny meta row · signed amount 15/800 colored by type. Flat glass, no shadow.
-const TransactionRow = ({ transaction }: Props) => {
+const TransactionRow = ({ transaction, onPress }: Props) => {
   const category = useCategoryById(transaction.category)
   const isIncome = transaction.type === "income"
   const money = formatMoney(transaction.amount) // amount is positive; type gives the sign
 
   return (
-    <Card style={styles.card}>
-      <Icon
-        name={(category?.icon ?? "more") as IconName}
-        container="square"
-        gradient={(category?.color ?? "accent") as ColorToken}
-        size={22}
-        containerSize={44}
-      />
+    <Pressable onPress={onPress} disabled={!onPress}>
+      <Card style={styles.card}>
+        <Icon
+          name={(category?.icon ?? "more") as IconName}
+          container="square"
+          gradient={(category?.color ?? "accent") as ColorToken}
+          size={22}
+          containerSize={44}
+        />
 
-      <View style={styles.details}>
-        <AppText size="md" weight="bold">
-          {transaction.title}
-        </AppText>
-        <AppText size="sm" color="inkDim">
-          {category?.name ?? "Uncategorized"}
-        </AppText>
-        <View style={styles.metaRow}>
-          <MetaItem icon="date" label={formatTxnDate(transaction.occurredAt)} />
-          {transaction.location && (
-            <MetaItem icon="location" label={transaction.location} />
-          )}
-          {transaction.receiptUrl && (
-            <MetaItem icon="receipt" label="Receipt" color="primary" />
-          )}
+        <View style={styles.details}>
+          <AppText size="md" weight="bold">
+            {transaction.title}
+          </AppText>
+          <AppText size="sm" color="inkDim">
+            {category?.name ?? "Uncategorized"}
+          </AppText>
+          <View style={styles.metaRow}>
+            <MetaItem icon="date" label={formatTxnDate(transaction.occurredAt)} />
+            {transaction.location && (
+              <MetaItem icon="location" label={transaction.location} />
+            )}
+            {transaction.receiptUrl && (
+              <MetaItem icon="receipt" label="Receipt" color="primary" />
+            )}
+          </View>
         </View>
-      </View>
 
-      <AppText size="md" weight="black" color={isIncome ? "success" : "danger"}>
-        {isIncome ? `+${money}` : `-${money}`}
-      </AppText>
-    </Card>
+        <AppText size="md" weight="black" color={isIncome ? "success" : "danger"}>
+          {isIncome ? `+${money}` : `-${money}`}
+        </AppText>
+      </Card>
+    </Pressable>
   )
 }
 

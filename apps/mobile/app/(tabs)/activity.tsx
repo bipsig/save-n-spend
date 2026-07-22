@@ -1,8 +1,8 @@
-import { FlatList, ScrollView, StyleSheet, View } from "react-native";
+import { FlatList, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import TransactionRow from "@/components/rows/TransactionRow";
 import { radius, spacing } from "@/theme";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useCategories } from "@/lib/categories";
 import Search from "@/components/ui/Search";
 import Chip from "@/components/ui/Chip";
@@ -14,6 +14,9 @@ import { useTransactions } from "@/lib/transactions";
 import ErrorState from "@/components/states/ErrorState";
 import { useFocusEffect } from "expo-router";
 import SkeletonState from "@/components/states/SkeletonState";
+import { BottomSheetModal } from "@gorhom/bottom-sheet";
+import type { ITransaction } from "@save-n-spend/types";
+import TransactionDetailSheet from "@/components/sheets/TransactionDetailSheet";
 
 type Props = {
   income: number,
@@ -28,7 +31,7 @@ const TransactionsSummaryCard = ({
   expense,
   savings
 }: Props) => {
-  const currentMonth = new Date().toLocaleString('default', { month: "long"});
+  const currentMonth = new Date().toLocaleString('default', { month: "long" });
   const currentYear = new Date().getFullYear();
   // Spec month summary: violet-tinted glass · caps month label · 18/800 totals ·
   // hairline · net savings in pale green.
@@ -77,7 +80,10 @@ const ActivityScreen = () => {
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("all");
 
-  const { items: transactions , loading, error, refetch } = useTransactions();
+  const { items: transactions, loading, error, refetch } = useTransactions();
+
+  const detailRef = useRef<BottomSheetModal>(null);
+  const [activeTransaction, setActiveTransaction] = useState<ITransaction | null>(null);
 
   useFocusEffect(useCallback(() => {
     refetch();
@@ -95,6 +101,11 @@ const ActivityScreen = () => {
   const income = transactions.filter(t => t.type === "income").reduce((total, t) => total + t.amount, 0);
   const expense = transactions.filter(t => t.type === "expense").reduce((total, t) => total + t.amount, 0);
   const savings = income - expense;
+
+  const openTransactionDetail = (transaction: ITransaction) => {
+    setActiveTransaction(transaction);
+    detailRef.current?.present();
+  }
 
   if (error) {
     return (
@@ -149,12 +160,17 @@ const ActivityScreen = () => {
       <FlatList
         data={filteredTransactions}
         keyExtractor={(item) => item._id}
-        renderItem={({ item }) => <TransactionRow transaction={item} />}
+        renderItem={({ item }) => (
+          <TransactionRow 
+            transaction={item} 
+            onPress={() => openTransactionDetail(item)} 
+          />
+        )}
         ItemSeparatorComponent={Separator}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
-          <TransactionsSummaryCard 
+          <TransactionsSummaryCard
             expense={expense}
             income={income}
             savings={savings}
@@ -162,20 +178,26 @@ const ActivityScreen = () => {
         }
         ListEmptyComponent={
           transactions.length === 0
-          ? (
-            <EmptyState
-              title="No Transactions yet"
-              subtitle="Add your first one with + button"
-            />
-          )
-          : (
-            <EmptyState
-              title="No Transactions"
-              subtitle="Try a different search or filter"
-            />
-          )
+            ? (
+              <EmptyState
+                title="No Transactions yet"
+                subtitle="Add your first one with + button"
+              />
+            )
+            : (
+              <EmptyState
+                title="No Transactions"
+                subtitle="Try a different search or filter"
+              />
+            )
         }
         style={styles.list}
+      />
+
+      <TransactionDetailSheet
+        ref={detailRef}
+        transaction={activeTransaction}
+        onDeleted={refetch} 
       />
     </ScreenScaffold>
   );

@@ -20,6 +20,8 @@ export const iconMap = {
   eye: 'visibility',
   eyeOff: 'visibility-off',
   trophy: 'emoji-events',
+  delete: 'delete',
+  edit: 'edit',
 
   // Spending categories
   food: 'restaurant',
