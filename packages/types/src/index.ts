@@ -96,3 +96,11 @@ export interface IGoal {
   color?: string
   deadline?: string      // ISO date string
 }
+
+export interface DashboardSummary {
+  month: string,
+  income: number,
+  expenses: number,
+  savings: number,
+  netWorth: number
+}
