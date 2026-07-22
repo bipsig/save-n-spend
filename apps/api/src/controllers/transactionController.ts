@@ -104,6 +104,21 @@ export const filterTransactions = async (req: Request, res: Response): Promise<v
     reply.ok(res, filteredTransactions, "Transactions fetched");
 }
 
+export const getTransaction = async (req: Request, res: Response): Promise<void> => {
+    const { id: transactionId } = req.params;
+
+    const transaction = await Transaction.findOne({
+        _id: transactionId,
+        userId: req.user?.userId
+    });
+
+    if (!transaction) {
+        throw AppError.notFound("Transaction not found");
+    }
+
+    reply.ok(res, transaction, "Transaction fetched!");
+}
+
 export const updateTransaction = async (req: Request, res: Response): Promise<void> => {
     const { id: transactionId } = req.params;
     const reqBody = updateTransactionSchema.parse(req.body);
