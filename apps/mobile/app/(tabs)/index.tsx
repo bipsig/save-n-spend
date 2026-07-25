@@ -7,9 +7,14 @@ import SummaryCard from "@/components/data/SummaryCard";
 import HealthScoreCard from "@/components/data/HealthScoreCard";
 import formatMoney from "@/lib/money";
 import { dashboard } from "@/lib/mock";
-import { gradients, spacing } from "@/theme";
+import { gradients, radius, spacing } from "@/theme";
 import Icon from "@/components/ui/Icon";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useDashboardSummary } from "@/lib/dashboard";
+import { useSession } from "@/store/session";
+import ErrorState from "@/components/states/ErrorState";
+import SkeletonState from "@/components/states/SkeletonState";
+import { useCallback } from "react";
 
 // Spec .fab — the one global action: glowing violet +, → Add Transaction.
 const Fab = ({ onPress }: { onPress: () => void }) => (
@@ -29,31 +34,50 @@ const HomeScreen = () => {
 
   const router = useRouter();
   const { bottom } = useSafeAreaInsets();
-  const generateIncomeCaption = (_value: number): string => {
-    // Logic to generate the caption
-    return "+12% vs last month";
-  };
 
-  const generateSavingsCaption = (_value: number): string => {
-    // Logic to generate the caption
-    return "40% saved";
-  };
+  const userName = useSession((s) => s.user?.name);
 
-  const generateExpensesCaption = (_value: number): string => {
-    // Logic to generate the caption
-    return "₹13,720 left";
-  };
+  const { data: dashboardSummary, loading: summaryLoading, error: summaryError, refetch: summaryRefetch } = useDashboardSummary();
 
-  const generateInvestmentsCaption = (_value: number): string => {
-    // Logic to generate the caption
-    return "+8.5% returns";
-  };
+  useFocusEffect(useCallback(() => {
+    summaryRefetch();
+  }, [summaryRefetch]));
+
+  // The one caption we can state truthfully today: savings rate (values-in-hand).
+  // Income/Expenses/Net-Worth deltas need last-month data — deferred with captions.
+  const savingsCaption = dashboardSummary && dashboardSummary.income > 0
+    ? `${Math.round((dashboardSummary.savings / dashboardSummary.income) * 100)}% saved`
+    : undefined;
+
+  if (summaryError) {
+    return (
+      <ScreenScaffold title="Dashboard">
+        <ErrorState message={summaryError} onRetry={summaryRefetch} />
+      </ScreenScaffold>
+    )
+  }
+
+  if (summaryLoading && !dashboardSummary) {
+    return (
+      <ScreenScaffold title="Dashboard">
+        <View>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonState key={i} height={64} borderRadius={radius.md} />
+          ))}
+        </View>
+      </ScreenScaffold>
+    )
+  }
+
+  if (!dashboardSummary) {
+    return null;
+  }
 
   return (
     <ScreenScaffold
       header={
         <AppHeader
-          name="Sagnik Das"
+          name={userName ?? ""}
           onBellPress={() => console.log("Bell pressed")}
         />
       }
@@ -80,18 +104,14 @@ const HomeScreen = () => {
             iconColor="success"
             iconBg="successSoft"
             label="Income"
-            amount={formatMoney(dashboard.income)}
-            caption={generateIncomeCaption(dashboard.income)}
-            captionColor="success"
+            amount={formatMoney(dashboardSummary.income)}
           />
           <SummaryCard
             icon="expenses"
             iconColor="danger"
             iconBg="dangerSoft"
             label="Expenses"
-            amount={formatMoney(dashboard.expenses)}
-            caption={generateExpensesCaption(dashboard.expenses)}
-            captionColor="danger"
+            amount={formatMoney(dashboardSummary.expenses)}
           />
         </View>
 
@@ -101,18 +121,16 @@ const HomeScreen = () => {
             iconColor="info"
             iconBg="infoSoft"
             label="Savings"
-            amount={formatMoney(dashboard.savings)}
-            caption={generateSavingsCaption(dashboard.savings)}
+            amount={formatMoney(dashboardSummary.savings)}
+            caption={savingsCaption}
             captionColor="info"
           />
           <SummaryCard
             icon="investments"
             iconColor="primary"
             iconBg="accentSoft"
-            label="Investments"
-            amount={formatMoney(dashboard.investments)}
-            caption={generateInvestmentsCaption(dashboard.investments)}
-            captionColor="success"
+            label="Net Worth"
+            amount={formatMoney(dashboardSummary.netWorth)}
           />
         </View>
       </View>
