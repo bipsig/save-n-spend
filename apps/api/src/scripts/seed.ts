@@ -10,7 +10,7 @@
 import "dotenv/config";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
-import connectDB from "../config/db";
+import connectDB, { resolveDbName } from "../config/db";
 import User from "../models/User";
 import Account from "../models/Account";
 import Category from "../models/Category";
@@ -138,6 +138,12 @@ const seedUser = async (name: string, email: string, password: string): Promise<
 };
 
 const run = async (): Promise<void> => {
+  // Hard stop: this script wipes every collection. It must never touch prod.
+  if (process.env.NODE_ENV === "production" || resolveDbName().includes("prod")) {
+    console.error("Refusing to seed: resolves to a production database.");
+    process.exit(1);
+  }
+
   await connectDB();
 
   console.log("Wiping app collections…");

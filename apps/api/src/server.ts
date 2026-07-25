@@ -12,7 +12,9 @@ dotenv.config();
 
 const app = express();
 
-connectDB();
+// Render (and most hosts) sit behind a proxy — trust the first hop so
+// express-rate-limit keys off the real client IP, not the proxy's.
+app.set('trust proxy', 1);
 
 app.use (cors());
 app.use (helmet());
@@ -29,6 +31,12 @@ app.use(errorHandler);
 
 const PORT = Number(process.env.PORT) || 3000;
 
-app.listen (PORT, '0.0.0.0', () => {
-  console.log (`Server has started on port ${PORT}`);
-})
+// Connect first, then listen — a failed DB connect exits before we accept traffic.
+const start = async (): Promise<void> => {
+  await connectDB();
+  app.listen (PORT, '0.0.0.0', () => {
+    console.log (`Server has started on port ${PORT}`);
+  });
+};
+
+start();
