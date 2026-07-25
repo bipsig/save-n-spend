@@ -103,10 +103,6 @@ const LoginForm = () => {
         )}
       />
 
-      <Pressable onPress={() => console.log("forgot password")} hitSlop={6} style={styles.forgot}>
-        <AppText size="sm" color="inkDim">Forgot password?</AppText>
-      </Pressable>
-
       <Button
         label="Log in"
         onPress={onSubmit}
@@ -181,9 +177,6 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: spacing.lg,
-  },
-  forgot: {
-    alignSelf: "flex-end",
   },
   divider: {
     flexDirection: "row",

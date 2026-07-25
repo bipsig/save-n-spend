@@ -8,10 +8,18 @@ import Icon from "@/components/ui/Icon";
 import { AppText } from "@/components/ui/AppText";
 import { moneyItems, appItems } from "@/data/menu";
 import type { MoreItem } from "@/data/menu";
-import { bills, goalsSummary, monthlyBudget } from "@/lib/mock";
 import { useSession } from "@/store/session";
 import { spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
+
+// Initials from a display name, e.g. "Sagnik Das" -> "SD".
+const initialsOf = (name?: string): string =>
+  (name ?? "")
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("") || "?";
 
 // Tiny caps group label (spec .flabel).
 const GroupLabel = ({ children }: { children: string }) => (
@@ -58,32 +66,24 @@ const MenuRow = ({
 );
 
 const MoreScreen = () => {
-  // Live status values — same fixtures the destination screens render.
-  const budgetUsedPct = Math.round((monthlyBudget.spent / monthlyBudget.total) * 100);
-  const billsDueSoon = bills.filter((b) => b.status !== "paid").length;
-  const { totalSaved, totalTarget } = goalsSummary();
-  const goalsPct = totalTarget === 0 ? 0 : Math.round((totalSaved / totalTarget) * 100);
+  const user = useSession((s) => s.user);
 
-  const liveValues: Record<string, { value: string; color?: ColorToken }> = {
-    budget: { value: `${budgetUsedPct}% used` },
-    bills: billsDueSoon > 0
-      ? { value: `${billsDueSoon} due soon`, color: "warning" }
-      : { value: "All paid" },
-    goals: { value: `${goalsPct}% saved` },
-  };
+  // Status values ship once each destination is real; until then the rows are
+  // plain links into their "coming soon" screens — no fabricated numbers.
+  const liveValues: Record<string, { value: string; color?: ColorToken }> = {};
 
   return (
     <ScreenScaffold title="More">
       {/* Profile card — one tap into Settings (spec .profcard) */}
       <Pressable onPress={() => router.push("/settings")}>
         <Card style={styles.profileCard}>
-          <Avatar initials="SD" size="lg" gradient />
+          <Avatar initials={initialsOf(user?.name)} size="lg" gradient />
           <View style={styles.profileInfo}>
             <AppText size="md" weight="black">
-              Sagnik Das
+              {user?.name ?? ""}
             </AppText>
             <AppText size="xs" color="inkDim">
-              sagnik.rik.das@gmail.com
+              {user?.email ?? ""}
             </AppText>
           </View>
           <Icon name="chevronRight" size={18} color="inkDim" />

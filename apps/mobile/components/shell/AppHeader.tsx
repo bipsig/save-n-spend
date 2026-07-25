@@ -17,14 +17,17 @@ const AppHeader = ({
   initials,
   onBellPress
 }: Props) => {
-  const words = name.split(" ");
-  const displayInitials = initials || (
-    words.length > 1 ? (
-      words [0][0].toUpperCase() + words [1][0].toUpperCase()
-    ) : (
-      name [0].toUpperCase()
-    )
-  )
+  // Derive up to two initials, tolerating an empty/whitespace name (e.g. the
+  // brief frame during logout before the gate swaps to Login).
+  const displayInitials =
+    initials ||
+    name
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((word) => word[0]?.toUpperCase() ?? "")
+      .join("") ||
+    "?";
 
   // Spec .topbar — gradient avatar, 10.5 dim greeting over 14/700 name,
   // 36px glass bell circle with a glowing red alert dot.
