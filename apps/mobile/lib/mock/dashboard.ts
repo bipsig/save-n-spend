@@ -1,11 +1,12 @@
-import type { DashboardSummary } from "./types";
+// The only surviving mock: the dashboard health score. It has no API yet
+// (deliberate gap — the real score lands with the insights milestone), so the
+// HealthScoreCard reads these fixed values until then.
+export type HealthSummary = {
+  healthScore: number;
+  rating: string;
+};
 
-// Home dashboard summary (Figma Home health score + summary cards).
-export const dashboard: DashboardSummary = {
+export const dashboard: HealthSummary = {
   healthScore: 85,
   rating: "Excellent",
-  income: 5240000,
-  expenses: 3128000,
-  savings: 2112000,
-  investments: 14500000,
 };

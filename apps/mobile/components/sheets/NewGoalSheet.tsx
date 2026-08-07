@@ -16,18 +16,12 @@ import Icon from "@/components/ui/Icon";
 import DateField from "@/components/ui/DateField";
 import { AppText } from "@/components/ui/AppText";
 import { parseMoney } from "@/lib/money";
-import { toUtcDateISO } from "@/lib/date";
+import { startOfToday, toUtcDateISO } from "@/lib/date";
 import { post } from "@/lib/api";
 import type { IconName } from "@/lib/icons";
 import { colors, spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
 import { chipGradients, chipTintFor } from "@/theme/gradients";
-
-const startOfToday = (): Date => {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-};
 
 const defaultDeadline = (): Date => {
   const d = startOfToday();

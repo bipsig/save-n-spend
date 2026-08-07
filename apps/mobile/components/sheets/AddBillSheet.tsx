@@ -10,10 +10,11 @@ import Button from "@/components/ui/Button";
 import Chip from "@/components/ui/Chip";
 import Icon from "@/components/ui/Icon";
 import DateField from "@/components/ui/DateField";
+import AmountHeroInput from "@/components/ui/AmountHeroInput";
 import { AppText } from "@/components/ui/AppText";
 import { useCategoryById } from "@/lib/categories";
 import { parseMoney } from "@/lib/money";
-import { toUtcDateISO } from "@/lib/date";
+import { startOfToday, toUtcDateISO } from "@/lib/date";
 import { post } from "@/lib/api";
 import type { IconName } from "@/lib/icons";
 import { colors, spacing } from "@/theme";
@@ -36,12 +37,6 @@ const schema = z.object({
 });
 
 type FormValues = z.infer<typeof schema>;
-
-const startOfToday = (): Date => {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-};
 
 const defaults = (): FormValues => ({
   name: "",
@@ -139,20 +134,7 @@ const AddBillSheet = forwardRef<BottomSheetModal, Props>(({ onChanged }, ref) =>
           control={control}
           name="amount"
           render={({ field: { value, onChange, onBlur } }) => (
-            <View style={styles.heroRow}>
-              <AppText size="lg" weight="bold" color="inkDim" style={styles.heroCur}>
-                ₹
-              </AppText>
-              <BottomSheetTextInput
-                placeholder="0"
-                placeholderTextColor={colors.gray400}
-                value={value}
-                onChangeText={onChange}
-                onBlur={onBlur}
-                keyboardType="decimal-pad"
-                style={styles.heroInput}
-              />
-            </View>
+            <AmountHeroInput value={value} onChangeText={onChange} onBlur={onBlur} />
           )}
         />
       </View>
@@ -266,23 +248,6 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.13)",
     color: colors.ink,
     fontSize: 16,
-  },
-  heroRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  heroCur: {
-    marginRight: 4,
-    marginBottom: 8,
-  },
-  heroInput: {
-    color: colors.ink,
-    fontSize: 44,
-    fontWeight: "800",
-    letterSpacing: -1,
-    minWidth: 120,
-    textAlign: "center",
   },
   segRow: {
     flexDirection: "row",

@@ -1,8 +1,5 @@
-// Barrel for all mock fixtures — import from "@/lib/mock".
-export * from "./types";
-export { transactions } from "./transactions";
-export { budgets, monthlyBudget, budgetSummary } from "./budgets";
-export { bills } from "./bills";
-export { goals, goalsSummary } from "./goals";
+// Barrel for the remaining mock fixtures. Bills, budgets, goals, transactions
+// and accounts now run on the live API — only the dashboard health score is
+// still mocked (no endpoint yet).
 export { dashboard } from "./dashboard";
-export { accounts, defaultAccountId } from "./accounts";
+export type { HealthSummary } from "./dashboard";

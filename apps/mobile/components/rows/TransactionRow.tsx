@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, View } from "react-native"
 import { useCategoryById } from "@/lib/categories"
-import type { ITransaction } from "@/lib/mock"
+import type { ITransaction } from "@save-n-spend/types"
 import type { IconName } from "@/lib/icons"
 import type { ColorToken } from "@/theme"
 import { spacing } from "@/theme"

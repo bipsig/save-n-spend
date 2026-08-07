@@ -3,10 +3,11 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { z } from "zod/v4";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { BottomSheetModal, BottomSheetTextInput, useBottomSheetModal } from "@gorhom/bottom-sheet";
+import { BottomSheetModal, useBottomSheetModal } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";
 import Button from "@/components/ui/Button";
 import Icon from "@/components/ui/Icon";
+import AmountHeroInput from "@/components/ui/AmountHeroInput";
 import { AppText } from "@/components/ui/AppText";
 import ProgressBar from "@/components/data/ProgressBar";
 import formatMoney, { parseMoney, paiseToInput } from "@/lib/money";
@@ -14,7 +15,7 @@ import { useCategoryById } from "@/lib/categories";
 import { post, patch, del } from "@/lib/api";
 import type { BudgetSummary } from "@/lib/budgets";
 import type { IconName } from "@/lib/icons";
-import { colors, spacing } from "@/theme";
+import { spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
 
 type Props = {
@@ -145,20 +146,7 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
         control={control}
         name="limit"
         render={({ field: { value, onChange, onBlur } }) => (
-          <View style={styles.heroRow}>
-            <AppText size="lg" weight="bold" color="inkDim" style={styles.heroCur}>
-              ₹
-            </AppText>
-            <BottomSheetTextInput
-              placeholder="0"
-              placeholderTextColor={colors.gray400}
-              value={value}
-              onChangeText={onChange}
-              onBlur={onBlur}
-              keyboardType="decimal-pad"
-              style={styles.heroInput}
-            />
-          </View>
+          <AmountHeroInput value={value} onChangeText={onChange} onBlur={onBlur} />
         )}
       />
 
@@ -212,23 +200,6 @@ const styles = StyleSheet.create({
   },
   label: {
     letterSpacing: 1.3,
-  },
-  heroRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  heroCur: {
-    marginRight: 4,
-    marginBottom: 8,
-  },
-  heroInput: {
-    color: colors.ink,
-    fontSize: 44,
-    fontWeight: "800",
-    letterSpacing: -1,
-    minWidth: 120,
-    textAlign: "center",
   },
   steps: {
     flexDirection: "row",

@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
+import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
+import DateField from "@/components/ui/DateField";
 import { z } from "zod/v4";
 import formatMoney, { paiseToInput, parseMoney } from "@/lib/money";
 import { Controller, useForm } from "react-hook-form";
@@ -14,7 +17,8 @@ import { useCategories } from "@/lib/categories";
 import Chip from "@/components/ui/Chip";
 import type { IconName } from "@/lib/icons";
 import { spacing } from "@/theme";
-import { useDefaultAccount } from "@/lib/accounts";
+import { useAccountById, useDefaultAccount } from "@/lib/accounts";
+import AccountPickerSheet from "@/components/sheets/AccountPickerSheet";
 import { get, patch, post } from "@/lib/api";
 import type { ITransaction } from "@save-n-spend/types";
 
@@ -68,6 +72,7 @@ const AddTransaction = () => {
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [occurredAt, setOccurredAt] = useState<Date>(new Date());
 
   useEffect(() => {
     if (!id) {
@@ -83,6 +88,7 @@ const AddTransaction = () => {
           type: transaction.type as FormValues["type"],
           category: transaction.category ?? ""
         });
+        setOccurredAt(transaction.occurredAt ? new Date(transaction.occurredAt) : new Date());
       }
       catch (err) {
         setSubmitError(err instanceof Error ? err.message : "Couldn't load transaction");
@@ -94,8 +100,14 @@ const AddTransaction = () => {
   const type = watch("type");
   const amountRaw = watch("amount");
 
-  // Balance preview — a values-in-hand derivation from the default account.
-  const account = useDefaultAccount();
+  // Pay-from account — defaults to the user's default, switchable via the picker.
+  const accountRef = useRef<BottomSheetModal>(null);
+  const defaultAccount = useDefaultAccount();
+  const [accountId, setAccountId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!accountId && defaultAccount) setAccountId(defaultAccount._id);
+  }, [defaultAccount, accountId]);
+  const account = useAccountById(accountId) ?? defaultAccount;
   const entered = parseMoney(amountRaw);
   const balanceLine = useMemo(() => {
     if (!account) return null;
@@ -106,12 +118,6 @@ const AddTransaction = () => {
     const after = type === "income" ? account.balance + entered : account.balance - entered;
     return `${type === "income" ? "To" : "From"} ${account.name} · ${formatMoney(after)} ${type === "income" ? "after this" : "left after this"}`;
   }, [account, entered, type, isEdit]);
-
-  // occurredAt is stamped "now" on save — the date row states that honestly.
-  const dateLabel = useMemo(() => {
-    const time = new Date().toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
-    return `Today · ${time}`;
-  }, []);
 
   const setAmount = (next: string) =>
     setValue("amount", next, { shouldValidate: true });
@@ -163,6 +169,7 @@ const AddTransaction = () => {
       category: data.category,
       account: account._id,
       title: data.title,
+      occurredAt: occurredAt.toISOString(),
     };
 
     setSubmitting(true);
@@ -172,7 +179,8 @@ const AddTransaction = () => {
         await patch(`/transactions/${id}`, {
           title: data.title,
           amount: parseMoney(data.amount),
-          category: data.category
+          category: data.category,
+          occurredAt: occurredAt.toISOString()
         });
       }
       else {
@@ -202,6 +210,9 @@ const AddTransaction = () => {
   );
 
   return (
+    // A native modal route hosts its own portal — without this, gorhom sheets
+    // (the account picker) render behind the modal and read as unclickable.
+    <BottomSheetModalProvider>
     <ScreenScaffold header={header}>
       {/* Income / Expense — spec .seg full-width segmented control.
           Edit mode: type is immutable → segment dims and ignores taps. */}
@@ -328,15 +339,20 @@ const AddTransaction = () => {
         }}
       />
 
-      {/* Date row — spec .selrow. Picker sub-sheet is a later milestone;
-          the transaction is stamped with "now" on save. */}
-      <View style={styles.selRow}>
-        <Icon name="date" size={18} color="inkDim" />
-        <AppText size="sm" weight="bold" style={styles.selValue}>
-          {dateLabel}
-        </AppText>
-        <Icon name="chevronRight" size={20} color="inkDim" />
-      </View>
+      {/* Pay-from account — reuses the shared AccountPickerSheet. Not editable in
+          edit mode (would need balance reconciliation across accounts). */}
+      {!isEdit && (
+        <Pressable style={styles.selRow} onPress={() => accountRef.current?.present()}>
+          <Icon name="wallet" size={18} color="inkDim" />
+          <AppText size="sm" weight="bold" style={styles.selValue}>
+            {account?.name ?? "Select account"}
+          </AppText>
+          <Icon name="chevronRight" size={20} color="inkDim" />
+        </Pressable>
+      )}
+
+      {/* Date row — spec .selrow. Defaults to now; tap to backdate. */}
+      <DateField label="WHEN" value={occurredAt} onChange={setOccurredAt} maximumDate={new Date()} />
 
       {/* Progressive disclosure — note / location / receipt (later milestone) */}
       <View style={[styles.selRow, styles.selRowDim]}>
@@ -376,7 +392,10 @@ const AddTransaction = () => {
         loading={submitting}
         label={isEdit ? "Save Changes" : type === "income" ? "Save Income" : "Save Expense"}
       />
+
+      <AccountPickerSheet ref={accountRef} selectedId={accountId} onPick={setAccountId} />
     </ScreenScaffold>
+    </BottomSheetModalProvider>
   );
 };
 

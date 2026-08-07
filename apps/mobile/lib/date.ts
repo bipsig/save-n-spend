@@ -63,3 +63,10 @@ export const formatFullDate = (iso: string): string =>
 // UTC months on the server) never shifts the day across a month boundary.
 export const toUtcDateISO = (d: Date): string =>
   new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())).toISOString();
+
+// Local calendar day at midnight — the floor for "today or future" date pickers.
+export const startOfToday = (): Date => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
