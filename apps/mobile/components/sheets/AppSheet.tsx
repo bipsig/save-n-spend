@@ -51,6 +51,7 @@ const AppSheet = forwardRef<BottomSheetModal, Props>(({ children, onDismiss }, r
     <BottomSheetModal
       ref={ref}
       onDismiss={onDismiss}
+      stackBehavior="push"
       enableDynamicSizing
       backdropComponent={renderBackdrop}
       backgroundComponent={SheetBackground}

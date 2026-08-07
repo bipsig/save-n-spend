@@ -1,27 +1,26 @@
-import { forwardRef } from "react";
-import { StyleSheet, View } from "react-native";
+import { forwardRef, useEffect, useRef, useState } from "react";
+import { Pressable, StyleSheet, View } from "react-native";
 import type { IBill } from "@save-n-spend/types";
 import { BottomSheetModal, useBottomSheetModal } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";
+import AccountPickerSheet from "./AccountPickerSheet";
 import Button from "@/components/ui/Button";
 import Icon from "@/components/ui/Icon";
 import { AppText } from "@/components/ui/AppText";
 import { useCategoryById } from "@/lib/categories";
+import { useAccountById, useDefaultAccount } from "@/lib/accounts";
+import { post } from "@/lib/api";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { spacing } from "@/theme";
 import formatMoney from "@/lib/money";
 import { formatDueLabel, rollDueDate, formatFullDate } from "@/lib/date";
-import { accounts, defaultAccountId } from "@/lib/mock";
 
 type Props = {
   bill: IBill | null;
-  onPaid: (billId: string) => void;
+  onChanged: () => void;
 };
 
-const payFrom = accounts.find((a) => a._id === defaultAccountId);
-
-// One effect line in the "WHAT HAPPENS" preview.
 const Effect = ({ icon, color, children }: { icon: IconName; color: ColorToken; children: React.ReactNode }) => (
   <View style={styles.fxRow}>
     <Icon name={icon} size={18} color={color} />
@@ -31,33 +30,42 @@ const Effect = ({ icon, color, children }: { icon: IconName; color: ColorToken; 
   </View>
 );
 
-const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onPaid }, ref) => {
+const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, ref) => {
   const { dismiss } = useBottomSheetModal();
-
+  const accountRef = useRef<BottomSheetModal>(null);
   const category = useCategoryById(bill?.category ?? null);
+  const defaultAccount = useDefaultAccount();
 
-  const confirm = () => {
+  const [accountId, setAccountId] = useState<string | null>(null);
+  const [busy, setBusy] = useState<"pay" | "skip" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setAccountId(bill?.account ?? defaultAccount?._id ?? null);
+  }, [bill, defaultAccount?._id]);
+
+  const payFrom = useAccountById(accountId) ?? defaultAccount;
+
+  const run = async (action: "pay" | "skip") => {
     if (!bill) return;
-    // The three preview lines ARE the POST /bills/:id/pay contract. Mock: log the
-    // would-be spawned transaction + rolled date, then flip local status.
-    const spawnedTxn = {
-      type: "expense" as const,
-      amount: bill.amount,
-      category: bill.category,
-      account: defaultAccountId,
-      title: bill.name,
-      occurredAt: new Date().toISOString(),
-    };
-    console.log("mark paid → spawn txn", spawnedTxn);
-    if (bill.recurring && bill.frequency) {
-      console.log("mark paid → roll dueDate", rollDueDate(bill.dueDate, bill.frequency));
+    setBusy(action);
+    setError(null);
+    try {
+      await post(`/bills/${bill._id}/${action}`, action === "pay" && accountId ? { account: accountId } : undefined);
+      dismiss();
+      onChanged();
     }
-    onPaid(bill._id);
-    dismiss();
+    catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    }
+    finally {
+      setBusy(null);
+    }
   };
 
   return (
-    <AppSheet ref={ref}>
+    <>
+    <AppSheet ref={ref} onDismiss={() => setError(null)}>
       {bill && (
         <>
           <View style={styles.identity}>
@@ -73,7 +81,7 @@ const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onPaid }, ref
               {bill.name}
             </AppText>
             <AppText size="xs" color="inkDim">
-              {`${formatMoney(bill.amount)} · ${formatDueLabel(bill.dueDate, bill.status).toLowerCase()}`}
+              {`${formatMoney(bill.amount)} · ${formatDueLabel(bill.dueDate, bill.status, bill.lastPaidAt).toLowerCase()}`}
             </AppText>
           </View>
 
@@ -98,9 +106,7 @@ const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onPaid }, ref
             )}
           </View>
 
-          {/* PAY FROM — defaults to the default account; the account sub-picker
-              (chevron) lands with the sub-picker milestone. */}
-          <View style={styles.selRow}>
+          <Pressable style={styles.selRow} onPress={() => accountRef.current?.present()}>
             <Icon name="wallet" size={18} color="inkDim" />
             <View style={styles.selText}>
               <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
@@ -111,13 +117,37 @@ const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onPaid }, ref
               </AppText>
             </View>
             <Icon name="chevronRight" size={20} color="inkDim" />
-          </View>
+          </Pressable>
 
-          <Button label="Mark as Paid" variant="success" onPress={confirm} />
-          <Button label="Cancel" variant="ghost" onPress={() => dismiss()} />
+          {error && (
+            <AppText size="xs" color="danger">
+              {error}
+            </AppText>
+          )}
+
+          <Button
+            label="Mark as Paid"
+            variant="success"
+            onPress={() => run("pay")}
+            loading={busy === "pay"}
+            disabled={busy !== null}
+          />
+          {bill.recurring && (
+            <Button
+              label="Skip this cycle"
+              variant="ghost"
+              onPress={() => run("skip")}
+              loading={busy === "skip"}
+              disabled={busy !== null}
+            />
+          )}
+          <Button label="Cancel" variant="ghost" onPress={() => dismiss()} disabled={busy !== null} />
         </>
       )}
     </AppSheet>
+
+    <AccountPickerSheet ref={accountRef} selectedId={accountId} onPick={setAccountId} />
+    </>
   );
 });
 

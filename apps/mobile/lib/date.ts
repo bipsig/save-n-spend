@@ -20,9 +20,9 @@ export const formatTxnDate = (iso: string): string => {
 // "Paid Jan 23" / "Overdue by 2 days" / "Due today" / "Due in 3 days".
 // Both dates are normalized to local midnight so the label reflects whole
 // calendar days regardless of the time-of-day on either timestamp.
-export const formatDueLabel = (dueDate: string, status: BillStatus): string => {
+export const formatDueLabel = (dueDate: string, status: BillStatus, paidAt?: string | null): string => {
   if (status === "paid") {
-    return `Paid ${formatTxnDate(dueDate)}`;
+    return `Paid ${formatTxnDate(paidAt ?? dueDate)}`;
   }
 
   const now = new Date();
@@ -58,3 +58,8 @@ export const rollDueDate = (dueDate: string, frequency: BillFrequency): string =
 // "Aug 12, 2026" — full due-date display for sheets (spec: "next due rolls to …").
 export const formatFullDate = (iso: string): string =>
   new Date(iso).toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" });
+
+// A picked calendar day → UTC-midnight ISO, so due-date period math (which uses
+// UTC months on the server) never shifts the day across a month boundary.
+export const toUtcDateISO = (d: Date): string =>
+  new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())).toISOString();

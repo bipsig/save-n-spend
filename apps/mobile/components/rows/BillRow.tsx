@@ -9,28 +9,34 @@ import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { spacing } from "@/theme";
 import { formatDueLabel } from "@/lib/date";
+import { isActionable } from "@/lib/bills";
 import formatMoney from "@/lib/money";
 
 type Props = {
   bill: IBill
-  onMarkPaid?: () => void
+  onPress?: () => void
 };
 
-const BillRow = ({ bill, onMarkPaid }: Props) => {
+const BillRow = ({ bill, onPress }: Props) => {
   const category = useCategoryById(bill.category);
 
-  const dueLabel = formatDueLabel(bill.dueDate, bill.status);
+  // A pending bill already pushed into a future period (paid/skipped this cycle,
+  // or created ahead) — shown but not yet actionable.
+  const scheduled = bill.status === "pending" && !isActionable(bill);
+
+  const dueLabel = formatDueLabel(bill.dueDate, bill.status, bill.lastPaidAt);
   const meta = bill.recurring && bill.frequency ? `${dueLabel} · ${bill.frequency}` : dueLabel;
 
   // Tone the due label by urgency (value-in-hand derivation): overdue = red,
-  // paid = dim, otherwise amber when it's coming up soon.
+  // paid/scheduled = dim, otherwise amber when it's coming up soon.
   const dueColor: ColorToken =
     bill.status === "overdue" ? "danger"
-    : bill.status === "paid" ? "inkDim"
+    : bill.status === "paid" || scheduled ? "inkDim"
     : "warning";
 
   return (
-    <Card style={[styles.container, bill.status === "overdue" && styles.overdue]}>
+    <Pressable onPress={onPress} disabled={!onPress || bill.status === "paid"}>
+      <Card style={[styles.container, bill.status === "overdue" && styles.overdue, scheduled && styles.scheduled]}>
       <Icon
         name={(category?.icon ?? "bills") as IconName}
         size={22}
@@ -53,16 +59,19 @@ const BillRow = ({ bill, onMarkPaid }: Props) => {
           {formatMoney(bill.amount)}
         </AppText>
         {bill.status === "overdue" ? (
-          <Pressable onPress={onMarkPaid} hitSlop={6} style={styles.markPaid}>
+          <Pressable onPress={onPress} hitSlop={6} style={styles.markPaid}>
             <AppText size="xs" weight="black" color="primary">
               Mark paid
             </AppText>
           </Pressable>
+        ) : scheduled ? (
+          <Badge label="Scheduled" status="onTrack" size="sm" />
         ) : (
           <Badge label={bill.status} status={bill.status} size="sm" />
         )}
       </View>
-    </Card>
+      </Card>
+    </Pressable>
   );
 };
 
@@ -74,6 +83,9 @@ const styles = StyleSheet.create({
   },
   overdue: {
     borderColor: "rgba(255,107,116,0.35)", // spec: overdue rows get a red-tinted border
+  },
+  scheduled: {
+    opacity: 0.6, // handled this cycle — shown but not yet actionable
   },
   info: {
     flex: 1,

@@ -1,33 +1,27 @@
-import { forwardRef, useState } from "react";
+import { forwardRef, useRef, useState } from "react";
 import { Pressable, StyleSheet, Switch, View } from "react-native";
 import { z } from "zod/v4";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import {
-  BottomSheetModal,
-  BottomSheetTextInput,
-  useBottomSheetModal,
-} from "@gorhom/bottom-sheet";
+import { BottomSheetModal, BottomSheetTextInput, useBottomSheetModal } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";
-import Input from "@/components/ui/Input";
+import CategoryPickerSheet from "./CategoryPickerSheet";
 import Button from "@/components/ui/Button";
 import Chip from "@/components/ui/Chip";
 import Icon from "@/components/ui/Icon";
+import DateField from "@/components/ui/DateField";
 import { AppText } from "@/components/ui/AppText";
-import type { IconName } from "@/lib/icons";
+import { useCategoryById } from "@/lib/categories";
 import { parseMoney } from "@/lib/money";
-import { formatFullDate } from "@/lib/date";
-import { useCategories } from "@/lib/categories";
-import { defaultAccountId } from "@/lib/mock";
+import { toUtcDateISO } from "@/lib/date";
+import { post } from "@/lib/api";
+import type { IconName } from "@/lib/icons";
 import { colors, spacing } from "@/theme";
+import type { ColorToken } from "@/theme";
 
-// "Once" = one-off (recurring:false); Monthly/Yearly map to BillFrequency.
-type Repeats = "once" | "monthly" | "yearly";
-const REPEATS: { key: Repeats; label: string }[] = [
-  { key: "once", label: "Once" },
-  { key: "monthly", label: "Monthly" },
-  { key: "yearly", label: "Yearly" },
-];
+type Props = {
+  onChanged: () => void;
+};
 
 const schema = z.object({
   name: z.string().min(1, "Name is required").max(40, "Keep it under 40 characters"),
@@ -35,56 +29,81 @@ const schema = z.object({
     .string()
     .regex(/^\s*₹?\s*[\d,]+(\.\d{1,2})?\s*$/, "Enter a valid amount")
     .refine((v) => parseMoney(v) > 0, "Enter a valid amount"),
-  category: z.string().min(1, "Select a category"),
+  frequency: z.enum(["once", "monthly", "yearly"]),
+  category: z.string().min(1, "Choose a category"),
+  dueDate: z.date(),
+  remind: z.boolean(),
 });
 
 type FormValues = z.infer<typeof schema>;
 
-const AddBillSheet = forwardRef<BottomSheetModal>((_props, ref) => {
+const startOfToday = (): Date => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+const defaults = (): FormValues => ({
+  name: "",
+  amount: "",
+  frequency: "monthly",
+  category: "",
+  dueDate: startOfToday(),
+  remind: true,
+});
+
+const AddBillSheet = forwardRef<BottomSheetModal, Props>(({ onChanged }, ref) => {
   const { dismiss } = useBottomSheetModal();
-  const expenseCategories = useCategories().filter((c) => c.kind === "expense");
-  const [repeats, setRepeats] = useState<Repeats>("monthly");
-  const [remind, setRemind] = useState(true);
+  const pickerRef = useRef<BottomSheetModal>(null);
+
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const {
     control,
     handleSubmit,
+    watch,
+    setValue,
     reset,
-    formState: { errors, isValid },
+    formState: { isValid, errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     mode: "onChange",
-    defaultValues: { name: "", amount: "", category: "" },
+    defaultValues: defaults(),
   });
 
-  const close = () => {
-    setRepeats("monthly");
-    setRemind(true);
-    reset();
-  };
+  const category = useCategoryById(watch("category"));
 
-  const onSubmit = (data: FormValues) => {
-    // Status is never picked — new bills are pending (only PAID is stored). Due
-    // date is stamped "today" as a placeholder until the date sub-picker lands.
-    const newBill = {
-      name: data.name,
-      amount: parseMoney(data.amount),
-      category: data.category,
-      account: defaultAccountId,
-      dueDate: new Date().toISOString(),
-      status: "pending" as const,
-      recurring: repeats !== "once",
-      frequency: repeats === "once" ? undefined : repeats,
-      reminderDays: remind ? 3 : undefined,
-    };
-    console.log(newBill);
-    dismiss();
+  const onSubmit = async (data: FormValues) => {
+    const recurring = data.frequency !== "once";
+    setSubmitting(true);
+    setError(null);
+    try {
+      await post("/bills", {
+        name: data.name.trim(),
+        amount: parseMoney(data.amount),
+        category: data.category,
+        dueDate: toUtcDateISO(data.dueDate),
+        recurring,
+        ...(recurring ? { frequency: data.frequency } : {}),
+        ...(data.remind ? { reminderDays: 3 } : {}),
+      });
+      dismiss();
+      onChanged();
+    }
+    catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't add the bill");
+    }
+    finally {
+      setSubmitting(false);
+    }
   };
 
   return (
-    <AppSheet ref={ref} onDismiss={close}>
-      <View style={styles.head}>
-        <AppText size="lg" weight="black">
+    <>
+    <AppSheet ref={ref} onDismiss={() => { reset(defaults()); setError(null); }}>
+      <View style={styles.header}>
+        <AppText size="md" weight="black">
           Add Bill
         </AppText>
         <Pressable onPress={() => dismiss()} hitSlop={8} accessibilityLabel="Close">
@@ -92,126 +111,142 @@ const AddBillSheet = forwardRef<BottomSheetModal>((_props, ref) => {
         </Pressable>
       </View>
 
-      <Controller
-        control={control}
-        name="name"
-        render={({ field: { value, onChange, onBlur } }) => (
-          <Input
-            InputComponent={BottomSheetTextInput}
-            label="Name"
-            placeholder="e.g. Netflix"
-            value={value}
-            onChangeText={onChange}
-            onBlur={onBlur}
-            error={errors.name?.message}
-          />
-        )}
-      />
-
-      <Controller
-        control={control}
-        name="amount"
-        render={({ field: { value, onChange, onBlur } }) => (
-          <Input
-            InputComponent={BottomSheetTextInput}
-            label="Amount"
-            placeholder="₹0"
-            value={value}
-            onChangeText={onChange}
-            onBlur={onBlur}
-            error={errors.amount?.message}
-            keyboardType="decimal-pad"
-            size="lg"
-          />
-        )}
-      />
-
-      {/* FIRST DUE — static today; the date sub-picker lands with that milestone. */}
-      <View style={styles.selRow}>
-        <Icon name="date" size={18} color="inkDim" />
-        <View style={styles.selText}>
-          <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
-            FIRST DUE
-          </AppText>
-          <AppText size="sm" weight="semibold">
-            {formatFullDate(new Date().toISOString())}
-          </AppText>
-        </View>
-        <Icon name="chevronRight" size={20} color="inkDim" />
+      <View style={styles.field}>
+        <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
+          NAME
+        </AppText>
+        <Controller
+          control={control}
+          name="name"
+          render={({ field: { value, onChange, onBlur } }) => (
+            <BottomSheetTextInput
+              placeholder="e.g. Netflix"
+              placeholderTextColor={colors.gray400}
+              value={value}
+              onChangeText={onChange}
+              onBlur={onBlur}
+              style={styles.input}
+            />
+          )}
+        />
       </View>
 
-      {/* REPEATS segment */}
+      <View style={styles.field}>
+        <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
+          AMOUNT
+        </AppText>
+        <Controller
+          control={control}
+          name="amount"
+          render={({ field: { value, onChange, onBlur } }) => (
+            <View style={styles.heroRow}>
+              <AppText size="lg" weight="bold" color="inkDim" style={styles.heroCur}>
+                ₹
+              </AppText>
+              <BottomSheetTextInput
+                placeholder="0"
+                placeholderTextColor={colors.gray400}
+                value={value}
+                onChangeText={onChange}
+                onBlur={onBlur}
+                keyboardType="decimal-pad"
+                style={styles.heroInput}
+              />
+            </View>
+          )}
+        />
+      </View>
+
+      <Controller
+        control={control}
+        name="dueDate"
+        render={({ field: { value, onChange } }) => (
+          <DateField label="FIRST DUE" value={value} onChange={onChange} minimumDate={startOfToday()} />
+        )}
+      />
+
       <View style={styles.field}>
         <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
           REPEATS
         </AppText>
-        <View style={styles.segment}>
-          {REPEATS.map((r) => (
-            <Chip
-              key={r.key}
-              label={r.label}
-              grow
-              selected={repeats === r.key}
-              onPress={() => setRepeats(r.key)}
-            />
-          ))}
-        </View>
+        <Controller
+          control={control}
+          name="frequency"
+          render={({ field: { value } }) => (
+            <View style={styles.segRow}>
+              <Chip grow label="Once" selected={value === "once"} onPress={() => setValue("frequency", "once")} />
+              <Chip grow label="Monthly" selected={value === "monthly"} onPress={() => setValue("frequency", "monthly")} />
+              <Chip grow label="Yearly" selected={value === "yearly"} onPress={() => setValue("frequency", "yearly")} />
+            </View>
+          )}
+        />
       </View>
 
-      {/* CATEGORY — inline chips (shared category sub-picker is a later milestone) */}
+      <Pressable style={styles.selRow} onPress={() => pickerRef.current?.present()}>
+        <Icon
+          name={(category?.icon ?? "add") as IconName}
+          size={17}
+          containerSize={34}
+          containerRadius={11}
+          container="square"
+          gradient={(category?.color ?? "accent") as ColorToken}
+        />
+        <View style={styles.selText}>
+          <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
+            CATEGORY
+          </AppText>
+          <AppText size="sm" weight="semibold" color={category ? "ink" : "inkDim"}>
+            {category?.name ?? "Choose a category"}
+          </AppText>
+        </View>
+        <Icon name="chevronRight" size={20} color="inkDim" />
+      </Pressable>
+
       <Controller
         control={control}
-        name="category"
+        name="remind"
         render={({ field: { value, onChange } }) => (
-          <View style={styles.field}>
-            <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
-              CATEGORY
-            </AppText>
-            <View style={styles.catWrap}>
-              {expenseCategories.map((cat) => (
-                <Chip
-                  key={cat._id}
-                  label={cat.name}
-                  icon={cat.icon as IconName}
-                  selected={value === cat._id}
-                  onPress={() => onChange(cat._id)}
-                />
-              ))}
+          <View style={styles.remindRow}>
+            <View style={styles.remindText}>
+              <AppText size="sm" weight="bold">
+                Remind me before due
+              </AppText>
+              <AppText size="xs" color="inkDim">
+                3 days before · notification only, money never moves
+              </AppText>
             </View>
-            {errors.category && (
-              <AppText size="xs" color="danger">{errors.category.message}</AppText>
-            )}
+            <Switch
+              value={value}
+              onValueChange={onChange}
+              trackColor={{ false: colors.surface2, true: colors.primary }}
+              thumbColor={colors.surface}
+            />
           </View>
         )}
       />
 
-      {/* Reminder — honest copy: notification only, money never moves. */}
-      <View style={styles.toggleRow}>
-        <View style={styles.toggleText}>
-          <AppText size="sm" weight="bold">
-            Remind me before due
-          </AppText>
-          <AppText size="xs" color="inkDim">
-            3 days before · notification only, money never moves
-          </AppText>
-        </View>
-        <Switch
-          value={remind}
-          onValueChange={setRemind}
-          trackColor={{ false: colors.surface2, true: colors.primary }}
-          thumbColor={colors.surface}
-        />
-      </View>
+      {(errors.name || errors.amount || errors.category || error) && (
+        <AppText size="xs" color="danger">
+          {errors.name?.message ?? errors.amount?.message ?? errors.category?.message ?? error}
+        </AppText>
+      )}
 
-      <Button label="Add Bill" onPress={handleSubmit(onSubmit)} disabled={!isValid} />
+      <Button label="Add Bill" onPress={handleSubmit(onSubmit)} loading={submitting} disabled={!isValid} />
     </AppSheet>
+
+    <CategoryPickerSheet
+      ref={pickerRef}
+      kind="expense"
+      onPick={(categoryId) => setValue("category", categoryId, { shouldValidate: true })}
+    />
+    </>
   );
 });
 
 AddBillSheet.displayName = "AddBillSheet";
 
 const styles = StyleSheet.create({
-  head: {
+  header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -222,39 +257,60 @@ const styles = StyleSheet.create({
   label: {
     letterSpacing: 1.3,
   },
-  segment: {
-    flexDirection: "row",
-    gap: spacing.sm,
+  input: {
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.13)",
+    color: colors.ink,
+    fontSize: 16,
   },
-  catWrap: {
+  heroRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroCur: {
+    marginRight: 4,
+    marginBottom: 8,
+  },
+  heroInput: {
+    color: colors.ink,
+    fontSize: 44,
+    fontWeight: "800",
+    letterSpacing: -1,
+    minWidth: 120,
+    textAlign: "center",
+  },
+  segRow: {
+    flexDirection: "row",
+    gap: 8,
   },
   selRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.06)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
-    backgroundColor: "rgba(255,255,255,0.05)",
+    borderColor: "rgba(255,255,255,0.13)",
   },
   selText: {
     flex: 1,
     gap: 2,
   },
-  toggleRow: {
+  remindRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     gap: spacing.md,
   },
-  toggleText: {
+  remindText: {
     flex: 1,
-    gap: 2,
+    gap: 3,
   },
 });
 

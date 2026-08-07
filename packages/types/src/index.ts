@@ -81,6 +81,7 @@ export interface IBill {
   account?: string
   dueDate: string        // ISO date string
   status: BillStatus
+  lastPaidAt?: string | null
   recurring?: boolean
   frequency?: BillFrequency
   reminderDays?: number
