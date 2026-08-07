@@ -1,4 +1,4 @@
-import { forwardRef, useMemo } from "react";
+import { forwardRef, useMemo, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import type { IGoal } from "@save-n-spend/types";
 import { z } from "zod/v4";
@@ -17,20 +17,24 @@ import { AppText } from "@/components/ui/AppText";
 import ProgressBar from "@/components/data/ProgressBar";
 import { parseMoney } from "@/lib/money";
 import formatMoney from "@/lib/money";
+import { post } from "@/lib/api";
 import type { IconName } from "@/lib/icons";
 import { spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
 
 type Props = {
   goal: IGoal | null;
+  onChanged: () => void;
 };
 
 // Quick-set presets (paise) — spec .presetrow. Tapping writes into the same
 // amount field; typing overrides.
 const PRESETS = [50000, 100000, 250000, 500000];
 
-const ContributeSheet = forwardRef<BottomSheetModal, Props>(({ goal }, ref) => {
+const ContributeSheet = forwardRef<BottomSheetModal, Props>(({ goal, onChanged }, ref) => {
   const { dismiss } = useBottomSheetModal();
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const remaining = goal ? Math.max(goal.target - goal.saved, 0) : 0;
   const color = (goal?.color ?? "accent") as ColorToken;
@@ -71,15 +75,25 @@ const ContributeSheet = forwardRef<BottomSheetModal, Props>(({ goal }, ref) => {
   const projectedPct = goal && goal.target > 0 ? Math.round((projected / goal.target) * 100) : 0;
   const currentPct = goal && goal.target > 0 ? Math.round((goal.saved / goal.target) * 100) : 0;
 
-  const onSubmit = (data: FormValues) => {
+  const onSubmit = async (data: FormValues) => {
     if (!goal) return;
-    // Payload for POST /goals/:id/contribute — no persistence yet.
-    console.log({ goalId: goal._id, amount: parseMoney(data.amount) });
-    dismiss();
+    setSubmitting(true);
+    setError(null);
+    try {
+      await post(`/goals/${goal._id}/contribute`, { amount: parseMoney(data.amount) });
+      dismiss();
+      onChanged();
+    }
+    catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't add the contribution");
+    }
+    finally {
+      setSubmitting(false);
+    }
   };
 
   return (
-    <AppSheet ref={ref} onDismiss={() => reset()}>
+    <AppSheet ref={ref} onDismiss={() => { reset(); setError(null); }}>
       {goal && (
         <>
           {/* Spec .centerid — the card's identity repeated so context never drops */}
@@ -154,6 +168,12 @@ const ContributeSheet = forwardRef<BottomSheetModal, Props>(({ goal }, ref) => {
             )}
           />
 
+          {error && (
+            <AppText size="xs" color="danger">
+              {error}
+            </AppText>
+          )}
+
           {/* Spec: live CTA — the amount AND the resulting % */}
           <Button
             label={
@@ -162,6 +182,7 @@ const ContributeSheet = forwardRef<BottomSheetModal, Props>(({ goal }, ref) => {
                 : "Add money"
             }
             onPress={handleSubmit(onSubmit)}
+            loading={submitting}
             disabled={!isValid}
           />
         </>

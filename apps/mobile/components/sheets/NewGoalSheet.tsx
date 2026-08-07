@@ -1,5 +1,5 @@
-import { forwardRef } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { forwardRef, useState } from "react";
+import { Pressable, StyleSheet, Switch, View } from "react-native";
 import { z } from "zod/v4";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -13,12 +13,27 @@ import AppSheet from "./AppSheet";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 import Icon from "@/components/ui/Icon";
+import DateField from "@/components/ui/DateField";
 import { AppText } from "@/components/ui/AppText";
 import { parseMoney } from "@/lib/money";
+import { toUtcDateISO } from "@/lib/date";
+import { post } from "@/lib/api";
 import type { IconName } from "@/lib/icons";
-import { spacing } from "@/theme";
+import { colors, spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
 import { chipGradients, chipTintFor } from "@/theme/gradients";
+
+const startOfToday = (): Date => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+const defaultDeadline = (): Date => {
+  const d = startOfToday();
+  d.setMonth(d.getMonth() + 6);
+  return d;
+};
 
 // Goal identity options (visual pickers, not free text).
 const ICONS: IconName[] = ["savings", "health", "trophy", "wallet", "investments", "transport"];
@@ -36,8 +51,15 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-const NewGoalSheet = forwardRef<BottomSheetModal>((_props, ref) => {
+type Props = {
+  onChanged: () => void;
+};
+
+const NewGoalSheet = forwardRef<BottomSheetModal, Props>(({ onChanged }, ref) => {
   const { dismiss } = useBottomSheetModal();
+  const [deadline, setDeadline] = useState<Date | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const {
     control,
     handleSubmit,
@@ -49,22 +71,30 @@ const NewGoalSheet = forwardRef<BottomSheetModal>((_props, ref) => {
     defaultValues: { name: "", amount: "", icon: "savings", color: "accent" },
   });
 
-  const onSubmit = (data: FormValues) => {
-    // Build an IGoal-shaped payload. A new goal starts at 0 saved; no persistence
-    // yet (store/API milestone) — same as Add Transaction.
-    const newGoal = {
-      name: data.name,
-      target: parseMoney(data.amount), // paise
-      saved: 0,
-      icon: data.icon,
-      color: data.color,
-    };
-    console.log(newGoal);
-    dismiss();
+  const onSubmit = async (data: FormValues) => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await post("/goals", {
+        name: data.name.trim(),
+        target: parseMoney(data.amount),
+        icon: data.icon,
+        color: data.color,
+        ...(deadline ? { deadline: toUtcDateISO(deadline) } : {}),
+      });
+      dismiss();
+      onChanged();
+    }
+    catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't create the goal");
+    }
+    finally {
+      setSubmitting(false);
+    }
   };
 
   return (
-    <AppSheet ref={ref} onDismiss={() => reset()}>
+    <AppSheet ref={ref} onDismiss={() => { reset(); setDeadline(null); setError(null); }}>
       {/* Spec .shead — title + ✕ */}
       <View style={styles.head}>
         <AppText size="lg" weight="black">
@@ -170,9 +200,33 @@ const NewGoalSheet = forwardRef<BottomSheetModal>((_props, ref) => {
         )}
       />
 
+      <View style={styles.field}>
+        <View style={styles.deadlineHead}>
+          <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
+            TARGET DATE
+          </AppText>
+          <Switch
+            value={deadline !== null}
+            onValueChange={(on) => setDeadline(on ? defaultDeadline() : null)}
+            trackColor={{ false: colors.surface2, true: colors.primary }}
+            thumbColor={colors.surface}
+          />
+        </View>
+        {deadline && (
+          <DateField label="DEADLINE" value={deadline} onChange={setDeadline} minimumDate={startOfToday()} />
+        )}
+      </View>
+
+      {error && (
+        <AppText size="xs" color="danger">
+          {error}
+        </AppText>
+      )}
+
       <Button
         label="Create Goal"
         onPress={handleSubmit(onSubmit)}
+        loading={submitting}
         disabled={!isValid}
       />
     </AppSheet>
@@ -192,6 +246,11 @@ const styles = StyleSheet.create({
   },
   label: {
     letterSpacing: 1.3, // spec .flabel
+  },
+  deadlineHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   row: {
     flexDirection: "row",

@@ -7,6 +7,7 @@ import transactionRoutes from "./transactionRoutes";
 import dashboardRoutes from "./dashboardRoutes";
 import budgetRoutes from "./budgetRoutes";
 import billRoutes from "./billRoutes";
+import goalRoutes from "./goalRoutes";
 
 const router = Router();
 
@@ -18,5 +19,6 @@ router.use ('/transactions', transactionRoutes);
 router.use ('/dashboard', dashboardRoutes);
 router.use ('/budgets', budgetRoutes);
 router.use ('/bills', billRoutes);
+router.use ('/goals', goalRoutes);
 
 export default router;
