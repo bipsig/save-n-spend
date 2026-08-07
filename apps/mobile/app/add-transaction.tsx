@@ -16,7 +16,7 @@ import type { IconName } from "@/lib/icons";
 import { spacing } from "@/theme";
 import { useDefaultAccount } from "@/lib/accounts";
 import { get, patch, post } from "@/lib/api";
-import { ITransaction } from "@save-n-spend/types";
+import type { ITransaction } from "@save-n-spend/types";
 
 const schema = z.object({
   title: z.string().min(1, "Title is required"),

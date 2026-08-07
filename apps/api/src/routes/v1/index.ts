@@ -5,6 +5,7 @@ import accountRoutes from "./accountRoutes";
 import categoryRoutes from "./categoryRoutes";
 import transactionRoutes from "./transactionRoutes";
 import dashboardRoutes from "./dashboardRoutes";
+import budgetRoutes from "./budgetRoutes";
 
 const router = Router();
 
@@ -14,5 +15,6 @@ router.use ('/accounts', accountRoutes);
 router.use ('/categories', categoryRoutes);
 router.use ('/transactions', transactionRoutes);
 router.use ('/dashboard', dashboardRoutes);
+router.use ('/budgets', budgetRoutes);
 
 export default router;

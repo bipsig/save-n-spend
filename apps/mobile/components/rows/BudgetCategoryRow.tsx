@@ -1,5 +1,5 @@
-import type { IBudget } from "@/lib/mock";
-import { StyleSheet, View } from "react-native";
+import type { IBudget } from "@save-n-spend/types";
+import { Pressable, StyleSheet, View } from "react-native";
 import Card from "../data/Card";
 import { AppText } from "../ui/AppText";
 import ProgressBar from "../data/ProgressBar";
@@ -13,6 +13,7 @@ import formatMoney from "@/lib/money";
 type Props = {
   budget: IBudget
   spent: number
+  onPress?: () => void
 };
 
 type StatusIcon = {
@@ -23,7 +24,7 @@ type StatusIcon = {
 // Spec budget row: gradient category chip · category-tinted bar · three-tier
 // status (ok ✓ green / ≥80% clock amber / ≥100% alert red) driving icon + pace
 // text · over rows get a red-tinted card border.
-const BudgetCategoryRow = ({ budget, spent }: Props) => {
+const BudgetCategoryRow = ({ budget, spent, onPress }: Props) => {
   const category = useCategoryById(budget.category);
 
   const percentage = Math.min((spent / budget.limit) * 100, 100);
@@ -39,33 +40,35 @@ const BudgetCategoryRow = ({ budget, spent }: Props) => {
   const barColor = over ? "danger" : ((category?.color ?? "accent") as ColorToken);
 
   return (
-    <Card style={[styles.card, over && styles.overCard]}>
-      <View style={styles.header}>
-        <Icon
-          name={(category?.icon ?? "more") as IconName}
-          size={22}
-          containerSize={44}
-          container="square"
-          gradient={(category?.color ?? "accent") as ColorToken}
-        />
-        <View style={styles.info}>
-          <AppText size="md" weight="bold">
-            {category?.name ?? "Uncategorized"}
-          </AppText>
-          <AppText size="sm" color="inkDim">
-            {`${formatMoney(spent)} of ${formatMoney(budget.limit)}`}
-          </AppText>
+    <Pressable onPress={onPress} disabled={!onPress}>
+      <Card style={[styles.card, over && styles.overCard]}>
+        <View style={styles.header}>
+          <Icon
+            name={(category?.icon ?? "more") as IconName}
+            size={22}
+            containerSize={44}
+            container="square"
+            gradient={(category?.color ?? "accent") as ColorToken}
+          />
+          <View style={styles.info}>
+            <AppText size="md" weight="bold">
+              {category?.name ?? "Uncategorized"}
+            </AppText>
+            <AppText size="sm" color="inkDim">
+              {`${formatMoney(spent)} of ${formatMoney(budget.limit)}`}
+            </AppText>
+          </View>
+          <View style={styles.status}>
+            <Icon name={statusIcon.icon} size={16} color={statusIcon.color} />
+            <AppText size="xs" color={statusIcon.color} weight="semibold">
+              {message}
+            </AppText>
+          </View>
         </View>
-        <View style={styles.status}>
-          <Icon name={statusIcon.icon} size={16} color={statusIcon.color} />
-          <AppText size="xs" color={statusIcon.color} weight="semibold">
-            {message}
-          </AppText>
-        </View>
-      </View>
 
-      <ProgressBar value={percentage} color={barColor} />
-    </Card>
+        <ProgressBar value={percentage} color={barColor} />
+      </Card>
+    </Pressable>
   );
 };
 

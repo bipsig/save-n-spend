@@ -30,7 +30,9 @@ const EmptyState = ({ icon = "search", title, subtitle, actionLabel, onAction }:
         </AppText>
       )}
       {actionLabel && onAction && (
-        <Button label={actionLabel} variant="primary" size="sm" pill onPress={onAction} />
+        <View style={styles.action}>
+          <Button label={actionLabel} variant="primary" size="sm" pill onPress={onAction} />
+        </View>
       )}
     </View>
   )
@@ -56,6 +58,11 @@ const styles = StyleSheet.create({
   text: {
     textAlign: "center",
     maxWidth: 220,
+  },
+  action: {
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: spacing.xs,
   }
 })
 
