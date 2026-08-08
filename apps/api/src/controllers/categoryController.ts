@@ -17,6 +17,18 @@ export const listCategories = async (req: Request, res: Response): Promise<void>
 export const createCategory = async (req: Request, res: Response): Promise<void> => {
     const reqBody = createCategorySchema.parse(req.body);
 
+    // Category names are unique per user (case-insensitive) — the same name
+    // anywhere reads as ambiguous, since rows show the bare name with no parent.
+    const duplicate = await Category.findOne({
+        userId: req.user?.userId,
+        isArchived: false,
+        name: reqBody.name
+    }).collation({ locale: "en", strength: 2 });
+
+    if (duplicate) {
+        throw AppError.badRequest(`A category named "${reqBody.name}" already exists`);
+    }
+
     if (reqBody.parent) {
         const parentCategory = await Category.findOne({
             _id: reqBody.parent,
@@ -73,6 +85,19 @@ export const updateCategory = async (req: Request, res: Response): Promise<void>
 
     if (!category) {
         throw AppError.notFound("Category not found");
+    }
+
+    if (reqBody.name) {
+        const duplicate = await Category.findOne({
+            userId: req.user?.userId,
+            isArchived: false,
+            _id: { $ne: categoryId },
+            name: reqBody.name
+        }).collation({ locale: "en", strength: 2 });
+
+        if (duplicate) {
+            throw AppError.badRequest(`A category named "${reqBody.name}" already exists`);
+        }
     }
 
     Object.assign(category, reqBody);

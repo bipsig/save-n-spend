@@ -58,6 +58,98 @@ export const iconMap = {
 
   // Add Transaction numpad
   backspace: 'backspace',
+
+  // Category icon library — the extra glyphs offered in the icon picker.
+  fastfood: 'fastfood',
+  cafe: 'local-cafe',
+  bar: 'local-bar',
+  pizza: 'local-pizza',
+  cake: 'cake',
+  groceries: 'local-grocery-store',
+  icecream: 'icecream',
+  cart: 'shopping-cart',
+  clothing: 'checkroom',
+  diamond: 'diamond',
+  gift: 'card-giftcard',
+  store: 'store',
+  devices: 'devices',
+  laptop: 'laptop',
+  smartphone: 'smartphone',
+  watch: 'watch',
+  fuel: 'local-gas-station',
+  bus: 'directions-bus',
+  train: 'train',
+  flight: 'flight',
+  taxi: 'local-taxi',
+  bike: 'directions-bike',
+  scooter: 'two-wheeler',
+  parking: 'local-parking',
+  subway: 'directions-subway',
+  apartment: 'apartment',
+  bed: 'king-bed',
+  sofa: 'weekend',
+  chair: 'chair',
+  lightbulb: 'lightbulb',
+  bolt: 'bolt',
+  water: 'water-drop',
+  wifi: 'wifi',
+  router: 'router',
+  cleaning: 'cleaning-services',
+  tools: 'build',
+  handyman: 'handyman',
+  music: 'music-note',
+  headphones: 'headphones',
+  gaming: 'sports-esports',
+  tv: 'tv',
+  book: 'menu-book',
+  camera: 'camera-alt',
+  celebration: 'celebration',
+  sports: 'sports-soccer',
+  fitness: 'fitness-center',
+  spa: 'spa',
+  pool: 'pool',
+  beach: 'beach-access',
+  hotel: 'hotel',
+  medical: 'medical-services',
+  hospital: 'local-hospital',
+  medication: 'medication',
+  pets: 'pets',
+  childCare: 'child-care',
+  school: 'school',
+  bank: 'account-balance',
+  card: 'credit-card',
+  payments: 'payments',
+  rupee: 'currency-rupee',
+  atm: 'local-atm',
+  work: 'work',
+  business: 'business-center',
+  donation: 'volunteer-activism',
+  park: 'park',
+  flower: 'local-florist',
 } satisfies Record<string, GlyphName>
 
 export type IconName = keyof typeof iconMap;
+
+// The curated set offered in icon pickers (new category, new goal, …) — the
+// meaningful, category-flavoured glyphs, grouped by theme, not the nav/action ones.
+export const PICKER_ICONS: IconName[] = [
+  // Food & drink
+  "food", "fastfood", "cafe", "bar", "pizza", "cake", "groceries", "icecream",
+  // Shopping
+  "shopping", "cart", "clothing", "diamond", "gift", "store", "devices", "laptop", "smartphone", "watch",
+  // Transport
+  "transport", "fuel", "bus", "train", "flight", "taxi", "bike", "scooter", "parking", "subway",
+  // Home & bills
+  "home", "apartment", "bed", "sofa", "chair", "lightbulb", "bolt", "water", "wifi", "router",
+  "cleaning", "tools", "handyman", "bills", "receipt",
+  // Leisure
+  "entertainment", "music", "headphones", "gaming", "tv", "book", "camera",
+  "celebration", "sports", "fitness", "spa", "pool", "beach", "hotel",
+  // Health & learning
+  "health", "medical", "hospital", "medication", "pets", "childCare", "school",
+  // Money & work
+  "savings", "bank", "wallet", "card", "payments", "rupee", "atm", "income", "investments",
+  "work", "business", "donation",
+  // Misc
+  "trophy", "star", "park", "flower", "more",
+];

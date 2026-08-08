@@ -45,6 +45,13 @@ export const colors = {
   warningSoft: 'rgba(255,177,92,0.16)',
   info: '#68A8FF',
   infoSoft: 'rgba(104,168,255,0.16)',
+
+  // Extended palette — extra category / goal chip tints (gradients in gradients.ts)
+  teal: '#2DD4BF',
+  pink: '#F472B6',
+  lime: '#A3E635',
+  orange: '#FB923C',
+  indigo: '#818CF8',
 } as const
 
 export type ColorToken = keyof typeof colors

@@ -16,7 +16,9 @@ export type GradientToken = keyof typeof gradients
 // the chip's own hue. Keyed by tint name; `chipTintFor` maps the semantic
 // color tokens the data layer already uses (category.color / goal.color).
 
-export type ChipTint = 'blue' | 'green' | 'violet' | 'amber' | 'red'
+export type ChipTint =
+  | 'blue' | 'green' | 'violet' | 'amber' | 'red'
+  | 'teal' | 'pink' | 'lime' | 'orange' | 'indigo'
 
 export const chipGradients: Record<ChipTint, readonly [string, string]> = {
   blue: ['#7FB4FF', '#3E7EF0'],
@@ -24,6 +26,11 @@ export const chipGradients: Record<ChipTint, readonly [string, string]> = {
   violet: ['#B0A2FF', '#7C66FF'],
   amber: ['#FFCE7E', '#F59A2D'],
   red: ['#FF9AA0', '#F5525C'],
+  teal: ['#5EEAD4', '#14B8A6'],
+  pink: ['#FDA4C5', '#EC4899'],
+  lime: ['#D9F99D', '#84CC16'],
+  orange: ['#FFB27A', '#FB7136'],
+  indigo: ['#A5B4FC', '#5B6EF0'],
 }
 
 // Deep ink for the glyph sitting on each gradient (spec: color:#04140d etc.)
@@ -33,6 +40,11 @@ export const chipInk: Record<ChipTint, string> = {
   violet: '#0D0824',
   amber: '#1D1103',
   red: '#1F0608',
+  teal: '#04140F',
+  pink: '#1F0611',
+  lime: '#16210A',
+  orange: '#1F0E03',
+  indigo: '#0A0C24',
 }
 
 // Glow shadow color per tint (spec: box-shadow 0 5px 15px rgba(...,.4))
@@ -42,6 +54,11 @@ export const chipGlow: Record<ChipTint, string> = {
   violet: 'rgba(124,102,255,0.9)',
   amber: 'rgba(245,154,45,0.9)',
   red: 'rgba(245,82,92,0.9)',
+  teal: 'rgba(20,184,166,0.9)',
+  pink: 'rgba(236,72,153,0.9)',
+  lime: 'rgba(132,204,22,0.9)',
+  orange: 'rgba(251,113,54,0.9)',
+  indigo: 'rgba(91,110,240,0.9)',
 }
 
 // Progress-bar fills (spec .track > i gradients) — same hues, bar-tuned stops.
@@ -51,6 +68,11 @@ export const barGradients: Record<ChipTint, readonly [string, string]> = {
   violet: ['#B0A2FF', '#7C66FF'],
   amber: ['#FFCE7E', '#F59A2D'],
   red: ['#FF9AA0', '#F5525C'],
+  teal: ['#5EEAD4', '#14B8A6'],
+  pink: ['#FDA4C5', '#EC4899'],
+  lime: ['#D9F99D', '#84CC16'],
+  orange: ['#FFB27A', '#FB7136'],
+  indigo: ['#A5B4FC', '#5B6EF0'],
 }
 
 // Semantic color token → chip tint. The mock data colors goals/categories with
@@ -62,6 +84,11 @@ const TINT_BY_TOKEN: Partial<Record<ColorToken, ChipTint>> = {
   warning: 'amber',
   accent: 'violet',
   primary: 'violet',
+  teal: 'teal',
+  pink: 'pink',
+  lime: 'lime',
+  orange: 'orange',
+  indigo: 'indigo',
 }
 
 export const chipTintFor = (token?: string): ChipTint =>

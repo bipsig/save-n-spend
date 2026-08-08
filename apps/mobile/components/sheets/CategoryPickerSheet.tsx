@@ -7,6 +7,8 @@ import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
 import Button from "@/components/ui/Button";
 import Chip from "@/components/ui/Chip";
+import IconPicker from "@/components/ui/IconPicker";
+import ColorPicker from "@/components/ui/ColorPicker";
 import { useCategories } from "@/lib/categories";
 import { useCategoryStore } from "@/store/categories";
 import { post } from "@/lib/api";
@@ -34,6 +36,8 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [newParent, setNewParent] = useState<string | null>(null);
+  const [newIcon, setNewIcon] = useState<IconName>("more");
+  const [newColor, setNewColor] = useState<ColorToken>("accent");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -127,6 +131,8 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
     setCreating(false);
     setNewName("");
     setNewParent(null);
+    setNewIcon("more");
+    setNewColor("accent");
     setError(null);
   };
 
@@ -138,6 +144,8 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
       const created = await post<ICategory>("/categories", {
         name: newName.trim(),
         kind,
+        icon: newIcon,
+        color: newColor,
         ...(newParent ? { parent: newParent } : {}),
       });
       await useCategoryStore.getState().load();
@@ -191,6 +199,16 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
               </View>
             </>
           )}
+
+          <AppText size="xs" weight="bold" color="inkDim" style={styles.headerLabel}>
+            ICON
+          </AppText>
+          <IconPicker value={newIcon} onChange={setNewIcon} />
+
+          <AppText size="xs" weight="bold" color="inkDim" style={styles.headerLabel}>
+            COLOUR
+          </AppText>
+          <ColorPicker value={newColor} onChange={setNewColor} />
 
           {error && (
             <AppText size="xs" color="danger">
