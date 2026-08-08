@@ -20,6 +20,12 @@ type Props = {
   onPick: (categoryId: string) => void;
 };
 
+type Group = {
+  parent: ICategory;
+  parentPickable: boolean; // false = shown only as a grouping header (e.g. already budgeted)
+  children: ICategory[]; // pickable children only
+};
+
 const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, excludeIds, onPick }, ref) => {
   const { dismiss } = useBottomSheetModal();
   const categories = useCategories();
@@ -31,58 +37,89 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const parentNames = useMemo(
-    () => new Map(categories.map((c) => [c._id, c.name])),
-    [categories]
-  );
-
   // Top-level categories of this kind — the possible parents for a new sub-category.
   const parentOptions = useMemo(
     () => categories.filter((c) => c.kind === kind && !c.parent),
     [categories, kind]
   );
 
-  const available = useMemo(() => {
+  // The tree: each top-level category with its children nested beneath it. Search
+  // filters within groups but keeps the parent as context; excluded ids (budget
+  // overlap guard) drop out of the pickable set, though a parent can still stay on
+  // as a header when only some of its children are excluded.
+  const groups = useMemo<Group[]>(() => {
     const term = search.trim().toLowerCase();
-    return categories.filter(
-      (c) =>
-        c.kind === kind &&
-        !excludeIds?.has(c._id) &&
-        (term === "" || c.name.toLowerCase().includes(term))
-    );
+    const excluded = (id: string) => excludeIds?.has(id) ?? false;
+
+    return categories
+      .filter((c) => c.kind === kind && !c.parent)
+      .map((parent) => {
+        const parentMatch = term === "" || parent.name.toLowerCase().includes(term);
+        const kids = categories.filter(
+          (c) => c.parent === parent._id && (parentMatch || c.name.toLowerCase().includes(term))
+        );
+        return {
+          parent,
+          // Selectable unless the overlap guard excludes it; a search miss on the
+          // parent still keeps it tappable as long as the group is visible.
+          parentPickable: !excluded(parent._id),
+          children: kids.filter((c) => !excluded(c._id)),
+          visible: parentMatch || kids.length > 0,
+        };
+      })
+      .filter((g) => g.visible && (g.parentPickable || g.children.length > 0))
+      .map(({ parent, parentPickable, children }) => ({ parent, parentPickable, children }));
   }, [categories, kind, excludeIds, search]);
 
-  const parents = available.filter((c) => !c.parent);
-  const children = available.filter((c) => c.parent);
+  const choose = (categoryId: string) => {
+    onPick(categoryId);
+    dismiss();
+  };
 
-  const renderCard = (category: ICategory, isChild: boolean) => (
-    <Pressable
-      key={category._id}
-      style={[styles.card, isChild && styles.childCard]}
-      onPress={() => {
-        onPick(category._id);
-        dismiss();
-      }}
-    >
-      <Icon
-        name={(category.icon ?? "more") as IconName}
-        size={isChild ? 15 : 18}
-        containerSize={isChild ? 30 : 34}
-        containerRadius={isChild ? 10 : 11}
-        container="square"
-        gradient={(category.color ?? "accent") as ColorToken}
-      />
-      <View style={styles.cardLabel}>
-        {isChild && parentNames.has(category.parent ?? "") && (
-          <AppText size="xs" color="inkDim" numberOfLines={1}>
-            {parentNames.get(category.parent ?? "")}
+  const renderGroup = ({ parent, parentPickable, children }: Group) => (
+    <View key={parent._id} style={styles.group}>
+      {parentPickable ? (
+        <Pressable style={styles.parentRow} onPress={() => choose(parent._id)}>
+          <Icon
+            name={(parent.icon ?? "more") as IconName}
+            size={18}
+            containerSize={36}
+            containerRadius={11}
+            container="square"
+            gradient={(parent.color ?? "accent") as ColorToken}
+          />
+          <AppText size="sm" weight="bold" style={styles.rowLabel} numberOfLines={1}>
+            {parent.name}
           </AppText>
-        )}
-        <AppText size="sm" weight="bold" numberOfLines={1}>
-          {category.name}
+        </Pressable>
+      ) : (
+        // Not selectable itself (e.g. already budgeted) — a plain header keeping
+        // its still-pickable children grouped and legible.
+        <AppText size="xs" weight="bold" color="inkDim" style={styles.headerLabel}>
+          {parent.name.toUpperCase()}
         </AppText>
-      </View>
-    </Pressable>
+      )}
+
+      {children.length > 0 && (
+        <View style={styles.rail}>
+          {children.map((child) => (
+            <Pressable key={child._id} style={styles.childRow} onPress={() => choose(child._id)}>
+              <Icon
+                name={(child.icon ?? "more") as IconName}
+                size={15}
+                containerSize={30}
+                containerRadius={10}
+                container="square"
+                gradient={(child.color ?? "accent") as ColorToken}
+              />
+              <AppText size="sm" weight="semibold" style={styles.rowLabel} numberOfLines={1}>
+                {child.name}
+              </AppText>
+            </Pressable>
+          ))}
+        </View>
+      )}
+    </View>
   );
 
   const reset = () => {
@@ -123,7 +160,7 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
 
       {creating ? (
         <View style={styles.createBlock}>
-          <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
+          <AppText size="xs" weight="bold" color="inkDim" style={styles.headerLabel}>
             NEW CATEGORY NAME
           </AppText>
           <BottomSheetTextInput
@@ -137,10 +174,10 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
 
           {parentOptions.length > 0 && (
             <>
-              <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
+              <AppText size="xs" weight="bold" color="inkDim" style={styles.headerLabel}>
                 PARENT (OPTIONAL)
               </AppText>
-              <View style={styles.parentRow}>
+              <View style={styles.parentRow2}>
                 <Chip label="Top-level" selected={newParent === null} onPress={() => setNewParent(null)} />
                 {parentOptions.map((parent) => (
                   <Chip
@@ -176,25 +213,9 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
             />
           </View>
 
-          {parents.length > 0 && (
-            <>
-              <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
-                {kind === "expense" ? "EXPENSE CATEGORIES" : "INCOME CATEGORIES"}
-              </AppText>
-              <View style={styles.grid}>{parents.map((c) => renderCard(c, false))}</View>
-            </>
-          )}
-
-          {children.length > 0 && (
-            <>
-              <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
-                NARROW IT DOWN
-              </AppText>
-              <View style={styles.grid}>{children.map((c) => renderCard(c, true))}</View>
-            </>
-          )}
-
-          {parents.length === 0 && children.length === 0 && (
+          {groups.length > 0 ? (
+            <View style={styles.tree}>{groups.map(renderGroup)}</View>
+          ) : (
             <AppText size="sm" color="inkDim">
               No categories match.
             </AppText>
@@ -210,7 +231,7 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
 CategoryPickerSheet.displayName = "CategoryPickerSheet";
 
 const styles = StyleSheet.create({
-  label: {
+  headerLabel: {
     letterSpacing: 1.3,
   },
   searchBox: {
@@ -229,35 +250,50 @@ const styles = StyleSheet.create({
     color: colors.ink,
     fontSize: 15,
   },
-  grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
+  tree: {
+    gap: spacing.md,
+  },
+  group: {
     gap: spacing.sm,
   },
-  card: {
-    flexBasis: "48%",
+  parentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: radius.md,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  // The children sit under a left rail — a vertical connector that visually ties
+  // them to their parent above.
+  rail: {
+    marginLeft: 18,
+    paddingLeft: 14,
+    borderLeftWidth: 1,
+    borderLeftColor: "rgba(255,255,255,0.14)",
+    gap: spacing.sm,
+  },
+  childRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    paddingVertical: 12,
+    paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: radius.md,
-    backgroundColor: "rgba(255,255,255,0.05)",
+    backgroundColor: "rgba(255,255,255,0.035)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-  },
-  childCard: {
-    backgroundColor: "rgba(255,255,255,0.03)",
     borderColor: "rgba(255,255,255,0.07)",
   },
-  cardLabel: {
+  rowLabel: {
     flex: 1,
-    gap: 1,
   },
   createBlock: {
     gap: spacing.md,
   },
-  parentRow: {
+  parentRow2: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.sm,

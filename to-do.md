@@ -6,5 +6,6 @@
 - [ ] Better Filters on All Activity Screen
 - [X] Add note, location receipt not working
 - [X] Transfer Button in Add Transaction
-- [ ] Better Category Picker in Add Transaction
+- [X] Better Category Picker in Add Transaction
 - [ ] Some division in All Transactions (like daily divider)
+- [ ] No time picker in Add Transaction. Automatically maps to 12 am
