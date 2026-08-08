@@ -7,41 +7,79 @@ import Icon from "./Icon";
 import Button from "./Button";
 import { colors } from "@/theme";
 
+type Mode = "date" | "datetime";
+
 type Props = {
   label: string;
   value: Date;
   onChange: (date: Date) => void;
   minimumDate?: Date;
   maximumDate?: Date;
+  /** "datetime" adds a time step, so the row shows and sets both date and time. */
+  mode?: Mode;
 };
 
 const formatDate = (d: Date): string =>
   d.toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" });
 
-const DateField = ({ label, value, onChange, minimumDate, maximumDate }: Props) => {
-  const [show, setShow] = useState(false);
+const formatTime = (d: Date): string =>
+  d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
 
-  // Android's native dialog reports "set"/"dismissed" and closes itself; iOS
-  // drives a spinner inside our own modal that a Done button dismisses.
+// Merge a picked time (hours/minutes) onto a picked date, so the datetime flow
+// keeps both halves instead of one clobbering the other.
+const withTime = (date: Date, time: Date): Date => {
+  const merged = new Date(date);
+  merged.setHours(time.getHours(), time.getMinutes(), 0, 0);
+  return merged;
+};
+
+const DateField = ({ label, value, onChange, minimumDate, maximumDate, mode = "date" }: Props) => {
+  const [show, setShow] = useState(false);
+  // Android has no combined datetime dialog — we chain date → time ourselves.
+  const [androidStep, setAndroidStep] = useState<"date" | "time">("date");
+  const [androidDate, setAndroidDate] = useState<Date | null>(null);
+
+  const open = () => {
+    setAndroidStep("date");
+    setAndroidDate(null);
+    setShow(true);
+  };
+
   const onAndroidChange = (event: DateTimePickerEvent, selected?: Date) => {
+    if (event.type !== "set" || !selected) {
+      setShow(false);
+      setAndroidStep("date");
+      return;
+    }
+    // Datetime: after the date, roll straight into the time dialog.
+    if (mode === "datetime" && androidStep === "date") {
+      setAndroidDate(selected);
+      setAndroidStep("time");
+      return;
+    }
+    const result =
+      mode === "datetime" && androidDate ? withTime(androidDate, selected) : selected;
+    onChange(result);
     setShow(false);
-    if (event.type === "set" && selected) onChange(selected);
+    setAndroidStep("date");
   };
 
   const onIosChange = (_event: DateTimePickerEvent, selected?: Date) => {
     if (selected) onChange(selected);
   };
 
+  const display = mode === "datetime" ? `${formatDate(value)} · ${formatTime(value)}` : formatDate(value);
+
   return (
     <>
-      <Pressable style={styles.row} onPress={() => setShow(true)}>
+      <Pressable style={styles.row} onPress={open}>
         <Icon name="date" size={18} color="inkDim" />
         <View style={styles.text}>
           <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
             {label}
           </AppText>
           <AppText size="sm" weight="bold">
-            {formatDate(value)}
+            {display}
           </AppText>
         </View>
         <Icon name="chevronRight" size={20} color="inkDim" />
@@ -49,11 +87,12 @@ const DateField = ({ label, value, onChange, minimumDate, maximumDate }: Props) 
 
       {Platform.OS === "android" && show && (
         <DateTimePicker
-          value={value}
-          mode="date"
+          key={androidStep} // remount so the second (time) dialog opens
+          value={androidStep === "time" && androidDate ? androidDate : value}
+          mode={mode === "datetime" ? androidStep : "date"}
           onChange={onAndroidChange}
-          minimumDate={minimumDate}
-          maximumDate={maximumDate}
+          minimumDate={androidStep === "date" ? minimumDate : undefined}
+          maximumDate={androidStep === "date" ? maximumDate : undefined}
         />
       )}
 
@@ -63,7 +102,7 @@ const DateField = ({ label, value, onChange, minimumDate, maximumDate }: Props) 
           <View style={styles.picker}>
             <DateTimePicker
               value={value}
-              mode="date"
+              mode={mode}
               display="spinner"
               onChange={onIosChange}
               minimumDate={minimumDate}

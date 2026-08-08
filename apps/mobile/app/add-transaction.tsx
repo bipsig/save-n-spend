@@ -384,8 +384,8 @@ const AddTransaction = () => {
             </>
           )}
 
-          {/* Date row — spec .selrow. Defaults to now; tap to backdate. */}
-          <DateField label="WHEN" value={occurredAt} onChange={setOccurredAt} maximumDate={new Date()} />
+          {/* Date + time row — defaults to now; tap to set when it actually happened. */}
+          <DateField label="WHEN" mode="datetime" value={occurredAt} onChange={setOccurredAt} maximumDate={new Date()} />
 
           {/* Progressive disclosure — tap to reveal note + location fields. */}
           <Pressable
