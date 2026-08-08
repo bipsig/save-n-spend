@@ -1,3 +1,4 @@
+import { Easing } from "react-native";
 import { theme } from "@/theme";
 import { iconMap } from "@/lib/icons";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -8,6 +9,13 @@ const TabsLayout = () => {
     <Tabs
       screenOptions={{
         headerShown: false,
+        // Tab switches slide/fade instead of hard-cutting — so "See all" into the
+        // Activity tab feels like the stack pushes into Bills / Goals.
+        animation: "shift",
+        transitionSpec: {
+          animation: "timing",
+          config: { duration: 320, easing: Easing.out(Easing.cubic) },
+        },
         tabBarActiveTintColor: "#A394FF", // spec .tabi.on — violet
         tabBarInactiveTintColor: theme.colors.inkDim,
         tabBarStyle: {
