@@ -61,6 +61,8 @@ const ScreenScaffold = ({
             style={styles.scroll}
             contentContainerStyle={styles.content}
             showsVerticalScrollIndicator={false}
+            keyboardDismissMode="on-drag"
+            keyboardShouldPersistTaps="handled"
           >
             {children}
           </ScrollView>

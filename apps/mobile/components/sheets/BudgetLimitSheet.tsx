@@ -22,6 +22,8 @@ type Props = {
   month: string;
   summary: BudgetSummary | null;
   categoryId: string | null;
+  /** Create mode — opens the category picker (the form stays mounted behind it). */
+  onPickCategoryPress?: () => void;
   onChanged: () => void;
 };
 
@@ -36,7 +38,7 @@ type FormValues = z.infer<typeof schema>;
 
 const STEPS = [-50000, 50000, 100000];
 
-const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, categoryId, onChanged }, ref) => {
+const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, categoryId, onPickCategoryPress, onChanged }, ref) => {
   const { dismiss } = useBottomSheetModal();
   const isEdit = !!summary;
   const category = useCategoryById(summary?.budget.category ?? categoryId ?? null);
@@ -112,31 +114,49 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
     }
   };
 
+  const needsCategory = !isEdit && !categoryId;
   const verb = isEdit ? "Save" : "Create";
-  const ctaLabel = !isValid
-    ? isEdit ? "Save limit" : "Create budget"
-    : over
-      ? `${verb} · ${formatMoney(spent - entered)} over`
-      : `${verb} · ${formatMoney(entered - spent)} left`;
+  const ctaLabel = needsCategory
+    ? "Choose a category"
+    : !isValid
+      ? isEdit ? "Save limit" : "Create budget"
+      : over
+        ? `${verb} · ${formatMoney(spent - entered)} over`
+        : `${verb} · ${formatMoney(entered - spent)} left`;
+
+  // Create mode picks its category in-form; edit mode's category is fixed.
+  const identity = (
+    <>
+      <Icon
+        name={(category?.icon ?? (isEdit ? "more" : "add")) as IconName}
+        size={30}
+        containerSize={64}
+        containerRadius={21}
+        container="square"
+        gradient={(category?.color ?? "accent") as ColorToken}
+      />
+      <AppText size="md" weight="black">
+        {category?.name ?? "Choose a category"}
+      </AppText>
+      <AppText size="xs" color="inkDim">
+        {isEdit
+          ? `Spent ${formatMoney(spent)} so far this month`
+          : category
+            ? "Tap to change · then set a monthly limit"
+            : "Tap to pick which category to budget"}
+      </AppText>
+    </>
+  );
 
   return (
     <AppSheet ref={ref} onDismiss={() => setError(null)}>
-      <View style={styles.identity}>
-        <Icon
-          name={(category?.icon ?? "more") as IconName}
-          size={30}
-          containerSize={64}
-          containerRadius={21}
-          container="square"
-          gradient={(category?.color ?? "accent") as ColorToken}
-        />
-        <AppText size="md" weight="black">
-          {category?.name ?? "Category"}
-        </AppText>
-        <AppText size="xs" color="inkDim">
-          {isEdit ? `Spent ${formatMoney(spent)} so far this month` : "Set a monthly limit"}
-        </AppText>
-      </View>
+      {isEdit ? (
+        <View style={styles.identity}>{identity}</View>
+      ) : (
+        <Pressable style={styles.identity} onPress={onPickCategoryPress}>
+          {identity}
+        </Pressable>
+      )}
 
       <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
         MONTHLY LIMIT
@@ -183,7 +203,7 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
         </AppText>
       )}
 
-      <Button label={ctaLabel} onPress={handleSubmit(onSave)} loading={saving} disabled={!isValid} />
+      <Button label={ctaLabel} onPress={handleSubmit(onSave)} loading={saving} disabled={!isValid || needsCategory} />
       {isEdit && (
         <Button label="Remove from budget" variant="dangerGhost" onPress={onRemove} loading={removing} />
       )}

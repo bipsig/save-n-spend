@@ -103,6 +103,7 @@ const AppSheet = forwardRef<BottomSheetModal, Props>(({ children, onDismiss, scr
         <BottomSheetScrollView
           contentContainerStyle={[styles.content, bodyPad]}
           showsVerticalScrollIndicator={false}
+          keyboardDismissMode="on-drag"
           keyboardShouldPersistTaps="handled"
         >
           {children}

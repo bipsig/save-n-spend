@@ -7,6 +7,7 @@ import type { ColorToken } from './colors'
 export const gradients = {
   brand: ['#8B7BFF', '#6D5CF6'],  // violet — pill buttons, CTAs, FAB, month summary
   health: ['#2FE08A', '#12B981'], // green — Finance Health Score banner
+  danger: ['#FF9AA0', '#F5525C'], // red — destructive confirm CTA (Delete)
 } as const
 
 export type GradientToken = keyof typeof gradients

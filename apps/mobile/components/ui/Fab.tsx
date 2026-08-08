@@ -11,16 +11,20 @@ const Fab = ({ onPress }: { onPress: () => void }) => {
     const { bottom } = useSafeAreaInsets();
     return (
         <View style={[styles.wrap, { bottom: bottom + spacing.lg }]}>
-            <Pressable onPress={onPress} style={styles.fab} accessibilityLabel="Add transaction">
-                <LinearGradient
-                    colors={[...gradients.brand]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 0.8, y: 1 }}
-                    style={[StyleSheet.absoluteFill, styles.round]}
-                    pointerEvents="none"
-                />
-                <Icon name="add" size={26} color="surface" />
-            </Pressable>
+            {/* Glow on an unclipped, opaque layer — the Pressable clips the
+                gradient (overflow:hidden) so it can't also cast the halo. */}
+            <View style={styles.glow}>
+                <Pressable onPress={onPress} style={styles.fab} accessibilityLabel="Add transaction">
+                    <LinearGradient
+                        colors={[...gradients.brand]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 0.8, y: 1 }}
+                        style={[StyleSheet.absoluteFill, styles.round]}
+                        pointerEvents="none"
+                    />
+                    <Icon name="add" size={26} color="surface" />
+                </Pressable>
+            </View>
         </View>
     );
 };
@@ -30,6 +34,15 @@ const styles = StyleSheet.create({
         position: "absolute",
         right: 20,
     },
+    glow: {
+        borderRadius: 29,
+        backgroundColor: "#6D5CF6",
+        shadowColor: "#6D5CFF",
+        shadowOpacity: 0.55,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 8 },
+        elevation: 10,
+    },
     fab: {
         width: 58,
         height: 58,
@@ -37,11 +50,6 @@ const styles = StyleSheet.create({
         alignItems: "center",
         justifyContent: "center",
         overflow: "hidden",
-        shadowColor: "#6D5CFF",
-        shadowOpacity: 0.55,
-        shadowRadius: 12,
-        shadowOffset: { width: 0, height: 8 },
-        elevation: 10,
     },
     round: {
         borderRadius: 29,

@@ -49,14 +49,17 @@ const sizeStyles: Record<Size, SizeStyle> = {
 }
 
 // Spec: primary/confirm actions are a gradient with a glow, never a flat fill.
-// primary = violet brand, success = green (positive confirms, e.g. Mark as Paid).
+// primary = violet brand, success = green (positive confirms), danger = red
+// (destructive confirm, e.g. Delete Transaction).
 const GRADIENT_BY_VARIANT: Partial<Record<Variant, GradientToken>> = {
   primary: "brand",
   success: "health",
+  danger: "danger",
 };
 const GLOW_BY_VARIANT: Partial<Record<Variant, string>> = {
   primary: "#6D5CFF",
   success: "#12B981",
+  danger: "#F5525C",
 };
 
 const Button = ({
@@ -79,67 +82,93 @@ const Button = ({
   const isDisabled = disabled || loading;
   const gradientToken = GRADIENT_BY_VARIANT[variant];
   const gradient = !!gradientToken;
+  const shape = pill ? styles.pill : styles.base;
 
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={isDisabled}
-      style={({ pressed }) => [
-        styles.base,
-        pill ? styles.pill : null,
-        {
-          backgroundColor: gradient ? "transparent" : colors[v.background],
-          borderColor: v.border ? colors[v.border] : "transparent",
-          borderWidth: v.border ? 1 : 0,
-          paddingVertical: s.paddingVertical,
-          paddingHorizontal: s.paddingHorizontal,
-          opacity: isDisabled ? 0.45 : pressed ? 0.85 : 1,
+    // The glow lives on this outer layer, not the Pressable: a view can't both
+    // clip its content (overflow:hidden, needed to round the gradient) AND cast
+    // an outer shadow — so the halo needs its own unclipped, opaque surface.
+    <View
+      style={[
+        pill ? styles.pillWrap : styles.wrap,
+        gradient && !isDisabled && {
+          ...styles.glow,
+          shadowColor: GLOW_BY_VARIANT[variant] ?? "#6D5CFF",
+          backgroundColor: colors[v.background],
         },
-        gradient && { ...styles.glow, shadowColor: GLOW_BY_VARIANT[variant] ?? "#6D5CFF" },
+        isDisabled ? styles.disabled : null,
       ]}
-      {...rest}
     >
-      {gradientToken && (
-        <LinearGradient
-          colors={[...gradients[gradientToken]]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0.8, y: 1 }}
-          style={[StyleSheet.absoluteFill, pill ? styles.pill : styles.base]}
-          pointerEvents="none"
-        />
-      )}
-      <View style={styles.content}>
-        {loading ? (
-          <ActivityIndicator color={colors[v.text]} />
-        ) : (
-          <>
-            {icon && <Icon name={icon} size={pill ? 17 : 21} color={v.text} />}
-            <AppText weight="bold" size={s.fontSize} color={v.text}>
-              {label}
-            </AppText>
-          </>
+      <Pressable
+        onPress={onPress}
+        disabled={isDisabled}
+        style={({ pressed }) => [
+          shape,
+          {
+            backgroundColor: gradient ? "transparent" : colors[v.background],
+            borderColor: v.border ? colors[v.border] : "transparent",
+            borderWidth: v.border ? 1 : 0,
+            paddingVertical: s.paddingVertical,
+            paddingHorizontal: s.paddingHorizontal,
+            opacity: pressed ? 0.85 : 1,
+          },
+        ]}
+        {...rest}
+      >
+        {gradientToken && (
+          <LinearGradient
+            colors={[...gradients[gradientToken]]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0.8, y: 1 }}
+            style={[StyleSheet.absoluteFill, shape]}
+            pointerEvents="none"
+          />
         )}
-      </View>
-    </Pressable>
+        <View style={styles.content}>
+          {loading ? (
+            <ActivityIndicator color={colors[v.text]} />
+          ) : (
+            <>
+              {icon && <Icon name={icon} size={pill ? 17 : 21} color={v.text} />}
+              <AppText weight="bold" size={s.fontSize} color={v.text}>
+                {label}
+              </AppText>
+            </>
+          )}
+        </View>
+      </Pressable>
+    </View>
   )
 }
 
 const styles = StyleSheet.create({
+  // Outer shadow layer — matches the button's corners; opaque bg (set inline)
+  // so the halo actually renders. Full-width by default; pill hugs its content.
+  wrap: {
+    borderRadius: radius.md,
+  },
+  pillWrap: {
+    borderRadius: radius.full,
+    alignSelf: "flex-start",
+  },
+  // Inner clipped surfaces the gradient + content fill.
   base: {
     borderRadius: radius.md,
     overflow: "hidden",
   },
   pill: {
     borderRadius: radius.full,
-    alignSelf: "flex-start",
   },
-  // Violet halo under gradient buttons (spec: 0 8px 22px rgba(109,92,255,.45)).
+  disabled: {
+    opacity: 0.45,
+  },
+  // Colored halo under gradient buttons — large + soft so it reads across a
+  // full-width CTA, not just a tight FAB (spec: a generous glowing bloom).
   glow: {
-    shadowColor: "#6D5CFF",
-    shadowOpacity: 0.45,
-    shadowRadius: 11,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 8,
+    shadowOpacity: 0.6,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 14,
   },
   content: {
     flexDirection: 'row',

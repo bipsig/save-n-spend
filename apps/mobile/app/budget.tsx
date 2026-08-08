@@ -99,14 +99,21 @@ const BudgetScreen = () => {
     limitRef.current?.present();
   };
 
-  const onPickCategory = (categoryId: string) => {
+  // New budget opens the form first; the category is chosen from inside it.
+  const openCreate = () => {
     setActive(null);
-    setPendingCategory(categoryId);
+    setPendingCategory(null);
     limitRef.current?.present();
   };
 
+  // Picker is opened from within the form (which stays mounted behind it), so
+  // just record the choice — no need to re-present the form.
+  const onPickCategory = (categoryId: string) => {
+    setPendingCategory(categoryId);
+  };
+
   const headerRight = (
-    <Button label="+ New" pill size="sm" onPress={() => pickerRef.current?.present()} />
+    <Button label="+ New" pill size="sm" onPress={openCreate} />
   );
 
   if (error) {
@@ -140,7 +147,7 @@ const BudgetScreen = () => {
           title="No budgets yet"
           subtitle="Set a monthly limit for a category and track spending against it."
           actionLabel="Create a budget"
-          onAction={() => pickerRef.current?.present()}
+          onAction={openCreate}
         />
       ) : (
         <>
@@ -157,7 +164,14 @@ const BudgetScreen = () => {
       )}
 
       <CategoryPickerSheet ref={pickerRef} kind="expense" excludeIds={excludedIds} onPick={onPickCategory} />
-      <BudgetLimitSheet ref={limitRef} month={month} summary={active} categoryId={pendingCategory} onChanged={refetch} />
+      <BudgetLimitSheet
+        ref={limitRef}
+        month={month}
+        summary={active}
+        categoryId={pendingCategory}
+        onPickCategoryPress={() => pickerRef.current?.present()}
+        onChanged={refetch}
+      />
     </ScreenScaffold>
   );
 };

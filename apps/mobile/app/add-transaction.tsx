@@ -303,6 +303,7 @@ const AddTransaction = () => {
           style={styles.midScroll}
           contentContainerStyle={styles.midContent}
           showsVerticalScrollIndicator={false}
+          keyboardDismissMode="on-drag"
           keyboardShouldPersistTaps="handled"
         >
           {type !== "transfer" && (

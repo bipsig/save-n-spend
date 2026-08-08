@@ -257,6 +257,8 @@ const ActivityScreen = () => {
           }
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
           onEndReached={feed.loadMore}
           onEndReachedThreshold={0.4}
           ListHeaderComponent={

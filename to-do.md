@@ -9,4 +9,4 @@
 - [X] Better Category Picker in Add Transaction
 - [X] Some division in All Transactions (like daily divider)
 - [X] No time picker in Add Transaction. Automatically maps to 12 am
-- [ ] Keyboard auto opens when creating new category
+- [X] Keyboard auto opens when creating new category
