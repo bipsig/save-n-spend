@@ -1,18 +1,16 @@
-import { Pressable, StyleSheet, View } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { StyleSheet, View } from "react-native";
 import AppHeader from "@/components/shell/AppHeader";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import SummaryCard from "@/components/data/SummaryCard";
 import HealthScoreCard from "@/components/data/HealthScoreCard";
 import SectionHeader from "@/components/ui/SectionHeader";
+import Fab from "@/components/ui/Fab";
 import BillRow from "@/components/rows/BillRow";
 import GoalCard from "@/components/rows/GoalCard";
 import TransactionRow from "@/components/rows/TransactionRow";
 import formatMoney from "@/lib/money";
 import { dashboard } from "@/lib/mock";
-import { gradients, radius, spacing } from "@/theme";
-import Icon from "@/components/ui/Icon";
+import { radius, spacing } from "@/theme";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useDashboardSummary } from "@/lib/dashboard";
 import { useBills, groupBills } from "@/lib/bills";
@@ -23,24 +21,9 @@ import ErrorState from "@/components/states/ErrorState";
 import SkeletonState from "@/components/states/SkeletonState";
 import { useCallback } from "react";
 
-// Spec .fab — the one global action: glowing violet +, → Add Transaction.
-const Fab = ({ onPress }: { onPress: () => void }) => (
-  <Pressable onPress={onPress} style={styles.fab} accessibilityLabel="Add transaction">
-    <LinearGradient
-      colors={[...gradients.brand]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 0.8, y: 1 }}
-      style={[StyleSheet.absoluteFill, styles.fabRound]}
-      pointerEvents="none"
-    />
-    <Icon name="add" size={26} color="surface" />
-  </Pressable>
-);
-
 const HomeScreen = () => {
 
   const router = useRouter();
-  const { bottom } = useSafeAreaInsets();
 
   const userName = useSession((s) => s.user?.name);
 
@@ -111,9 +94,7 @@ const HomeScreen = () => {
         />
       }
       floating={
-        <View style={[styles.fabWrap, { bottom: bottom + spacing.lg }]}>
-          <Fab onPress={() => router.push("/add-transaction")} />
-        </View>
+        <Fab onPress={() => router.push("/add-transaction")} />
       }
     >
       <HealthScoreCard
@@ -205,27 +186,6 @@ const styles = StyleSheet.create({
   gridRow: {
     flexDirection: "row",
     gap: 12,
-  },
-  fabWrap: {
-    position: "absolute",
-    right: 20,
-  },
-  fab: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-    // spec: 0 8px 24px rgba(109,92,255,.55)
-    shadowColor: "#6D5CFF",
-    shadowOpacity: 0.55,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 10,
-  },
-  fabRound: {
-    borderRadius: 29,
   },
 });
 

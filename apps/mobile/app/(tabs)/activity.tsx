@@ -1,8 +1,8 @@
 import { ActivityIndicator, FlatList, ScrollView, StyleSheet, View } from "react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
-import type { ITransaction } from "@save-n-spend/types";
+import type { ICategory, ITransaction } from "@save-n-spend/types";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import GradientCard from "@/components/shell/GradientCard";
 import TransactionRow from "@/components/rows/TransactionRow";
@@ -11,11 +11,13 @@ import { AppText } from "@/components/ui/AppText";
 import Search from "@/components/ui/Search";
 import Chip from "@/components/ui/Chip";
 import SegmentedControl from "@/components/ui/SegmentedControl";
+import Fab from "@/components/ui/Fab";
 import EmptyState from "@/components/states/EmptyState";
 import ErrorState from "@/components/states/ErrorState";
 import SkeletonState from "@/components/states/SkeletonState";
 import formatMoney from "@/lib/money";
 import { useCategories } from "@/lib/categories";
+import type { IconName } from "@/lib/icons";
 import { useTransactionFeed, useTransactionSummary } from "@/lib/transactions";
 import { RANGES, rangeBounds, rangeLabel, type RangeKey } from "@/lib/dateRange";
 import { dayGroupLabel, monthGroupLabel } from "@/lib/date";
@@ -96,11 +98,31 @@ const SummaryCard = ({
 );
 
 const ActivityScreen = () => {
-  const categories = useCategories();
+  const router = useRouter();
   const [range, setRange] = useState<RangeKey>("month");
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("all");
+
+  // Two-tier category filter: a row of top-level parents, and — once one is
+  // active — a contextual child row that belongs to it. The open parent is
+  // derived from the selection: pick a parent to see its children, pick a child
+  // and its parent stays highlighted as the trail.
+  const categories = useCategories();
+  const parents = useMemo(() => categories.filter((c) => !c.parent), [categories]);
+  const childrenByParent = useMemo(() => {
+    const map = new Map<string, ICategory[]>();
+    for (const c of categories) {
+      if (c.parent) map.set(c.parent, [...(map.get(c.parent) ?? []), c]);
+    }
+    return map;
+  }, [categories]);
+  const openParentId =
+    activeCategory === "all"
+      ? null
+      : (categories.find((c) => c._id === activeCategory)?.parent ?? activeCategory);
+  const openParent = openParentId ? parents.find((p) => p._id === openParentId) : undefined;
+  const childRow = openParentId ? (childrenByParent.get(openParentId) ?? []) : [];
 
   // Search moves server-side, so debounce it — one request per pause, not per key.
   useEffect(() => {
@@ -163,27 +185,60 @@ const ActivityScreen = () => {
   }, [feed.items, showMonths]);
 
   return (
-    <ScreenScaffold title="All Activity" scroll={false}>
+    <ScreenScaffold
+      title="All Activity"
+      scroll={false}
+      floating={<Fab onPress={() => router.push("/add-transaction")} />}
+    >
       <SegmentedControl segments={RANGES} value={range} onChange={setRange} />
 
       <Search value={query} onChangeText={setQuery} placeholder="Search transactions" />
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.chipScroll}
-        contentContainerStyle={styles.chipRow}
-      >
-        <Chip label="All" selected={activeCategory === "all"} onPress={() => setActiveCategory("all")} />
-        {categories.map((category) => (
-          <Chip
-            key={category._id}
-            label={category.name}
-            selected={activeCategory === category._id}
-            onPress={() => setActiveCategory(category._id)}
-          />
-        ))}
-      </ScrollView>
+      {/* Two-tier category filter, inline. Parents scroll on one row; selecting
+          one drops in a child row beneath it (rail + "All <Parent>") so the
+          child → parent link reads without a long flat list. */}
+      <View style={styles.filterCol}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+          <Chip label="All" selected={activeCategory === "all"} onPress={() => setActiveCategory("all")} />
+          {parents.map((parent) => (
+            <Chip
+              key={parent._id}
+              label={parent.name}
+              icon={parent.icon as IconName | undefined}
+              selected={activeCategory === parent._id}
+              active={openParentId === parent._id && activeCategory !== parent._id}
+              onPress={() => setActiveCategory(parent._id)}
+            />
+          ))}
+        </ScrollView>
+
+        {openParent && childRow.length > 0 && (
+          <View style={styles.childWrap}>
+            <View style={styles.childRail} />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.childScroll}
+              contentContainerStyle={styles.filterRow}
+            >
+              <Chip
+                label={`All ${openParent.name}`}
+                selected={activeCategory === openParent._id}
+                onPress={() => setActiveCategory(openParent._id)}
+              />
+              {childRow.map((child) => (
+                <Chip
+                  key={child._id}
+                  label={child.name}
+                  icon={child.icon as IconName | undefined}
+                  selected={activeCategory === child._id}
+                  onPress={() => setActiveCategory(child._id)}
+                />
+              ))}
+            </ScrollView>
+          </View>
+        )}
+      </View>
 
       {feed.error ? (
         <ErrorState message={feed.error} onRetry={feed.refetch} />
@@ -247,7 +302,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    paddingBottom: spacing.xl,
+    paddingBottom: 96, // clear the floating FAB so the last row stays tappable
     gap: spacing.md, // rhythm between rows and their day/month headers
   },
   dayHeader: {
@@ -272,12 +327,32 @@ const styles = StyleSheet.create({
   skeletonCol: {
     gap: spacing.lg, // mirror the real list's row rhythm so the swap doesn't jump
   },
-  chipScroll: {
-    flexGrow: 0, // keep the row at chip height; don't let it eat vertical space
-  },
-  chipRow: {
-    flexDirection: "row",
+  filterCol: {
     gap: spacing.sm,
+  },
+  filterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingRight: spacing.md, // let the last chip hint at more when it scrolls
+  },
+  // The child row sits inset behind a short violet rail, tying it to the
+  // highlighted parent chip above it.
+  childWrap: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    marginLeft: spacing.xs,
+  },
+  childRail: {
+    width: 2,
+    borderRadius: 1,
+    marginVertical: 4,
+    marginRight: spacing.sm,
+    backgroundColor: colors.primary,
+    opacity: 0.55,
+  },
+  childScroll: {
+    flex: 1,
   },
   footer: {
     paddingVertical: spacing.lg,
