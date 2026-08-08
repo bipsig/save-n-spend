@@ -18,9 +18,31 @@ import formatMoney from "@/lib/money";
 import { useCategories } from "@/lib/categories";
 import { useTransactionFeed, useTransactionSummary } from "@/lib/transactions";
 import { RANGES, rangeBounds, rangeLabel, type RangeKey } from "@/lib/dateRange";
+import { dayGroupLabel, monthGroupLabel } from "@/lib/date";
 import { colors, radius, spacing } from "@/theme";
 
-const Separator = () => <View style={styles.separator} />;
+// A flat feed row is either a transaction or a group header injected between days
+// (and a heavier month break when the list spans months).
+type ListRow =
+  | { kind: "month"; key: string; label: string }
+  | { kind: "day"; key: string; label: string }
+  | { kind: "txn"; key: string; tx: ITransaction };
+
+const DayHeader = ({ label }: { label: string }) => (
+  <AppText size="xs" weight="bold" color="inkDim" style={styles.dayHeader}>
+    {label}
+  </AppText>
+);
+
+const MonthDivider = ({ label }: { label: string }) => (
+  <View style={styles.monthDivider}>
+    <View style={styles.monthLine} />
+    <AppText size="xs" weight="black" color="inkDim" style={styles.monthLabel}>
+      {label}
+    </AppText>
+    <View style={styles.monthLine} />
+  </View>
+);
 
 // Spec month summary: violet-tinted glass · caps range label · 18/800 totals ·
 // hairline · net savings in pale green. Driven by the range aggregate, not the page.
@@ -115,6 +137,31 @@ const ActivityScreen = () => {
     detailRef.current?.present();
   };
 
+  // Group the flat, paginated feed into day sections, injecting a month break
+  // when the month rolls over. Month breaks only show for ranges that can span
+  // months (Week/Year/All) — they'd be redundant inside a single-month view.
+  const showMonths = range !== "day" && range !== "month";
+  const listData = useMemo<ListRow[]>(() => {
+    const rows: ListRow[] = [];
+    let lastDay: string | null = null;
+    let lastMonth: string | null = null;
+    for (const tx of feed.items) {
+      const d = new Date(tx.occurredAt as string);
+      const monthKey = `${d.getFullYear()}-${d.getMonth()}`;
+      const dayKey = `${monthKey}-${d.getDate()}`;
+      if (showMonths && monthKey !== lastMonth) {
+        rows.push({ kind: "month", key: `m-${monthKey}`, label: monthGroupLabel(tx.occurredAt as string) });
+        lastMonth = monthKey;
+      }
+      if (dayKey !== lastDay) {
+        rows.push({ kind: "day", key: `d-${dayKey}`, label: dayGroupLabel(tx.occurredAt as string) });
+        lastDay = dayKey;
+      }
+      rows.push({ kind: "txn", key: tx._id, tx });
+    }
+    return rows;
+  }, [feed.items, showMonths]);
+
   return (
     <ScreenScaffold title="All Activity" scroll={false}>
       <SegmentedControl segments={RANGES} value={range} onChange={setRange} />
@@ -142,12 +189,17 @@ const ActivityScreen = () => {
         <ErrorState message={feed.error} onRetry={feed.refetch} />
       ) : (
         <FlatList
-          data={feed.items}
-          keyExtractor={(item) => item._id}
-          renderItem={({ item }) => (
-            <TransactionRow transaction={item} onPress={() => openTransactionDetail(item)} />
-          )}
-          ItemSeparatorComponent={Separator}
+          data={listData}
+          keyExtractor={(item) => item.key}
+          renderItem={({ item }) =>
+            item.kind === "month" ? (
+              <MonthDivider label={item.label} />
+            ) : item.kind === "day" ? (
+              <DayHeader label={item.label} />
+            ) : (
+              <TransactionRow transaction={item.tx} onPress={() => openTransactionDetail(item.tx)} />
+            )
+          }
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
           onEndReached={feed.loadMore}
@@ -196,9 +248,26 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingBottom: spacing.xl,
+    gap: spacing.md, // rhythm between rows and their day/month headers
   },
-  separator: {
-    height: spacing.lg,
+  dayHeader: {
+    letterSpacing: 1.3,
+    paddingTop: spacing.xs,
+  },
+  monthDivider: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
+  },
+  monthLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.12)",
+  },
+  monthLabel: {
+    letterSpacing: 1.2,
   },
   skeletonCol: {
     gap: spacing.lg, // mirror the real list's row rhythm so the swap doesn't jump
@@ -215,7 +284,6 @@ const styles = StyleSheet.create({
   },
   summary: {
     gap: 12, // spec .hero gap × device scale
-    marginBottom: spacing.lg, // separate the header card from the first row
   },
   summaryLabel: {
     letterSpacing: 1.2, // spec .lbl caps tracking

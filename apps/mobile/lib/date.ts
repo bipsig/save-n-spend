@@ -70,3 +70,29 @@ export const startOfToday = (): Date => {
   d.setHours(0, 0, 0, 0);
   return d;
 };
+
+const isSameLocalDay = (a: Date, b: Date): boolean =>
+  a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+// Day-group header for the Activity list: "TODAY" / "YESTERDAY", else the
+// weekday + date ("SAT, 8 AUG", with the year once it's a different one).
+export const dayGroupLabel = (iso: string): string => {
+  const d = new Date(iso);
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+
+  if (isSameLocalDay(d, now)) return "TODAY";
+  if (isSameLocalDay(d, yesterday)) return "YESTERDAY";
+
+  const sameYear = d.getFullYear() === now.getFullYear();
+  return d
+    .toLocaleDateString("en-IN", sameYear
+      ? { weekday: "short", day: "numeric", month: "short" }
+      : { weekday: "short", day: "numeric", month: "short", year: "numeric" })
+    .toUpperCase();
+};
+
+// Month-break header ("AUGUST 2026") for longer, multi-month Activity lists.
+export const monthGroupLabel = (iso: string): string =>
+  new Date(iso).toLocaleDateString("en-IN", { month: "long", year: "numeric" }).toUpperCase();
