@@ -47,6 +47,14 @@ export const listTransactionQuerySchema = z.object({
     path: ["endDate"]
 });
 
+export const transactionSummaryQuerySchema = z.object({
+    startDate: z.iso.date().optional(),
+    endDate: z.iso.date().optional(),
+}).refine((data) => (!!data.startDate === !!data.endDate), {
+    message: "startDate and endDate must be provided together",
+    path: ["endDate"]
+})
+
 export const updateTransactionSchema = z.object({
     amount: z.number().int().positive().optional(),
     account: z.string().optional(),

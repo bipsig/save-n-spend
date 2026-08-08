@@ -6,6 +6,7 @@ import AppSheet from "./AppSheet";
 import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
 import Button from "@/components/ui/Button";
+import Chip from "@/components/ui/Chip";
 import { useCategories } from "@/lib/categories";
 import { useCategoryStore } from "@/store/categories";
 import { post } from "@/lib/api";
@@ -26,12 +27,19 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
   const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
+  const [newParent, setNewParent] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const parentNames = useMemo(
     () => new Map(categories.map((c) => [c._id, c.name])),
     [categories]
+  );
+
+  // Top-level categories of this kind — the possible parents for a new sub-category.
+  const parentOptions = useMemo(
+    () => categories.filter((c) => c.kind === kind && !c.parent),
+    [categories, kind]
   );
 
   const available = useMemo(() => {
@@ -81,6 +89,7 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
     setSearch("");
     setCreating(false);
     setNewName("");
+    setNewParent(null);
     setError(null);
   };
 
@@ -89,7 +98,11 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
     setSaving(true);
     setError(null);
     try {
-      const created = await post<ICategory>("/categories", { name: newName.trim(), kind });
+      const created = await post<ICategory>("/categories", {
+        name: newName.trim(),
+        kind,
+        ...(newParent ? { parent: newParent } : {}),
+      });
       await useCategoryStore.getState().load();
       onPick(created._id);
       dismiss();
@@ -103,7 +116,7 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
   };
 
   return (
-    <AppSheet ref={ref} onDismiss={reset}>
+    <AppSheet ref={ref} onDismiss={reset} scrollable>
       <AppText size="md" weight="black">
         Pick category
       </AppText>
@@ -121,6 +134,27 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
             style={styles.textInput}
             autoFocus
           />
+
+          {parentOptions.length > 0 && (
+            <>
+              <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
+                PARENT (OPTIONAL)
+              </AppText>
+              <View style={styles.parentRow}>
+                <Chip label="Top-level" selected={newParent === null} onPress={() => setNewParent(null)} />
+                {parentOptions.map((parent) => (
+                  <Chip
+                    key={parent._id}
+                    label={parent.name}
+                    icon={parent.icon as IconName}
+                    selected={newParent === parent._id}
+                    onPress={() => setNewParent(parent._id)}
+                  />
+                ))}
+              </View>
+            </>
+          )}
+
           {error && (
             <AppText size="xs" color="danger">
               {error}
@@ -222,6 +256,11 @@ const styles = StyleSheet.create({
   },
   createBlock: {
     gap: spacing.md,
+  },
+  parentRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
   },
   textInput: {
     paddingHorizontal: 14,

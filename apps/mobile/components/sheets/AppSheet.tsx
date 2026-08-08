@@ -4,6 +4,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import {
   BottomSheetModal,
   BottomSheetView,
+  BottomSheetScrollView,
   BottomSheetBackdrop,
 } from "@gorhom/bottom-sheet";
 import type {
@@ -16,6 +17,9 @@ type Props = {
   children: React.ReactNode;
   /** Fires after the sheet finishes dismissing (swipe, backdrop tap, or programmatic). */
   onDismiss?: () => void;
+  /** Long content (e.g. a full category grid) — scroll inside the sheet once it
+   * hits its max height, so nothing at the bottom gets clipped. */
+  scrollable?: boolean;
 };
 
 // Elevated violet surface (deliberately NOT white glass — a form needs legibility).
@@ -33,7 +37,7 @@ const SheetBackground = ({ style }: BottomSheetBackgroundProps) => (
   </View>
 );
 
-const AppSheet = forwardRef<BottomSheetModal, Props>(({ children, onDismiss }, ref) => {
+const AppSheet = forwardRef<BottomSheetModal, Props>(({ children, onDismiss, scrollable }, ref) => {
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
       <BottomSheetBackdrop
@@ -62,7 +66,17 @@ const AppSheet = forwardRef<BottomSheetModal, Props>(({ children, onDismiss }, r
       keyboardBlurBehavior="restore"
       android_keyboardInputMode="adjustResize"
     >
-      <BottomSheetView style={styles.content}>{children}</BottomSheetView>
+      {scrollable ? (
+        <BottomSheetScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {children}
+        </BottomSheetScrollView>
+      ) : (
+        <BottomSheetView style={styles.content}>{children}</BottomSheetView>
+      )}
     </BottomSheetModal>
   );
 });

@@ -16,6 +16,7 @@ export const iconMap = {
   close: 'close',
   chevronRight: 'chevron-right',
   chevronLeft: 'chevron-left',
+  chevronDown: 'expand-more',
   settings: 'settings',
   eye: 'visibility',
   eyeOff: 'visibility-off',

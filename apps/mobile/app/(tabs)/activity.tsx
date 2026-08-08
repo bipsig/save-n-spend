@@ -1,139 +1,125 @@
-import { FlatList, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import ScreenScaffold from "@/components/shell/ScreenScaffold";
-import TransactionRow from "@/components/rows/TransactionRow";
-import { radius, spacing } from "@/theme";
-import { useCallback, useRef, useState } from "react";
-import { useCategories } from "@/lib/categories";
-import Search from "@/components/ui/Search";
-import Chip from "@/components/ui/Chip";
-import GradientCard from "@/components/shell/GradientCard";
-import { AppText } from "@/components/ui/AppText";
-import formatMoney from "@/lib/money";
-import EmptyState from "@/components/states/EmptyState";
-import { useTransactions } from "@/lib/transactions";
-import ErrorState from "@/components/states/ErrorState";
+import { ActivityIndicator, FlatList, ScrollView, StyleSheet, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFocusEffect } from "expo-router";
-import SkeletonState from "@/components/states/SkeletonState";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { ITransaction } from "@save-n-spend/types";
+import ScreenScaffold from "@/components/shell/ScreenScaffold";
+import GradientCard from "@/components/shell/GradientCard";
+import TransactionRow from "@/components/rows/TransactionRow";
 import TransactionDetailSheet from "@/components/sheets/TransactionDetailSheet";
-
-type Props = {
-  income: number,
-  expense: number,
-  savings: number
-}
+import { AppText } from "@/components/ui/AppText";
+import Search from "@/components/ui/Search";
+import Chip from "@/components/ui/Chip";
+import SegmentedControl from "@/components/ui/SegmentedControl";
+import EmptyState from "@/components/states/EmptyState";
+import ErrorState from "@/components/states/ErrorState";
+import SkeletonState from "@/components/states/SkeletonState";
+import formatMoney from "@/lib/money";
+import { useCategories } from "@/lib/categories";
+import { useTransactionFeed, useTransactionSummary } from "@/lib/transactions";
+import { RANGES, rangeBounds, rangeLabel, type RangeKey } from "@/lib/dateRange";
+import { colors, radius, spacing } from "@/theme";
 
 const Separator = () => <View style={styles.separator} />;
 
-const TransactionsSummaryCard = ({
+// Spec month summary: violet-tinted glass · caps range label · 18/800 totals ·
+// hairline · net savings in pale green. Driven by the range aggregate, not the page.
+const SummaryCard = ({
+  label,
   income,
   expense,
-  savings
-}: Props) => {
-  const currentMonth = new Date().toLocaleString('default', { month: "long" });
-  const currentYear = new Date().getFullYear();
-  // Spec month summary: violet-tinted glass · caps month label · 18/800 totals ·
-  // hairline · net savings in pale green.
-  return (
-    <GradientCard gradient="brand" style={styles.summary}>
-      <AppText color="inkDim" size="xs" weight="semibold" style={styles.summaryLabel}>
-        {`${currentMonth} ${currentYear}`.toUpperCase()}
-      </AppText>
+  savings,
+}: {
+  label: string;
+  income: number;
+  expense: number;
+  savings: number;
+}) => (
+  <GradientCard gradient="brand" style={styles.summary}>
+    <AppText color="inkDim" size="xs" weight="semibold" style={styles.summaryLabel}>
+      {label}
+    </AppText>
 
-      <View style={styles.summaryRow}>
-        <View style={styles.summaryCol}>
-          <AppText color="inkDim" size="xs">
-            Total Income
-          </AppText>
-          <AppText size="lg" weight="black">
-            {formatMoney(income)}
-          </AppText>
-        </View>
-
-        <View style={[styles.summaryCol, styles.summaryColRight]}>
-          <AppText color="inkDim" size="xs">
-            Total Expenses
-          </AppText>
-          <AppText size="lg" weight="black">
-            {formatMoney(expense)}
-          </AppText>
-        </View>
-      </View>
-
-      <View style={styles.summaryDivider} />
-
-      <View style={styles.netRow}>
+    <View style={styles.summaryRow}>
+      <View style={styles.summaryCol}>
         <AppText color="inkDim" size="xs">
-          Net Savings
+          Total Income
         </AppText>
-        <AppText size="lg" weight="black" style={styles.netAmount}>
-          {formatMoney(savings)}
+        <AppText size="lg" weight="black">
+          {formatMoney(income)}
         </AppText>
       </View>
-    </GradientCard>
-  )
-}
+
+      <View style={[styles.summaryCol, styles.summaryColRight]}>
+        <AppText color="inkDim" size="xs">
+          Total Expenses
+        </AppText>
+        <AppText size="lg" weight="black">
+          {formatMoney(expense)}
+        </AppText>
+      </View>
+    </View>
+
+    <View style={styles.summaryDivider} />
+
+    <View style={styles.netRow}>
+      <AppText color="inkDim" size="xs">
+        Net Savings
+      </AppText>
+      <AppText size="lg" weight="black" style={styles.netAmount}>
+        {formatMoney(savings)}
+      </AppText>
+    </View>
+  </GradientCard>
+);
 
 const ActivityScreen = () => {
   const categories = useCategories();
+  const [range, setRange] = useState<RangeKey>("month");
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("all");
 
-  const { items: transactions, loading, error, refetch } = useTransactions();
+  // Search moves server-side, so debounce it — one request per pause, not per key.
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query.trim()), 350);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const bounds = useMemo(() => rangeBounds(range), [range]);
+
+  const feed = useTransactionFeed({
+    startDate: bounds.startDate,
+    endDate: bounds.endDate,
+    category: activeCategory === "all" ? undefined : activeCategory,
+    search: debouncedQuery || undefined,
+  });
+  const summary = useTransactionSummary({ startDate: bounds.startDate, endDate: bounds.endDate });
 
   const detailRef = useRef<BottomSheetModal>(null);
   const [activeTransaction, setActiveTransaction] = useState<ITransaction | null>(null);
 
+  // Refresh on focus (e.g. returning from Add Transaction) without re-firing on
+  // every filter change — the hooks already reload themselves when filters change.
+  const refresh = useRef<() => void>(() => {});
+  refresh.current = () => {
+    feed.refetch();
+    summary.refetch();
+  };
   useFocusEffect(useCallback(() => {
-    refetch();
-  }, [refetch]));
-
-  let filteredTransactions = activeCategory === "all" ? transactions : transactions.filter((transaction) => {
-    return transaction.category === activeCategory
-  })
-
-  filteredTransactions = query === "" ? filteredTransactions : filteredTransactions.filter((transaction) => {
-    return (transaction.title ?? "").toLowerCase().includes(query.trim().toLowerCase());
-  })
-
-  // amounts are positive; `type` gives direction. Income vs expense totals for the month.
-  const income = transactions.filter(t => t.type === "income").reduce((total, t) => total + t.amount, 0);
-  const expense = transactions.filter(t => t.type === "expense").reduce((total, t) => total + t.amount, 0);
-  const savings = income - expense;
+    refresh.current();
+  }, []));
 
   const openTransactionDetail = (transaction: ITransaction) => {
     setActiveTransaction(transaction);
     detailRef.current?.present();
-  }
-
-  if (error) {
-    return (
-      <ScreenScaffold title="All Activity">
-        <ErrorState message={error} onRetry={refetch} />
-      </ScreenScaffold>
-    )
-  }
-
-  if (loading && transactions.length === 0) {
-    return (
-      <ScreenScaffold title="All Activity">
-        <View style={styles.skeletonCol}>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <SkeletonState key={i} height={64} borderRadius={radius.md} />
-          ))}
-        </View>
-      </ScreenScaffold>
-    )
-  }
+  };
 
   return (
     <ScreenScaffold title="All Activity" scroll={false}>
-      <Search
-        value={query}
-        onChangeText={setQuery}
-        placeholder="Search transactions"
-      />
+      <SegmentedControl segments={RANGES} value={range} onChange={setRange} />
+
+      <Search value={query} onChangeText={setQuery} placeholder="Search transactions" />
 
       <ScrollView
         horizontal
@@ -141,12 +127,7 @@ const ActivityScreen = () => {
         style={styles.chipScroll}
         contentContainerStyle={styles.chipRow}
       >
-        <Chip
-          key={"all"}
-          label="All"
-          selected={activeCategory === "all"}
-          onPress={() => setActiveCategory("all")}
-        />
+        <Chip label="All" selected={activeCategory === "all"} onPress={() => setActiveCategory("all")} />
         {categories.map((category) => (
           <Chip
             key={category._id}
@@ -157,48 +138,54 @@ const ActivityScreen = () => {
         ))}
       </ScrollView>
 
-      <FlatList
-        data={filteredTransactions}
-        keyExtractor={(item) => item._id}
-        renderItem={({ item }) => (
-          <TransactionRow 
-            transaction={item} 
-            onPress={() => openTransactionDetail(item)} 
-          />
-        )}
-        ItemSeparatorComponent={Separator}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-        ListHeaderComponent={
-          <TransactionsSummaryCard
-            expense={expense}
-            income={income}
-            savings={savings}
-          />
-        }
-        ListEmptyComponent={
-          transactions.length === 0
-            ? (
+      {feed.error ? (
+        <ErrorState message={feed.error} onRetry={feed.refetch} />
+      ) : (
+        <FlatList
+          data={feed.items}
+          keyExtractor={(item) => item._id}
+          renderItem={({ item }) => (
+            <TransactionRow transaction={item} onPress={() => openTransactionDetail(item)} />
+          )}
+          ItemSeparatorComponent={Separator}
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          onEndReached={feed.loadMore}
+          onEndReachedThreshold={0.4}
+          ListHeaderComponent={
+            <SummaryCard
+              label={rangeLabel(range)}
+              income={summary.data?.income ?? 0}
+              expense={summary.data?.expenses ?? 0}
+              savings={summary.data?.savings ?? 0}
+            />
+          }
+          ListFooterComponent={
+            feed.loadingMore ? <ActivityIndicator color={colors.primary} style={styles.footer} /> : null
+          }
+          ListEmptyComponent={
+            feed.loading ? (
+              <View style={styles.skeletonCol}>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <SkeletonState key={i} height={64} borderRadius={radius.md} />
+                ))}
+              </View>
+            ) : (
               <EmptyState
-                title="No Transactions yet"
-                subtitle="Add your first one with + button"
+                title={debouncedQuery || activeCategory !== "all" ? "No matching transactions" : "No transactions yet"}
+                subtitle={
+                  debouncedQuery || activeCategory !== "all"
+                    ? "Try a different search, category, or range."
+                    : "Add your first one with the + button."
+                }
               />
             )
-            : (
-              <EmptyState
-                title="No Transactions"
-                subtitle="Try a different search or filter"
-              />
-            )
-        }
-        style={styles.list}
-      />
+          }
+          style={styles.list}
+        />
+      )}
 
-      <TransactionDetailSheet
-        ref={detailRef}
-        transaction={activeTransaction}
-        onDeleted={refetch} 
-      />
+      <TransactionDetailSheet ref={detailRef} transaction={activeTransaction} onDeleted={refresh.current} />
     </ScreenScaffold>
   );
 };
@@ -222,6 +209,9 @@ const styles = StyleSheet.create({
   chipRow: {
     flexDirection: "row",
     gap: spacing.sm,
+  },
+  footer: {
+    paddingVertical: spacing.lg,
   },
   summary: {
     gap: 12, // spec .hero gap × device scale

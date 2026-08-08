@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { createTransactionSchema, listTransactionQuerySchema, updateTransactionSchema } from "../schemas/transactionSchema";
+import { createTransactionSchema, listTransactionQuerySchema, transactionSummaryQuerySchema, updateTransactionSchema } from "../schemas/transactionSchema";
 import mongoose from "mongoose";
 import Account from "../models/Account";
 import { AppError } from "../utils/AppError";
@@ -102,6 +102,33 @@ export const filterTransactions = async (req: Request, res: Response): Promise<v
     );
 
     reply.ok(res, filteredTransactions, "Transactions fetched");
+}
+
+export const getTransactionSummary = async (req: Request, res: Response): Promise<void> => {
+    const { startDate, endDate } = transactionSummaryQuerySchema.parse(req.query);
+
+    const match: Record<string, unknown> = {
+        userId: new mongoose.Types.ObjectId(req.user!.userId),
+        type: { $in: ["income", "expense"] }
+    };
+
+    if (startDate && endDate) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        start.setUTCHours(0, 0, 0, 0);
+        end.setUTCHours(23, 59, 59, 999);
+        match.occurredAt = { $gte: start, $lte: end };
+    }
+
+    const sums = await Transaction.aggregate([
+        { $match: match },
+        { $group: { _id: "$type", total: { $sum: "$amount" } } }
+    ]);
+
+    const income = sums.find((s) => s._id === "income")?.total ?? 0;
+    const expenses = sums.find((s) => s._id === "expense")?.total ?? 0;
+
+    reply.ok(res, { income, expenses, savings: income - expenses }, "Transaction summary fetched");
 }
 
 export const getTransaction = async (req: Request, res: Response): Promise<void> => {
