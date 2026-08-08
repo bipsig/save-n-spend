@@ -16,6 +16,10 @@ import type { IconName } from "@/lib/icons";
 import { colors, radius, spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
 
+// Fixed height so the sheet reads as nested over Add Transaction / Budgets and
+// opens from the top instead of dynamically growing to near-full-height.
+const SNAP_POINTS = ["78%"];
+
 type Props = {
   kind: CategoryKind;
   excludeIds?: Set<string>;
@@ -160,8 +164,24 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
     }
   };
 
+  // Actions live in the sheet's pinned footer so they stay reachable while the
+  // form/tree scrolls; the error sits with them.
+  const footer = creating ? (
+    <>
+      {error && (
+        <AppText size="xs" color="danger">
+          {error}
+        </AppText>
+      )}
+      <Button label="Create category" onPress={onCreate} loading={saving} disabled={newName.trim().length === 0} />
+      <Button label="Back" variant="ghost" onPress={() => setCreating(false)} />
+    </>
+  ) : (
+    <Button label="+ Create new category" variant="secondary" onPress={() => setCreating(true)} />
+  );
+
   return (
-    <AppSheet ref={ref} onDismiss={reset} scrollable>
+    <AppSheet ref={ref} onDismiss={reset} scrollable snapPoints={SNAP_POINTS} footer={footer}>
       <AppText size="md" weight="black">
         Pick category
       </AppText>
@@ -177,7 +197,6 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
             value={newName}
             onChangeText={setNewName}
             style={styles.textInput}
-            autoFocus
           />
 
           {parentOptions.length > 0 && (
@@ -209,14 +228,6 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
             COLOUR
           </AppText>
           <ColorPicker value={newColor} onChange={setNewColor} />
-
-          {error && (
-            <AppText size="xs" color="danger">
-              {error}
-            </AppText>
-          )}
-          <Button label="Create category" onPress={onCreate} loading={saving} disabled={newName.trim().length === 0} />
-          <Button label="Back" variant="ghost" onPress={() => setCreating(false)} />
         </View>
       ) : (
         <>
@@ -238,8 +249,6 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
               No categories match.
             </AppText>
           )}
-
-          <Button label="+ Create new category" variant="secondary" onPress={() => setCreating(true)} />
         </>
       )}
     </AppSheet>
