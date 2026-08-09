@@ -105,3 +105,45 @@ export interface DashboardSummary {
   savings: number,
   netWorth: number
 }
+
+export type InsightsPeriod = "week" | "month" | "year"
+
+export interface InsightsTrendPoint {
+  date: string          // ISO — bucket start (day for week/month, month for year)
+  amount: number        // paise, expenses
+}
+
+export interface InsightsSeriesPoint {
+  periodStart: string   // ISO — unit start
+  income: number        // paise
+  expense: number       // paise
+}
+
+export interface InsightsCategorySlice {
+  categoryId: string    // parent id (children rolled in)
+  name: string
+  total: number         // paise, expenses
+}
+
+export interface InsightsAccountSlice {
+  accountId: string
+  name: string
+  total: number         // paise, expenses
+}
+
+// One /insights call; all figures exclude transfers. Rollups + KPIs are
+// server-computed so the client renders with minimal processing. incomeVsExpense
+// is 6 units oldest -> newest (last two = current & previous, for savings-rate delta).
+export interface InsightsSummary {
+  period: InsightsPeriod
+  periodStart: string              // ISO — start of the shown window
+  periodEnd: string                // ISO — end of the shown window (exclusive)
+  trend: InsightsTrendPoint[]
+  incomeVsExpense: InsightsSeriesPoint[]
+  byCategory: InsightsCategorySlice[]
+  byAccount: InsightsAccountSlice[]
+  avgDailySpendCurrent: number     // paise/day
+  avgDailySpendPrevious: number    // paise/day, prior period — for the delta
+  topCategory: string | null       // biggest category name this period
+  txnCount: number                 // non-transfer count, current window
+}

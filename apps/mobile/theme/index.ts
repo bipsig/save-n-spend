@@ -15,6 +15,7 @@ export const theme = {
 } as const;
 
 export { colors, spacing, radius, fontWeight, fontSize, shadows, gradients, chipGradients, chipInk, barGradients }
+export { chartPalette, chartOthers, incomeColor, expenseColor } from './charts'
 
 export type { ColorToken } from './colors'
 export type { SpacingToken, RadiusToken } from './spacing'

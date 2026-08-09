@@ -10,3 +10,5 @@
 - [X] Some division in All Transactions (like daily divider)
 - [X] No time picker in Add Transaction. Automatically maps to 12 am
 - [X] Keyboard auto opens when creating new category
+- [ ] Update Add Goals Screen with designed Screen
+- [ ] Catgory Modal auto opens sometimes when other modals are opened
