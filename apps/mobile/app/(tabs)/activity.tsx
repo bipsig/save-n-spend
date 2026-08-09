@@ -7,10 +7,13 @@ import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import GradientCard from "@/components/shell/GradientCard";
 import TransactionRow from "@/components/rows/TransactionRow";
 import TransactionDetailSheet from "@/components/sheets/TransactionDetailSheet";
+import ExportSheet from "@/components/sheets/ExportSheet";
 import { AppText } from "@/components/ui/AppText";
 import Search from "@/components/ui/Search";
 import Chip from "@/components/ui/Chip";
+import Button from "@/components/ui/Button";
 import SegmentedControl from "@/components/ui/SegmentedControl";
+import PeriodNav from "@/components/ui/PeriodNav";
 import Fab from "@/components/ui/Fab";
 import EmptyState from "@/components/states/EmptyState";
 import ErrorState from "@/components/states/ErrorState";
@@ -19,7 +22,7 @@ import formatMoney from "@/lib/money";
 import { useCategories } from "@/lib/categories";
 import type { IconName } from "@/lib/icons";
 import { useTransactionFeed, useTransactionSummary } from "@/lib/transactions";
-import { RANGES, rangeBounds, rangeLabel, type RangeKey } from "@/lib/dateRange";
+import { RANGES, rangeBounds, rangeLabel, rangeNavLabel, type RangeKey } from "@/lib/dateRange";
 import { dayGroupLabel, monthGroupLabel } from "@/lib/date";
 import { colors, radius, spacing } from "@/theme";
 
@@ -100,6 +103,8 @@ const SummaryCard = ({
 const ActivityScreen = () => {
   const router = useRouter();
   const [range, setRange] = useState<RangeKey>("month");
+  // 0 = current window, -1 = previous, … (never positive — no future).
+  const [offset, setOffset] = useState(0);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("all");
@@ -130,7 +135,16 @@ const ActivityScreen = () => {
     return () => clearTimeout(timer);
   }, [query]);
 
-  const bounds = useMemo(() => rangeBounds(range), [range]);
+  const bounds = useMemo(() => rangeBounds(range, offset), [range, offset]);
+
+  // Switching range type re-anchors to the current window; "all" has no periods
+  // to page through.
+  const changeRange = (r: RangeKey) => {
+    setRange(r);
+    setOffset(0);
+  };
+  const goPrev = () => setOffset((o) => o - 1);
+  const goNext = () => setOffset((o) => Math.min(0, o + 1));
 
   const feed = useTransactionFeed({
     startDate: bounds.startDate,
@@ -141,6 +155,7 @@ const ActivityScreen = () => {
   const summary = useTransactionSummary({ startDate: bounds.startDate, endDate: bounds.endDate });
 
   const detailRef = useRef<BottomSheetModal>(null);
+  const exportRef = useRef<BottomSheetModal>(null);
   const [activeTransaction, setActiveTransaction] = useState<ITransaction | null>(null);
 
   // Refresh on focus (e.g. returning from Add Transaction) without re-firing on
@@ -188,9 +203,28 @@ const ActivityScreen = () => {
     <ScreenScaffold
       title="All Activity"
       scroll={false}
+      headerRight={
+        <Button
+          label="Export"
+          icon="download"
+          pill
+          size="sm"
+          variant="secondary"
+          onPress={() => exportRef.current?.present()}
+        />
+      }
       floating={<Fab onPress={() => router.push("/add-transaction")} />}
     >
-      <SegmentedControl segments={RANGES} value={range} onChange={setRange} />
+      <SegmentedControl segments={RANGES} value={range} onChange={changeRange} />
+
+      {range !== "all" && (
+        <PeriodNav
+          label={rangeNavLabel(range, offset)}
+          canNext={offset < 0}
+          onPrev={goPrev}
+          onNext={goNext}
+        />
+      )}
 
       <Search value={query} onChangeText={setQuery} placeholder="Search transactions" />
 
@@ -263,7 +297,7 @@ const ActivityScreen = () => {
           onEndReachedThreshold={0.4}
           ListHeaderComponent={
             <SummaryCard
-              label={rangeLabel(range)}
+              label={rangeLabel(range, offset)}
               income={summary.data?.income ?? 0}
               expense={summary.data?.expenses ?? 0}
               savings={summary.data?.savings ?? 0}
@@ -295,6 +329,7 @@ const ActivityScreen = () => {
       )}
 
       <TransactionDetailSheet ref={detailRef} transaction={activeTransaction} onDeleted={refresh.current} />
+      <ExportSheet ref={exportRef} defaultRange={range} defaultOffset={offset} />
     </ScreenScaffold>
   );
 };

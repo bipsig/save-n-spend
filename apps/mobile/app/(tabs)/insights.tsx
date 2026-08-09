@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Alert, Pressable, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import type { InsightsPeriod } from "@save-n-spend/types";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
@@ -9,7 +9,8 @@ import ShareBar from "@/components/data/ShareBar";
 import AreaChart from "@/components/charts/AreaChart";
 import PairedColumns from "@/components/charts/PairedColumns";
 import SegmentedControl from "@/components/ui/SegmentedControl";
-import Icon from "@/components/ui/Icon";
+import PeriodNav from "@/components/ui/PeriodNav";
+import Button from "@/components/ui/Button";
 import { AppText } from "@/components/ui/AppText";
 import EmptyState from "@/components/states/EmptyState";
 import ErrorState from "@/components/states/ErrorState";
@@ -23,6 +24,7 @@ import {
   pctChange,
   buildTrend,
 } from "@/lib/insights";
+import { exportInsights } from "@/lib/insightsExport";
 import { colors, radius, spacing, incomeColor, expenseColor } from "@/theme";
 
 const SEGMENTS: { key: InsightsPeriod; label: string }[] = [
@@ -144,37 +146,6 @@ const Kpi = ({ label, value, children }: { label: string; value: string; childre
   </Card>
 );
 
-// Step backward/forward through periods. Forward is disabled at the current
-// window (no peeking into the future).
-const PeriodNav = ({
-  label,
-  canNext,
-  onPrev,
-  onNext,
-}: {
-  label: string;
-  canNext: boolean;
-  onPrev: () => void;
-  onNext: () => void;
-}) => (
-  <View style={styles.nav}>
-    <Pressable onPress={onPrev} hitSlop={8} style={styles.navBtn}>
-      <Icon name="chevronLeft" size={24} color="ink" />
-    </Pressable>
-    <AppText size="md" weight="bold" numberOfLines={1}>
-      {label}
-    </AppText>
-    <Pressable
-      onPress={onNext}
-      disabled={!canNext}
-      hitSlop={8}
-      style={[styles.navBtn, !canNext && styles.navBtnOff]}
-    >
-      <Icon name="chevronRight" size={24} color={canNext ? "ink" : "inkDim"} />
-    </Pressable>
-  </View>
-);
-
 const InsightsScreen = () => {
   const router = useRouter();
   const [period, setPeriod] = useState<InsightsPeriod>("month");
@@ -182,6 +153,7 @@ const InsightsScreen = () => {
   const [offset, setOffset] = useState(0);
   // The one open chart tooltip — screen-owned so a tap anywhere else clears it.
   const [tip, setTip] = useState<{ chart: "trend" | "income" | "account"; i: number } | null>(null);
+  const [exporting, setExporting] = useState(false);
   const { data, loading, error, refetch } = useInsights(period, offset);
 
   // Switching period type always re-anchors to the current week/month/year.
@@ -199,6 +171,20 @@ const InsightsScreen = () => {
   const goNext = () => {
     setOffset((o) => Math.min(0, o + 1));
     setTip(null);
+  };
+
+  // Export the window in view as a PDF of the graphs — the data's already in
+  // hand, so build and hand off to the share sheet straight away.
+  const onExport = async () => {
+    if (!data || exporting) return;
+    setExporting(true);
+    try {
+      await exportInsights(data, period, windowLabel(period, offset));
+    } catch (err) {
+      Alert.alert("Export failed", err instanceof Error ? err.message : "Please try again.");
+    } finally {
+      setExporting(false);
+    }
   };
 
   useFocusEffect(useCallback(() => {
@@ -279,21 +265,37 @@ const InsightsScreen = () => {
         {/* By category */}
         <Card style={styles.stack}>
           <Caps>BY CATEGORY</Caps>
-          {cats.map((c) => (
-            <View key={c.id} style={styles.catRow}>
-              <View style={styles.catTop}>
-                <AppText size="sm" weight="semibold" color={c.id === "others" ? "inkDim" : "ink"} numberOfLines={1} style={styles.catName}>
-                  {c.name}
-                </AppText>
-                <AppText size="xs" color="inkDim">
-                  {`${formatMoney(c.total)} · ${Math.round(c.pct)}%`}
-                </AppText>
+          <View style={styles.catList}>
+            {cats.map((c) => (
+              <View key={c.id} style={styles.catRow}>
+                <View style={styles.catTop}>
+                  <View style={styles.catNameRow}>
+                    <View style={[styles.catDot, { backgroundColor: c.color }]} />
+                    <AppText
+                      size="md"
+                      weight={c.id === "others" ? "semibold" : "bold"}
+                      color={c.id === "others" ? "inkDim" : "ink"}
+                      numberOfLines={1}
+                      style={styles.catName}
+                    >
+                      {c.name}
+                    </AppText>
+                  </View>
+                  <View style={styles.catMeta}>
+                    <AppText size="sm" weight="bold" color={c.id === "others" ? "inkDim" : "ink"}>
+                      {formatMoney(c.total)}
+                    </AppText>
+                    <AppText size="xs" color="inkDim" style={styles.catPct}>
+                      {`${Math.round(c.pct)}%`}
+                    </AppText>
+                  </View>
+                </View>
+                <View style={styles.catTrack}>
+                  <View style={[styles.catFill, { width: `${Math.max(c.pct, 2)}%`, backgroundColor: c.color }]} />
+                </View>
               </View>
-              <View style={styles.catTrack}>
-                <View style={[styles.catFill, { width: `${Math.max(c.pct, 2)}%`, backgroundColor: c.color }]} />
-              </View>
-            </View>
-          ))}
+            ))}
+          </View>
         </Card>
 
         {/* Where it left from */}
@@ -336,8 +338,24 @@ const InsightsScreen = () => {
     );
   };
 
+  const hasData = !!data && data.txnCount > 0;
+
   return (
-    <ScreenScaffold title="Insights">
+    <ScreenScaffold
+      title="Insights"
+      headerRight={
+        <Button
+          label="Export"
+          icon="download"
+          pill
+          size="sm"
+          variant="secondary"
+          loading={exporting}
+          disabled={!hasData}
+          onPress={onExport}
+        />
+      }
+    >
       {/* Tapping anywhere that isn't a chart clears the open tooltip. */}
       <Pressable style={styles.body} onPress={() => setTip(null)}>
         <SegmentedControl segments={SEGMENTS} value={period} onChange={changePeriod} />
@@ -356,24 +374,6 @@ const InsightsScreen = () => {
 const styles = StyleSheet.create({
   body: {
     gap: spacing.lg,
-  },
-  nav: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  navBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
-  },
-  navBtnOff: {
-    opacity: 0.35,
   },
   stack: {
     gap: 12,
@@ -405,27 +405,51 @@ const styles = StyleSheet.create({
     height: 9,
     borderRadius: 3,
   },
+  catList: {
+    gap: 18, // more air between rows so the card doesn't read congested
+    marginTop: 2,
+  },
   catRow: {
-    gap: 6,
+    gap: 10,
   },
   catTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: spacing.md,
+  },
+  catNameRow: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  catDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 3,
   },
   catName: {
     flex: 1,
   },
+  catMeta: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 8,
+  },
+  catPct: {
+    minWidth: 34,
+    textAlign: "right",
+  },
   catTrack: {
-    height: 9,
-    borderRadius: 5,
+    height: 10,
+    borderRadius: 6,
     backgroundColor: colors.line,
     overflow: "hidden",
   },
   catFill: {
     height: "100%",
-    borderRadius: 5,
+    borderRadius: 6,
   },
   acctLegend: {
     flexDirection: "row",

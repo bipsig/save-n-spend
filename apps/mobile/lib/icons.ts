@@ -23,6 +23,7 @@ export const iconMap = {
   trophy: 'emoji-events',
   delete: 'delete',
   edit: 'edit',
+  download: 'file-download',
 
   // Spending categories
   food: 'restaurant',
