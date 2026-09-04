@@ -1,5 +1,5 @@
 {
-  "name": "@savnspend/types",
+  "name": "@save-n-spend/types",
   "version": "1.0.0",
   "main": "./src/index.ts",
   "types": "./src/index.ts"

@@ -8,7 +8,7 @@
     "seed": "ts-node src/scripts/seed.ts"
   },
   "dependencies": {
-    "@savnspend/types": "*",
+    "@save-n-spend/types": "*",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "date-fns": "^3.6.0",
