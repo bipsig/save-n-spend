@@ -35,25 +35,55 @@ export const useBudgets = (month?: string) => {
   return { items, loading, error, refetch };
 };
 
-export const currentMonth = (): string => {
+export const currentMonth = (): string => monthKey(0);
+
+// The `YYYY-MM` key of the month `offset` months from the current one (0 = this
+// month, -1 = last). UTC, to match how the server windows a budget's spend.
+export const monthKey = (offset = 0): string => {
   const now = new Date();
-  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 };
 
-export const budgetTotals = (items: BudgetSummary[]) => {
+const MONTHS_FULL = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+// "2026-07" → "July 2026". Always concrete — inside a form, "This Month" reads
+// as a setting you can change rather than the month you're editing.
+export const monthTitle = (month: string): string => {
+  const [year, index] = month.split("-");
+  return `${MONTHS_FULL[Number(index) - 1] ?? month} ${year}`;
+};
+
+// A closed month is one that has already ended: its budgets are a record, not a
+// plan, so the pacing stats below become retrospective.
+export const isMonthClosed = (month: string): boolean => month < currentMonth();
+
+export const budgetTotals = (items: BudgetSummary[], month: string = currentMonth()) => {
   const total = items.reduce((sum, b) => sum + b.budget.limit, 0);
   const spent = items.reduce((sum, b) => sum + b.spent, 0);
   const remaining = total - spent;
   const percentUsed = total > 0 ? Math.round((spent / total) * 1000) / 10 : 0;
 
+  const [year, index] = month.split("-").map(Number);
+  const daysInMonth = new Date(Date.UTC(year, index, 0)).getUTCDate();
+  const closed = isMonthClosed(month);
+
+  // A live month paces what is left over the days still to come; a closed one has
+  // no days left, so the same slots report what the month actually averaged.
   const now = new Date();
-  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  const daysLeft = Math.max(lastDay - now.getDate(), 0);
+  const daysLeft = closed ? 0 : Math.max(daysInMonth - now.getUTCDate(), 0);
   const dailyLimit = daysLeft > 0 ? Math.round(Math.max(remaining, 0) / daysLeft) : 0;
+  const dailyAverage = Math.round(spent / daysInMonth);
 
   const status = percentUsed >= 100 ? "Over Budget" : percentUsed >= 80 ? "Warning" : "On Track";
 
-  return { total, spent, remaining, percentUsed, daysLeft, dailyLimit, status };
+  return {
+    total, spent, remaining, percentUsed, status,
+    closed, daysInMonth, daysLeft, dailyLimit, dailyAverage,
+  };
 };
 
 export const budgetExcludedCategoryIds = (

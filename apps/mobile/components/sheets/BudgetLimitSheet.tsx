@@ -1,9 +1,9 @@
-import { forwardRef, useEffect, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { z } from "zod/v4";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { BottomSheetModal, useBottomSheetModal } from "@gorhom/bottom-sheet";
+import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";
 import Button from "@/components/ui/Button";
 import Icon from "@/components/ui/Icon";
@@ -13,7 +13,7 @@ import ProgressBar from "@/components/data/ProgressBar";
 import formatMoney, { parseMoney, paiseToInput } from "@/lib/money";
 import { useCategoryById } from "@/lib/categories";
 import { post, patch, del } from "@/lib/api";
-import type { BudgetSummary } from "@/lib/budgets";
+import { isMonthClosed, monthTitle, type BudgetSummary } from "@/lib/budgets";
 import type { IconName } from "@/lib/icons";
 import { spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
@@ -39,8 +39,14 @@ type FormValues = z.infer<typeof schema>;
 const STEPS = [-50000, 50000, 100000];
 
 const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, categoryId, onPickCategoryPress, onChanged }, ref) => {
-  const { dismiss } = useBottomSheetModal();
+  // Own handle, so `dismiss` closes this form and not the category picker that may
+  // still be animating out on top of it (see CategoryPickerSheet).
+  const innerRef = useRef<BottomSheetModal>(null);
+  useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
+  const dismiss = () => innerRef.current?.dismiss();
+
   const isEdit = !!summary;
+  const closed = isMonthClosed(month);
   const category = useCategoryById(summary?.budget.category ?? categoryId ?? null);
   const spent = summary?.spent ?? 0;
 
@@ -140,16 +146,18 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
       </AppText>
       <AppText size="xs" color="inkDim">
         {isEdit
-          ? `Spent ${formatMoney(spent)} so far this month`
+          ? closed
+            ? `Spent ${formatMoney(spent)} in ${monthTitle(month)}`
+            : `Spent ${formatMoney(spent)} so far this month`
           : category
-            ? "Tap to change · then set a monthly limit"
-            : "Tap to pick which category to budget"}
+            ? `Tap to change · then set a limit for ${monthTitle(month)}`
+            : `Tap to pick which category to budget in ${monthTitle(month)}`}
       </AppText>
     </>
   );
 
   return (
-    <AppSheet ref={ref} onDismiss={() => setError(null)}>
+    <AppSheet ref={innerRef} onDismiss={() => setError(null)}>
       {isEdit ? (
         <View style={styles.identity}>{identity}</View>
       ) : (
@@ -159,7 +167,7 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
       )}
 
       <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
-        MONTHLY LIMIT
+        {closed ? `LIMIT FOR ${monthTitle(month).toUpperCase()}` : "MONTHLY LIMIT"}
       </AppText>
 
       <Controller

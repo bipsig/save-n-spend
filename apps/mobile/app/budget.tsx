@@ -8,6 +8,7 @@ import ProgressBar from "@/components/data/ProgressBar";
 import BudgetCategoryRow from "@/components/rows/BudgetCategoryRow";
 import { AppText } from "@/components/ui/AppText";
 import Button from "@/components/ui/Button";
+import PeriodNav from "@/components/ui/PeriodNav";
 import EmptyState from "@/components/states/EmptyState";
 import ErrorState from "@/components/states/ErrorState";
 import SkeletonState from "@/components/states/SkeletonState";
@@ -18,9 +19,11 @@ import {
   useBudgets,
   budgetTotals,
   budgetExcludedCategoryIds,
-  currentMonth,
+  monthKey,
+  monthTitle,
   type BudgetSummary,
 } from "@/lib/budgets";
+import { rangeNavLabel } from "@/lib/dateRange";
 import { useCategories } from "@/lib/categories";
 import { radius, spacing } from "@/theme";
 
@@ -60,7 +63,7 @@ const MonthlyBudgetCard = ({ totals }: { totals: Totals }) => (
 
     <View style={styles.remainingRow}>
       <AppText color="surface" size="sm" style={styles.muted}>
-        {`Remaining: ${formatMoney(totals.remaining)}`}
+        {`${totals.closed ? "Unspent" : "Remaining"}: ${formatMoney(totals.remaining)}`}
       </AppText>
       <AppText color="surface" size="sm" style={styles.muted}>
         {`${totals.percentUsed}% used`}
@@ -71,16 +74,31 @@ const MonthlyBudgetCard = ({ totals }: { totals: Totals }) => (
 
     <View style={styles.divider} />
 
+    {/* A live month paces the days still to come; a closed one has none, so the
+        same two slots report what the month actually did. */}
     <View style={styles.statsRow}>
       <BudgetStat label="Status" stat={totals.status} />
-      <BudgetStat label="Days Left" stat={`${totals.daysLeft} days`} />
-      <BudgetStat label="Daily Limit" stat={formatMoney(totals.dailyLimit)} />
+      {totals.closed ? (
+        <>
+          <BudgetStat label="Days" stat={`${totals.daysInMonth} days`} />
+          <BudgetStat label="Avg/Day" stat={formatMoney(totals.dailyAverage)} />
+        </>
+      ) : (
+        <>
+          <BudgetStat label="Days Left" stat={`${totals.daysLeft} days`} />
+          <BudgetStat label="Daily Limit" stat={formatMoney(totals.dailyLimit)} />
+        </>
+      )}
     </View>
   </GradientCard>
 );
 
 const BudgetScreen = () => {
-  const month = currentMonth();
+  // Same windowing convention as Insights and Activity: 0 = this month, negative
+  // = past, never positive — there is nothing to show in a month yet to happen.
+  const [offset, setOffset] = useState(0);
+  const month = monthKey(offset);
+
   const { items, loading, error, refetch } = useBudgets(month);
   const categories = useCategories();
 
@@ -89,9 +107,13 @@ const BudgetScreen = () => {
   const [active, setActive] = useState<BudgetSummary | null>(null);
   const [pendingCategory, setPendingCategory] = useState<string | null>(null);
 
+  // Refresh on focus only. Stepping months already refetches inside `useBudgets`,
+  // so depending on `refetch` here would fire a second request for every step.
+  const refetchRef = useRef(refetch);
+  refetchRef.current = refetch;
   useFocusEffect(useCallback(() => {
-    refetch();
-  }, [refetch]));
+    refetchRef.current();
+  }, []));
 
   const openEdit = (summary: BudgetSummary) => {
     setActive(summary);
@@ -116,52 +138,55 @@ const BudgetScreen = () => {
     <Button label="+ New" pill size="sm" onPress={openCreate} />
   );
 
-  if (error) {
-    return (
-      <ScreenScaffold title="Budget" headerRight={headerRight}>
-        <ErrorState message={error} onRetry={refetch} />
-      </ScreenScaffold>
-    );
-  }
-
-  if (loading && items.length === 0) {
-    return (
-      <ScreenScaffold title="Budget" headerRight={headerRight}>
-        <View style={styles.skeletonCol}>
-          {Array.from({ length: 5 }).map((_, i) => (
-            <SkeletonState key={i} height={72} borderRadius={radius.lg} />
-          ))}
-        </View>
-      </ScreenScaffold>
-    );
-  }
-
-  const totals = budgetTotals(items);
+  const totals = budgetTotals(items, month);
   const excludedIds = budgetExcludedCategoryIds(items, categories);
+
+  // One tree for every state, so stepping months keeps the navigator in place —
+  // and so a refetch can never unmount a sheet that is currently open.
+  const body = error ? (
+    <ErrorState message={error} onRetry={refetch} />
+  ) : loading && items.length === 0 ? (
+    <View style={styles.skeletonCol}>
+      {Array.from({ length: 5 }).map((_, i) => (
+        <SkeletonState key={i} height={72} borderRadius={radius.lg} />
+      ))}
+    </View>
+  ) : items.length === 0 ? (
+    <EmptyState
+      icon="insights"
+      title={totals.closed ? `Nothing budgeted in ${monthTitle(month)}` : "No budgets yet"}
+      subtitle={
+        totals.closed
+          ? "You can still set a limit for this month to record what it should have been."
+          : "Set a monthly limit for a category and track spending against it."
+      }
+      actionLabel={totals.closed ? "Add a budget" : "Create a budget"}
+      onAction={openCreate}
+    />
+  ) : (
+    <>
+      <MonthlyBudgetCard totals={totals} />
+      {items.map((summary) => (
+        <BudgetCategoryRow
+          key={summary.budget._id}
+          budget={summary.budget}
+          spent={summary.spent}
+          onPress={() => openEdit(summary)}
+        />
+      ))}
+    </>
+  );
 
   return (
     <ScreenScaffold title="Budget" headerRight={headerRight}>
-      {items.length === 0 ? (
-        <EmptyState
-          icon="insights"
-          title="No budgets yet"
-          subtitle="Set a monthly limit for a category and track spending against it."
-          actionLabel="Create a budget"
-          onAction={openCreate}
-        />
-      ) : (
-        <>
-          <MonthlyBudgetCard totals={totals} />
-          {items.map((summary) => (
-            <BudgetCategoryRow
-              key={summary.budget._id}
-              budget={summary.budget}
-              spent={summary.spent}
-              onPress={() => openEdit(summary)}
-            />
-          ))}
-        </>
-      )}
+      <PeriodNav
+        label={rangeNavLabel("month", offset)}
+        canNext={offset < 0}
+        onPrev={() => setOffset((o) => o - 1)}
+        onNext={() => setOffset((o) => Math.min(0, o + 1))}
+      />
+
+      {body}
 
       <CategoryPickerSheet ref={pickerRef} kind="expense" excludeIds={excludedIds} onPick={onPickCategory} />
       <BudgetLimitSheet
