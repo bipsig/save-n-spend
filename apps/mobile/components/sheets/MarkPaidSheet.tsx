@@ -1,7 +1,7 @@
-import { forwardRef, useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import type { IBill } from "@save-n-spend/types";
-import { BottomSheetModal, useBottomSheetModal } from "@gorhom/bottom-sheet";
+import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";
 import AccountPickerSheet from "./AccountPickerSheet";
 import Button from "@/components/ui/Button";
@@ -31,7 +31,12 @@ const Effect = ({ icon, color, children }: { icon: IconName; color: ColorToken; 
 );
 
 const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, ref) => {
-  const { dismiss } = useBottomSheetModal();
+  // Own handle, so `dismiss` closes this sheet and not the account picker it opens
+  // on top of itself (see CategoryPickerSheet).
+  const innerRef = useRef<BottomSheetModal>(null);
+  useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
+  const dismiss = () => innerRef.current?.dismiss();
+
   const accountRef = useRef<BottomSheetModal>(null);
   const category = useCategoryById(bill?.category ?? null);
   const defaultAccount = useDefaultAccount();
@@ -65,7 +70,7 @@ const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
 
   return (
     <>
-    <AppSheet ref={ref} onDismiss={() => setError(null)}>
+    <AppSheet ref={innerRef} onDismiss={() => setError(null)}>
       {bill && (
         <>
           <View style={styles.identity}>

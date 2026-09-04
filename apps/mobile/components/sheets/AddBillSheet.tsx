@@ -1,9 +1,9 @@
-import { forwardRef, useRef, useState } from "react";
+import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import { Pressable, StyleSheet, Switch, View } from "react-native";
 import { z } from "zod/v4";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { BottomSheetModal, BottomSheetTextInput, useBottomSheetModal } from "@gorhom/bottom-sheet";
+import { BottomSheetModal, BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";
 import CategoryPickerSheet from "./CategoryPickerSheet";
 import Button from "@/components/ui/Button";
@@ -48,7 +48,12 @@ const defaults = (): FormValues => ({
 });
 
 const AddBillSheet = forwardRef<BottomSheetModal, Props>(({ onChanged }, ref) => {
-  const { dismiss } = useBottomSheetModal();
+  // Own handle, so `dismiss` closes this form and not the category picker it opens
+  // on top of itself (see CategoryPickerSheet).
+  const innerRef = useRef<BottomSheetModal>(null);
+  useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
+  const dismiss = () => innerRef.current?.dismiss();
+
   const pickerRef = useRef<BottomSheetModal>(null);
 
   const [submitting, setSubmitting] = useState(false);
@@ -96,7 +101,7 @@ const AddBillSheet = forwardRef<BottomSheetModal, Props>(({ onChanged }, ref) =>
 
   return (
     <>
-    <AppSheet ref={ref} onDismiss={() => { reset(defaults()); setError(null); }}>
+    <AppSheet ref={innerRef} onDismiss={() => { reset(defaults()); setError(null); }}>
       <View style={styles.header}>
         <AppText size="md" weight="black">
           Add Bill

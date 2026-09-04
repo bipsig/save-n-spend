@@ -1,6 +1,6 @@
-import { forwardRef, useMemo, useState } from "react";
+import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { BottomSheetModal, BottomSheetTextInput, useBottomSheetModal } from "@gorhom/bottom-sheet";
+import { BottomSheetModal, BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import type { CategoryKind, ICategory } from "@save-n-spend/types";
 import AppSheet from "./AppSheet";
 import { AppText } from "@/components/ui/AppText";
@@ -33,7 +33,13 @@ type Group = {
 };
 
 const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, excludeIds, onPick }, ref) => {
-  const { dismiss } = useBottomSheetModal();
+  // Own handle, so `dismiss` closes *this* picker. `useBottomSheetModal().dismiss()`
+  // targets the top of the provider-wide queue instead, which — while this picker
+  // sits over the form that opened it — is not reliably the caller.
+  const innerRef = useRef<BottomSheetModal>(null);
+  useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
+  const dismiss = () => innerRef.current?.dismiss();
+
   const categories = useCategories();
 
   const [search, setSearch] = useState("");
@@ -181,7 +187,7 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
   );
 
   return (
-    <AppSheet ref={ref} onDismiss={reset} scrollable snapPoints={SNAP_POINTS} footer={footer}>
+    <AppSheet ref={innerRef} onDismiss={reset} scrollable snapPoints={SNAP_POINTS} footer={footer}>
       <AppText size="md" weight="black">
         Pick category
       </AppText>

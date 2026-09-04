@@ -1,6 +1,6 @@
-import { forwardRef } from "react";
+import { forwardRef, useImperativeHandle, useRef } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { BottomSheetModal, useBottomSheetModal } from "@gorhom/bottom-sheet";
+import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";
 import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
@@ -16,11 +16,17 @@ type Props = {
 };
 
 const AccountPickerSheet = forwardRef<BottomSheetModal, Props>(({ selectedId, onPick }, ref) => {
-  const { dismiss } = useBottomSheetModal();
+  // Own handle, so `dismiss` closes *this* picker. `useBottomSheetModal().dismiss()`
+  // targets the top of the provider-wide queue instead, which — while this picker
+  // sits over the form that opened it — is not reliably the caller.
+  const innerRef = useRef<BottomSheetModal>(null);
+  useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
+  const dismiss = () => innerRef.current?.dismiss();
+
   const accounts = useAccounts();
 
   return (
-    <AppSheet ref={ref}>
+    <AppSheet ref={innerRef}>
       <AppText size="md" weight="black">
         Pay from
       </AppText>

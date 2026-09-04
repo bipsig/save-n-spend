@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useState } from "react";
+import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -47,9 +47,48 @@ const SheetBackground = ({ style }: BottomSheetBackgroundProps) => (
   </View>
 );
 
+// A sheet mounts on the next frame and then springs in, so for a moment after the
+// tap nothing on screen acknowledges it. Taps land again — and gorhom drops a
+// re-`present()` of a sheet its queue already holds, leaving that sheet registered
+// at a stale position it can surface from later, over whatever is on top by then.
+// So presenting is idempotent here: ignored while this sheet is up, and for the
+// length of its close animation afterwards.
+const REPRESENT_GUARD_MS = 400;
+
 const AppSheet = forwardRef<BottomSheetModal, Props>(({ children, onDismiss, scrollable, snapPoints, footer }, ref) => {
   const { bottom } = useSafeAreaInsets();
   const [footerHeight, setFooterHeight] = useState(0);
+
+  const modalRef = useRef<BottomSheetModal>(null);
+  const presented = useRef(false);
+  const closedAt = useRef(0);
+
+  const present = useCallback<BottomSheetModal["present"]>((data) => {
+    if (presented.current || Date.now() - closedAt.current < REPRESENT_GUARD_MS) return;
+    presented.current = true;
+    modalRef.current?.present(data);
+  }, []);
+
+  // gorhom funnels every dismissal — swipe, backdrop tap, programmatic — through
+  // this callback, so it is the one place the gate can be lifted.
+  const handleDismiss = useCallback(() => {
+    presented.current = false;
+    closedAt.current = Date.now();
+    onDismiss?.();
+  }, [onDismiss]);
+
+  // Owners get this handle rather than gorhom's: `present` is the gated one above,
+  // everything else passes straight through.
+  useImperativeHandle(ref, () => ({
+    present,
+    dismiss: (config) => modalRef.current?.dismiss(config),
+    snapToIndex: (index, config) => modalRef.current?.snapToIndex(index, config),
+    snapToPosition: (position, config) => modalRef.current?.snapToPosition(position, config),
+    expand: (config) => modalRef.current?.expand(config),
+    collapse: (config) => modalRef.current?.collapse(config),
+    close: (config) => modalRef.current?.close(config),
+    forceClose: (config) => modalRef.current?.forceClose(config),
+  }), [present]);
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -84,8 +123,8 @@ const AppSheet = forwardRef<BottomSheetModal, Props>(({ children, onDismiss, scr
 
   return (
     <BottomSheetModal
-      ref={ref}
-      onDismiss={onDismiss}
+      ref={modalRef}
+      onDismiss={handleDismiss}
       stackBehavior="push"
       enableDynamicSizing={!snapPoints}
       snapPoints={snapPoints}

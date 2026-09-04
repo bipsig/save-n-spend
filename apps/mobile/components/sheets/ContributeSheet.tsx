@@ -1,14 +1,10 @@
-import { forwardRef, useMemo, useState } from "react";
+import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import type { IGoal } from "@save-n-spend/types";
 import { z } from "zod/v4";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import {
-  BottomSheetModal,
-  BottomSheetTextInput,
-  useBottomSheetModal,
-} from "@gorhom/bottom-sheet";
+import { BottomSheetModal, BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
@@ -32,7 +28,12 @@ type Props = {
 const PRESETS = [50000, 100000, 250000, 500000];
 
 const ContributeSheet = forwardRef<BottomSheetModal, Props>(({ goal, onChanged }, ref) => {
-  const { dismiss } = useBottomSheetModal();
+  // Own handle, so `dismiss` closes this sheet rather than whatever happens to sit
+  // on top of the provider-wide queue (see CategoryPickerSheet).
+  const innerRef = useRef<BottomSheetModal>(null);
+  useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
+  const dismiss = () => innerRef.current?.dismiss();
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -93,7 +94,7 @@ const ContributeSheet = forwardRef<BottomSheetModal, Props>(({ goal, onChanged }
   };
 
   return (
-    <AppSheet ref={ref} onDismiss={() => { reset(); setError(null); }}>
+    <AppSheet ref={innerRef} onDismiss={() => { reset(); setError(null); }}>
       {goal && (
         <>
           {/* Spec .centerid — the card's identity repeated so context never drops */}

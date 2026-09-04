@@ -2,8 +2,8 @@ import type { ITransaction } from "@save-n-spend/types";
 import AppSheet from "@/components/sheets/AppSheet";
 import formatMoney from "@/lib/money";
 import { useAccountById } from "@/lib/accounts";
-import { forwardRef, useState } from "react";
-import { BottomSheetModal, useBottomSheetModal } from "@gorhom/bottom-sheet";
+import { forwardRef, useImperativeHandle, useRef, useState } from "react";
+import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { useCategoryById } from "@/lib/categories";
 import Icon from "../ui/Icon";
 import type { IconName } from "@/lib/icons";
@@ -58,7 +58,11 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
   transaction,
   onDeleted
 }, ref) => {
-  const { dismiss } = useBottomSheetModal();
+  // Own handle, so `dismiss` closes this sheet rather than whatever happens to sit
+  // on top of the provider-wide queue (see CategoryPickerSheet).
+  const innerRef = useRef<BottomSheetModal>(null);
+  useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
+  const dismiss = () => innerRef.current?.dismiss();
 
   const router = useRouter();
 
@@ -103,7 +107,7 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
   }
 
   return (
-    <AppSheet ref={ref} onDismiss={() => { setConfirmView(false); setDeleteError (null); }}>
+    <AppSheet ref={innerRef} onDismiss={() => { setConfirmView(false); setDeleteError (null); }}>
       {transaction && (
         !confirmView ? (
           <>
