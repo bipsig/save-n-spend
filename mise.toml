@@ -1,0 +1,3 @@
+[tools]
+# Expo SDK 54's Metro uses Array.prototype.toReversed, which needs Node 20+.
+node = "24.20.0"

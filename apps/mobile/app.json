@@ -13,7 +13,9 @@
       "backgroundColor": "#0C0A16"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.bipsig.savenspend",
+      "buildNumber": "1"
     },
     "android": {
       "adaptiveIcon": {
