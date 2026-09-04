@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { IGoal } from "@save-n-spend/types";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
@@ -12,16 +12,15 @@ import Button from "@/components/ui/Button";
 import EmptyState from "@/components/states/EmptyState";
 import ErrorState from "@/components/states/ErrorState";
 import SkeletonState from "@/components/states/SkeletonState";
-import NewGoalSheet from "@/components/sheets/NewGoalSheet";
 import ContributeSheet from "@/components/sheets/ContributeSheet";
 import formatMoney from "@/lib/money";
 import { useGoals, goalsSummary, sortGoals } from "@/lib/goals";
 import { radius, spacing } from "@/theme";
 
 const GoalsScreen = () => {
+  const router = useRouter();
   const { items, loading, error, refetch } = useGoals();
 
-  const newGoalRef = useRef<BottomSheetModal>(null);
   const contributeRef = useRef<BottomSheetModal>(null);
   const [active, setActive] = useState<IGoal | null>(null);
 
@@ -34,8 +33,12 @@ const GoalsScreen = () => {
     contributeRef.current?.present();
   };
 
+  // Creating a goal is a full modal route, not a sheet — it needs the numpad and
+  // the icon/colour grids at full height. Focus-refetch picks up the new goal.
+  const openCreate = () => router.push("/add-goal");
+
   const headerRight = (
-    <Button label="+ New Goal" pill size="sm" onPress={() => newGoalRef.current?.present()} />
+    <Button label="+ New Goal" pill size="sm" onPress={openCreate} />
   );
 
   if (error) {
@@ -69,7 +72,7 @@ const GoalsScreen = () => {
           title="Create your first goal"
           subtitle="Set a target and watch your savings fill it up."
           actionLabel="New goal"
-          onAction={() => newGoalRef.current?.present()}
+          onAction={openCreate}
         />
       ) : (
         <>
@@ -97,7 +100,6 @@ const GoalsScreen = () => {
         </>
       )}
 
-      <NewGoalSheet ref={newGoalRef} onChanged={refetch} />
       <ContributeSheet ref={contributeRef} goal={active} onChanged={refetch} />
     </ScreenScaffold>
   );

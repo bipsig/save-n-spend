@@ -80,6 +80,7 @@ const RootLayout = () => {
             }}
             >
               <Stack.Screen name="add-transaction" options={{ presentation: "modal" }} />
+              <Stack.Screen name="add-goal" options={{ presentation: "modal" }} />
             </Stack>
           </BottomSheetModalProvider>
         </SafeAreaProvider>
