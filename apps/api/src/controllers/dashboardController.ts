@@ -4,33 +4,26 @@ import Transaction from "../models/Transaction";
 import * as reply from "../utils/response";
 import Account from "../models/Account";
 import mongoose from "mongoose";
+import { monthRange } from "../utils/monthRange";
+import { resolveZone } from "../utils/userZone";
+import { healthScore } from "../services/healthService";
 
 export const getDashboardSummary = async (req: Request, res: Response): Promise<void> => {
 
   const { month } = dashboardSummaryQuerySchema.parse(req.query);
 
-  let monthStart: Date;
-  let nextMonthStart: Date;
-
-  if (month) {
-    const [year, monthIndex] = month.split("-").map(Number);
-
-    monthStart = new Date(Date.UTC(year, monthIndex - 1, 1));
-    nextMonthStart = new Date(Date.UTC(year, monthIndex, 1));
-  }
-  else {
-    const now = new Date();
-
-    monthStart = new Date(Date.UTC(now.getFullYear(), now.getMonth()));
-    nextMonthStart = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1));
-  }
+  // Shared with GET /budgets rather than cut here: the dashboard's "this month" and
+  // a budget's month are the same month by definition, and they used to be computed
+  // by two different pieces of code that disagreed about both the zone and — via a
+  // `getFullYear()` where a `getUTCFullYear()` was meant — the year.
+  const { start, next, label } = monthRange(await resolveZone(req), month);
 
   const monthlySums = await Transaction.aggregate([
     {
       $match: {
         userId: new mongoose.Types.ObjectId(req.user!.userId),
         type: { $in: ["income", "expense"] },
-        occurredAt: { $gte: monthStart, $lt: nextMonthStart }
+        occurredAt: { $gte: start, $lt: next }
       }
     },
     {
@@ -60,7 +53,7 @@ export const getDashboardSummary = async (req: Request, res: Response): Promise<
   const expenses = monthlySums.find((res) => res._id === "expense")?.total ?? 0;
 
   const response = {
-    month: `${monthStart.getUTCFullYear()}-${monthStart.getUTCMonth()< 9 ? "0" : ""}${monthStart.getUTCMonth()+1}`,
+    month: label,
     income,
     expenses,
     savings: income - expenses,
@@ -68,4 +61,15 @@ export const getDashboardSummary = async (req: Request, res: Response): Promise<
   };
 
   reply.ok(res, response, "Dashboard Summary Fetched successfully!");
+}
+
+/**
+ * The financial health score. Takes no parameters on purpose — unlike the summary it is
+ * always "as of now", measured over a trailing window rather than a named month, so
+ * there is nothing for a caller to choose. See services/healthService.
+ */
+export const getHealthScore = async (req: Request, res: Response): Promise<void> => {
+  const score = await healthScore(req.user!.userId, await resolveZone(req));
+
+  reply.ok(res, score, "Health score fetched successfully!");
 }

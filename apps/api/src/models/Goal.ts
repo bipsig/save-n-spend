@@ -8,6 +8,10 @@ export interface IGoal extends Document {
     icon?: string;
     color?: string;
     deadline?: Date;
+    /** Written by `timestamps: true`. Declared because the health score measures how
+     *  much has been saved PER MONTH since the goal was created, and that rate is the
+     *  only way to tell a goal that is behind from one that is simply new. */
+    createdAt: Date;
 }
 
 const GoalSchema = new Schema<IGoal>({
