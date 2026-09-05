@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import Goal from "../models/Goal";
 import { createGoalSchema, updateGoalSchema, contributeGoalSchema } from "../schemas/goalSchema";
+import { checkGoalMilestone } from "../services/goalAlertService";
 import { AppError } from "../utils/AppError";
 import * as reply from "../utils/response";
 
@@ -65,8 +66,14 @@ export const contributeGoal = async (req: Request, res: Response): Promise<void>
         throw AppError.notFound("Goal not found");
     }
 
+    // Captured before the write: the milestone check needs to know what was crossed by
+    // THIS contribution, not merely what the total is now.
+    const savedBefore = goal.saved;
+
     goal.saved = Math.min(goal.saved + amount, goal.target);
     await goal.save();
+
+    await checkGoalMilestone(goal, savedBefore);
 
     reply.ok(res, goal, "Contribution added successfully");
 }

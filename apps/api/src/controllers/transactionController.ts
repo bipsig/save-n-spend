@@ -5,8 +5,11 @@ import Account from "../models/Account";
 import { AppError } from "../utils/AppError";
 import Transaction from "../models/Transaction";
 import { applyEffects } from "../services/transactionService";
+import { checkBudgetAlerts } from "../services/budgetAlertService";
 import * as reply from "../utils/response";
 import Category from "../models/Category";
+import { dayBoundsFromKeyInZone } from "../utils/timezone";
+import { resolveZone } from "../utils/userZone";
 
 export const createTransaction = async (req: Request, res: Response): Promise<void> => {
     const reqBody = createTransactionSchema.parse(req.body);
@@ -28,6 +31,10 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
         throw AppError.badRequest("Account not found");
     }
 
+    // Resolved once, because the budget alert below has to be told which month this
+    // spend belongs to and must not re-read the clock to find out.
+    const occurredAt = reqBody.occurredAt ? new Date(reqBody.occurredAt) : new Date();
+
     let createdTransaction;
     const session = await mongoose.startSession();
     try {
@@ -35,7 +42,7 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
             const [transaction] = await Transaction.create([{
                 userId: req.user?.userId,
                 ...reqBody,
-                occurredAt: reqBody.occurredAt ? reqBody.occurredAt : new Date(),
+                occurredAt,
             }], { session });
 
             await applyEffects(transaction, "add", session);
@@ -45,6 +52,12 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
     }
     finally {
         session.endSession();
+    }
+
+    // After the commit and before the response: only a committed expense can have
+    // crossed a budget, and the check never throws (see budgetAlertService).
+    if (reqBody.type === "expense") {
+        await checkBudgetAlerts(req.user!.userId, reqBody.category, occurredAt);
     }
 
     reply.created(res, createdTransaction, "Transaction created!");
@@ -80,15 +93,15 @@ export const filterTransactions = async (req: Request, res: Response): Promise<v
         }
     }
     if (startDate && endDate) {
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-
-        start.setUTCHours(0, 0, 0, 0);
-        end.setUTCHours(23, 59, 59, 999);
+        // `startDate`/`endDate` are calendar days the user picked, so their bounds
+        // are the user's midnights — not UTC's. Getting this wrong shifted the edge
+        // of every filtered range by the zone offset, which is how a purchase made
+        // late last night went missing from "Today".
+        const zone = await resolveZone(req);
 
         filters.occurredAt = {
-            $gte: start,
-            $lte: end
+            $gte: dayBoundsFromKeyInZone(startDate, zone).start,
+            $lte: dayBoundsFromKeyInZone(endDate, zone).end
         };
     }
 
@@ -113,11 +126,14 @@ export const getTransactionSummary = async (req: Request, res: Response): Promis
     };
 
     if (startDate && endDate) {
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        start.setUTCHours(0, 0, 0, 0);
-        end.setUTCHours(23, 59, 59, 999);
-        match.occurredAt = { $gte: start, $lte: end };
+        // Same zone-local day bounds as the list above — the summary card sits on top
+        // of that list, so a total computed over a differently-clamped window would
+        // not add up to the rows underneath it.
+        const zone = await resolveZone(req);
+        match.occurredAt = {
+            $gte: dayBoundsFromKeyInZone(startDate, zone).start,
+            $lte: dayBoundsFromKeyInZone(endDate, zone).end
+        };
     }
 
     const sums = await Transaction.aggregate([
@@ -195,6 +211,12 @@ export const updateTransaction = async (req: Request, res: Response): Promise<vo
     }
     finally {
         session.endSession();
+    }
+
+    // An edit moves money as surely as a new entry does — raising an amount, or moving
+    // one into a different category, can be what crosses the limit.
+    if (transaction.type === "expense") {
+        await checkBudgetAlerts(req.user!.userId, transaction.category, transaction.occurredAt);
     }
 
     reply.ok(res, transaction, "Transaction updated!");

@@ -8,21 +8,14 @@ import Account from "../models/Account";
 import mongoose from "mongoose";
 import Transaction from "../models/Transaction";
 import { applyEffects } from "../services/transactionService";
-import { addMonths, addYears } from "date-fns";
 import User from "../models/User";
+import { startOfDayInZone } from "../utils/timezone";
+import { resolveZone } from "../utils/userZone";
+import { advanceDueDate, isFuturePeriod, isSettledForPeriod } from "../services/billService";
 
-const advanceDueDate = (dueDate: Date, frequency?: "monthly" | "yearly"): Date =>
-    frequency === "yearly" ? addYears(dueDate, 1) : addMonths(dueDate, 1);
-
-const isSamePeriod = (a: Date, b: Date, frequency?: "monthly" | "yearly"): boolean =>
-    frequency === "yearly"
-        ? a.getUTCFullYear() === b.getUTCFullYear()
-        : a.getUTCFullYear() === b.getUTCFullYear() && a.getUTCMonth() === b.getUTCMonth();
-
-const isFuturePeriod = (dueDate: Date, now: Date, frequency?: "monthly" | "yearly"): boolean =>
-    frequency === "yearly"
-        ? dueDate.getUTCFullYear() > now.getUTCFullYear()
-        : dueDate.getUTCFullYear() * 12 + dueDate.getUTCMonth() > now.getUTCFullYear() * 12 + now.getUTCMonth();
+// The zone-local period arithmetic these handlers run on lives in services/billService,
+// because the reminder job has to reach exactly the same verdict about a bill as this
+// screen does.
 
 export const listBills = async (req: Request, res: Response): Promise<void> => {
     const { status } = listBillQuerySchema.parse(req.query);
@@ -32,14 +25,12 @@ export const listBills = async (req: Request, res: Response): Promise<void> => {
 
     const bills = await Bill.find(filter).sort({ dueDate: 1 }).lean();
 
+    const zone = await resolveZone(req);
     const now = new Date();
-    const startOfToday = new Date();
-    startOfToday.setUTCHours(0, 0, 0, 0);
+    const startOfToday = startOfDayInZone(now, zone);
 
     const result = bills.flatMap((bill) => {
-        const paidThisPeriod = !!bill.lastPaidAt && isSamePeriod(bill.lastPaidAt, now, bill.frequency);
-
-        if (paidThisPeriod) {
+        if (isSettledForPeriod(bill, now, zone)) {
             return [{ ...bill, status: "paid" }];
         }
 
@@ -141,7 +132,9 @@ export const markBillPaid = async (req: Request, res: Response): Promise<void> =
         throw AppError.badRequest("Bill is already paid");
     }
 
-    if (bill.recurring && isFuturePeriod(bill.dueDate, new Date(), bill.frequency)) {
+    const zone = await resolveZone(req);
+
+    if (bill.recurring && isFuturePeriod(bill.dueDate, new Date(), zone, bill.frequency)) {
         throw AppError.badRequest("This bill is already handled for this period");
     }
 
@@ -185,7 +178,7 @@ export const markBillPaid = async (req: Request, res: Response): Promise<void> =
             await applyEffects(transaction, "add", session);
 
             if (bill.recurring) {
-                bill.dueDate = advanceDueDate(bill.dueDate, bill.frequency);
+                bill.dueDate = advanceDueDate(bill.dueDate, zone, bill.frequency);
             }
             else {
                 bill.status = "paid";
@@ -219,11 +212,13 @@ export const skipBill = async (req: Request, res: Response): Promise<void> => {
         throw AppError.badRequest("Only recurring bills can be skipped");
     }
 
-    if (isFuturePeriod(bill.dueDate, new Date(), bill.frequency)) {
+    const zone = await resolveZone(req);
+
+    if (isFuturePeriod(bill.dueDate, new Date(), zone, bill.frequency)) {
         throw AppError.badRequest("This bill is already handled for this period");
     }
 
-    bill.dueDate = advanceDueDate(bill.dueDate, bill.frequency);
+    bill.dueDate = advanceDueDate(bill.dueDate, zone, bill.frequency);
     await bill.save();
 
     reply.ok(res, bill, "Bill skipped");

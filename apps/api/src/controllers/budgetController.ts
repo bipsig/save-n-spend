@@ -1,59 +1,20 @@
 import { Request, Response } from "express";
-import mongoose from "mongoose";
 import Budget from "../models/Budget";
 import Category from "../models/Category";
-import Transaction from "../models/Transaction";
 import { createBudgetSchema, updateBudgetSchema, listBudgetQuerySchema } from "../schemas/budgetSchema";
-import { monthRange } from "../utils/monthRange";
+import { budgetProgress } from "../services/budgetService";
+import { resolveZone } from "../utils/userZone";
 import { AppError } from "../utils/AppError";
 import * as reply from "../utils/response";
 
 export const listBudgets = async (req: Request, res: Response): Promise<void> => {
     const { month } = listBudgetQuerySchema.parse(req.query);
-    const { start, next, label } = monthRange(month);
 
-    const budgets = await Budget.find({
-        userId: req.user?.userId,
-        month: label
-    });
+    // The spend rollup lives in services/budgetService: the alert that fires when a
+    // transaction crosses a limit has to arrive at the same figure this screen shows.
+    const { items } = await budgetProgress(req.user!.userId, await resolveZone(req), month);
 
-    const spentByCategory = await Transaction.aggregate([
-        {
-            $match: {
-                userId: new mongoose.Types.ObjectId(req.user?.userId),
-                type: "expense",
-                occurredAt: { $gte: start, $lt: next }
-            }
-        },
-        { $group: { _id: "$category", total: { $sum: "$amount" } } }
-    ]);
-
-    const spentMap = new Map<string, number>(
-        spentByCategory.map((row) => [String(row._id), row.total])
-    );
-
-    const categories = await Category.find({ userId: req.user?.userId }, { parent: 1 });
-
-    const childrenByParent = new Map<string, string[]>();
-    for (const category of categories) {
-        if (category.parent) {
-            const parentId = String(category.parent);
-            const children = childrenByParent.get(parentId) ?? [];
-            children.push(String(category._id));
-            childrenByParent.set(parentId, children);
-        }
-    }
-
-    const summary = budgets.map((budget) => {
-        const categoryId = String(budget.category);
-        const childIds = childrenByParent.get(categoryId) ?? [];
-        const spent = (spentMap.get(categoryId) ?? 0)
-            + childIds.reduce((sum, childId) => sum + (spentMap.get(childId) ?? 0), 0);
-
-        return { budget, spent };
-    });
-
-    reply.ok(res, summary, "Budgets fetched successfully");
+    reply.ok(res, items, "Budgets fetched successfully");
 }
 
 export const createBudget = async (req: Request, res: Response): Promise<void> => {

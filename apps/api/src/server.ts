@@ -7,6 +7,7 @@ import dotenv from 'dotenv';
 import connectDB from './config/db';
 import apiRouter from './routes/router';
 import { errorHandler } from './middleware/errorHandler';
+import { startReminderJob } from './jobs/reminderJob';
 
 dotenv.config();
 
@@ -34,6 +35,11 @@ const PORT = Number(process.env.PORT) || 3000;
 // Connect first, then listen — a failed DB connect exits before we accept traffic.
 const start = async (): Promise<void> => {
   await connectDB();
+
+  // After the connection, before we accept traffic: the job's first act is a query, and
+  // scheduling it any earlier would only give it a chance to run without a database.
+  startReminderJob();
+
   app.listen (PORT, '0.0.0.0', () => {
     console.log (`Server has started on port ${PORT}`);
   });
