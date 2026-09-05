@@ -213,3 +213,42 @@ dedupe key that belongs to the deployed instance.
   create one.
 - Bump `expo.version` in `app.json` when you want the `.ipa` filename to change;
   the script reads it.
+
+---
+
+## 8. The app icon
+
+The sources are **`assets/icon.svg`** (full bleed, opaque — the iOS icon) and
+**`assets/glyph.svg`** (transparent — the Android adaptive foreground and the splash
+logo). The PNGs beside them are build output that happens to be committed, because
+Expo's config can only point at raster files and a fresh clone has to build without
+librsvg installed.
+
+```bash
+cd apps/mobile
+npm run icons          # needs: brew install librsvg
+```
+
+Then **prebuild, or the change never reaches the app** — the icon is baked into
+`ios/SavenSpend/Images.xcassets/AppIcon.appiconset/` at prebuild time, and
+`build-ipa.sh` only prebuilds when `ios/` is missing:
+
+```bash
+npx expo prebuild --platform ios
+npm run ipa
+```
+
+Three constraints worth knowing before editing the artwork:
+
+- **The iOS icon must be opaque and square.** No alpha channel, no rounded corners —
+  iOS applies its own squircle mask, and pre-rounding shows dark wedges inside it.
+  `build-icons.sh` fails the build if `icon.png` picks up an alpha channel.
+- **`glyph.svg` is scaled to 85%** because an Android launcher can crop everything
+  outside the central 66% of an adaptive icon. The wrapping transform is the only
+  intended difference between the two files; the artwork inside them must stay in
+  sync by hand.
+- **The ₹ is a `<text>` element**, so rendering needs Arial or Helvetica installed.
+  Build-time only — the committed PNGs have no such dependency.
+
+Judge any change at **40–60px**, not at 1024. That is the size the Home Screen
+actually draws, and it is where thin strokes and small details disappear.
