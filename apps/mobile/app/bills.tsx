@@ -14,7 +14,7 @@ import ErrorState from "@/components/states/ErrorState";
 import SkeletonState from "@/components/states/SkeletonState";
 import MarkPaidSheet from "@/components/sheets/MarkPaidSheet";
 import AddBillSheet from "@/components/sheets/AddBillSheet";
-import formatMoney from "@/lib/money";
+import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { useBills, groupBills, outstandingTotal, isActionable } from "@/lib/bills";
 import { radius, spacing } from "@/theme";
 
@@ -33,6 +33,7 @@ const Section = ({ label, bills, onPick }: { label: string; bills: IBill[]; onPi
 };
 
 const BillsScreen = () => {
+  usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
   const { items, loading, error, refetch } = useBills();
 
   const markRef = useRef<BottomSheetModal>(null);

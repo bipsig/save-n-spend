@@ -1,6 +1,7 @@
 import type { ITransaction } from "@save-n-spend/types";
 import AppSheet from "@/components/sheets/AppSheet";
-import formatMoney from "@/lib/money";
+import formatMoney, { usePrivacyMask } from "@/lib/money";
+import Money from "../ui/Money";
 import { useAccountById } from "@/lib/accounts";
 import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
@@ -10,11 +11,14 @@ import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { colors, spacing } from "@/theme";
 import { StyleSheet, View } from "react-native";
+import Animated, { FadeIn } from "react-native-reanimated";
 import { AppText } from "../ui/AppText";
 import Button from "../ui/Button";
 import { formatFullDate } from "@/lib/date";
 import { categoryBg } from "@/lib/categories";
 import { del } from "@/lib/api";
+import { haptics } from "@/lib/haptics";
+import { toast } from "@/store/toast";
 import { useRouter } from "expo-router";
 
 // Spec .selrow — boxed glass strip: leading icon · (caps label over bold value) · optional ›
@@ -68,6 +72,10 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
 
   const account = useAccountById(transaction?.account);
   const category = useCategoryById(transaction?.category);
+  // Subscribes this sheet to the mask so the delete-confirm's inline amount
+  // reveals along with everything else. `<Money>` handles its own; a `formatMoney`
+  // inside a template string can't.
+  usePrivacyMask();
 
   const [confirmView, setConfirmView] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -97,8 +105,16 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
       await del(`/transactions/${transaction?._id}`);
       onDeleted?.();
       dismiss();
+      // Names the row that's gone and says the balance moved with it: a delete
+      // silently rewrites an account total, and the sheet that explained that has
+      // just closed. Without this the only evidence is a row that isn't there.
+      toast.success(`${transaction.title} deleted — ${account?.name ?? "your account"} updated`);
     }
     catch (err) {
+      // The one failure that must not be missed: the user just confirmed something
+      // destructive, so if it didn't happen they need to know before walking away
+      // believing it did.
+      haptics.error();
       setDeleteError(err instanceof Error ? err.message : "Error deleting the transaction");
     }
     finally {
@@ -110,7 +126,11 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
     <AppSheet ref={innerRef} onDismiss={() => { setConfirmView(false); setDeleteError (null); }}>
       {transaction && (
         !confirmView ? (
-          <>
+          // Fades in rather than hard-cutting when you back out of the confirm.
+          // Entering only, deliberately: an exiting animation would keep both views
+          // mounted, and the sheet sizes itself to its content — so it would stretch
+          // to fit the pair and then snap back.
+          <Animated.View entering={FadeIn.duration(160)} style={styles.view}>
             {/* Spec §08 .centerid — chip · title · spaced-sign amount · tinted badge */}
             <View style={styles.identity}>
               <Icon
@@ -124,9 +144,16 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
               <AppText size="md" weight="black">
                 {transaction.title}
               </AppText>
-              <AppText size="xl" weight="black" color={amount < 0 ? "danger" : "success"}>
-                {`${amount < 0 ? "− " : "+ "}${formatMoney(Math.abs(amount))}`}
-              </AppText>
+              {/* The one amount with nothing to compete with, so it is the most
+                  natural peek target in the app — this is the sheet a user opens
+                  precisely because they want to see the figure. */}
+              <Money
+                value={Math.abs(amount)}
+                prefix={amount < 0 ? "− " : "+ "}
+                size="xl"
+                weight="black"
+                color={amount < 0 ? "danger" : "success"}
+              />
               <View
                 style={[styles.badge, { backgroundColor: colors[categoryBg(category?.color)] }]}
               >
@@ -168,9 +195,9 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
                 <Button label="Delete" variant="dangerGhost" icon="delete" onPress={() => setConfirmView(true)} />
               </View>
             </View>
-          </>
+          </Animated.View>
         ) : (
-          <>
+          <Animated.View entering={FadeIn.duration(160)} style={styles.view}>
             {/* Spec Tier-1 destructive confirm — honest consequence line, red CTA on top */}
             <View style={styles.confirm}>
               <Icon
@@ -202,7 +229,7 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
               />
               <Button label="Cancel" variant="ghost" onPress={() => setConfirmView(false)} />
             </View>
-          </>
+          </Animated.View>
         )
       )}
     </AppSheet>
@@ -212,6 +239,11 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
 TransactionDetailSheet.displayName = "TransactionDetailSheet";
 
 const styles = StyleSheet.create({
+  // Each view used to be a fragment, so its blocks got the sheet's own gap
+  // directly. Now they sit inside a fading wrapper that has to carry it.
+  view: {
+    gap: spacing.lg,
+  },
   // Spec .centerid — same centered identity rhythm as the goal sheets
   identity: {
     alignItems: "center",

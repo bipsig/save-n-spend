@@ -2,7 +2,8 @@ import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import Svg, { Path, Circle, Line } from "react-native-svg";
 import { AppText } from "@/components/ui/AppText";
-import formatMoney from "@/lib/money";
+import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { useScrubTick } from "@/lib/useScrubTick";
 
 type Props = {
   data: number[];
@@ -30,6 +31,7 @@ const sampleTicks = (labels: string[]): string[] => {
 // exact amount on a given day — a scrubber line, dot, and tooltip. Width is
 // measured (onLayout) so coordinates are real px and the endpoint stays round.
 const AreaChart = ({ data, labels, tipLabels, activeIndex, onScrub, color = "#8E7DE3", height = 96 }: Props) => {
+  usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
   const [w, setW] = useState(0);
   const active = activeIndex ?? null;
   const padB = 6;
@@ -43,9 +45,12 @@ const AreaChart = ({ data, labels, tipLabels, activeIndex, onScrub, color = "#8E
   const line = data.map((v, i) => `${i ? "L" : "M"} ${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
   const area = n ? `${line} L ${x(n - 1).toFixed(1)},${chartH} L ${x(0).toFixed(1)},${chartH} Z` : "";
 
+  // Ticks as the scrubber crosses into a new day, and only then.
+  const scrub = useScrubTick(active, onScrub);
+
   const pick = (locationX: number) => {
     if (w <= 0 || n === 0) return;
-    onScrub?.(clamp(Math.round((locationX / w) * (n - 1)), 0, n - 1));
+    scrub(clamp(Math.round((locationX / w) * (n - 1)), 0, n - 1));
   };
 
   return (

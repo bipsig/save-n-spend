@@ -1,21 +1,35 @@
 import { forwardRef, useImperativeHandle, useRef } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";
 import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
+import PressableScale from "@/components/ui/PressableScale";
 import { useAccounts } from "@/lib/accounts";
-import formatMoney from "@/lib/money";
+import { haptics } from "@/lib/haptics";
+import formatMoney, { usePrivacyMask } from "@/lib/money";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { spacing } from "@/theme";
 
 type Props = {
   selectedId?: string | null;
+  /** What picking an account is FOR. Defaults to the transaction-form wording. */
+  title?: string;
   onPick: (accountId: string) => void;
+  /**
+   * When given, a "No default" row is offered above the accounts. Only Settings
+   * passes it — having no preselected account is a real preference there, while a
+   * transaction form must always land on one. Kept separate from `onPick` so the
+   * common case stays a plain `(id: string) => void`.
+   */
+  onClear?: () => void;
 };
 
-const AccountPickerSheet = forwardRef<BottomSheetModal, Props>(({ selectedId, onPick }, ref) => {
+const AccountPickerSheet = forwardRef<BottomSheetModal, Props>((
+  { selectedId, title = "Pay from", onPick, onClear },
+  ref
+) => {
   // Own handle, so `dismiss` closes *this* picker. `useBottomSheetModal().dismiss()`
   // targets the top of the provider-wide queue instead, which — while this picker
   // sits over the form that opened it — is not reliably the caller.
@@ -24,20 +38,56 @@ const AccountPickerSheet = forwardRef<BottomSheetModal, Props>(({ selectedId, on
   const dismiss = () => innerRef.current?.dismiss();
 
   const accounts = useAccounts();
+  usePrivacyMask(); // subscribe: a peek has to re-render the balances listed below
 
   return (
     <AppSheet ref={innerRef}>
       <AppText size="md" weight="black">
-        Pay from
+        {title}
       </AppText>
       <View style={styles.list}>
+        {onClear && (
+          // `select` throughout this sheet, not the default tap: every row here is one
+          // choice out of a set, which is exactly what the OS reserves that tick for.
+          <PressableScale
+            style={[styles.row, selectedId == null && styles.rowSelected]}
+            scaleTo={0.98}
+            haptic={false}
+            onPress={() => {
+              haptics.select();
+              onClear();
+              dismiss();
+            }}
+          >
+            <Icon
+              name="close"
+              size={20}
+              containerSize={44}
+              container="square"
+              containerColor="surface2"
+              color="inkDim"
+            />
+            <View style={styles.info}>
+              <AppText size="sm" weight="bold">
+                No default
+              </AppText>
+              <AppText size="xs" color="inkDim">
+                Pick an account each time
+              </AppText>
+            </View>
+            {selectedId == null && <Icon name="budgetOk" size={20} color="success" />}
+          </PressableScale>
+        )}
         {accounts.map((account) => {
           const selected = account._id === selectedId;
           return (
-            <Pressable
+            <PressableScale
               key={account._id}
               style={[styles.row, selected && styles.rowSelected]}
+              scaleTo={0.98}
+              haptic={false}
               onPress={() => {
+                haptics.select();
                 onPick(account._id);
                 dismiss();
               }}
@@ -58,7 +108,7 @@ const AccountPickerSheet = forwardRef<BottomSheetModal, Props>(({ selectedId, on
                 </AppText>
               </View>
               {selected && <Icon name="budgetOk" size={20} color="success" />}
-            </Pressable>
+            </PressableScale>
           );
         })}
       </View>

@@ -1,22 +1,27 @@
 import { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Switch, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { useRouter } from "expo-router";
 import { z } from "zod/v4";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
+import BackButton from "@/components/shell/BackButton";
 import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
+import Toggle from "@/components/ui/Toggle";
 import IconPicker from "@/components/ui/IconPicker";
 import ColorPicker from "@/components/ui/ColorPicker";
 import DateField from "@/components/ui/DateField";
-import formatMoney, { parseMoney } from "@/lib/money";
-import { formatFullDate, startOfToday, toUtcDateISO } from "@/lib/date";
+import formatMoney, { parseMoney, usePrivacyMask } from "@/lib/money";
+import { formatFullDate, startOfToday, toZonedDayISO } from "@/lib/date";
+import { haptics } from "@/lib/haptics";
 import { post } from "@/lib/api";
+import { toast } from "@/store/toast";
 import type { IconName } from "@/lib/icons";
-import { colors, spacing } from "@/theme";
+import { spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
 
 const schema = z.object({
@@ -71,6 +76,7 @@ const formatAmountDisplay = (raw: string): string => {
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "back"] as const;
 
 const AddGoal = () => {
+  usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
   const router = useRouter();
 
   const [deadline, setDeadline] = useState<Date | null>(null);
@@ -97,25 +103,27 @@ const AddGoal = () => {
 
   const setAmount = (next: string) => setValue("amount", next, { shouldValidate: true });
 
+  // Ticks only where the figure changed, same as Add Transaction: a rejected key
+  // stays silent so the silence is the answer, not a buzz that claims otherwise.
   const pressKey = (key: (typeof KEYS)[number]) => {
     const cur = amountRaw ?? "";
     if (key === "back") {
+      if (cur === "") return;
+      haptics.tap();
       setAmount(cur.slice(0, -1));
       return;
     }
     if (key === ".") {
       if (cur.includes(".")) return;
+      haptics.tap();
       setAmount(cur === "" ? "0." : cur + ".");
       return;
     }
     const dot = cur.indexOf(".");
     if (dot !== -1 && cur.length - dot > 2) return; // max 2 decimals
-    if (cur === "0") {
-      setAmount(key); // replace a lone leading zero
-      return;
-    }
     if (cur.replace(".", "").length >= 9) return; // sane upper bound
-    setAmount(cur + key);
+    haptics.tap();
+    setAmount(cur === "0" ? key : cur + key); // a lone leading zero is replaced, not appended
   };
 
   // The pace line turns a target into a decision: what it costs per month to
@@ -137,11 +145,22 @@ const AddGoal = () => {
         target: parseMoney(data.amount),
         icon: data.icon,
         color: data.color,
-        ...(deadline ? { deadline: toUtcDateISO(deadline) } : {}),
+        ...(deadline ? { deadline: toZonedDayISO(deadline) } : {}),
       });
       router.back();
+      // The pace is the whole reason for setting a deadline, so the receipt repeats
+      // it — the screen that worked it out is gone by the time this lands.
+      toast.success(
+        deadline
+          ? `${data.name.trim()} started — ${formatMoney(Math.ceil(parseMoney(data.amount) / months))} a month`
+          : `${data.name.trim()} started — ${formatMoney(parseMoney(data.amount))} to go`
+      );
     }
     catch (err) {
+      // Kept on the screen: the name, target, icon and colour the user just chose are
+      // all still here, and the reason belongs beside them. The buzz is what makes a
+      // line of small red text at the bottom of a long form noticeable.
+      haptics.error();
       setSubmitError(err instanceof Error ? err.message : "Couldn't create the goal");
     }
     finally {
@@ -152,9 +171,9 @@ const AddGoal = () => {
   // Spec .shead — ✕ on the left, centered title, balancing spacer on the right.
   const header = (
     <View style={styles.header}>
-      <Pressable onPress={() => router.back()} hitSlop={8} accessibilityLabel="Close">
-        <Icon name="close" size={16} containerSize={32} container="circle" containerColor="glass" color="inkDim" />
-      </Pressable>
+      {/* The shared ✕ — same glyph, same squeeze, same tick as every other modal
+          route, instead of this screen's own hand-rolled copy of it. */}
+      <BackButton variant="close" />
       <AppText weight="black" size="lg">
         New Goal
       </AppText>
@@ -263,37 +282,49 @@ const AddGoal = () => {
               <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>
                 TARGET DATE
               </AppText>
-              <Switch
+              {/* The shared Toggle, which carries the app-wide switch haptic — the raw
+                  RN Switch this replaced had neither that nor the role tokens. */}
+              <Toggle
                 value={deadline !== null}
                 onValueChange={(on) => setDeadline(on ? defaultDeadline() : null)}
-                trackColor={{ false: colors.surface2, true: colors.primary }}
-                thumbColor={colors.surface}
               />
             </View>
+            {/* Cross-fades between the date row and the "no deadline" line, so flipping
+                the switch reads as one thing replacing another rather than a jump. */}
             {deadline ? (
-              <DateField
-                label="DEADLINE"
-                value={deadline}
-                onChange={setDeadline}
-                minimumDate={startOfToday()}
-              />
+              <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)}>
+                <DateField
+                  label="DEADLINE"
+                  value={deadline}
+                  onChange={setDeadline}
+                  minimumDate={startOfToday()}
+                />
+              </Animated.View>
             ) : (
-              <AppText size="xs" color="inkDim">
-                No deadline — contribute whenever you like.
-              </AppText>
+              <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)}>
+                <AppText size="xs" color="inkDim">
+                  No deadline — contribute whenever you like.
+                </AppText>
+              </Animated.View>
             )}
           </View>
         </ScrollView>
 
         {/* Fixed bottom — numpad + create, always visible with the target above */}
         {submitError && (
-          <AppText size="xs" color="danger">
-            {submitError}
-          </AppText>
+          <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)}>
+            <AppText size="xs" color="danger">
+              {submitError}
+            </AppText>
+          </Animated.View>
         )}
 
         <View style={styles.numpad}>
           {KEYS.map((key) => (
+            // Deliberately a plain Pressable, not PressableScale: a keypad is pressed
+            // fast and repeatedly, and a spring that's still settling when the next
+            // digit lands reads as lag. The instant background lift is the affordance
+            // here; the tick comes from `pressKey`, which only fires when a digit took.
             <Pressable
               key={key}
               onPress={() => pressKey(key)}

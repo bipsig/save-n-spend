@@ -2,7 +2,8 @@ import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import Svg, { G, Line, Rect } from "react-native-svg";
 import { AppText } from "@/components/ui/AppText";
-import formatMoney from "@/lib/money";
+import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { useScrubTick } from "@/lib/useScrubTick";
 import { incomeColor, expenseColor } from "@/theme/charts";
 
 type Props = {
@@ -20,6 +21,7 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 // Paired columns (spec income vs expense). Tap a unit to read its exact income
 // and expense — a highlighted slot + tooltip.
 const PairedColumns = ({ data, labels, activeIndex, onScrub, height = 96 }: Props) => {
+  usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
   const [w, setW] = useState(0);
   const active = activeIndex ?? null;
   const padB = 4;
@@ -32,9 +34,12 @@ const PairedColumns = ({ data, labels, activeIndex, onScrub, height = 96 }: Prop
   const gap = 3;
   const barH = (v: number) => (v / max) * chartH;
 
+  // Ticks as the finger crosses into a new column, and only then.
+  const scrub = useScrubTick(active, onScrub);
+
   const pick = (locationX: number) => {
     if (w <= 0) return;
-    onScrub?.(clamp(Math.floor(locationX / slotW), 0, n - 1));
+    scrub(clamp(Math.floor(locationX / slotW), 0, n - 1));
   };
 
   return (

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { AppText } from "@/components/ui/AppText";
-import formatMoney from "@/lib/money";
+import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { useScrubTick } from "@/lib/useScrubTick";
 
 type Datum = { id: string; name: string; total: number; pct: number; color: string };
 
@@ -18,9 +19,14 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 // (otherwise the tap keeps missing the bar and bubbles to the screen's clear-tip
 // Pressable). Tapping a segment shows its exact amount in a callout below.
 const ShareBar = ({ data, activeIndex, onScrub }: Props) => {
+  usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
   const [w, setW] = useState(0);
   const active = activeIndex ?? null;
   const sum = data.reduce((a, d) => a + d.pct, 0) || 100;
+
+  // Ticks as the finger crosses a segment boundary, and only then — the segments
+  // are uneven, so the tick is the only thing that says where one account ends.
+  const scrub = useScrubTick(active, onScrub);
 
   const pick = (locationX: number) => {
     if (w <= 0 || data.length === 0) return;
@@ -28,9 +34,9 @@ const ShareBar = ({ data, activeIndex, onScrub }: Props) => {
     let acc = 0;
     for (let i = 0; i < data.length; i++) {
       acc += data[i].pct;
-      if (target <= acc) return onScrub?.(i);
+      if (target <= acc) return scrub(i);
     }
-    onScrub?.(data.length - 1);
+    scrub(data.length - 1);
   };
 
   const d = active !== null ? data[active] : null;

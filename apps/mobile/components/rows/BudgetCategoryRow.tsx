@@ -1,14 +1,15 @@
 import type { IBudget } from "@save-n-spend/types";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import Card from "../data/Card";
 import { AppText } from "../ui/AppText";
 import ProgressBar from "../data/ProgressBar";
 import Icon from "../ui/Icon";
+import PressableScale from "../ui/PressableScale";
 import { useCategoryById } from "@/lib/categories";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { spacing } from "@/theme";
-import formatMoney from "@/lib/money";
+import formatMoney, { usePrivacyMask } from "@/lib/money";
 
 type Props = {
   budget: IBudget
@@ -25,6 +26,7 @@ type StatusIcon = {
 // status (ok ✓ green / ≥80% clock amber / ≥100% alert red) driving icon + pace
 // text · over rows get a red-tinted card border.
 const BudgetCategoryRow = ({ budget, spent, onPress }: Props) => {
+  usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
   const category = useCategoryById(budget.category);
 
   const percentage = Math.min((spent / budget.limit) * 100, 100);
@@ -40,7 +42,7 @@ const BudgetCategoryRow = ({ budget, spent, onPress }: Props) => {
   const barColor = over ? "danger" : ((category?.color ?? "accent") as ColorToken);
 
   return (
-    <Pressable onPress={onPress} disabled={!onPress}>
+    <PressableScale onPress={onPress} disabled={!onPress} scaleTo={0.98}>
       <Card style={[styles.card, over && styles.overCard]}>
         <View style={styles.header}>
           <Icon
@@ -68,7 +70,7 @@ const BudgetCategoryRow = ({ budget, spent, onPress }: Props) => {
 
         <ProgressBar value={percentage} color={barColor} />
       </Card>
-    </Pressable>
+    </PressableScale>
   );
 };
 

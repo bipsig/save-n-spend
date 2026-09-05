@@ -1,16 +1,17 @@
 import type { IBill } from "@save-n-spend/types";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import Card from "../data/Card";
 import { AppText } from "../ui/AppText";
 import Icon from "../ui/Icon";
 import Badge from "../ui/Badge";
+import PressableScale from "../ui/PressableScale";
 import { useCategoryById } from "@/lib/categories";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { spacing } from "@/theme";
 import { formatDueLabel } from "@/lib/date";
 import { isActionable } from "@/lib/bills";
-import formatMoney from "@/lib/money";
+import Money from "../ui/Money";
 
 type Props = {
   bill: IBill
@@ -35,7 +36,9 @@ const BillRow = ({ bill, onPress }: Props) => {
     : "warning";
 
   return (
-    <Pressable onPress={onPress} disabled={!onPress || bill.status === "paid"}>
+    // A paid bill has nothing left to do, so it neither dips nor buzzes — the lack of
+    // response is the answer.
+    <PressableScale onPress={onPress} disabled={!onPress || bill.status === "paid"} scaleTo={0.98}>
       <Card style={[styles.container, bill.status === "overdue" && styles.overdue, scheduled && styles.scheduled]}>
       <Icon
         name={(category?.icon ?? "bills") as IconName}
@@ -55,15 +58,15 @@ const BillRow = ({ bill, onPress }: Props) => {
       </View>
 
       <View style={styles.right}>
-        <AppText size="md" weight="black">
-          {formatMoney(bill.amount)}
-        </AppText>
+        <Money value={bill.amount} size="md" weight="black" />
         {bill.status === "overdue" ? (
-          <Pressable onPress={onPress} hitSlop={6} style={styles.markPaid}>
+          // Keeps its own tick: a nested pressable becomes the touch responder, so the
+          // row's would never fire when the pill is what got hit.
+          <PressableScale onPress={onPress} scaleTo={0.92} hitSlop={6} style={styles.markPaid}>
             <AppText size="xs" weight="black" color="primary">
               Mark paid
             </AppText>
-          </Pressable>
+          </PressableScale>
         ) : scheduled ? (
           <Badge label="Scheduled" status="onTrack" size="sm" />
         ) : (
@@ -71,7 +74,7 @@ const BillRow = ({ bill, onPress }: Props) => {
         )}
       </View>
       </Card>
-    </Pressable>
+    </PressableScale>
   );
 };
 

@@ -1,13 +1,15 @@
 import type { IGoal } from "@save-n-spend/types";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import ProgressBar from "../data/ProgressBar";
+import PressableScale from "../ui/PressableScale";
 import type { ColorToken } from "@/theme";
 import { spacing } from "@/theme";
 import Card from "../data/Card";
 import { AppText } from "../ui/AppText";
-import formatMoney from "@/lib/money";
+import formatMoney, { usePrivacyMask } from "@/lib/money";
 import Icon from "../ui/Icon";
 import type { IconName } from "@/lib/icons";
+import { appZone } from "@/lib/zone";
 
 type Props = {
   goal: IGoal
@@ -15,20 +17,29 @@ type Props = {
 };
 
 // Deadline → "Dec 2026" pace label (client-derived; absent → "No deadline").
+//
+// Read in the user's zone, like every other date the app prints: a deadline stored as
+// the start of 1 September in India is 31 August in UTC, and formatting it without a
+// zone would label the goal "Aug" on a phone that had crossed a border.
 const deadlineLabel = (iso?: string): string =>
   iso
-    ? new Date(iso).toLocaleDateString("en-US", { month: "short", year: "numeric" })
+    ? new Date(iso).toLocaleDateString("en-US", {
+        month: "short",
+        year: "numeric",
+        timeZone: appZone(),
+      })
     : "No deadline";
 
 // Spec GoalCard: gradient icon chip (goal color, glowing) · name 15/700 ·
 // "saved / target" sub · % colored per goal · pace line · tinted gradient bar.
 const GoalCard = ({ goal, onPress }: Props) => {
+  usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
   const color = (goal.color ?? "accent") as ColorToken;
   const percent = Math.min(Math.round((goal.saved / goal.target) * 100), 100);
   const achieved = goal.saved >= goal.target;
 
   return (
-    <Pressable onPress={onPress} disabled={!onPress}>
+    <PressableScale onPress={onPress} disabled={!onPress} scaleTo={0.98}>
       <Card style={styles.card}>
         <View style={styles.header}>
           <Icon
@@ -64,7 +75,7 @@ const GoalCard = ({ goal, onPress }: Props) => {
 
         <ProgressBar value={percent} color={achieved ? "success" : color} />
       </Card>
-    </Pressable>
+    </PressableScale>
   );
 };
 

@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, View } from "react-native"
+import { StyleSheet, View } from "react-native"
+import PressableScale from "../ui/PressableScale"
 import { useCategoryById } from "@/lib/categories"
 import type { ITransaction } from "@save-n-spend/types"
 import type { IconName } from "@/lib/icons"
@@ -8,7 +9,7 @@ import { formatTxnDate } from "@/lib/date"
 import Icon from "../ui/Icon"
 import { AppText } from "../ui/AppText"
 import Card from "../data/Card"
-import formatMoney from "@/lib/money"
+import Money from "../ui/Money"
 
 type Props = {
   transaction: ITransaction,
@@ -38,10 +39,11 @@ const MetaItem = ({
 const TransactionRow = ({ transaction, onPress }: Props) => {
   const category = useCategoryById(transaction.category)
   const isIncome = transaction.type === "income"
-  const money = formatMoney(transaction.amount) // amount is positive; type gives the sign
 
   return (
-    <Pressable onPress={onPress} disabled={!onPress}>
+    // `disabled` when there's no handler, so a row that leads nowhere doesn't dip or
+    // buzz and promise a detail sheet that isn't coming.
+    <PressableScale onPress={onPress} disabled={!onPress} scaleTo={0.98}>
       <Card style={styles.card}>
         <Icon
           name={(category?.icon ?? "more") as IconName}
@@ -69,11 +71,19 @@ const TransactionRow = ({ transaction, onPress }: Props) => {
           </View>
         </View>
 
-        <AppText size="md" weight="black" color={isIncome ? "success" : "danger"}>
-          {isIncome ? `+${money}` : `-${money}`}
-        </AppText>
+        {/* The amount is stored positive and the type supplies the sign. While
+            privacy mode is masking, this is also the row's peek target — one tap
+            reveals every amount in the app, and from then on taps here open the
+            detail sheet like anywhere else on the row. */}
+        <Money
+          value={transaction.amount}
+          prefix={isIncome ? "+" : "-"}
+          size="md"
+          weight="black"
+          color={isIncome ? "success" : "danger"}
+        />
       </Card>
-    </Pressable>
+    </PressableScale>
   )
 }
 

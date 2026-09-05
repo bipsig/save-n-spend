@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { Alert, Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import type { InsightsPeriod } from "@save-n-spend/types";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
@@ -15,7 +15,7 @@ import { AppText } from "@/components/ui/AppText";
 import EmptyState from "@/components/states/EmptyState";
 import ErrorState from "@/components/states/ErrorState";
 import SkeletonState from "@/components/states/SkeletonState";
-import formatMoney from "@/lib/money";
+import formatMoney, { usePrivacyMask } from "@/lib/money";
 import {
   useInsights,
   foldCategories,
@@ -25,6 +25,8 @@ import {
   buildTrend,
 } from "@/lib/insights";
 import { exportInsights } from "@/lib/insightsExport";
+import { appZone, calendarFromKey, calendarToday, useAppZone } from "@/lib/zone";
+import { toast } from "@/store/toast";
 import { colors, radius, spacing, incomeColor, expenseColor } from "@/theme";
 
 const SEGMENTS: { key: InsightsPeriod; label: string }[] = [
@@ -39,8 +41,10 @@ const MONTHS_FULL = [
   "July", "August", "September", "October", "November", "December",
 ];
 
-const seriesLabel = (iso: string, period: InsightsPeriod) => {
-  const d = new Date(iso);
+// `periodStart` is a bare calendar key ("2026-08-01") the server already cut in the
+// user's zone, so it is read field-by-field and never re-read as a moment.
+const seriesLabel = (key: string, period: InsightsPeriod) => {
+  const d = calendarFromKey(key);
   if (period === "year") return `${d.getUTCFullYear()}`;
   if (period === "month") return MONTHS[d.getUTCMonth()];
   return `${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
@@ -49,9 +53,16 @@ const seriesLabel = (iso: string, period: InsightsPeriod) => {
 const unitsWord = (period: InsightsPeriod) =>
   period === "year" ? "YEARS" : period === "week" ? "WEEKS" : "MONTHS";
 
+// The three label helpers below all anchor on today WHERE THE USER IS, then do plain
+// `Date.UTC` arithmetic on that calendar date (see lib/zone). Anchoring on `new Date()`
+// and reading `getUTC*` off it — which is what these used to do — names the wrong
+// window for a third of every Indian day: past 5:30am IST the UTC date is still
+// yesterday, so on the 1st of a month "This Month" would have labelled the previous one.
+const anchor = (): Date => calendarToday(appZone());
+
 // Monday-start of the week that is `offset` weeks from the current one.
 const weekStart = (offset: number) => {
-  const now = new Date();
+  const now = anchor();
   const sinceMonday = (now.getUTCDay() + 6) % 7;
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - sinceMonday + offset * 7));
 };
@@ -59,10 +70,10 @@ const weekStart = (offset: number) => {
 // The human label for the window the navigator points at. Current/previous read
 // friendly ("This Month" / "Last Month"); anything older is concrete.
 const windowLabel = (period: InsightsPeriod, offset: number): string => {
-  const now = new Date();
   if (offset === 0) return period === "week" ? "This Week" : period === "month" ? "This Month" : "This Year";
   if (offset === -1) return period === "week" ? "Last Week" : period === "month" ? "Last Month" : "Last Year";
 
+  const now = anchor();
   if (period === "year") return `${now.getUTCFullYear() + offset}`;
   if (period === "month") {
     const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, 1));
@@ -77,7 +88,7 @@ const windowLabel = (period: InsightsPeriod, offset: number): string => {
 
 // Short label for the unit just before the shown window (delta "vs …").
 const prevLabel = (period: InsightsPeriod, offset: number): string => {
-  const now = new Date();
+  const now = anchor();
   if (period === "year") return `${now.getUTCFullYear() + offset - 1}`;
   if (period === "week") return "prev wk";
   const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset - 1, 1));
@@ -147,6 +158,8 @@ const Kpi = ({ label, value, children }: { label: string; value: string; childre
 );
 
 const InsightsScreen = () => {
+  usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
+  useAppZone();     // subscribe: changing the zone in Settings re-labels every window
   const router = useRouter();
   const [period, setPeriod] = useState<InsightsPeriod>("month");
   // 0 = current window, -1 = previous, … (never positive — no future).
@@ -178,10 +191,17 @@ const InsightsScreen = () => {
   const onExport = async () => {
     if (!data || exporting) return;
     setExporting(true);
+    const label = windowLabel(period, offset);
     try {
-      await exportInsights(data, period, windowLabel(period, offset));
+      await exportInsights(data, period, label);
+      // Names the window, because the export is of what's on screen and the user may
+      // have navigated periods several times before pressing it.
+      toast.success(`Insights for ${label} exported`);
     } catch (err) {
-      Alert.alert("Export failed", err instanceof Error ? err.message : "Please try again.");
+      // A toast rather than the OS Alert this used to raise: it's the same failure the
+      // rest of the app reports, and it shouldn't be the one place that blocks the
+      // screen with a modal to say so.
+      toast.fromError(err, "Couldn't export your insights. Try again.");
     } finally {
       setExporting(false);
     }
@@ -217,7 +237,7 @@ const InsightsScreen = () => {
     }
 
     const stats = seriesStats(data.incomeVsExpense);
-    const trend = buildTrend(data.trend, period, data.periodStart, data.periodEnd);
+    const trend = buildTrend(data.trend, period);
     const cats = foldCategories(data.byCategory);
     const accts = accountShares(data.byAccount);
     const pairs = data.incomeVsExpense.map((p) => ({ income: p.income, expense: p.expense }));
@@ -356,7 +376,9 @@ const InsightsScreen = () => {
         />
       }
     >
-      {/* Tapping anywhere that isn't a chart clears the open tooltip. */}
+      {/* Tapping anywhere that isn't a chart clears the open tooltip. Deliberately a
+          plain Pressable, not PressableScale: this covers the whole page, so a squeeze
+          or a tick here would fire on every stray tap and dip the entire screen. */}
       <Pressable style={styles.body} onPress={() => setTip(null)}>
         <SegmentedControl segments={SEGMENTS} value={period} onChange={changePeriod} />
         <PeriodNav

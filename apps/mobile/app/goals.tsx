@@ -13,11 +13,12 @@ import EmptyState from "@/components/states/EmptyState";
 import ErrorState from "@/components/states/ErrorState";
 import SkeletonState from "@/components/states/SkeletonState";
 import ContributeSheet from "@/components/sheets/ContributeSheet";
-import formatMoney from "@/lib/money";
+import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { useGoals, goalsSummary, sortGoals } from "@/lib/goals";
 import { radius, spacing } from "@/theme";
 
 const GoalsScreen = () => {
+  usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
   const router = useRouter();
   const { items, loading, error, refetch } = useGoals();
 

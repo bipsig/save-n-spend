@@ -18,12 +18,13 @@ import Fab from "@/components/ui/Fab";
 import EmptyState from "@/components/states/EmptyState";
 import ErrorState from "@/components/states/ErrorState";
 import SkeletonState from "@/components/states/SkeletonState";
-import formatMoney from "@/lib/money";
+import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { useCategories } from "@/lib/categories";
 import type { IconName } from "@/lib/icons";
 import { useTransactionFeed, useTransactionSummary } from "@/lib/transactions";
 import { RANGES, rangeBounds, rangeLabel, rangeNavLabel, type RangeKey } from "@/lib/dateRange";
 import { dayGroupLabel, monthGroupLabel } from "@/lib/date";
+import { dayKey, monthKeyOf, useAppZone } from "@/lib/zone";
 import { colors, radius, spacing } from "@/theme";
 
 // A flat feed row is either a transaction or a group header injected between days
@@ -101,6 +102,8 @@ const SummaryCard = ({
 );
 
 const ActivityScreen = () => {
+  usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
+  const zone = useAppZone(); // subscribe: the zone decides which day each row sits under
   const router = useRouter();
   const [range, setRange] = useState<RangeKey>("month");
   // 0 = current window, -1 = previous, … (never positive — no future).
@@ -183,21 +186,25 @@ const ActivityScreen = () => {
     let lastDay: string | null = null;
     let lastMonth: string | null = null;
     for (const tx of feed.items) {
-      const d = new Date(tx.occurredAt as string);
-      const monthKey = `${d.getFullYear()}-${d.getMonth()}`;
-      const dayKey = `${monthKey}-${d.getDate()}`;
-      if (showMonths && monthKey !== lastMonth) {
-        rows.push({ kind: "month", key: `m-${monthKey}`, label: monthGroupLabel(tx.occurredAt as string) });
-        lastMonth = monthKey;
+      // Cut in the user's zone, which is also what the labels below print and what
+      // the server counted the day in. Keyed off the DEVICE's day — which is what
+      // this did — a 1am purchase abroad would open a second "Today" section, or two
+      // rows of the same local day would land under different headings.
+      const instant = new Date(tx.occurredAt as string);
+      const month = monthKeyOf(instant, zone);
+      const day = dayKey(instant, zone);
+      if (showMonths && month !== lastMonth) {
+        rows.push({ kind: "month", key: `m-${month}`, label: monthGroupLabel(tx.occurredAt as string) });
+        lastMonth = month;
       }
-      if (dayKey !== lastDay) {
-        rows.push({ kind: "day", key: `d-${dayKey}`, label: dayGroupLabel(tx.occurredAt as string) });
-        lastDay = dayKey;
+      if (day !== lastDay) {
+        rows.push({ kind: "day", key: `d-${day}`, label: dayGroupLabel(tx.occurredAt as string) });
+        lastDay = day;
       }
       rows.push({ kind: "txn", key: tx._id, tx });
     }
     return rows;
-  }, [feed.items, showMonths]);
+  }, [feed.items, showMonths, zone]);
 
   return (
     <ScreenScaffold

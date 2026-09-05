@@ -1,19 +1,22 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import type { IBill } from "@save-n-spend/types";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";
 import AccountPickerSheet from "./AccountPickerSheet";
 import Button from "@/components/ui/Button";
 import Icon from "@/components/ui/Icon";
+import PressableScale from "@/components/ui/PressableScale";
 import { AppText } from "@/components/ui/AppText";
 import { useCategoryById } from "@/lib/categories";
 import { useAccountById, useDefaultAccount } from "@/lib/accounts";
 import { post } from "@/lib/api";
+import { haptics } from "@/lib/haptics";
+import { toast } from "@/store/toast";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { spacing } from "@/theme";
-import formatMoney from "@/lib/money";
+import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { formatDueLabel, rollDueDate, formatFullDate } from "@/lib/date";
 
 type Props = {
@@ -31,6 +34,7 @@ const Effect = ({ icon, color, children }: { icon: IconName; color: ColorToken; 
 );
 
 const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, ref) => {
+  usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
   // Own handle, so `dismiss` closes this sheet and not the account picker it opens
   // on top of itself (see CategoryPickerSheet).
   const innerRef = useRef<BottomSheetModal>(null);
@@ -59,8 +63,18 @@ const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
       await post(`/bills/${bill._id}/${action}`, action === "pay" && accountId ? { account: accountId } : undefined);
       dismiss();
       onChanged();
+      // Names the consequence the sheet promised, so the receipt matches the preview:
+      // paying moves money, skipping deliberately doesn't.
+      toast.success(
+        action === "pay"
+          ? `${bill.name} paid — ${formatMoney(bill.amount)} logged`
+          : `${bill.name} skipped this cycle — no money moved`
+      );
     }
     catch (err) {
+      // Kept in the sheet: the failure has to be read next to the effects it was
+      // meant to cause, and the sheet stays open so they're still on screen.
+      haptics.error();
       setError(err instanceof Error ? err.message : "Something went wrong");
     }
     finally {
@@ -111,7 +125,7 @@ const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
             )}
           </View>
 
-          <Pressable style={styles.selRow} onPress={() => accountRef.current?.present()}>
+          <PressableScale style={styles.selRow} onPress={() => accountRef.current?.present()} scaleTo={0.98}>
             <Icon name="wallet" size={18} color="inkDim" />
             <View style={styles.selText}>
               <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
@@ -122,7 +136,7 @@ const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
               </AppText>
             </View>
             <Icon name="chevronRight" size={20} color="inkDim" />
-          </Pressable>
+          </PressableScale>
 
           {error && (
             <AppText size="xs" color="danger">

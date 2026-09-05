@@ -1,8 +1,11 @@
 import type { InsightsSummary, InsightsPeriod } from "@save-n-spend/types";
 import { deliver, htmlEscape, dayStamp } from "@/lib/export";
 import { buildTrend, foldCategories, accountShares } from "@/lib/insights";
+import { calendarFromKey } from "@/lib/zone";
 import { incomeColor, expenseColor } from "@/theme";
-import formatMoney from "@/lib/money";
+// The exact formatter, never the privacy-masked default: an exported file is
+// one the user explicitly asked us to generate, so "₹ ••••" in it would be a bug.
+import { formatMoneyExact as formatMoney } from "@/lib/money";
 
 // A PDF report of the insights window the user is currently looking at (period +
 // however far they've navigated back). We already hold the InsightsSummary in
@@ -10,8 +13,10 @@ import formatMoney from "@/lib/money";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-const seriesLabel = (iso: string, period: InsightsPeriod): string => {
-  const d = new Date(iso);
+// The key is a bare calendar date from the server ("2026-08-12"), already cut in the
+// user's zone — so it is read as fields, never re-interpreted as a moment.
+const seriesLabel = (key: string, period: InsightsPeriod): string => {
+  const d = calendarFromKey(key);
   if (period === "year") return `${d.getUTCFullYear()}`;
   if (period === "month") return MONTHS[d.getUTCMonth()];
   return `${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
@@ -112,7 +117,7 @@ const buildHtml = (data: InsightsSummary, period: InsightsPeriod, label: string)
   const { income, expense, net, savings } = currentTotals(data);
   const cats = foldCategories(data.byCategory);
   const accts = accountShares(data.byAccount);
-  const trend = buildTrend(data.trend, period, data.periodStart, data.periodEnd);
+  const trend = buildTrend(data.trend, period);
   const pairs = data.incomeVsExpense.map((p) => ({ income: p.income, expense: p.expense }));
   const iveLabels = data.incomeVsExpense.map((p) => seriesLabel(p.periodStart, period));
 

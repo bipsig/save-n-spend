@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { z } from "zod/v4";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -7,13 +7,16 @@ import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";
 import Button from "@/components/ui/Button";
 import Icon from "@/components/ui/Icon";
+import PressableScale from "@/components/ui/PressableScale";
 import AmountHeroInput from "@/components/ui/AmountHeroInput";
 import { AppText } from "@/components/ui/AppText";
 import ProgressBar from "@/components/data/ProgressBar";
-import formatMoney, { parseMoney, paiseToInput } from "@/lib/money";
+import formatMoney, { parseMoney, paiseToInput, usePrivacyMask } from "@/lib/money";
 import { useCategoryById } from "@/lib/categories";
 import { post, patch, del } from "@/lib/api";
+import { haptics } from "@/lib/haptics";
 import { isMonthClosed, monthTitle, type BudgetSummary } from "@/lib/budgets";
+import { toast } from "@/store/toast";
 import type { IconName } from "@/lib/icons";
 import { spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
@@ -39,6 +42,7 @@ type FormValues = z.infer<typeof schema>;
 const STEPS = [-50000, 50000, 100000];
 
 const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, categoryId, onPickCategoryPress, onChanged }, ref) => {
+  usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
   // Own handle, so `dismiss` closes this form and not the category picker that may
   // still be animating out on top of it (see CategoryPickerSheet).
   const innerRef = useRef<BottomSheetModal>(null);
@@ -94,8 +98,17 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
       }
       dismiss();
       onChanged();
+      const name = category?.name ?? "Budget";
+      // Warned rather than plain success when the limit is already blown: the sheet
+      // said so before saving, and the tone has to carry that through instead of
+      // congratulating the user on a budget they're over.
+      if (over) toast.warning(`${name} limit set to ${formatMoney(parseMoney(data.limit))} — already ${formatMoney(spent - entered)} over`);
+      else toast.success(`${name} limit ${isEdit ? "updated" : "set"} to ${formatMoney(parseMoney(data.limit))}`);
     }
     catch (err) {
+      // Kept in the sheet: the limit is still in the field beside the meter that
+      // explains it, and a banner would expire before either is re-read.
+      haptics.error();
       setError(err instanceof Error ? err.message : "Couldn't save the budget");
     }
     finally {
@@ -111,8 +124,12 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
       await del(`/budgets/${summary.budget._id}`);
       dismiss();
       onChanged();
+      // Says what removing it means, not just that it went: the category keeps its
+      // spending, it simply stops being measured against a limit.
+      toast.success(`${category?.name ?? "Category"} is no longer budgeted`);
     }
     catch (err) {
+      haptics.error();
       setError(err instanceof Error ? err.message : "Couldn't remove the budget");
     }
     finally {
@@ -161,9 +178,9 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
       {isEdit ? (
         <View style={styles.identity}>{identity}</View>
       ) : (
-        <Pressable style={styles.identity} onPress={onPickCategoryPress}>
+        <PressableScale style={styles.identity} onPress={onPickCategoryPress} scaleTo={0.96}>
           {identity}
-        </Pressable>
+        </PressableScale>
       )}
 
       <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
@@ -180,11 +197,22 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
 
       <View style={styles.steps}>
         {STEPS.map((delta) => (
-          <Pressable key={delta} style={styles.step} onPress={() => step(delta)}>
+          // `select`, not the default tap: a step nudges the field rather than
+          // committing anything, and these are usually pressed several times in a row.
+          <PressableScale
+            key={delta}
+            style={styles.step}
+            onPress={() => {
+              haptics.select();
+              step(delta);
+            }}
+            scaleTo={0.94}
+            haptic={false}
+          >
             <AppText size="sm" weight="bold" color="inkDim">
               {`${delta < 0 ? "−" : "+"} ${formatMoney(Math.abs(delta))}`}
             </AppText>
-          </Pressable>
+          </PressableScale>
         ))}
       </View>
 

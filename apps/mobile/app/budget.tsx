@@ -14,7 +14,7 @@ import ErrorState from "@/components/states/ErrorState";
 import SkeletonState from "@/components/states/SkeletonState";
 import CategoryPickerSheet from "@/components/sheets/CategoryPickerSheet";
 import BudgetLimitSheet from "@/components/sheets/BudgetLimitSheet";
-import formatMoney from "@/lib/money";
+import formatMoney, { usePrivacyMask } from "@/lib/money";
 import {
   useBudgets,
   budgetTotals,
@@ -94,6 +94,7 @@ const MonthlyBudgetCard = ({ totals }: { totals: Totals }) => (
 );
 
 const BudgetScreen = () => {
+  usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
   // Same windowing convention as Insights and Activity: 0 = this month, negative
   // = past, never positive — there is nothing to show in a month yet to happen.
   const [offset, setOffset] = useState(0);

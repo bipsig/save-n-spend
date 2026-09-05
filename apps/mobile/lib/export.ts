@@ -8,7 +8,10 @@ import { get } from "@/lib/api";
 import { rangeBounds, rangeLabel, type RangeKey } from "@/lib/dateRange";
 import { categoryById } from "@/lib/categories";
 import { accountById } from "@/lib/accounts";
-import formatMoney from "@/lib/money";
+// The exact formatter, never the privacy-masked default: an exported file is
+// one the user explicitly asked us to generate, so "₹ ••••" in it would be a bug.
+import { formatMoneyExact as formatMoney } from "@/lib/money";
+import { appZone, dayKey, zonedParts } from "@/lib/zone";
 
 export type ExportFormat = "csv" | "pdf";
 
@@ -41,8 +44,17 @@ const fetchAllInRange = async (bounds: { startDate?: string; endDate?: string })
 };
 
 const pad = (n: number) => String(n).padStart(2, "0");
-export const dayStamp = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const clockStamp = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+// Both stamps read the clock in the user's zone, not the device's. It matters for the
+// filename an export is saved under and for the "generated at" line inside it: a
+// statement covering the user's September should not be stamped 31 August because
+// their phone happened to be in another country when they tapped Export.
+export const dayStamp = (d: Date) => dayKey(d, appZone());
+
+const clockStamp = (d: Date) => {
+  const { hour, minute } = zonedParts(d, appZone());
+  return `${pad(hour)}:${pad(minute)}`;
+};
 
 const TYPE_LABEL: Record<string, string> = {
   expense: "Expense",

@@ -1,5 +1,5 @@
 import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import type { IGoal } from "@save-n-spend/types";
 import { z } from "zod/v4";
 import { Controller, useForm } from "react-hook-form";
@@ -9,11 +9,14 @@ import AppSheet from "./AppSheet";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 import Icon from "@/components/ui/Icon";
+import PressableScale from "@/components/ui/PressableScale";
 import { AppText } from "@/components/ui/AppText";
 import ProgressBar from "@/components/data/ProgressBar";
-import { parseMoney } from "@/lib/money";
+import { haptics } from "@/lib/haptics";
+import { parseMoney, usePrivacyMask } from "@/lib/money";
 import formatMoney from "@/lib/money";
 import { post } from "@/lib/api";
+import { toast } from "@/store/toast";
 import type { IconName } from "@/lib/icons";
 import { spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
@@ -28,6 +31,7 @@ type Props = {
 const PRESETS = [50000, 100000, 250000, 500000];
 
 const ContributeSheet = forwardRef<BottomSheetModal, Props>(({ goal, onChanged }, ref) => {
+  usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
   // Own handle, so `dismiss` closes this sheet rather than whatever happens to sit
   // on top of the provider-wide queue (see CategoryPickerSheet).
   const innerRef = useRef<BottomSheetModal>(null);
@@ -81,11 +85,22 @@ const ContributeSheet = forwardRef<BottomSheetModal, Props>(({ goal, onChanged }
     setSubmitting(true);
     setError(null);
     try {
-      await post(`/goals/${goal._id}/contribute`, { amount: parseMoney(data.amount) });
+      const added = parseMoney(data.amount);
+      await post(`/goals/${goal._id}/contribute`, { amount: added });
       dismiss();
       onChanged();
+      // Hitting the target is the whole point of a goal, so it gets said outright
+      // rather than left for the user to work out from a percentage on the card.
+      toast.success(
+        goal.saved + added >= goal.target
+          ? `${goal.name} is fully funded ✦`
+          : `${formatMoney(added)} added to ${goal.name}`
+      );
     }
     catch (err) {
+      // Kept in the sheet rather than toasted: the amount is still in the field, and
+      // the reason belongs beside it. The buzz is what makes it noticeable.
+      haptics.error();
       setError(err instanceof Error ? err.message : "Couldn't add the contribution");
     }
     finally {
@@ -127,11 +142,16 @@ const ContributeSheet = forwardRef<BottomSheetModal, Props>(({ goal, onChanged }
               {PRESETS.map((paise) => {
                 const selected = entered === paise;
                 return (
-                  <Pressable
+                  // `select`, not the default tap: the presets are a set you move
+                  // through, and picking one fills the field rather than committing.
+                  <PressableScale
                     key={paise}
-                    onPress={() =>
-                      setValue("amount", String(paise / 100), { shouldValidate: true })
-                    }
+                    onPress={() => {
+                      haptics.select();
+                      setValue("amount", String(paise / 100), { shouldValidate: true });
+                    }}
+                    scaleTo={0.94}
+                    haptic={false}
                     style={[styles.preset, selected && styles.presetOn]}
                   >
                     <AppText
@@ -141,7 +161,7 @@ const ContributeSheet = forwardRef<BottomSheetModal, Props>(({ goal, onChanged }
                     >
                       {formatMoney(paise)}
                     </AppText>
-                  </Pressable>
+                  </PressableScale>
                 );
               })}
             </View>
