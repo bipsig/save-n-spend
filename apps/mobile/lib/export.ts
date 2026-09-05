@@ -6,7 +6,7 @@ import * as Sharing from "expo-sharing";
 import * as Print from "expo-print";
 import { get } from "@/lib/api";
 import { rangeBounds, rangeLabel, type RangeKey } from "@/lib/dateRange";
-import { categoryById } from "@/lib/categories";
+import { categoryLabel } from "@/lib/categories";
 import { accountById } from "@/lib/accounts";
 // The exact formatter, never the privacy-masked default: an exported file is
 // one the user explicitly asked us to generate, so "₹ ••••" in it would be a bug.
@@ -69,13 +69,28 @@ const TYPE_LABEL: Record<string, string> = {
 const signedPaise = (tx: ITransaction): number =>
   tx.type === "income" || tx.type === "positiveAdjustment" ? tx.amount : -tx.amount;
 
-const catName = (id: string | null) => (id ? categoryById(id)?.name ?? "" : "");
 const accName = (id: string | undefined) => (id ? accountById(id)?.name ?? "" : "");
+
+// Categories go out as two fields, not one. A spreadsheet is exactly where someone
+// wants to pivot spend by heading, and a lone "Groceries" cell makes that impossible —
+// while "Food & Dining › Groceries" makes it a string-split. So the parent gets its own
+// column, and a top-level category's Sub-category cell is simply empty.
+//
+// For a top-level category the name lands in `Category` and `Sub-category` is blank,
+// which keeps a pivot on `Category` correct for both levels at once.
+const catColumns = (id: string | null): [category: string, sub: string] => {
+  if (!id) return ["", ""];
+  const label = categoryLabel(id);
+  return label.isChild ? [label.parentName ?? "", label.name] : [label.name, ""];
+};
+
+/** The one-line form, for the PDF where there is no second column to give it. */
+const catPath = (id: string | null) => (id ? categoryLabel(id).path : "");
 
 // ---- CSV --------------------------------------------------------------------
 
 const CSV_HEADERS = [
-  "Date", "Time", "Type", "Title", "Category", "Account",
+  "Date", "Time", "Type", "Title", "Category", "Sub-category", "Account",
   "To Account", "Amount (INR)", "Payment Mode", "Note", "Location",
 ];
 
@@ -90,7 +105,7 @@ const buildCsv = (txns: ITransaction[]): string => {
       clockStamp(d),
       TYPE_LABEL[tx.type] ?? tx.type,
       tx.title ?? "",
-      catName(tx.category),
+      ...catColumns(tx.category),
       accName(tx.account),
       accName(tx.toAccount),
       (signedPaise(tx) / 100).toFixed(2),
@@ -121,10 +136,10 @@ const buildHtml = (txns: ITransaction[], range: RangeKey, offset: number): strin
   const rows = txns
     .map((tx) => {
       const d = new Date(tx.occurredAt);
-      const desc = tx.title || catName(tx.category) || TYPE_LABEL[tx.type] || "—";
+      const desc = tx.title || catPath(tx.category) || TYPE_LABEL[tx.type] || "—";
       const sub = tx.type === "transfer"
         ? `${accName(tx.account)} → ${accName(tx.toAccount)}`
-        : [catName(tx.category), accName(tx.account)].filter(Boolean).join(" · ");
+        : [catPath(tx.category), accName(tx.account)].filter(Boolean).join(" · ");
       const amount = formatMoney(signedPaise(tx));
       const positive = signedPaise(tx) >= 0;
       return `<tr>
