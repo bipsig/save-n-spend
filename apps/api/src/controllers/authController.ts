@@ -52,8 +52,16 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       }], { session });
 
       // Transaction 3: Categories Seeding
+      //
+      // Parent first, then its children — a child needs its parent's `_id`, which only
+      // exists once the parent is written. Sequential rather than a bulk insert for the
+      // same reason; the set is small and this runs once per user, ever.
+      //
+      // Children inherit their parent's `kind`, never carry their own: an income child
+      // under an expense parent would fold earnings into a spending total everywhere
+      // the rollup runs.
       for (const category of defaultCategories) {
-        const [newCategory] = await Category.create([{
+        const [parent] = await Category.create([{
           userId: newUser._id,
           name: category.name,
           parent: null,
@@ -61,6 +69,17 @@ export const register = async (req: Request, res: Response): Promise<void> => {
           icon: category.icon,
           color: category.color
         }], { session });
+
+        for (const child of category.children ?? []) {
+          await Category.create([{
+            userId: newUser._id,
+            name: child.name,
+            parent: parent._id,
+            kind: category.kind,
+            icon: child.icon,
+            color: child.color
+          }], { session });
+        }
       }
 
       // Transaction 4: Setting Default Account
