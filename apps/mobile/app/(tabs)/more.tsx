@@ -141,7 +141,7 @@ const MoreScreen = () => {
             pointerEvents="none"
           />
           <Icon
-            name="chat"
+            name="summary"
             size={22}
             containerSize={44}
             container="square"
@@ -149,10 +149,10 @@ const MoreScreen = () => {
           />
           <View style={styles.profileInfo}>
             <AppText size="sm" weight="bold">
-              AI Assistant
+              Highlights
             </AppText>
             <AppText size="xs" color="inkDim">
-              Ask anything about your money
+              What your money is doing this month
             </AppText>
           </View>
           <Icon name="chevronRight" size={18} color="inkDim" />
