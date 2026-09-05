@@ -326,8 +326,15 @@ const ActivityScreen = () => {
                 subtitle={
                   debouncedQuery || activeCategory !== "all"
                     ? "Try a different search, category, or range."
-                    : "Add your first one with the + button."
+                    : "Record what you spend and earn, and this becomes your full history."
                 }
+                // Only the never-recorded-anything case gets a button. Offering "Add
+                // transaction" to someone whose SEARCH came back empty answers a question
+                // they did not ask — the fix there is a different query, not a new entry.
+                {...(!debouncedQuery && activeCategory === "all" && {
+                  actionLabel: "Add transaction",
+                  onAction: () => router.push("/add-transaction"),
+                })}
               />
             )
           }
