@@ -1,40 +1,49 @@
 import type { BillStatus, BillFrequency } from "@save-n-spend/types";
+import {
+  appZone,
+  calendarDate,
+  calendarDaysBetween,
+  calendarToday,
+  startOfCalendarDay,
+} from "@/lib/zone";
+
+// Every label in this file names a DAY, and a day only exists inside a zone. They
+// all therefore read the account's zone rather than the device's (see lib/zone) —
+// so "Today" here means the same day the server counted the amount under.
+//
+// The zone is read imperatively rather than passed in: these are called from row
+// renderers and template strings all over the app, and threading an argument
+// through every one of them would buy nothing, since a zone change re-renders the
+// screen anyway (screens subscribe with `useAppZone()`).
 
 // Format an ISO `occurredAt` into a short display string for rows.
 // Client-side derivation — the API sends only the ISO timestamp.
 export const formatTxnDate = (iso: string): string => {
-  const d = new Date(iso);
-  const now = new Date();
-  const time = d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
+  const zone = appZone();
+  const instant = new Date(iso);
+  const time = instant.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", timeZone: zone });
 
-  const isSameDay = d.toDateString() === now.toDateString();
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
-  const isYesterday = d.toDateString() === yesterday.toDateString();
+  // Compared as calendar dates, not with `toDateString()`: that reads the DEVICE's
+  // day, so a phone left on airport time would disagree with the totals above.
+  const day = calendarDate(instant, zone);
+  const today = calendarToday(zone);
+  const distance = calendarDaysBetween(day, today);
 
-  if (isSameDay) return `Today, ${time}`;
-  if (isYesterday) return `Yesterday, ${time}`;
-  return d.toLocaleDateString("en-IN", { month: "short", day: "numeric" }); // "Jan 25"
+  if (distance === 0) return `Today, ${time}`;
+  if (distance === 1) return `Yesterday, ${time}`;
+  return instant.toLocaleDateString("en-IN", { month: "short", day: "numeric", timeZone: zone }); // "Jan 25"
 };
 
 // "Paid Jan 23" / "Overdue by 2 days" / "Due today" / "Due in 3 days".
-// Both dates are normalized to local midnight so the label reflects whole
-// calendar days regardless of the time-of-day on either timestamp.
 export const formatDueLabel = (dueDate: string, status: BillStatus, paidAt?: string | null): string => {
   if (status === "paid") {
     return `Paid ${formatTxnDate(paidAt ?? dueDate)}`;
   }
 
-  const now = new Date();
-  const date = new Date(dueDate);
-
-  now.setHours(0, 0, 0, 0);
-  date.setHours(0, 0, 0, 0);
-
-  // date − now: negative = in the past (overdue), positive = in the future.
-  // Math.round absorbs the 23/25-hour days at DST boundaries so the day count
-  // is a clean integer for the exact 0/1 comparisons below.
-  const diffDays = Math.round((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  const zone = appZone();
+  // Whole calendar days apart, which is what the sentence claims — and the same
+  // count the server used to decide this bill was overdue in the first place.
+  const diffDays = calendarDaysBetween(calendarToday(zone), calendarDate(new Date(dueDate), zone));
 
   if (diffDays < 0) {
     const overdue = Math.abs(diffDays);
@@ -45,54 +54,73 @@ export const formatDueLabel = (dueDate: string, status: BillStatus, paidAt?: str
   return `Due in ${diffDays} days`;
 };
 
-// Roll a recurring bill's due date forward one cycle. Server behavior when a
-// recurring bill is paid; the mock rehearses it (Mark paid effects preview).
-// Note: month-end overflow follows JS Date (Jan 31 + 1mo → Mar 3) — fine for bills.
+// Roll a recurring bill's due date forward one cycle — the client's rehearsal of
+// what the server will do when the bill is paid (Mark paid effects preview), so the
+// day is clamped the same way the server clamps it: 31 Jan + 1 month is 28 Feb.
 export const rollDueDate = (dueDate: string, frequency: BillFrequency): string => {
-  const d = new Date(dueDate);
-  if (frequency === "monthly") d.setMonth(d.getMonth() + 1);
-  else d.setFullYear(d.getFullYear() + 1);
-  return d.toISOString();
+  const zone = appZone();
+  const day = calendarDate(new Date(dueDate), zone);
+
+  const year = day.getUTCFullYear() + (frequency === "yearly" ? 1 : 0);
+  const month = day.getUTCMonth() + (frequency === "yearly" ? 0 : 1);
+  // Day 0 of the following month is the last day of this one.
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+
+  const rolled = new Date(Date.UTC(year, month, Math.min(day.getUTCDate(), lastDay)));
+  return startOfCalendarDay(rolled, zone).toISOString();
 };
 
 // "Aug 12, 2026" — full due-date display for sheets (spec: "next due rolls to …").
 export const formatFullDate = (iso: string): string =>
-  new Date(iso).toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" });
+  new Date(iso).toLocaleDateString("en-IN", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: appZone(),
+  });
 
-// A picked calendar day → UTC-midnight ISO, so due-date period math (which uses
-// UTC months on the server) never shifts the day across a month boundary.
-export const toUtcDateISO = (d: Date): string =>
-  new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())).toISOString();
+/**
+ * A day chosen in a picker → the instant that day starts in the user's zone.
+ *
+ * The picker hands back a device-local `Date`; only its calendar fields are meant,
+ * so they are re-anchored in the account's zone. This used to pin UTC midnight,
+ * which reads as the previous day anywhere west of Greenwich — a bill due on the
+ * 1st would have arrived already overdue.
+ */
+export const toZonedDayISO = (picked: Date): string => {
+  const zone = appZone();
+  const calendar = new Date(Date.UTC(picked.getFullYear(), picked.getMonth(), picked.getDate()));
+  return startOfCalendarDay(calendar, zone).toISOString();
+};
 
-// Local calendar day at midnight — the floor for "today or future" date pickers.
+// The floor for "today or future" date pickers. Device-local on purpose: a picker
+// is a device control and compares against the wheels the user is spinning.
 export const startOfToday = (): Date => {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   return d;
 };
 
-const isSameLocalDay = (a: Date, b: Date): boolean =>
-  a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-
 // Day-group header for the Activity list: "TODAY" / "YESTERDAY", else the
 // weekday + date ("SAT, 8 AUG", with the year once it's a different one).
 export const dayGroupLabel = (iso: string): string => {
-  const d = new Date(iso);
-  const now = new Date();
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
+  const zone = appZone();
+  const instant = new Date(iso);
+  const distance = calendarDaysBetween(calendarDate(instant, zone), calendarToday(zone));
 
-  if (isSameLocalDay(d, now)) return "TODAY";
-  if (isSameLocalDay(d, yesterday)) return "YESTERDAY";
+  if (distance === 0) return "TODAY";
+  if (distance === 1) return "YESTERDAY";
 
-  const sameYear = d.getFullYear() === now.getFullYear();
-  return d
+  const sameYear = calendarDate(instant, zone).getUTCFullYear() === calendarToday(zone).getUTCFullYear();
+  return instant
     .toLocaleDateString("en-IN", sameYear
-      ? { weekday: "short", day: "numeric", month: "short" }
-      : { weekday: "short", day: "numeric", month: "short", year: "numeric" })
+      ? { weekday: "short", day: "numeric", month: "short", timeZone: zone }
+      : { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: zone })
     .toUpperCase();
 };
 
 // Month-break header ("AUGUST 2026") for longer, multi-month Activity lists.
 export const monthGroupLabel = (iso: string): string =>
-  new Date(iso).toLocaleDateString("en-IN", { month: "long", year: "numeric" }).toUpperCase();
+  new Date(iso)
+    .toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: appZone() })
+    .toUpperCase();

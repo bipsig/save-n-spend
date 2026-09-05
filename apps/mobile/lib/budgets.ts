@@ -1,6 +1,7 @@
 import type { IBudget, ICategory } from "@save-n-spend/types";
 import { useCallback, useEffect, useState } from "react";
 import { get } from "@/lib/api";
+import { appZone, calendarToday } from "@/lib/zone";
 import { useSession } from "@/store/session";
 
 export type BudgetSummary = { budget: IBudget; spent: number };
@@ -38,10 +39,11 @@ export const useBudgets = (month?: string) => {
 export const currentMonth = (): string => monthKey(0);
 
 // The `YYYY-MM` key of the month `offset` months from the current one (0 = this
-// month, -1 = last). UTC, to match how the server windows a budget's spend.
+// month, -1 = last), anchored on today in the user's zone — the same month the
+// server windows a budget's spend in (see the API's utils/monthRange).
 export const monthKey = (offset = 0): string => {
-  const now = new Date();
-  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, 1));
+  const today = calendarToday(appZone());
+  const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + offset, 1));
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 };
 
@@ -73,8 +75,11 @@ export const budgetTotals = (items: BudgetSummary[], month: string = currentMont
 
   // A live month paces what is left over the days still to come; a closed one has
   // no days left, so the same slots report what the month actually averaged.
-  const now = new Date();
-  const daysLeft = closed ? 0 : Math.max(daysInMonth - now.getUTCDate(), 0);
+  // "Which day of the month is it" is a question about where the user is: in UTC
+  // terms an Indian evening is already tomorrow, which would quietly hand the pacing
+  // figure one day less than the user actually has.
+  const today = calendarToday(appZone());
+  const daysLeft = closed ? 0 : Math.max(daysInMonth - today.getUTCDate(), 0);
   const dailyLimit = daysLeft > 0 ? Math.round(Math.max(remaining, 0) / daysLeft) : 0;
   const dailyAverage = Math.round(spent / daysInMonth);
 

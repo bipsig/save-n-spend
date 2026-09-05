@@ -1,7 +1,18 @@
-// Time-range filter for the Activity feed. Bounds are UTC-aligned to match how
-// the app stores occurredAt and how every server aggregation windows (dashboard,
-// budgets, transaction summary). `all` means no bounds — the whole history.
-// `offset` slides the window back whole periods (0 = current, -1 = previous, …).
+import { appZone, calendarToday } from "@/lib/zone";
+
+// Time-range filter for the Activity feed. `all` means no bounds — the whole
+// history. `offset` slides the window back whole periods (0 = current, -1 =
+// previous, …).
+//
+// Every window is anchored on TODAY IN THE USER'S ZONE and then computed as plain
+// calendar arithmetic, which is why the `Date.UTC` calls below are exact: after the
+// anchor, none of these values is an instant — they are bare year/month/day triples
+// on their way to becoming `YYYY-MM-DD` query strings, which the API turns back into
+// the user's own midnights (see the API's utils/timezone).
+//
+// It was the anchor that used to be wrong: `new Date().getUTCDate()` is tomorrow
+// after 6:30pm in India, so for five and a half hours every night "Today" listed a
+// day that hadn't started.
 export type RangeKey = "day" | "week" | "month" | "year" | "all";
 
 export type RangeBounds = { startDate?: string; endDate?: string };
@@ -32,7 +43,7 @@ const weekStartDate = (now: Date, offset: number): Date => {
 // clamped to today, so the current period stops now while a past period spans its
 // full length. endDate is inclusive (the API filters occurredAt <= end 23:59).
 export const rangeBounds = (key: RangeKey, offset = 0): RangeBounds => {
-  const now = new Date();
+  const now = calendarToday(appZone());
   const y = now.getUTCFullYear();
   const m = now.getUTCMonth();
   const d = now.getUTCDate();
@@ -72,7 +83,7 @@ const weekRange = (start: Date, end: Date): string =>
 // Concrete caps label for the summary card and exported report headers
 // ("AUGUST 2026", "4–10 AUG 2026", "2025", "ALL TIME").
 export const rangeLabel = (key: RangeKey, offset = 0): string => {
-  const now = new Date();
+  const now = calendarToday(appZone());
   const y = now.getUTCFullYear();
   const m = now.getUTCMonth();
   const d = now.getUTCDate();
@@ -100,7 +111,7 @@ export const rangeLabel = (key: RangeKey, offset = 0): string => {
 // Friendly relative label for the period navigator ("This Month", "Last Week",
 // "Yesterday", "July 2026").
 export const rangeNavLabel = (key: RangeKey, offset = 0): string => {
-  const now = new Date();
+  const now = calendarToday(appZone());
   const y = now.getUTCFullYear();
   const m = now.getUTCMonth();
   const d = now.getUTCDate();

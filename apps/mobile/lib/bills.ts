@@ -1,13 +1,20 @@
 import type { IBill, BillFrequency } from "@save-n-spend/types";
 import { useCallback, useEffect, useState } from "react";
 import { get } from "@/lib/api";
+import { appZone, calendarDate, calendarToday } from "@/lib/zone";
 import { useSession } from "@/store/session";
 
+// Mirrors the server's own period comparison exactly, in the same zone (see the
+// API's billController). It has to: this is what decides whether the row offers a
+// "Mark paid" button, and the server is what decides whether pressing it is allowed.
+// The two disagreeing means a button that errors when tapped.
 const isFuturePeriod = (dueDate: string, frequency?: BillFrequency): boolean => {
-  const due = new Date(dueDate);
-  const now = new Date();
-  if (frequency === "yearly") return due.getUTCFullYear() > now.getUTCFullYear();
-  return due.getUTCFullYear() * 12 + due.getUTCMonth() > now.getUTCFullYear() * 12 + now.getUTCMonth();
+  const zone = appZone();
+  const due = calendarDate(new Date(dueDate), zone);
+  const today = calendarToday(zone);
+
+  if (frequency === "yearly") return due.getUTCFullYear() > today.getUTCFullYear();
+  return due.getUTCFullYear() * 12 + due.getUTCMonth() > today.getUTCFullYear() * 12 + today.getUTCMonth();
 };
 
 // A recurring bill can be paid or skipped only when its due date is in the

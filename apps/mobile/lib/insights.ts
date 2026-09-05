@@ -8,6 +8,7 @@ import type {
 } from "@save-n-spend/types";
 import { useCallback, useEffect, useState } from "react";
 import { get } from "./api";
+import { calendarFromKey } from "@/lib/zone";
 import { useSession } from "@/store/session";
 import { chartPalette, chartOthers } from "@/theme/charts";
 
@@ -100,60 +101,27 @@ export const pctChange = (cur: number, prev: number) =>
 const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-const utcMidnight = (y: number, m: number, d: number) => new Date(Date.UTC(y, m, d));
-
-// The dense list of trend buckets for a window: one per day (week/month) or per
-// month (year), from periodStart up to periodEnd — but never past today, so a
-// still-running window (e.g. the current month) stops at today instead of
-// trailing a long zero tail into the future.
-const windowBuckets = (period: InsightsPeriod, startISO: string, endISO: string): Date[] => {
-  const start = new Date(startISO);
-  const rawEnd = new Date(endISO);
-  const now = new Date();
-  const cap = utcMidnight(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
-  const end = rawEnd < cap ? rawEnd : cap;
-
-  const out: Date[] = [];
-  if (period === "year") {
-    let d = utcMidnight(start.getUTCFullYear(), start.getUTCMonth(), 1);
-    while (d < end) {
-      out.push(d);
-      d = utcMidnight(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
-    }
-    return out;
-  }
-
-  let d = utcMidnight(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate());
-  while (d < end) {
-    out.push(d);
-    d = utcMidnight(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1);
-  }
-  return out;
-};
-
-// Everything the area chart needs, aligned to one bucket list: the zero-filled
-// amounts, sampled x-axis labels, and full tooltip labels. Windowed by the
-// server's periodStart/periodEnd so past periods render their own days.
-export const buildTrend = (
-  points: InsightsTrendPoint[],
-  period: InsightsPeriod,
-  periodStart: string,
-  periodEnd: string,
-) => {
-  const buckets = windowBuckets(period, periodStart, periodEnd);
-  const byTime = new Map<number, number>();
-  for (const p of points) byTime.set(new Date(p.date).getTime(), p.amount);
+// Everything the area chart needs from one pass over the server's buckets: the
+// amounts, the sampled x-axis labels, and the full tooltip labels.
+//
+// The client used to rebuild the bucket list itself from `periodStart`/`periodEnd`
+// and zero-fill against it — which only worked while both sides agreed that a day
+// was a UTC day. Now the server sends the buckets dense, in order, and keyed by the
+// calendar date it cut them on, so this is a plain map and there is nothing left for
+// the two halves to disagree about.
+export const buildTrend = (points: InsightsTrendPoint[], period: InsightsPeriod) => {
+  const days = points.map((p) => calendarFromKey(p.date));
 
   return {
-    values: buckets.map((d) => byTime.get(d.getTime()) ?? 0),
-    axis: buckets.map((d) =>
+    values: points.map((p) => p.amount),
+    axis: days.map((d) =>
       period === "year"
         ? MONTH_ABBR[d.getUTCMonth()]
         : period === "week"
           ? WEEKDAYS[d.getUTCDay()]
           : `${d.getUTCDate()}`,
     ),
-    tipLabels: buckets.map((d) =>
+    tipLabels: days.map((d) =>
       period === "year"
         ? `${MONTH_ABBR[d.getUTCMonth()]} ${d.getUTCFullYear()}`
         : `${d.getUTCDate()} ${MONTH_ABBR[d.getUTCMonth()]}`,

@@ -1,4 +1,15 @@
 import mongoose, { Document, Schema } from 'mongoose';
+import { DEFAULT_ZONE, isValidZone } from '../utils/timezone';
+
+// Named so the notification services can take just this slice of a user rather than a
+// whole hydrated document — a cron tick reads it for thousands of users at once.
+export interface INotificationPrefs {
+  enabled: boolean;
+  billReminderLead: number;
+  budgetAlerts: boolean;
+  goalMilestones: boolean;
+  weeklySummary: boolean;
+}
 
 export interface IUser extends Document {
   name: string;
@@ -7,14 +18,8 @@ export interface IUser extends Document {
   pushToken?: string;
   prefs: {
     defaultAccount?: mongoose.Types.ObjectId | null;
-    budgetCycleDay: number;
-    notifications: {
-      enabled: boolean;
-      billReminderLead: number;
-      budgetAlerts: boolean;
-      goalMilestones: boolean;
-      weeklySummary: boolean;
-    }
+    timeZone: string;
+    notifications: INotificationPrefs;
   };
   // local auth
   password?: string;
@@ -43,7 +48,18 @@ const UserSchema = new Schema<IUser>(
 
     prefs: {
       defaultAccount: { type: Schema.Types.ObjectId, ref: 'Account', default: null },
-      budgetCycleDay: { type: Number, min: 1, max: 28, default: 1 },
+      // The IANA zone every date bucket in the app is cut in (see utils/timezone).
+      // Validated against the runtime's own zone database rather than an enum, so
+      // the list can't drift out of date; the default covers documents written
+      // before this field existed, which were all bucketed as IST regardless.
+      timeZone: {
+        type: String,
+        default: DEFAULT_ZONE,
+        validate: {
+          validator: isValidZone,
+          message: '{VALUE} is not a recognised time zone',
+        },
+      },
       notifications: {
         enabled: { type: Boolean, default: true },
         billReminderLead: { type: Number, enum: [1, 3, 7], default: 3 },

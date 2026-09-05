@@ -1,21 +1,23 @@
-export const monthRange = (month?: string): { start: Date; next: Date; label: string } => {
-    let year: number;
-    let monthIndex: number;
+import { monthBoundsInZone, monthLabelInZone } from "./timezone";
 
-    if (month) {
-        const [y, m] = month.split("-").map(Number);
-        year = y;
-        monthIndex = m - 1;
-    }
-    else {
-        const now = new Date();
-        year = now.getUTCFullYear();
-        monthIndex = now.getUTCMonth();
-    }
+/**
+ * The bounds and `YYYY-MM` key of a budget month, cut in the user's zone.
+ *
+ * `start`/`next` are absolute instants for a `$gte`/`$lt` on `occurredAt`; `label`
+ * is what a Budget document stores its month as. All three come from one place so
+ * a budget's limit and its spend can never be looking at different months — which
+ * is what happened while the label came from the zone and the bounds from UTC.
+ *
+ * With no `month`, the month that contains right now WHERE THE USER IS. On the 1st
+ * of the month in Delhi that is a different answer than UTC gives for another five
+ * and a half hours.
+ */
+export const monthRange = (
+  zone: string,
+  month?: string,
+): { start: Date; next: Date; label: string } => {
+  const label = month ?? monthLabelInZone(new Date(), zone);
+  const { start, next } = monthBoundsInZone(label, zone);
 
-    const start = new Date(Date.UTC(year, monthIndex, 1));
-    const next = new Date(Date.UTC(year, monthIndex + 1, 1));
-    const label = `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
-
-    return { start, next, label };
+  return { start, next, label };
 }

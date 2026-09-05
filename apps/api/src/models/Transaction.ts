@@ -1,4 +1,7 @@
-import mongoose, { Date, Document, PaginateModel } from "mongoose";
+// Deliberately NOT importing mongoose's `Date`: it shadows the global one, and
+// `occurredAt` then types as a schema type rather than the JS Date it actually holds —
+// which hides every `getTime`/`toISOString` the date helpers do with it.
+import mongoose, { Document, PaginateModel } from "mongoose";
 import { Schema } from "mongoose";
 import mongoosePaginate from "mongoose-paginate-v2"
 
