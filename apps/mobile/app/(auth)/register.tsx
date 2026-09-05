@@ -17,7 +17,6 @@ import { spacing } from "@/theme";
 import { haptics } from "@/lib/haptics";
 import { post } from "@/lib/api";
 import { deviceZone } from "@/lib/zone";
-import { toast } from "@/store/toast";
 
 const schema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -56,11 +55,14 @@ const RegisterForm = () => {
       // deliberate act in Settings — otherwise a week abroad would silently re-cut
       // every month of history.
       await post("/auth/register", { ...values, timeZone: deviceZone() });
-      router.replace("/(auth)/login");
-      // The screen is replaced by Login, which looks identical to the form the user
-      // just filled in — so without this it reads as if the tap did nothing, or worse,
-      // as if the account already existed. It also says what to do next.
-      toast.success("Account created — sign in to get started");
+      // Welcome, not Login. Login looks identical to the form the user just submitted,
+      // so replacing one with the other read as if the tap had done nothing — the
+      // success toast was there to paper over that. The welcome screen says the account
+      // exists in its own right, introduces the app while they are still curious, and
+      // hands off to Login itself. `replace` so Back cannot return to a form whose
+      // submission has already succeeded.
+      haptics.success();
+      router.replace("/(auth)/welcome");
     } catch (e) {
       // A taken email is the usual failure here, reported as one line of small red
       // text beneath a button the user is still watching. The buzz is what catches it.
