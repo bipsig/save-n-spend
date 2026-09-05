@@ -3,6 +3,7 @@ import AppHeader from "@/components/shell/AppHeader";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import SummaryCard from "@/components/data/SummaryCard";
 import HealthScoreCard from "@/components/data/HealthScoreCard";
+import GetStartedCard from "@/components/data/GetStartedCard";
 import SectionHeader from "@/components/ui/SectionHeader";
 import Fab from "@/components/ui/Fab";
 import BillRow from "@/components/rows/BillRow";
@@ -16,10 +17,16 @@ import { useHealthScore } from "@/lib/health";
 import { useBills, groupBills } from "@/lib/bills";
 import { useGoals, sortGoals } from "@/lib/goals";
 import { useTransactions } from "@/lib/transactions";
+import { useBudgets } from "@/lib/budgets";
+import { buildSteps, progressOf } from "@/lib/onboarding";
+import type { OnboardingStep } from "@/lib/onboarding";
 import { useSession } from "@/store/session";
+import { useSettings } from "@/store/settings";
+import { useAccountStore } from "@/store/accounts";
+import EmptyState from "@/components/states/EmptyState";
 import ErrorState from "@/components/states/ErrorState";
 import SkeletonState from "@/components/states/SkeletonState";
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 const HomeScreen = () => {
   usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
@@ -27,15 +34,23 @@ const HomeScreen = () => {
   const router = useRouter();
 
   const userName = useSession((s) => s.user?.name);
+  const userId = useSession((s) => s.user?._id);
 
   const { data: dashboardSummary, loading: summaryLoading, error: summaryError, refetch: summaryRefetch } = useDashboardSummary();
 
   // The three previews (action queue / motivation / recency). Composed client-side
   // from the live list endpoints — same shapes the eventual GET /dashboard returns,
   // so this stays contract-honest.
-  const { items: bills, refetch: billsRefetch } = useBills();
-  const { items: goals, refetch: goalsRefetch } = useGoals();
-  const { items: transactions, refetch: transactionsRefetch } = useTransactions();
+  const { items: bills, loading: billsLoading, refetch: billsRefetch } = useBills();
+  const { items: goals, loading: goalsLoading, refetch: goalsRefetch } = useGoals();
+  const { items: transactions, loading: transactionsLoading, refetch: transactionsRefetch } = useTransactions();
+
+  // Budgets are here only for the Get started checklist — the dashboard itself has no
+  // budget section. Cheap enough to be worth it: without it the checklist would have to
+  // guess at a step it can just as easily know.
+  const { items: budgets, loading: budgetsLoading, refetch: budgetsRefetch } = useBudgets();
+  const accounts = useAccountStore((s) => s.list);
+  const accountsLoaded = useAccountStore((s) => s.loaded);
 
   // Its own request rather than a field on the summary: the summary describes a named
   // month, the score describes the trailing 90 days as of now. One response carrying
@@ -48,7 +63,47 @@ const HomeScreen = () => {
     billsRefetch();
     goalsRefetch();
     transactionsRefetch();
-  }, [summaryRefetch, healthRefetch, billsRefetch, goalsRefetch, transactionsRefetch]));
+    budgetsRefetch();
+    // Accounts are NOT refetched here. Every mutation in `lib/accounts` reloads the
+    // store itself, so the checklist's account row already ticks the moment one is
+    // added — a focus reload would be a second request per visit for a list that is
+    // already correct.
+  }, [summaryRefetch, healthRefetch, billsRefetch, goalsRefetch, transactionsRefetch, budgetsRefetch]));
+
+  // ---- Get started checklist ------------------------------------------------
+  const dismissedBy = useSettings((s) => s.getStartedDismissed);
+  const settingsHydrated = useSettings((s) => s.hydrated);
+  const updateSettings = useSettings((s) => s.update);
+
+  const progress = progressOf(buildSteps({ transactions, accounts, budgets, bills, goals }));
+
+  // Every list hook starts at `loading: true` with an empty array, which for one frame
+  // is indistinguishable from a brand-new account — so an established user would see the
+  // checklist flash before their data landed. Latched into state rather than read from
+  // `loading` directly: `useFocusEffect` re-enters loading on every focus, and gating on
+  // it would blink the card off and back on each time the tab was revisited.
+  const listsSettled =
+    !transactionsLoading && !budgetsLoading && !billsLoading && !goalsLoading && accountsLoaded;
+  const [listsReady, setListsReady] = useState(false);
+  useEffect(() => {
+    if (listsSettled) setListsReady(true);
+  }, [listsSettled]);
+
+  const showGetStarted =
+    listsReady &&
+    settingsHydrated &&
+    !progress.allDone &&
+    !(userId && dismissedBy.includes(userId));
+
+  const dismissGetStarted = () => {
+    if (!userId) return;
+    updateSettings({ getStartedDismissed: [...dismissedBy, userId] });
+  };
+
+  // A step routes to the screen that owns it, and each of those screens already opens
+  // on its own empty state with the matching CTA — so the tap lands somewhere that
+  // explains itself, rather than needing the checklist to drive a sheet from here.
+  const openStep = (step: OnboardingStep) => router.push(step.route);
 
   // Action queue — overdue first, then the nearest upcoming, capped at 3.
   const billGroups = groupBills(bills);
@@ -104,6 +159,18 @@ const HomeScreen = () => {
         <Fab onPress={() => router.push("/add-transaction")} />
       }
     >
+      {/* First on the screen, above the score and the tiles. For an account with nothing
+          in it yet, this is the only thing here that can be acted on — everything below
+          is a reading of data that does not exist. It retires itself once the five steps
+          are done (see lib/onboarding). */}
+      {showGetStarted && (
+        <GetStartedCard
+          progress={progress}
+          onStepPress={openStep}
+          onDismiss={dismissGetStarted}
+        />
+      )}
+
       {/* Absent until it has loaded rather than rendered as a placeholder: a score is a
           judgement, and a skeleton in the shape of one invites the user to read a number
           that isn't there yet. */}
@@ -174,6 +241,20 @@ const HomeScreen = () => {
             <TransactionRow key={transaction._id} transaction={transaction} onPress={() => router.push("/activity")} />
           ))}
         </View>
+      )}
+
+      {/* The floor of the screen when there is genuinely nothing to list. Reachable two
+          ways — a fresh account that dismissed the checklist, and one whose transactions
+          have all been deleted — and in both the dashboard would otherwise end in four
+          zeroes and blank space, which reads as a failed load rather than an empty book. */}
+      {listsReady && transactions.length === 0 && !showGetStarted && (
+        <EmptyState
+          icon="add"
+          title="Nothing recorded yet"
+          subtitle="Add a transaction and your dashboard, trends and health score start filling in."
+          actionLabel="Add transaction"
+          onAction={() => router.push("/add-transaction")}
+        />
       )}
 
     </ScreenScaffold>

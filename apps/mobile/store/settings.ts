@@ -24,12 +24,24 @@ export interface DeviceSettings {
   /** Require Face ID / fingerprint when the app comes to the foreground. */
   appLock: boolean;
   autoLockSeconds: AutoLockSeconds;
+  /**
+   * Ids of the users who have waved away the Get started checklist on THIS phone.
+   *
+   * A list rather than a boolean because the flag is device-local but the checklist
+   * is per-account: two people signing in on the same phone must not inherit each
+   * other's dismissal, and the one who loses out would be the new user who needs it.
+   * Every other completion signal is derived from server data — this is the only bit
+   * of onboarding state worth storing, because "I don't want budgets" is a preference
+   * and nothing on the server records it.
+   */
+  getStartedDismissed: string[];
 }
 
 const DEFAULTS: DeviceSettings = {
   privacyMode: false,
   appLock: false,
   autoLockSeconds: 60,
+  getStartedDismissed: [],
 };
 
 /**
@@ -77,8 +89,8 @@ export const useSettings = create<SettingsState>((set, get) => ({
   // keeps the stored shape identical to the state's.
   update: (patch) => {
     set(patch);
-    const { privacyMode, appLock, autoLockSeconds } = get();
-    void writeJson(STORAGE_KEY, { privacyMode, appLock, autoLockSeconds });
+    const { privacyMode, appLock, autoLockSeconds, getStartedDismissed } = get();
+    void writeJson(STORAGE_KEY, { privacyMode, appLock, autoLockSeconds, getStartedDismissed });
     // Switching privacy mode off makes a standing peek meaningless, and switching it
     // ON must not leave one running — that would mask nothing and look broken.
     if (patch.privacyMode !== undefined) get().hide();
