@@ -38,6 +38,11 @@ export const iconMap = {
   expenses: 'trending-down',
   investments: 'show-chart',    // market line (was dollar bills)
   healthPulse: 'monitor-heart', // finance health score
+  shield: 'shield',             // the safety-buffer pillar of the health score
+
+  // Cold-start gate — the server waking up, and the server not answering at all.
+  cloudSync: 'cloud-sync',
+  cloudOff: 'cloud-off',
 
   receipt: "receipt",
   date: "calendar-month",
@@ -56,6 +61,23 @@ export const iconMap = {
   help: 'help-outline',
   logout: 'logout',
   star: 'star-border',
+
+  // Settings rows (spec §10) — one glyph per row, so a row is recognisable
+  // before its label is read.
+  person: 'person',
+  lock: 'lock',
+  fingerprint: 'fingerprint',
+  key: 'vpn-key',
+  timer: 'timer',
+  privacy: 'privacy-tip',
+  policy: 'policy',
+  info: 'info-outline',
+  notificationsOn: 'notifications-active',
+  alarm: 'alarm',
+  flag: 'flag',
+  summary: 'summarize',
+  category: 'category',
+  check: 'check',
 
   // Add Transaction numpad
   backspace: 'backspace',

@@ -18,9 +18,12 @@ export const moneyItems: MoreItem[] = [
   { key: "goals",  label: "Savings Goals", icon: "savings", tint: "green",  path: "/goals" },
 ];
 
-// APP — settings & support.
+// APP — settings & support. Help sits here as well as inside Settings' ABOUT
+// group: someone looking for it on the hub shouldn't have to guess that it lives
+// one level down.
 export const appItems: MoreItem[] = [
   { key: "settings", label: "Settings", icon: "settings", tint: "blue", path: "/settings" },
+  { key: "help", label: "Help & FAQ", icon: "help", tint: "teal", path: "/help" },
 ];
 
 export default moneyItems;
