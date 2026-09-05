@@ -17,26 +17,34 @@ type Props = {
   onDelete: () => void;
   /** Suppress the top hairline: rows are separated inside one card, never by margins. */
   first?: boolean;
+  /**
+   * A sub-category, drawn one step in behind a rail. Indentation rather than a word:
+   * the relationship is to the row above, and a row that says "sub-category" in text
+   * still leaves the reader hunting for which parent it belongs to.
+   */
+  nested?: boolean;
 };
 
 // A row on Manage categories / Manage accounts. The whole row edits; delete is a
 // separate, smaller target at the end — so the destructive action can't be hit by
 // a tap aimed at opening the editor.
-const ManageRow = ({ icon, color, label, sub, onEdit, onDelete, first = false }: Props) => (
-  <View style={[styles.row, !first && styles.divider]}>
+const ManageRow = ({ icon, color, label, sub, onEdit, onDelete, first = false, nested = false }: Props) => (
+  <View style={[styles.row, !first && styles.divider, nested && styles.rowNested]}>
     {/* Shallower than the default, like SettingsRow: a full-width row travels a long
         way at 0.97, and the gap it opens beside the card's edge reads as a glitch. */}
     <PressableScale onPress={onEdit} scaleTo={0.985} style={styles.body}>
       <Icon
         name={icon}
-        size={17}
-        containerSize={34}
-        containerRadius={11}
+        size={nested ? 15 : 17}
+        containerSize={nested ? 29 : 34}
+        containerRadius={nested ? 9 : 11}
         container="square"
         gradient={color}
       />
       <View style={styles.text}>
-        <AppText size="sm" weight="bold" numberOfLines={1}>
+        {/* Semibold, not bold: the weight difference is the second cue after the
+            indent, so a group reads as one heading with items under it. */}
+        <AppText size="sm" weight={nested ? "semibold" : "bold"} numberOfLines={1}>
           {label}
         </AppText>
         {sub && (
@@ -72,6 +80,16 @@ const styles = StyleSheet.create({
   divider: {
     borderTopWidth: 1,
     borderTopColor: "rgba(255,255,255,0.06)",
+  },
+  // The indent plus a rail that runs the height of the row, so a run of children
+  // reads as one continuous line hanging off the parent rather than as stray inset
+  // rows. Brighter than the divider on purpose — it has to survive being crossed by
+  // one every row.
+  rowNested: {
+    paddingLeft: 30,
+    borderLeftWidth: 1,
+    borderLeftColor: "rgba(255,255,255,0.14)",
+    marginLeft: 24,
   },
   body: {
     flex: 1,
