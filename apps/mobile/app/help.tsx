@@ -21,6 +21,17 @@ type Faq = {
 // The questions the app's own model actually raises — each answer states the rule
 // the code follows, so the screen can't drift from the behaviour it describes.
 const FAQS: Faq[] = [
+  // First, and about starting rather than about a rule. The welcome tour lives behind
+  // the sign-in screens and cannot be reopened from here, and the dashboard checklist
+  // can be dismissed — so this is the one place a user who skipped both can still find
+  // out what the app expects of them.
+  {
+    question: "I'm new — what should I set up first?",
+    answer:
+      "Five things, in this order: record one transaction, add your bank account under Accounts, cap one category with a budget, add a recurring bill, and set a savings goal. Your dashboard shows this as a checklist that ticks itself off as you go — and hides once you're done. You start with a Cash account and a full set of categories, so nothing is blocking you.",
+    icon: "star",
+    tint: "violet",
+  },
   {
     question: "Why can't I edit an account's balance?",
     answer:
