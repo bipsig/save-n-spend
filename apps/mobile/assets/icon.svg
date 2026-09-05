@@ -1,0 +1,65 @@
+<!--
+  Save n Spend app icon — the source of truth.
+
+  A piggy bank with a rupee coin dropping into the slot. It says "money going into
+  savings" without a word of text, which is the one thing an icon has to do.
+
+  Renders to the PNGs beside it:  npm run icons   (see scripts/build-icons.sh)
+
+  Palette is the app's own — the violet ramp and dark ground from theme/colors.ts
+  and theme/gradients.ts — so the icon and the first screen agree.
+
+  Notes on decisions that aren't obvious:
+   • Full bleed, no rounded corners. iOS applies its own squircle mask, and a
+     pre-rounded icon shows dark wedges inside it.
+   • The composition is deliberately off-centre vertically: the coin occupies the
+     top third, so the piggy sits low. Centring the piggy instead would leave the
+     coin cramped against the mask edge.
+   • The ₹ on the coin disappears below about 60px, which is fine — the coin still
+     reads as a coin. It earns its place at the sizes where the icon is shown
+     large (Settings, Spotlight, the App Switcher).
+   • The ₹ is a <text> element, so rendering needs Arial (or Helvetica) present.
+     That is a build-time dependency only; the committed PNGs carry no such need.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <!-- Dark ground, lifted toward the top-left so the icon has depth rather than
+         reading as a black hole against a bright wallpaper. -->
+    <linearGradient id="ground" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1B1338"/>
+      <stop offset="0.55" stop-color="#0F0B1F"/>
+      <stop offset="1" stop-color="#090712"/>
+    </linearGradient>
+
+    <!-- theme/gradients.ts → violet, lightened at the top so the body reads round -->
+    <linearGradient id="pig" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0" stop-color="#BDB1FF"/>
+      <stop offset="1" stop-color="#7C66FF"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" fill="url(#ground)"/>
+
+  <!-- The coin, mid-drop above the slot -->
+  <circle cx="502" cy="212" r="86" fill="#CFC6FF"/>
+  <text x="502" y="272" font-family="Arial, Helvetica, sans-serif" font-weight="bold"
+        font-size="118" fill="#5B48E0" text-anchor="middle">&#8377;</text>
+
+  <!-- The piggy, dropped clear of the coin. Painted back to front: ear and legs
+       first so the body overlaps them and they read as behind it. -->
+  <g transform="translate(0,58)">
+    <!-- Ear. Stroked in its own fill with a round join, which is the cheap way to
+         round a triangle's corners — a sharp point here reads as a horn. -->
+    <path d="M 560 358 L 652 296 L 664 396 Z" fill="#7C66FF" stroke="#7C66FF"
+          stroke-width="28" stroke-linejoin="round"/>
+    <rect x="332" y="752" width="96" height="96" rx="34" fill="#7C66FF"/>
+    <rect x="588" y="752" width="96" height="96" rx="34" fill="#7C66FF"/>
+    <ellipse cx="500" cy="548" rx="286" ry="226" fill="url(#pig)"/>
+    <ellipse cx="784" cy="580" rx="74" ry="58" fill="#CFC6FF"/>
+    <circle cx="784" cy="580" r="17" fill="#0F0B1F"/>
+    <circle cx="654" cy="498" r="27" fill="#0F0B1F"/>
+    <rect x="418" y="354" width="168" height="36" rx="18" fill="#0F0B1F" opacity="0.55"/>
+    <path d="M 222 470 q -62 -28 -26 -84" fill="none" stroke="#7C66FF"
+          stroke-width="30" stroke-linecap="round"/>
+  </g>
+</svg>

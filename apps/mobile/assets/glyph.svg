@@ -1,0 +1,41 @@
+<!--
+  The piggy on its own, no background — the transparent companion to icon.svg.
+  Feeds the Android adaptive foreground and the splash logo, both of which
+  composite over a colour supplied by app.json rather than baking one in.
+
+  Same artwork as icon.svg, scaled to 85% and re-centred. That is not decoration:
+  an Android launcher can crop everything outside the central 66% of an adaptive
+  icon, and the full-bleed composition would lose the coin and the piggy's feet to
+  the mask. The wrapping transform is the only difference between the two files —
+  if you edit the artwork, edit it in both.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="pig" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0" stop-color="#BDB1FF"/>
+      <stop offset="1" stop-color="#7C66FF"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Artwork spans y 126–906 and is centred on (514, 516); pull it to the canvas
+       centre, then shrink it into the safe zone. -->
+  <g transform="translate(512,512) scale(0.85) translate(-514,-516)">
+    <circle cx="502" cy="212" r="86" fill="#CFC6FF"/>
+    <text x="502" y="272" font-family="Arial, Helvetica, sans-serif" font-weight="bold"
+          font-size="118" fill="#5B48E0" text-anchor="middle">&#8377;</text>
+
+    <g transform="translate(0,58)">
+      <path d="M 560 358 L 652 296 L 664 396 Z" fill="#7C66FF" stroke="#7C66FF"
+            stroke-width="28" stroke-linejoin="round"/>
+      <rect x="332" y="752" width="96" height="96" rx="34" fill="#7C66FF"/>
+      <rect x="588" y="752" width="96" height="96" rx="34" fill="#7C66FF"/>
+      <ellipse cx="500" cy="548" rx="286" ry="226" fill="url(#pig)"/>
+      <ellipse cx="784" cy="580" rx="74" ry="58" fill="#CFC6FF"/>
+      <circle cx="784" cy="580" r="17" fill="#0F0B1F"/>
+      <circle cx="654" cy="498" r="27" fill="#0F0B1F"/>
+      <rect x="418" y="354" width="168" height="36" rx="18" fill="#0F0B1F" opacity="0.55"/>
+      <path d="M 222 470 q -62 -28 -26 -84" fill="none" stroke="#7C66FF"
+            stroke-width="30" stroke-linecap="round"/>
+    </g>
+  </g>
+</svg>
