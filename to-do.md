@@ -14,4 +14,5 @@
 - [X] Catgory Modal auto opens sometimes when other modals are opened
 - [ ] Add App Icon
 - [ ] Escape and length-cap the Activity search term — it goes straight into `$regex` (transactionController.ts:89, transactionSchema.ts:42), so `(` 500s and `(a+)+b` backtracks on the database
-- [ ] Highlights on the Insights tab, per docs/insights-engine.md — replaces the AI Assistant tab
+- [X] Highlights, per docs/insights-engine.md — deterministic rules, no model; its own screen behind the More-tab hero rather than on the Insights tab, so insights stayed untouched
+- [ ] Fixtures for `highlightSnapshotService` — the rules are covered, the Mongo-and-calendar half is not (budget created mid-month, backdated transaction in a closed month)

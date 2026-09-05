@@ -16,7 +16,7 @@ assumes you are comfortable with TypeScript, React Native, and Express.
 | [API reference](api-reference.md) | Call an endpoint: its path, request body, query parameters, and response shape. |
 | [Design system](design-system.md) | Style a screen with the correct tokens, or add a component that matches the rest of the app. |
 | [Mobile patterns](mobile-patterns.md) | Add a screen, a bottom sheet, or a period selector, and follow the conventions the existing screens already use. |
-| [Insights engine](insights-engine.md) | Build Highlights — the rule set, the ranking, and why there is no LLM. Design only — nothing here ships yet. |
+| [Insights engine](insights-engine.md) | Highlights — the rule set, the ranking, the cold-start gate, and why there is no LLM. |
 | [Shipping](SHIPPING.md) | Build an `.ipa` and get it onto a physical iPhone. |
 
 ## Prerequisites
