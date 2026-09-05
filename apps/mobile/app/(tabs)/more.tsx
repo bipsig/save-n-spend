@@ -1,25 +1,25 @@
-import { Pressable, StyleSheet, View } from "react-native";
+import { useCallback, useRef } from "react";
+import { StyleSheet, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
+import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import Card from "@/components/data/Card";
+import ConfirmSheet from "@/components/sheets/ConfirmSheet";
 import Avatar from "@/components/ui/Avatar";
 import Icon from "@/components/ui/Icon";
+import PressableScale from "@/components/ui/PressableScale";
 import { AppText } from "@/components/ui/AppText";
 import { moneyItems, appItems } from "@/data/menu";
 import type { MoreItem } from "@/data/menu";
+import { budgetTotals, useBudgets } from "@/lib/budgets";
+import { outstandingTotal, useBills } from "@/lib/bills";
+import { goalsSummary, useGoals } from "@/lib/goals";
+import { initialsOf } from "@/lib/profile";
+import { detachPush } from "@/lib/push";
 import { useSession } from "@/store/session";
 import { spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
-
-// Initials from a display name, e.g. "Sagnik Das" -> "SD".
-const initialsOf = (name?: string): string =>
-  (name ?? "")
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("") || "?";
 
 // Tiny caps group label (spec .flabel).
 const GroupLabel = ({ children }: { children: string }) => (
@@ -42,7 +42,9 @@ const MenuRow = ({
   valueColor?: ColorToken;
   first?: boolean;
 }) => (
-  <Pressable onPress={() => router.push(item.path)}>
+  // Shallow, like every other full-width row: a deeper squeeze opens a visible gap
+  // beside the card's edge and reads as a rendering glitch rather than a press.
+  <PressableScale onPress={() => router.push(item.path)} scaleTo={0.985}>
     <View style={[styles.row, !first && styles.rowDivider]}>
       <Icon
         name={item.icon}
@@ -62,36 +64,74 @@ const MenuRow = ({
       )}
       <Icon name="chevronRight" size={18} color="inkDim" />
     </View>
-  </Pressable>
+  </PressableScale>
 );
 
 const MoreScreen = () => {
   const user = useSession((s) => s.user);
 
-  // Status values ship once each destination is real; until then the rows are
-  // plain links into their "coming soon" screens — no fabricated numbers.
-  const liveValues: Record<string, { value: string; color?: ColorToken }> = {};
+  const { items: budgets, refetch: refetchBudgets } = useBudgets();
+  const { items: bills, refetch: refetchBills } = useBills();
+  const { items: goals, refetch: refetchGoals } = useGoals();
+
+  const logoutRef = useRef<BottomSheetModal>(null);
+
+  // The status values are the point of these rows — a stale "82% used" is worse
+  // than none, so refresh all three whenever the hub comes back into view.
+  useFocusEffect(
+    useCallback(() => {
+      void refetchBudgets();
+      void refetchBills();
+      void refetchGoals();
+    }, [refetchBudgets, refetchBills, refetchGoals])
+  );
+
+  const budget = budgetTotals(budgets);
+  const outstanding = outstandingTotal(bills);
+  const savings = goalsSummary(goals);
+  const dueSoon = outstanding.pending + outstanding.overdue;
+
+  // Derived from the same helpers each destination screen uses, so a row can never
+  // disagree with the page it leads to. A row with nothing to report shows nothing
+  // rather than a fabricated zero.
+  const liveValues: Record<string, { value: string; color?: ColorToken }> = {
+    ...(budgets.length > 0 && {
+      budget: {
+        value: `${Math.round(budget.percentUsed)}% used`,
+        color: budget.percentUsed >= 100 ? "danger" : budget.percentUsed >= 80 ? "warning" : "inkDim",
+      },
+    }),
+    ...(dueSoon > 0 && {
+      bills: {
+        value: `${dueSoon} due`,
+        color: outstanding.overdue > 0 ? "danger" : "warning",
+      },
+    }),
+    ...(goals.length > 0 && {
+      goals: { value: `${savings.percent}% saved` },
+    }),
+  };
 
   return (
     <ScreenScaffold title="More">
       {/* Profile card — one tap into Settings (spec .profcard) */}
-      <Pressable onPress={() => router.push("/settings")}>
+      <PressableScale onPress={() => router.push("/settings")} scaleTo={0.98}>
         <Card style={styles.profileCard}>
           <Avatar initials={initialsOf(user?.name)} size="lg" gradient />
           <View style={styles.profileInfo}>
-            <AppText size="md" weight="black">
+            <AppText size="md" weight="black" numberOfLines={1}>
               {user?.name ?? ""}
             </AppText>
-            <AppText size="xs" color="inkDim">
+            <AppText size="xs" color="inkDim" numberOfLines={1}>
               {user?.email ?? ""}
             </AppText>
           </View>
           <Icon name="chevronRight" size={18} color="inkDim" />
         </Card>
-      </Pressable>
+      </PressableScale>
 
       {/* AI Assistant hero — the ONE gradient row on the page (spec .aihero) */}
-      <Pressable onPress={() => router.push("/assistant")}>
+      <PressableScale onPress={() => router.push("/assistant")} scaleTo={0.98}>
         <View style={styles.aiHero}>
           <LinearGradient
             colors={["rgba(139,123,255,0.32)", "rgba(109,92,246,0.14)"]}
@@ -117,7 +157,7 @@ const MoreScreen = () => {
           </View>
           <Icon name="chevronRight" size={18} color="inkDim" />
         </View>
-      </Pressable>
+      </PressableScale>
 
       <GroupLabel>YOUR MONEY</GroupLabel>
       <Card padded={false} style={styles.group}>
@@ -139,10 +179,10 @@ const MoreScreen = () => {
         ))}
       </Card>
 
-      {/* Log out — isolated danger card (spec .srow.danger). signOut() clears the
-          token + resets the session; the root gate redirects to Login. */}
+      {/* Log out — isolated danger card (spec .srow.danger), behind a confirm so a
+          mis-tap next to Settings can't end the session. */}
       <Card padded={false} style={styles.group}>
-        <Pressable onPress={() => useSession.getState().signOut()}>
+        <PressableScale onPress={() => logoutRef.current?.present()} scaleTo={0.985}>
           <View style={styles.row}>
             <Icon
               name="logout"
@@ -157,8 +197,24 @@ const MoreScreen = () => {
               Log out
             </AppText>
           </View>
-        </Pressable>
+        </PressableScale>
       </Card>
+
+      {/* signOut() clears the token + resets the session; the root gate then
+          redirects to Login. detachPush goes first — it is an authenticated request,
+          and a token left on the account would keep pushing this user's reminders to a
+          phone somebody else is now signed in on. */}
+      <ConfirmSheet
+        ref={logoutRef}
+        icon="logout"
+        title="Log out?"
+        body="Your data stays on the server. You'll need your password to sign back in."
+        confirmLabel="Log out"
+        onConfirm={async () => {
+          await detachPush();
+          await useSession.getState().signOut();
+        }}
+      />
     </ScreenScaffold>
   );
 };
