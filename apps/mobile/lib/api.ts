@@ -17,31 +17,68 @@ const resolveBaseUrl = (): string => {
 
 const BASE_URL = resolveBaseUrl();
 
+/** The liveness probe, used by the cold-start gate.
+ *
+ *  Built from BASE_URL with the version prefix stripped, because `GET /health` is the
+ *  one route mounted outside `/api/v1` — deriving it here keeps the two from drifting
+ *  apart when the deployed URL changes. */
+export const HEALTH_URL = `${BASE_URL.replace(/\/api\/v1\/?$/, "")}/health`;
+
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
+/**
+ * A failed request, with the status the server answered with — or `0` when it never
+ * answered at all: a timeout, no signal, an instance still booting.
+ *
+ * That distinction is load-bearing rather than cosmetic. A token is only ever wrong
+ * because a server *said* so, so "rejected" and "unanswered" must not be the same value
+ * to a caller. Conflating them is what used to end a session every time the API was
+ * merely asleep — see the boot flow in app/_layout.
+ */
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
 
 const request = async <T>(method: Method, path: string, body?: unknown): Promise<T> => {
   const token = useSession.getState().token; // ← the RN swap for localStorage.getItem
 
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-  });
-
-  const json = await res.json();
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+  }
+  catch (err) {
+    // Nothing came back, so there is no status and nothing about the token is in
+    // question. Status 0 is how a caller tells this apart from a rejection.
+    throw new ApiError(err instanceof Error ? err.message : "Network request failed", 0);
+  }
 
   if (!res.ok) {
+    // Best-effort body: a gateway can answer with an HTML error page instead of our
+    // envelope — Render does exactly that while an instance is coming up — and a parse
+    // failure there must not bury the status, which is the useful part.
+    const body = (await res.json().catch(() => null)) as { message?: string } | null;
+
     // Token rejected anywhere but the auth routes → drop the session (gate → login).
     if (res.status === 401 && !path.includes("/auth/")) {
       useSession.getState().signOut();
     }
-    throw new Error(json.message || `Request failed: ${res.status}`);
+    throw new ApiError(body?.message || `Request failed: ${res.status}`, res.status);
   }
 
+  const json = await res.json();
   return json.data as T; // unwrap the { success, message, data } envelope
 };
 
