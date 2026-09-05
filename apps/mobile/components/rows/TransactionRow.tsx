@@ -7,6 +7,7 @@ import type { ColorToken } from "@/theme"
 import { spacing } from "@/theme"
 import { formatTxnDate } from "@/lib/date"
 import Icon from "../ui/Icon"
+import CategoryName from "../ui/CategoryName"
 import { AppText } from "../ui/AppText"
 import Card from "../data/Card"
 import Money from "../ui/Money"
@@ -57,9 +58,10 @@ const TransactionRow = ({ transaction, onPress }: Props) => {
           <AppText size="md" weight="bold">
             {transaction.title}
           </AppText>
-          <AppText size="sm" color="inkDim">
-            {category?.name ?? "Uncategorized"}
-          </AppText>
+          {/* Not the bare name: a row reading "Groceries" gives no hint that its spend
+              also lands in "Food & Dining", and two rows under different parents can
+              otherwise look like the same category. */}
+          <CategoryName categoryId={transaction.category} size="sm" weight="regular" color="inkDim" />
           <View style={styles.metaRow}>
             <MetaItem icon="date" label={formatTxnDate(transaction.occurredAt)} />
             {transaction.location && (

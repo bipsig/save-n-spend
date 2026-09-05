@@ -9,6 +9,7 @@ import BackButton from "@/components/shell/BackButton";
 import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
+import CategoryName from "@/components/ui/CategoryName";
 import DateField from "@/components/ui/DateField";
 import { haptics } from "@/lib/haptics";
 import { toast } from "@/store/toast";
@@ -378,9 +379,16 @@ const AddTransaction = () => {
                 />
                 <View style={styles.selText}>
                   <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>CATEGORY</AppText>
-                  <AppText size="sm" weight="semibold" color={selectedCategory ? "ink" : "inkDim"}>
-                    {selectedCategory?.name ?? "Choose a category"}
-                  </AppText>
+                  {/* Inline breadcrumb: the row already has a field label above, so the
+                      parent shares the value line rather than adding a third. Filing
+                      something under "Fuel" should show that it lands in Transportation. */}
+                  <CategoryName
+                    categoryId={watch("category")}
+                    size="sm"
+                    weight="semibold"
+                    inline
+                    placeholder="Choose a category"
+                  />
                 </View>
                 <Icon name="chevronRight" size={20} color="inkDim" />
               </PressableScale>

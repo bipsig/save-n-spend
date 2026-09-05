@@ -285,6 +285,13 @@ const InsightsScreen = () => {
         {/* By category */}
         <Card style={styles.stack}>
           <Caps>BY CATEGORY</Caps>
+          {/* Every row here is a top-level heading — the server folds a sub-category's
+              spend into its parent before this list is built. Said once, because
+              otherwise the figures look wrong to anyone who files by sub-category and
+              goes looking for "Groceries" in the breakdown. */}
+          <AppText size="xs" color="inkDim">
+            Sub-category spending is counted in its parent.
+          </AppText>
           <View style={styles.catList}>
             {cats.map((c) => (
               <View key={c.id} style={styles.catRow}>

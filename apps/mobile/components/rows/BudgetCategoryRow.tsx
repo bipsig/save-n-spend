@@ -5,7 +5,8 @@ import { AppText } from "../ui/AppText";
 import ProgressBar from "../data/ProgressBar";
 import Icon from "../ui/Icon";
 import PressableScale from "../ui/PressableScale";
-import { useCategoryById } from "@/lib/categories";
+import CategoryName from "../ui/CategoryName";
+import { useCategoryById, useCategoryLabel } from "@/lib/categories";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { spacing } from "@/theme";
@@ -27,7 +28,8 @@ type StatusIcon = {
 // text · over rows get a red-tinted card border.
 const BudgetCategoryRow = ({ budget, spent, onPress }: Props) => {
   usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
-  const category = useCategoryById(budget.category);
+  const category = useCategoryById(budget.category); // icon + colour for the chip
+  const label = useCategoryLabel(budget.category); // name, parent, and child count
 
   const percentage = Math.min((spent / budget.limit) * 100, 100);
   const over = percentage >= 100;
@@ -53,12 +55,19 @@ const BudgetCategoryRow = ({ budget, spent, onPress }: Props) => {
             gradient={(category?.color ?? "accent") as ColorToken}
           />
           <View style={styles.info}>
-            <AppText size="md" weight="bold">
-              {category?.name ?? "Uncategorized"}
-            </AppText>
+            <CategoryName categoryId={budget.category} size="md" weight="bold" />
             <AppText size="sm" color="inkDim">
               {`${formatMoney(spent)} of ${formatMoney(budget.limit)}`}
             </AppText>
+            {/* The one line that explains why this bar is higher than the transactions
+                filed directly under this category would suggest. A limit on a parent
+                governs everything beneath it — without saying so, the number looks
+                wrong rather than inclusive. */}
+            {label.childCount > 0 && (
+              <AppText size="xs" color="inkDim">
+                {`Includes ${label.childCount} sub-categor${label.childCount === 1 ? "y" : "ies"}`}
+              </AppText>
+            )}
           </View>
           <View style={styles.status}>
             <Icon name={statusIcon.icon} size={16} color={statusIcon.color} />

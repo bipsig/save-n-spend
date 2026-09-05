@@ -5,7 +5,7 @@ import Money from "../ui/Money";
 import { useAccountById } from "@/lib/accounts";
 import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
-import { useCategoryById } from "@/lib/categories";
+import { useCategoryById, useCategoryLabel } from "@/lib/categories";
 import Icon from "../ui/Icon";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
@@ -71,7 +71,8 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
   const router = useRouter();
 
   const account = useAccountById(transaction?.account);
-  const category = useCategoryById(transaction?.category);
+  const category = useCategoryById(transaction?.category); // icon + colour
+  const categoryLabel = useCategoryLabel(transaction?.category); // name + parent
   // Subscribes this sheet to the mask so the delete-confirm's inline amount
   // reveals along with everything else. `<Money>` handles its own; a `formatMoney`
   // inside a template string can't.
@@ -162,9 +163,19 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
                   color={(category?.color ?? "accent") as ColorToken}
                   style={styles.badgeText}
                 >
-                  {(category?.name ?? "Uncategorized").toUpperCase()}
+                  {categoryLabel.name.toUpperCase()}
                 </AppText>
               </View>
+              {/* Under the badge rather than inside it: the badge is tinted with the
+                  category's own colour and sized to one word, and stuffing a parent
+                  name in would break both. This is the sheet someone opens to check
+                  where a purchase was filed, so the heading it rolls up into belongs
+                  on it — just not shouting. */}
+              {categoryLabel.isChild && (
+                <AppText size="xs" color="inkDim">
+                  {`in ${categoryLabel.parentName}`}
+                </AppText>
+              )}
             </View>
 
             {/* Spec .selrow stack — optional fields simply don't render when absent */}

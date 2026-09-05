@@ -13,6 +13,7 @@ import { AppText } from "@/components/ui/AppText";
 import ProgressBar from "@/components/data/ProgressBar";
 import formatMoney, { parseMoney, paiseToInput, usePrivacyMask } from "@/lib/money";
 import { useCategoryById } from "@/lib/categories";
+import CategoryName from "@/components/ui/CategoryName";
 import { post, patch, del } from "@/lib/api";
 import { haptics } from "@/lib/haptics";
 import { isMonthClosed, monthTitle, type BudgetSummary } from "@/lib/budgets";
@@ -158,9 +159,16 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
         container="square"
         gradient={(category?.color ?? "accent") as ColorToken}
       />
-      <AppText size="md" weight="black">
-        {category?.name ?? "Choose a category"}
-      </AppText>
+      {/* Breadcrumbed, because budgeting a sub-category and budgeting its parent are
+          different decisions with the same-looking name — and the roll-up means a limit
+          on the parent already covers this one. */}
+      <CategoryName
+        categoryId={summary?.budget.category ?? categoryId}
+        size="md"
+        weight="black"
+        inline
+        placeholder="Choose a category"
+      />
       <AppText size="xs" color="inkDim">
         {isEdit
           ? closed
