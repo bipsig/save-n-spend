@@ -13,8 +13,8 @@ and the reasoning behind each decision. Nothing here is built yet:
 - [Grounding contract](#grounding-contract)
 - [Streaming](#streaming)
 - [Conversation persistence](#conversation-persistence)
-- [Write actions](#write-actions)
-- [Cost and abuse limits](#cost-and-abuse-limits)
+- [It never writes](#it-never-writes)
+- [Staying free](#staying-free)
 - [Privacy](#privacy)
 - [Failure modes](#failure-modes)
 - [Out of scope](#out-of-scope)
@@ -31,25 +31,48 @@ words, using their real data:
 - *"Am I going to blow my Shopping budget?"*
 - *"What's the biggest thing I could cut?"*
 
-It is **not** a general-purpose chatbot, and it is not a second way to enter
-transactions. Its value is that it can join data the existing screens keep
-apart — a budget, a bill due next week, and a savings rate are three screens
-today, and the question "can I afford this?" needs all three.
+It reads and explains, and that is all it does — it cannot change a single
+document in the database. It is not a general-purpose chatbot and not a second way
+to enter transactions.
+
+Its value is that it can join data the existing screens keep apart. A budget, a
+bill due next week and a savings rate are three screens today, and the question
+"can I afford this?" needs all three at once.
 
 ## Stack
 
 | Concern | Choice | Package |
 |---|---|---|
-| Model (answering) | Claude Sonnet 5 | `claude-sonnet-5` |
-| Model (cheap classification) | Claude Haiku 4.5 | `claude-haiku-4-5-20251001` |
+| Model | Claude Haiku 4.5 | `claude-haiku-4-5-20251001` |
 | Server SDK | Anthropic TypeScript SDK | `@anthropic-ai/sdk` |
-| Data access | Tool use against the service layer | — |
+| Data access | Tool use against the service layer, **read-only** | — |
 | Transport | SSE over `POST` | `expo/fetch` on the client |
 | Persistence | Mongoose model | `mongoose` |
 
 No new infrastructure. The assistant is another Express controller behind the
 existing `authMiddleware`, and the mobile side is another screen using the
 existing session token.
+
+Two constraints outrank everything else in this document, and every decision
+below is downstream of them:
+
+1. **The assistant never writes.** Not in v1, not later. It reads and explains.
+2. **The product stays free to the user, always.** No paywall, no credits, no
+   "upgrade for more messages".
+
+### Decision: Haiku 4.5, not Sonnet
+
+Sonnet 5 was the obvious first choice and is rejected on cost, because the model
+here does not do the hard part.
+
+Every number comes from an aggregation the API already runs. The model picks which
+tool to call and then narrates the result in a sentence — a routing-and-phrasing
+job, not a reasoning job. Sonnet rates per message buy very little on top of that,
+and under a fixed ceiling every rupee spent per message is messages other users
+don't get.
+
+Escalating stays available if grounded answers prove unreliable in practice; the
+SDK call is one string different. Measure before spending it.
 
 ### Decision: the model is called from the API, never from the app
 
@@ -107,8 +130,8 @@ assistant screen
   → POST /api/v1/assistant/messages        (SSE response)
       → authMiddleware                     (userId from JWT)
       → assistantController
-          → rate + spend guard
-          → load conversation, truncate to last N turns
+          → daily cap + monthly ceiling guard
+          → load conversation, truncate to last 8 turns
           → build preamble (zone, currency, accounts, category tree)
           → Anthropic messages.stream(tools: READ_TOOLS)
               ↕ tool_use / tool_result loop, max 5 rounds
@@ -125,23 +148,67 @@ budgets…"* — which is honest progress rather than a spinner.
 
 ## The tool set
 
-All read-only. Each one is a plain async function taking `(userId, args, zone)` —
-no `Request`, no `Response`.
+Eight tools, all reads. Each is a plain async function taking `(userId, args, zone)`
+— no `Request`, no `Response`. The registry is the complete list of everything the
+assistant can do.
 
-| Tool | Backed by | Arguments |
+| # | Tool | Returns | Answers |
+|---|---|---|---|
+| 1 | `get_spending_summary` | Income, expense and net totals for a date range | "How much did I spend last month?" |
+| 2 | `get_category_breakdown` | Spend per parent category for a range, descending | "Where does my money go?" |
+| 3 | `list_transactions` | Individual transactions, newest first, max 50 | "What did I buy at that restaurant in March?" |
+| 4 | `get_budget_status` | Each budget with its limit, spend and remaining | "Am I going to blow my Shopping budget?" |
+| 5 | `get_upcoming_bills` | Unpaid bills due within N days, with amounts | "What's due before payday?" |
+| 6 | `get_goals` | Goals with target, saved so far and progress | "How close am I on the laptop fund?" |
+| 7 | `get_health_score` | The score and its five pillar breakdowns | "Why is my health score down?" |
+| 8 | `get_accounts` | Accounts with current balances | "How much do I actually have?" |
+
+### Arguments and backing code
+
+| Tool | Arguments | Backed by |
 |---|---|---|
-| `get_spending_summary` | *needs extracting* from `getTransactionSummary` | `startDate`, `endDate` |
-| `get_category_breakdown` | *needs extracting* from `getInsights` | `startDate`, `endDate`, `kind` |
-| `list_transactions` | *needs extracting* from `filterTransactions` | range, `category`, `account`, `search`, `limit` ≤ 50 |
-| `get_upcoming_bills` | *needs extracting* from `listBills` | `withinDays` |
-| `get_budget_status` | `budgetService.budgetProgress` ✅ | `month` |
-| `get_health_score` | `healthService.healthScore` ✅ | — |
-| `get_goals` | `Goal.find` — trivial | — |
-| `get_accounts` | `Account.find` — trivial | — |
+| `get_spending_summary` | `startDate`, `endDate` | *needs extracting* from `getTransactionSummary` |
+| `get_category_breakdown` | `startDate`, `endDate`, `kind` | *needs extracting* from `getInsights` |
+| `list_transactions` | range, `category`, `account`, `search`, `limit` ≤ 50 | *needs extracting* from `filterTransactions` |
+| `get_budget_status` | `month` | `budgetService.budgetProgress` ✅ |
+| `get_upcoming_bills` | `withinDays` | *needs extracting* from `listBills` |
+| `get_goals` | — | `Goal.find` — trivial |
+| `get_health_score` | — | `healthService.healthScore` ✅ |
+| `get_accounts` | — | `Account.find` — trivial |
 
-Deliberately excluded from v1: anything that writes, anything touching `User`
-beyond preferences, and any free-text filter that reaches a `$where` or a regex
-the model composed.
+Tools 4 and 7 are callable today. Tools 6 and 8 are one-line queries. The other
+four need the refactor below.
+
+**Important**
+There is no ninth tool, and no write tool. The registry is not a starting point to
+be grown — it is the boundary of the feature. Anything the assistant should be able
+to *do* rather than *say* belongs in a screen, not here. See
+[It never writes](#it-never-writes).
+
+Also excluded: anything reading `User` beyond `prefs`, so `password`,
+`resetToken`, `resetTokenExpiry` and `totpSecret` are unreachable by construction
+rather than by filtering.
+
+**Important**
+Tool 3's `search` argument needs work in the existing code before it is exposed to
+a model. `filterTransactions` passes the term straight into `$regex` with no
+escaping and no length cap:
+
+```ts
+// transactionController.ts:89
+if (search) {
+    filters.title = { $regex: search, $options: "i" };   // unescaped
+}
+// transactionSchema.ts:42
+search: z.string().optional(),                            // uncapped
+```
+
+So `(` returns a 500 from an invalid regex, `.` and `*` silently behave as
+metacharacters, and a pattern like `(a+)+b` is catastrophic backtracking executed
+on the database. This is reachable from the Activity screen's search box today —
+it is not introduced by the assistant — but a model choosing the search string
+makes it far easier to hit by accident. Escape the term and cap it at ~64
+characters as part of [P0a](#phasing).
 
 ### Prerequisite: the aggregations are fused to `req`
 
@@ -169,7 +236,8 @@ So P0 starts with a refactor, not with the model:
 2. Add `resolveZoneForUser(userId)` and let the existing `resolveZone(req)` call
    it. The comment in `utils/userZone.ts` already claims the zone is resolvable
    "by the reminder job at 3am with no request in sight" — this makes that true.
-3. Leave the controllers as thin wrappers: parse, call the service, `reply.ok`.
+3. Escape and cap the `search` term, per the note above.
+4. Leave the controllers as thin wrappers: parse, call the service, `reply.ok`.
 
 This is worth doing on its own merits, and it is what keeps the tools honest:
 the assistant and the REST endpoints then run *the same* query, so an answer in
@@ -247,42 +315,101 @@ spare"* — and injections then persist across a conversation. And history that
 lives on one device is lost on reinstall, which is exactly when someone would
 want to look back at what they were told.
 
-Only the last N turns are sent to the model (N ≈ 10, tuned against cost). The
-title comes from a Haiku call on the first exchange.
+Only the last 8 turns are sent to the model, truncated before the call.
 
-## Write actions
+The conversation title is the first user message, trimmed to ~40 characters — not
+a model-generated summary. A title call is a whole extra request per conversation
+to make a list look tidier, and *"How much did I spend on food…"* is a perfectly
+good label for a conversation that starts with those words.
 
-**v1 is read-only.** The assistant cannot create, edit, or delete anything.
+## It never writes
 
-When writes arrive, they arrive as *proposals*, never as executed actions. The
-model returns a structured `proposed_action` block; the app renders it as a card
-with the numbers filled in and a button that opens the **existing** sheet
-prefilled. The user confirms in the same UI they would have used anyway.
+**The assistant is read-only, permanently.** It cannot create, edit, archive, or
+delete anything. This is a product decision, not a phasing decision — there is no
+later milestone where writes arrive.
 
 The reason is [the account balance invariant](architecture.md#the-account-balance-invariant):
-a transaction moves a balance, and a wrong one silently corrupts every total,
-budget and insight downstream. A model that misreads "spent 500 on lunch, no
-wait 600" must not have already written the 500. Confirmation is not friction
-here; it is the only thing standing between a parsing slip and bad books.
+a transaction moves an account balance, and a wrong one silently corrupts every
+total, budget, insight and health score downstream. Corruption of that kind is
+not obvious when it happens — it surfaces weeks later as a balance that doesn't
+match the bank, with no way to tell which row was wrong. A model that misreads
+"spent 500 on lunch, no wait 600" must never have been able to write the 500.
 
-## Cost and abuse limits
+Entering data is what the app's forms are for, and they are fast. The assistant's
+job is the thing the forms can't do: joining a budget, a bill due next week and a
+savings rate into one answer.
+
+**Important**
+Read-only is enforced structurally, not by instruction. The tool registry contains
+only read functions, so there is no write path for a prompt to reach — the model
+cannot be talked into calling a tool that was never registered. Do not add a write
+tool "behind a confirmation" later; a confirmation is a UI promise, while an absent
+tool is a guarantee.
+
+Rejected on the way here: a `proposed_action` block that prefills an existing
+sheet for the user to confirm. It is a defensible design and a common one, and it
+was in an earlier draft of this document. It is out because it makes the assistant
+a second entry path into the ledger, and the ledger is the one thing in this app
+that must have exactly one.
+
+## Staying free
+
+The user pays nothing, ever. That does not make the tokens free — it moves the
+cost onto whoever operates the API, which means the cost has to be *bounded* by
+construction rather than watched.
+
+Be clear about what "free no matter what" can and cannot mean. Two honest
+readings:
+
+| Reading | Consequence |
+|---|---|
+| Free to the user, bill absorbed by the operator | Needs a ceiling, or one viral week produces a bill nobody can pay |
+| Free to the user **and** the bill cannot exceed a fixed figure | The assistant must be allowed to *pause* when the ceiling is hit |
+
+**This design takes the second.** A feature that silently becomes unaffordable
+gets switched off in a hurry and never comes back; a feature that pauses politely
+at a known ceiling stays shipped forever. So the ceiling is a first-class part of
+the design, not an alarm.
+
+### Guards
 
 | Guard | Value | Enforced |
 |---|---|---|
-| Feature flag | `AI_ASSISTANT_ENABLED` | Server, at route mount |
-| Messages per user per day | 50 | Server, per `userId` |
+| Global monthly spend ceiling | `AI_MONTHLY_TOKEN_CEILING` | Server, checked before every call |
+| Messages per user per day | 30 | Server, per `userId` |
 | Requests per minute | 6 | `express-rate-limit`, keyed on `userId` not IP |
 | Tool rounds per message | 5 | Loop counter — a runaway loop is the real cost risk |
-| Max output tokens | 1024 | Request parameter |
-| History sent | last 10 turns | Truncation before the call |
+| Max output tokens | 600 | Request parameter |
+| History sent | last 8 turns | Truncation before the call |
+| Feature flag | `AI_ASSISTANT_ENABLED` | Server, at route mount |
 
-Keyed on `userId` rather than IP, unlike `authLimiter`: mobile users share
-carrier NAT addresses, so an IP limit would throttle strangers together.
+Keyed on `userId` rather than IP, unlike `authLimiter`: mobile users share carrier
+NAT addresses, so an IP limit would throttle strangers together.
+
+The two levers that actually move the bill are **prompt caching** and **output
+length**. The system prompt and the context preamble are byte-identical across a
+user's whole conversation, so they should be marked cacheable — that is most of the
+input tokens on every message after the first. And an assistant answering "how
+much did I spend on food" needs two sentences, not six paragraphs; the system
+prompt should ask for brevity and `max_tokens` should enforce it.
+
+### When the ceiling is reached
+
+The assistant enters a resting state. It says so plainly — *"I'm resting until the
+1st. Everything else in the app works normally."* — and the rest of the app is
+untouched.
+
+This is why the assistant must stay a **leaf feature**: nothing in the dashboard,
+insights, budgets or notifications may ever call it or depend on it. If the
+assistant is the only path to some number, pausing it breaks the product and the
+ceiling becomes unusable. Every question it answers must have a screen that
+answers it too, more slowly.
 
 **Note**
-Verify current per-token pricing before setting the daily cap — do not carry a
-number from this document into a billing assumption. The cap exists so a bug or
-a bored user cannot produce an unbounded bill, not as a tuned budget.
+Set the ceiling from current per-token pricing when you build this — do not carry
+a number out of this document into a billing assumption. Size it so the worst
+month you would tolerate is the ceiling, then let the resting state handle the
+rest.
 
 ## Privacy
 
@@ -309,30 +436,32 @@ amount in the app. Masking the model's input would produce answers about
 | Rate limit hit | Explain which limit and when it resets — never a bare 429 |
 | Tool throws | Return the error to the model as a `tool_result`; it can say what it couldn't check |
 | Tool loop hits 5 rounds | Stop, answer with what was gathered, say the answer is partial |
-| Prompt injection via a transaction note | Contained by the fixed tool set and server-side scoping; no tool can widen its own access |
+| Prompt injection via a transaction note | Contained by the fixed tool set and server-side scoping; no tool can widen its own access, and no tool writes |
+| Monthly ceiling reached | Resting state, explained in the chat; the rest of the app is unaffected |
 | Model states an unsupported number | Mitigated by the grounding contract, not eliminated — this is the residual risk of the feature |
 
 ## Out of scope
 
-Receipt OCR, bank/SMS import, investment advice, and anything phrased as a
-recommendation to buy a financial product. The last is a regulatory line, not a
-technical one: the assistant describes the user's own data and arithmetic on it,
-and does not advise.
+Permanently, not "not yet":
+
+| Not building | Why |
+|---|---|
+| Any write, edit, or delete | [It never writes](#it-never-writes) |
+| Proactive AI nudges | Tokens spent with nobody asking is the worst possible cost profile under a fixed ceiling. The existing rule-based [notifications](architecture.md#notifications) already cover budget and bill alerts for free. |
+| Receipt OCR, bank/SMS import | Large scope, and both are write paths |
+| Investment or product advice | A regulatory line, not a technical one — the assistant describes the user's own data and arithmetic on it, and does not advise |
 
 ## Phasing
 
 | Phase | Scope |
 |---|---|
 | P0a | Extract the four aggregations into services; no AI code at all |
-| P0b | Read-only Q&A: tool set, streaming, persistence, opt-in, limits |
-| P1 | `proposed_action` cards for adding a transaction, budget, or goal |
-| P2 | Proactive nudges reusing the [notification](architecture.md#notifications) pipeline |
+| P0b | Read-only Q&A: tool set, streaming, persistence, opt-in, guards |
 
 P0a ships behind no flag and changes no behaviour — it is a refactor the codebase
 wants anyway, and doing it first means the assistant is never the reason a query
-got duplicated. P0b is the whole feature as far as a user is concerned. P1 and P2
-should not start until P0b's answers are trusted, because a wrong proposal is
-worse than no proposal.
+got duplicated. P0b is the feature, whole. There is no P1: the two things that
+would have been in it are now [out of scope](#out-of-scope) on purpose.
 
 ## Configuration reference
 
@@ -341,6 +470,7 @@ worse than no proposal.
 | `ANTHROPIC_API_KEY` | `apps/api/.env` | Server-side only. Never an `EXPO_PUBLIC_*` name. |
 | `AI_ASSISTANT_ENABLED` | `apps/api/.env` | Kill switch; the route is not mounted when false |
 | `AI_ASSISTANT_DAILY_CAP` | `apps/api/.env` | Messages per user per day |
+| `AI_MONTHLY_TOKEN_CEILING` | `apps/api/.env` | Global ceiling; the assistant rests once it is reached |
 
 **Important**
 `apps/api/.env` holds real credentials and is gitignored. The Anthropic key goes
