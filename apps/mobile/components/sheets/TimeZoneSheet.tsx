@@ -103,7 +103,10 @@ const TimeZoneSheet = forwardRef<BottomSheetModal, Props>(({ value, onPick }, re
   };
 
   return (
-    <AppSheet ref={innerRef} onDismiss={reset} scrollable snapPoints={SNAP_POINTS}>
+    // Keyed on the search term, so each new set of results starts at the top. Typing
+    // into a scrolled shortlist otherwise leaves you looking at the middle of a list
+    // that is now three entries long.
+    <AppSheet ref={innerRef} onDismiss={reset} scrollable snapPoints={SNAP_POINTS} scrollResetKey={search.trim()}>
       <View style={styles.identity}>
         <Icon name="clock" size={24} containerSize={52} container="square" gradient="accent" />
         <View style={styles.identityText}>

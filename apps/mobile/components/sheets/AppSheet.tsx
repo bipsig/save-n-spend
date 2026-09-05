@@ -1,5 +1,6 @@
-import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
+import type { ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import {
@@ -30,6 +31,14 @@ type Props = {
   /** Pinned to the bottom, above the scroll and the keyboard — for CTAs that
    * must stay reachable while the body scrolls. */
   footer?: React.ReactNode;
+  /**
+   * Change this to send the body back to the top. Only needed by sheets that swap
+   * their content in place — a picker that turns into a create form, say — since the
+   * scroll offset belongs to the ScrollView and survives a change of children.
+   *
+   * Reopening a sheet is already handled and needs nothing from the caller.
+   */
+  scrollResetKey?: string | number;
 };
 
 // Elevated violet surface (deliberately NOT white glass — a form needs legibility).
@@ -55,13 +64,24 @@ const SheetBackground = ({ style }: BottomSheetBackgroundProps) => (
 // length of its close animation afterwards.
 const REPRESENT_GUARD_MS = 400;
 
-const AppSheet = forwardRef<BottomSheetModal, Props>(({ children, onDismiss, scrollable, snapPoints, footer }, ref) => {
+const AppSheet = forwardRef<BottomSheetModal, Props>(({ children, onDismiss, scrollable, snapPoints, footer, scrollResetKey }, ref) => {
   const { bottom } = useSafeAreaInsets();
   const [footerHeight, setFooterHeight] = useState(0);
 
   const modalRef = useRef<BottomSheetModal>(null);
+  const scrollRef = useRef<ScrollView>(null);
   const presented = useRef(false);
   const closedAt = useRef(0);
+
+  // Never animated: every caller is a moment where the content just changed or is
+  // off-screen, so an animated scroll would either race the new layout or be a slide
+  // nobody is watching.
+  const resetScroll = useCallback(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, []);
+
+  // Content swapped in place. Runs on mount too, which is a no-op.
+  useEffect(resetScroll, [scrollResetKey, resetScroll]);
 
   const present = useCallback<BottomSheetModal["present"]>((data) => {
     if (presented.current || Date.now() - closedAt.current < REPRESENT_GUARD_MS) return;
@@ -74,8 +94,13 @@ const AppSheet = forwardRef<BottomSheetModal, Props>(({ children, onDismiss, scr
   const handleDismiss = useCallback(() => {
     presented.current = false;
     closedAt.current = Date.now();
+    // A dismissed sheet stays mounted in gorhom's queue, so its ScrollView keeps the
+    // offset it was left at — reopen a sheet someone had scrolled and it comes back
+    // part-way down, showing the middle of a form. Reset here rather than on present:
+    // this fires after the close animation, where the jump can't be seen.
+    resetScroll();
     onDismiss?.();
-  }, [onDismiss]);
+  }, [onDismiss, resetScroll]);
 
   // Owners get this handle rather than gorhom's: `present` is the gated one above,
   // everything else passes straight through.
@@ -140,6 +165,7 @@ const AppSheet = forwardRef<BottomSheetModal, Props>(({ children, onDismiss, scr
     >
       {scrollable ? (
         <BottomSheetScrollView
+          ref={scrollRef}
           contentContainerStyle={[styles.content, bodyPad]}
           showsVerticalScrollIndicator={false}
           keyboardDismissMode="on-drag"
