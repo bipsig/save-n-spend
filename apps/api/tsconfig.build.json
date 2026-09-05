@@ -1,0 +1,10 @@
+// The shipping build. Identical to tsconfig.json except that tests stay out of
+// dist/ — Render runs `node dist/server.js`, and a test file on a production
+// dyno is dead weight that also drags node:test into the deployed tree.
+//
+// Typechecking still uses tsconfig.json, so the tests are type-checked; they are
+// only excluded from emit.
+{
+  "extends": "./tsconfig.json",
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts"]
+}

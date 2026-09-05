@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "nodemon --exec ts-node src/server.ts",
-    "build": "tsc",
+    "build": "tsc --project tsconfig.build.json",
     "start": "node dist/server.js",
     "seed": "ts-node src/scripts/seed.ts",
     "test": "node --require ts-node/register --test src/services/highlightRules.test.ts"
