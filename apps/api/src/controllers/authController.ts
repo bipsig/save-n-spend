@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import User from '../models/User';
 import { AppError } from '../utils/AppError';
 import * as reply from '../utils/response';
-import { loginSchema, registerSchema } from '../schemas/authSchema';
+import { changePasswordSchema, loginSchema, registerSchema } from '../schemas/authSchema';
 import { generateAccessToken } from '../utils/generateAccessToken';
 import mongoose from 'mongoose';
 import Account from '../models/Account';
@@ -11,7 +11,7 @@ import { defaultCategories } from '../data/defaultCategories';
 import Category from '../models/Category';
 
 export const register = async (req: Request, res: Response): Promise<void> => {
-  const { name, email, password } = registerSchema.parse(req.body);
+  const { name, email, password, timeZone } = registerSchema.parse(req.body);
 
   const existingUser = await User.findOne({
     email
@@ -33,8 +33,12 @@ export const register = async (req: Request, res: Response): Promise<void> => {
         name,
         email,
         password: hashedPassword,
-        authProvider: "local"
-      }], { session }); 
+        authProvider: "local",
+        // Left to the schema default when the client didn't say, rather than
+        // written as undefined — Mongoose treats an explicit undefined as "no
+        // default" for nested paths.
+        ...(timeZone ? { prefs: { timeZone } } : {})
+      }], { session });
 
       createdUser = newUser; 
 
@@ -112,4 +116,37 @@ export const me = async (req: Request, res: Response): Promise<void> => {
   }
 
   reply.ok(res, user, "User fetched successfully");
+}
+
+export const changePassword = async (req: Request, res: Response): Promise<void> => {
+  const { currentPassword, newPassword } = changePasswordSchema.parse(req.body);
+
+  const user = await User.findById(req.user?.userId);
+
+  if (!user) {
+    throw AppError.notFound("User not found");
+  }
+
+  if (!user.password) {
+    throw AppError.badRequest("This account signs in with Google, so there is no password to change");
+  }
+
+  const isMatch = await bcrypt.compare(currentPassword, user.password);
+
+  if (!isMatch) {
+    throw AppError.unauthorized("Current password is incorrect");
+  }
+
+  if (currentPassword === newPassword) {
+    throw AppError.badRequest("Choose a password different from your current one");
+  }
+
+  const saltRounds: number = Number(process.env.SALT_ROUNDS) || 12;
+  user.password = await bcrypt.hash(newPassword, saltRounds);
+
+  // Existing tokens stay valid: they are stateless JWTs with no server-side
+  // record to revoke. Sessions on other devices therefore survive the change.
+  await user.save();
+
+  reply.ok(res, null, "Password changed successfully");
 }
