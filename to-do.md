@@ -13,3 +13,5 @@
 - [X] Update Add Goals Screen with designed Screen
 - [X] Catgory Modal auto opens sometimes when other modals are opened
 - [ ] Add App Icon
+- [ ] Escape and length-cap the Activity search term — it goes straight into `$regex` (transactionController.ts:89, transactionSchema.ts:42), so `(` 500s and `(a+)+b` backtracks on the database
+- [ ] Highlights on the Insights tab, per docs/insights-engine.md — replaces the AI Assistant tab
