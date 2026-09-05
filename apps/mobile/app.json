@@ -33,7 +33,19 @@
       "expo-router",
       "expo-font",
       "expo-secure-store",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Save n Spend uses Face ID to unlock your accounts and balances when you open the app."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#9B8CFF"
+        }
+      ]
     ]
   }
 }
