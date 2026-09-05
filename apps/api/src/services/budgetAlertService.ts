@@ -77,14 +77,21 @@ export const checkBudgetAlerts = async (
 
         const limitText = formatAmount(budget.limit, user.currency);
 
+        // When the limit sits on the parent, the expense that tripped it was filed
+        // somewhere else by name. Without this the notification looks like it is about a
+        // category the user never touched today, so say which sub-category fed it.
+        const rollUp = String(budget.category) !== String(categoryId) && category?.name
+            ? ` Includes ${category.name}.`
+            : "";
+
         await notify(user as NotifiableUser, {
             type: exceeded ? "budgetExceeded" : "budgetWarning",
             title: exceeded
                 ? `${label} is over budget`
                 : `${label} is at ${Math.floor(ratio * 100)}%`,
             body: exceeded
-                ? `${formatAmount(spent, user.currency)} spent against a ${limitText} limit.`
-                : `${formatAmount(budget.limit - spent, user.currency)} left of your ${limitText} limit.`,
+                ? `${formatAmount(spent, user.currency)} spent against a ${limitText} limit.${rollUp}`
+                : `${formatAmount(budget.limit - spent, user.currency)} left of your ${limitText} limit.${rollUp}`,
             dedupeKey: `budget:${String(budget._id)}:${month}:${exceeded ? "over" : "warn"}`,
             link: { screen: "budget", id: String(budget._id) },
         });
