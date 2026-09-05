@@ -43,6 +43,16 @@ export const createCategory = async (req: Request, res: Response): Promise<void>
         if (parentCategory.parent != null) {
             throw AppError.badRequest("Categories can only be 2 levels deep");
         }
+
+        // A child's kind must match its parent's. Every total in the app adds a
+        // child's spend to its parent's — an income child under an expense parent
+        // would fold earnings into a spending figure, in the breakdown, in the
+        // budget bar, and in the alert that fires off the back of it.
+        if (parentCategory.kind !== reqBody.kind) {
+            throw AppError.badRequest(
+                `"${parentCategory.name}" is an ${parentCategory.kind} category, so its sub-categories must be too`
+            );
+        }
     }
 
     const savedCategory = await Category.create({
@@ -124,5 +134,17 @@ export const archiveCategory = async (req: Request, res: Response): Promise<void
 
     await category.save();
 
-    reply.ok(res, null, "Category deleted successfully");
+    // Archiving a parent takes its children with it. Leaving them behind would strand
+    // rows pointing at a parent the list endpoint no longer returns — the picker would
+    // show a child with no group, and the rollup would key spend to a name nothing can
+    // resolve. Their transactions are untouched either way; this only hides them from
+    // the pickers, which is all archiving ever meant.
+    const archivedChildren = category.parent === null
+        ? await Category.updateMany(
+            { userId: req.user?.userId, parent: category._id, isArchived: false },
+            { $set: { isArchived: true } }
+        )
+        : null;
+
+    reply.ok(res, { archivedChildren: archivedChildren?.modifiedCount ?? 0 }, "Category deleted successfully");
 }
