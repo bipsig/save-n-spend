@@ -262,3 +262,36 @@ export interface InsightsSummary {
   topCategory: string | null       // biggest category name this period
   txnCount: number                 // non-transfer count, current window
 }
+
+// --- Highlights (the deterministic assistant — docs/insights-engine.md) -----------
+// Ranked, plain-language observations computed by rules on the server. Read-only by
+// construction: nothing on this path can write, so the copy arrives fully composed
+// and the client's whole job is to render and route it.
+
+export type HighlightSeverity = 'urgent' | 'warning' | 'notice' | 'win'
+
+/** Where tapping a card lands — semantic, so the server never knows route paths. */
+export type HighlightScreen = 'budgets' | 'bills' | 'goals' | 'health' | 'activity'
+
+export interface IHighlight {
+  ruleId: string
+  /** Stable per subject-and-month. What the client dismisses by, so hiding one
+   *  budget's warning doesn't hide the same rule's verdict about another. */
+  key: string
+  severity: HighlightSeverity
+  /** One line, number included — already formatted server-side, paise nowhere. */
+  title: string
+  body: string
+  /** Paise at stake; the server's ranking signal. Already applied to the order. */
+  materiality: number
+  screen?: HighlightScreen
+}
+
+export interface HighlightsPayload {
+  /** Already ranked and capped by the server; render in order. */
+  highlights: IHighlight[]
+  generatedAt: string   // ISO
+  timeZone: string      // the zone every day-count in the copy was cut in
+  /** Present instead of highlights while the account is too new to compare against. */
+  warmingUp?: string
+}
