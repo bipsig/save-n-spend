@@ -1,5 +1,7 @@
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import PressableScale from "./PressableScale";
+import { haptics } from "@/lib/haptics";
 import type { ColorToken } from "@/theme";
 import { spacing } from "@/theme";
 import { chipGradients, chipTintFor } from "@/theme/gradients";
@@ -24,9 +26,15 @@ const ColorPicker = ({ value, onChange, colors = PICKER_COLORS }: Props) => (
     {colors.map((token) => {
       const selected = value === token;
       return (
-        <Pressable
+        // `select`, like every other picker: a swatch row is a set you move through.
+        <PressableScale
           key={token}
-          onPress={() => onChange(token)}
+          onPress={() => {
+            haptics.select();
+            onChange(token);
+          }}
+          scaleTo={0.9}
+          haptic={false}
           hitSlop={4}
           style={[styles.ring, selected && styles.ringOn]}
         >
@@ -36,7 +44,7 @@ const ColorPicker = ({ value, onChange, colors = PICKER_COLORS }: Props) => (
             end={{ x: 0.8, y: 1 }}
             style={styles.swatch}
           />
-        </Pressable>
+        </PressableScale>
       );
     })}
   </View>

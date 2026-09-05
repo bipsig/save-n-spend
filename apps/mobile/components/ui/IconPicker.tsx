@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 import Icon from "./Icon";
+import PressableScale from "./PressableScale";
+import { haptics } from "@/lib/haptics";
 import { PICKER_ICONS } from "@/lib/icons";
 import type { IconName } from "@/lib/icons";
 import { spacing } from "@/theme";
@@ -51,14 +53,21 @@ const IconPicker = ({ value, onChange, icons = PICKER_ICONS }: Props) => {
           {column.map((name) => {
             const selected = value === name;
             return (
-              <Pressable
+              // Browsing an icon grid means a lot of taps in a row, so `select` — the
+              // tick for moving through a set — rather than the heavier press.
+              <PressableScale
                 key={name}
-                onPress={() => onChange(name)}
+                onPress={() => {
+                  haptics.select();
+                  onChange(name);
+                }}
+                scaleTo={0.9}
+                haptic={false}
                 hitSlop={4}
                 style={[styles.cell, selected && styles.cellOn]}
               >
                 <Icon name={name} size={22} color={selected ? "surface" : "inkDim"} />
-              </Pressable>
+              </PressableScale>
             );
           })}
         </View>

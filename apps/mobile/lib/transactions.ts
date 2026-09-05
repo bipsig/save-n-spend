@@ -7,6 +7,7 @@ interface Paginated<T> {
   docs: T[]
   page: number
   hasNextPage: boolean
+  totalDocs: number
 };
 
 const PAGE_SIZE = 20;
@@ -117,6 +118,17 @@ export const useTransactionFeed = (params: FeedParams) => {
   const refetch = useCallback(() => load(1, true), [load]);
 
   return { items, loading, loadingMore, error, hasMore, loadMore, refetch };
+};
+
+// How many transactions are filed under a category — asked once, right before
+// Manage categories confirms a delete, so the confirm can name the exact number
+// of rows whose history the archive keeps intact. `limit=1` because only the
+// count is wanted; the page itself is thrown away.
+export const countTransactionsIn = async (categoryId: string): Promise<number> => {
+  const res = await get<Paginated<ITransaction>>(
+    `/transactions?category=${encodeURIComponent(categoryId)}&limit=1`
+  );
+  return res.totalDocs;
 };
 
 export type TransactionSummary = { income: number; expenses: number; savings: number };

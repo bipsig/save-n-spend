@@ -1,6 +1,7 @@
 import { useAccountStore } from "@/store/accounts";
 import { useSession } from "@/store/session";
-import type { IAccount } from "@save-n-spend/types";
+import { del, patch, post } from "@/lib/api";
+import type { AccountType, IAccount } from "@save-n-spend/types";
 
 export const useAccounts = () : IAccount[] => {
   return useAccountStore((s) => s.list);
@@ -19,3 +20,39 @@ export const useDefaultAccount = () : IAccount | undefined => {
   const defaultAccountId = useSession((s) => s.user?.prefs.defaultAccount);
   return useAccountById (defaultAccountId);
 }
+
+// ---- Mutations (Manage accounts) --------------------------------------------
+// Each one refetches the list rather than patching it locally: the server owns
+// `balance`, so a locally-spliced account could show a stale one.
+
+export type AccountDraft = {
+  name: string;
+  type: AccountType;
+  /** Paise. Only settable at creation — see `updateAccount`. */
+  startingBalance: number;
+  icon?: string;
+  color?: string;
+};
+
+export const createAccount = async (draft: AccountDraft): Promise<void> => {
+  await post<IAccount>("/accounts", draft);
+  await useAccountStore.getState().load();
+};
+
+// Deliberately no `startingBalance`: it is a term in the balance the server
+// maintains, so editing it after the fact would silently restate every total.
+// Correcting one means a transaction, not an edit.
+export const updateAccount = async (
+  id: string,
+  patchBody: { name?: string; type?: AccountType; icon?: string; color?: string }
+): Promise<void> => {
+  await patch<IAccount>(`/accounts/${id}`, patchBody);
+  await useAccountStore.getState().load();
+};
+
+// Archives rather than destroys — transactions keep pointing at a real account,
+// so history stays readable.
+export const archiveAccount = async (id: string): Promise<void> => {
+  await del<null>(`/accounts/${id}`);
+  await useAccountStore.getState().load();
+};
