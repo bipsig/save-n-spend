@@ -120,7 +120,7 @@ account and would otherwise lose their source.
 | `POST` | `/categories` | Creates a category. |
 | `GET` | `/categories/{id}` | Retrieves one category. |
 | `PATCH` | `/categories/{id}` | Updates name, icon, or color. |
-| `DELETE` | `/categories/{id}` | **Archives** the category. |
+| `DELETE` | `/categories/{id}` | **Archives** the category and its sub-categories. |
 
 ### POST /categories
 
@@ -133,13 +133,45 @@ account and would otherwise lose their source.
 | `color` | string | Optional. |
 
 Categories are one level deep: a category has an optional `parent`, and a
-sub-category cannot itself be a parent.
+sub-category cannot itself be a parent. A request nesting under a sub-category is
+rejected with `Categories can only be 2 levels deep`.
+
+A sub-category's `kind` must match its parent's. Mixing them is rejected, because
+all three roll-ups sum a parent's children without re-checking `kind` — an income
+child under an expense parent would subtract from that parent's spend.
 
 **Note**
 `kind` and `parent` are immutable — `updateCategorySchema` omits both. Changing
 a category's kind would strand every transaction already filed under it.
 
-New users are provisioned with the set in `apps/api/src/data/defaultCategories.ts`.
+New users are provisioned with the two-level tree in
+`apps/api/src/data/defaultCategories.ts` — eight headings, each with its own
+sub-categories except `Others`, which is deliberately flat.
+
+### Sub-category roll-up
+
+Spending filed under a sub-category counts towards its parent. Three places
+implement this, and all three must agree:
+
+| Where | How |
+|---|---|
+| `budgetService.budgetProgress` | `spent` = the category's own transactions **+** its children's. |
+| `insightsController.getCategoryBreakDown` | Buckets key on `parent ?? _id`, so a breakdown lists headings only. |
+| `budgetAlertService` | A transaction is governed by a budget on its own category **or** on its parent. |
+
+A budget on a parent therefore already covers every child, which is why the
+mobile picker excludes the other level once either is budgeted.
+
+### DELETE /categories/{id}
+
+Archiving a parent archives its sub-categories in the same call — an orphaned
+child is filtered out of `GET /categories` and becomes unresolvable in the app.
+
+```json
+{ "data": { "archivedChildren": 3 }, "message": "Category deleted successfully" }
+```
+
+`archivedChildren` is `0` when the target is itself a sub-category.
 
 ## Transactions
 
