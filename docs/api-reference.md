@@ -22,9 +22,10 @@ Every monetary field is an **integer number of paise**. See
 - [Budgets](#budgets)
 - [Bills](#bills)
 - [Goals](#goals)
+- [Notifications](#notifications)
 - [Dashboard](#dashboard)
 - [Insights](#insights)
-- [Health](#health)
+- [Liveness](#liveness)
 
 ## Common request headers
 
@@ -49,6 +50,7 @@ Creates a user and returns an access token. Rate-limited.
 | `name` | string | At least 2 characters, trimmed. |
 | `email` | string | Valid email. Unique — a duplicate is a 409. |
 | `password` | string | At least 8 characters. |
+| `timeZone` | string | Optional. IANA zone name from the device, e.g. `Asia/Kolkata`; seeds `prefs.timeZone`. Omitted or unrecognized falls back to the server default. Accepted only here — an existing account's zone changes through `PATCH /users/me`, so travelling can't re-cut a user's history. |
 
 ### POST /auth/login
 
@@ -72,9 +74,9 @@ Updates the caller's own profile and preferences. All fields optional.
 
 | Field | Type | Constraints |
 |---|---|---|
-| `pushToken` | string | Expo push token. |
+| `pushToken` | string \| null | Expo push token for this device. `null` detaches it — the app sends that on sign-out, so the account's reminders stop reaching a phone somebody else is now signed in on. |
 | `prefs.defaultAccount` | string \| null | Account ID, or `null` to clear. |
-| `prefs.budgetCycleDay` | integer | 1–28. Capped at 28 so every month has the day. |
+| `prefs.timeZone` | string | IANA zone name, e.g. `Asia/Kolkata`. Rejected if the server can't resolve it. Every day, month, and window the API cuts is cut in this zone. |
 | `prefs.notifications.enabled` | boolean | Primary notification switch. |
 | `prefs.notifications.billReminderLead` | 1 \| 3 \| 7 | Days of lead time before a bill is due. |
 | `prefs.notifications.budgetAlerts` | boolean | |
@@ -321,6 +323,55 @@ a server error.
 A contribution is not a transaction and does not move an account balance. Goals
 track intent to save; they are not an account.
 
+## Notifications
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/notifications` | Lists the caller's notifications, newest first. |
+| `PATCH` | `/notifications/{id}/read` | Marks one notification read. |
+| `POST` | `/notifications/read-all` | Marks every unread notification read. |
+
+Notifications are written by the server, never by the client — there is no
+create endpoint. See
+[Notifications](architecture.md#notifications) for what raises each kind.
+
+### GET /notifications
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `page` | integer | `1` | 1-based page number. |
+| `limit` | integer | `20` | Page size, max 50. |
+
+| Response field | Type | Description |
+|---|---|---|
+| `items` | array | Notifications: `_id`, `type`, `title`, `body`, `link`, `readAt`, `pushedAt`, `createdAt`. |
+| `unread` | integer | Unread count across the whole feed, not this page. Drives the bell's dot and the app icon badge. |
+| `page` | integer | Echo of the requested page. |
+| `hasNextPage` | boolean | Whether an older page exists. |
+
+`type` is one of `billReminder`, `billOverdue`, `budgetWarning`,
+`budgetExceeded`, `goalMilestone`, `goalDeadline`, `weeklySummary`.
+
+`link` is `{ screen, id? }` and is what the row opens when tapped. A
+notification with no `link` is informational and navigates nowhere.
+
+**Note**
+Notifications expire 90 days after they are created, through a TTL index. The
+feed is a log, not a record — and the expiry is also what lets a yearly bill's
+reminder fire again next year.
+
+### PATCH /notifications/{id}/read
+
+Takes no body. Returns `{ notification, unread }` with the updated
+notification and the new unread count, so the client never has to guess the
+badge. Idempotent: marking an already-read notification read again succeeds and
+preserves the original `readAt`. A notification belonging to another user is a
+404, not a 403.
+
+### POST /notifications/read-all
+
+Takes no body. Returns `{ unread: 0 }`.
+
 ## Dashboard
 
 ### GET /dashboard/summary
@@ -331,6 +382,41 @@ track intent to save; they are not an account.
 
 Returns the aggregate the home screen renders in one request, rather than
 having the client fan out across resources.
+
+### GET /dashboard/health
+
+Takes no parameters. The financial health score, always as of now: unlike the
+summary it describes a trailing 90-day window rather than a named month, so
+there is nothing for a caller to choose. That difference in span is also why it
+is a separate request and not a field on `/dashboard/summary`.
+
+| Field | Type | Description |
+|---|---|---|
+| `score` | `number \| null` | 0–100. `null` when there is not enough history to score. |
+| `band` | enum | `excellent` \| `good` \| `fair` \| `attention` \| `risk` \| `unknown`. |
+| `rating` | string | Human label for the band, e.g. `Needs attention`. |
+| `windowDays` | integer | Trailing days the money figures are measured over (90). |
+| `pillars` | array | The five components. See below. |
+| `focus` | object? | `{ key, label, hint }` — the weakest pillar with something to say. |
+| `reason` | string? | Why there is no score. Present only when `score` is `null`. |
+
+Each pillar:
+
+| Field | Type | Description |
+|---|---|---|
+| `key` | enum | `savings` \| `buffer` \| `bills` \| `budgets` \| `goals`. |
+| `label` | string | Display name, e.g. `Safety buffer`. |
+| `score` | `number \| null` | 0–100, or `null` when the pillar does not apply to this user yet. |
+| `weight` | integer | Its share of the total before renormalising: 30 / 25 / 20 / 15 / 10. |
+| `value` | string | The measurement, pre-formatted: `18%`, `2.4 months`, `1 of 4 late`. |
+| `verdict` | string | `On track` \| `Okay` \| `Watch` \| `Off track`. |
+| `hint` | string? | What to do about it. Present only below par. |
+
+Pillars are always returned heaviest first, and an inapplicable pillar is
+returned with `score: null` rather than omitted — the client shows it as "not
+counted yet". The total is the weighted average of the applicable pillars only.
+See [Health score](architecture.md#health-score) for the reasoning behind the
+weights, the curves and the confidence gate.
 
 ## Insights
 
@@ -344,9 +430,16 @@ having the client fan out across resources.
 A positive `offset` is rejected with a 400. See
 [Period windowing](architecture.md#period-windowing).
 
-## Health
+## Liveness
 
 ### GET /health
 
-Returns `{ "ok": true }`. This is the only endpoint outside `/api/v1` and the
-only one with no envelope — it exists for the host's health check.
+Returns `{ "ok": true }`. This is the only endpoint outside `/api/v1`, the only
+one with no envelope, and the only one that needs no token — it exists for the
+host's health check.
+
+The mobile app also uses it as its wake-up probe: the free Render tier suspends
+an idle instance, so the app polls this endpoint at launch and shows a waking
+screen until it answers. Not to be confused with
+[GET /dashboard/health](#get-dashboardhealth), which is the user's financial
+health score.

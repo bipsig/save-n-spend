@@ -13,6 +13,10 @@ every change must preserve.
 - [Error handling](#error-handling)
 - [Authentication](#authentication)
 - [Period windowing](#period-windowing)
+- [Time zones](#time-zones)
+- [Notifications](#notifications)
+- [Health score](#health-score)
+- [Cold-start gate](#cold-start-gate)
 - [Configuration reference](#configuration-reference)
 
 ## Repository layout
@@ -217,14 +221,330 @@ The API enforces this: `insightsQuerySchema` declares
 matching rule in the UI by disabling forward navigation at `offset === 0`
 (`canNext={offset < 0}`).
 
-All period math is done in **UTC** on both sides. `apps/api/src/utils/monthRange.ts`
-builds `{ start, next, label }` from a `YYYY-MM` key using `Date.UTC`, and
-`apps/mobile/lib/budgets.ts` derives its month keys the same way. Mixing local
-and UTC time here shifts a day across a month boundary and silently
-misattributes spend.
+All period math is done in the **user's time zone**, never in UTC and never in
+the server's local time. `apps/api/src/utils/monthRange.ts` builds
+`{ start, next, label }` from a `YYYY-MM` key through the zone helpers, and
+`apps/mobile/lib/budgets.ts` derives its month keys from the same zone. See
+[Time zones](#time-zones).
 
 See [Add a period selector](mobile-patterns.md#add-a-period-selector) for the
 client-side pattern.
+
+## Time zones
+
+`user.prefs.timeZone` is an IANA zone name and is the **single source of truth**
+for every calendar decision either side makes. There is no other clock: the
+server does not use its own local time, and the app does not use the device's
+zone except to seed the preference at registration.
+
+Two kinds of value are involved, and confusing them is the bug this design
+exists to prevent:
+
+| Kind | Example | Stored as |
+|---|---|---|
+| **Instant** | when a transaction happened | A real UTC timestamp. |
+| **Calendar date** | which day a bill is due, which month a budget covers | A day, in the user's zone. |
+
+An instant is absolute. A calendar date only means something once you say whose
+zone it is in — "September" starts five and a half hours earlier for a user in
+`Asia/Kolkata` than for one in `Europe/London`, and a receipt entered at
+00:30 on the 1st belongs to the new month for one and the old month for the other.
+
+### Server
+
+`apps/api/src/utils/timezone.ts` owns the arithmetic. Every helper takes the zone
+explicitly — there is no ambient default beyond `DEFAULT_ZONE`, which only
+applies when a user has no preference at all.
+
+| Helper | Returns |
+|---|---|
+| `normalizeZone(zone?)` | A valid zone name, falling back to `DEFAULT_ZONE`. |
+| `partsInZone(instant, zone)` | Year, month, day, hour, weekday as seen in that zone. |
+| `instantInZone(parts, zone)` | The UTC instant for a zone-local wall-clock time. |
+| `startOfDayInZone` / `endOfDayInZone` / `startOfWeekInZone` / `startOfMonthInZone` / `startOfYearInZone` | Window boundaries as UTC instants. |
+| `addDaysInZone` / `addMonthsInZone` / `addYearsInZone` | Calendar-correct arithmetic across DST. |
+| `monthLabelInZone` / `dayKeyInZone` | `YYYY-MM` and `YYYY-MM-DD` keys. |
+
+`instantInZone` resolves the offset in **two passes**: it guesses using the
+offset at a first approximation, then re-reads the offset at the result and
+corrects. One pass is wrong for any wall-clock time that falls near a DST
+transition, because the offset it needs is the one that applies *after* the
+shift.
+
+Request handlers get the zone from `apps/api/src/utils/userZone.ts`:
+
+```ts
+const zone = await resolveZone(req);
+```
+
+**Important**
+Add zone handling by calling `resolveZone(req)` and passing the zone down. Never
+call `new Date().getMonth()`, `toISOString().slice(0, 10)`, or any other method
+that reads the server's local time or UTC as if it were the user's calendar.
+
+### Mobile
+
+`apps/mobile/lib/zone.ts` mirrors the server, reading the zone from the session
+user with the device zone as a fallback. `useAppZone()` subscribes a screen so
+changing the setting re-renders every date on it.
+
+Zone changes are made through `PATCH /users/me` only. Registration accepts a
+`timeZone` so a new account starts with the device's zone, but after that the
+preference is explicit — otherwise flying somewhere would silently re-cut a
+user's whole history.
+
+**Note**
+`Intl.DateTimeFormat.formatToParts` is used on the server, where Node has full
+ICU. On the client it is avoided in favour of arithmetic on offsets, because
+Hermes ships a reduced ICU and its part output is not dependable.
+
+## Notifications
+
+Notifications have three moving parts: a stored feed, an optional push, and the
+things that raise them.
+
+```
+raiser ──▶ notify() ──▶ 1. wantsNotification(prefs, type)   ── no ──▶ stop
+                        2. Notification.create(dedupeKey)   ── dup ──▶ stop
+                        3. sendPush()                       (best effort)
+```
+
+`apps/api/src/services/notificationService.ts` is the only door. The order is
+the design:
+
+1. **Preferences first**, so nothing is stored that the user asked not to get.
+2. **The write second**, and its `{ userId, dedupeKey }` unique index is what
+   makes "once" mean once. Uniqueness is enforced by the database rather than a
+   read-then-write check because the reminder job can overlap itself — a slow
+   tick, a restart, two instances — and a check-then-write loses that race. The
+   second writer gets duplicate key `11000`, which the service reads as "already
+   sent".
+3. **Push last**, and only when the write was the first one. A retried job
+   therefore cannot buzz a phone twice.
+
+**Important**
+`notify` never throws. Its callers include a `POST` that has already committed
+money, and a failed nudge must not turn a successful write into a 500.
+
+### The in-app feed is the source of truth
+
+Push is a courtesy on top of it. A user who denied permission, or is on a
+simulator, or whose project is not yet linked to EAS, still receives every
+notification — they open the app to see them. The bell's unread dot and the app
+icon badge are both painted from the feed's unread count, so reading something
+in-app clears the badge too.
+
+### Dedupe keys
+
+A key names the thing and the occasion, so the same occasion produces the same
+key however many times it is evaluated:
+
+| Kind | Key |
+|---|---|
+| Bill due within lead time | `bill:<id>:due:<dueDayKey>` |
+| Bill due today | `bill:<id>:today:<dueDayKey>` |
+| Bill overdue | `bill:<id>:overdue:<dueDayKey>` |
+| Budget at 80% / over | `budget:<id>:<YYYY-MM>:warn` / `:over` |
+| Goal milestone | `goal:<id>:milestone:<25\|50\|75\|100>` |
+| Goal deadline near | `goal:<id>:deadline:<deadlineDayKey>` |
+| Weekly summary | `weekly:<weekStartDayKey>` |
+
+"Due today" has its own key on purpose: someone reminded three days early should
+still hear about it on the morning it is actually due.
+
+### What raises them
+
+**Event-driven** — raised by the request that caused them, after the write commits:
+
+| Raiser | Service |
+|---|---|
+| Transaction created or updated (expense) | `services/budgetAlertService.ts` |
+| Goal contribution | `services/goalAlertService.ts` |
+
+**Cron-driven** — `apps/api/src/jobs/reminderJob.ts`, scheduled hourly and
+started from `server.ts` after the database connects:
+
+| Kind | Condition |
+|---|---|
+| Bill reminder / overdue | Unpaid, unsettled for this period, within the user's lead time. |
+| Goal deadline | Deadline 0–7 zone-local days away and the goal is not funded. |
+| Weekly summary | Monday, and the week had activity. |
+
+The tick runs hourly in UTC and sends to each user when their **own** zone reads
+9 a.m. or later (`partsInZone(now, zone).hour >= SEND_HOUR`). The comparison is
+`>=` rather than `===` deliberately: a restart or a slow tick can swallow the 9
+o'clock hour entirely, and it is better to send at 11 than not at all. Sending
+twice is what the dedupe keys prevent.
+
+**Important**
+Notification copy is composed on the server, where no app is running to format
+money — hence `apps/api/src/utils/money.ts`. The figures a notification quotes
+come from the same services the screens use (`budgetService`, `billService`),
+so an alert can never disagree with the page it opens.
+
+### Retention
+
+A TTL index expires notifications 90 days after creation. This is also what
+re-arms the dedupe keys, which is wanted: a yearly bill's reminder should be
+allowed to fire again next year.
+
+## Health score
+
+`apps/api/src/services/healthService.ts` produces the one number on the dashboard
+that is a **judgement** rather than a fact. Everything else on that screen is
+arithmetic the user could redo by hand; this is the app's opinion of them. That
+raises the bar, because the first time the score moves for a reason the user
+cannot see, they stop trusting the rest of the screen too.
+
+Four rules follow from that, and they are the design:
+
+1. **Every point is attributable.** The total is a weighted average of five
+   pillars, each reporting its own measurement, verdict and next action. `62` is
+   never the answer; "62, because your buffer is thin" is.
+2. **A pillar that does not apply is not scored.** It returns `score: null` and
+   the remaining pillars share the weight.
+3. **It refuses to guess.** Under 30 days of transaction history there is no
+   score at all — `score: null` plus a `reason`.
+4. **It measures 90 days, not this month.**
+
+### The five pillars
+
+| Pillar | Weight | Measures | Curve anchors (measurement → points) |
+|---|---|---|---|
+| Savings rate | 30 | `(income − expenses) / income` over the window | 0% → 0, 5% → 25, 20% → 80, 30% → 100 |
+| Safety buffer | 25 | `(liquid − card debt) / monthly expenses`, in months | 0 → 0, 1 → 40, 3 → 75, 6 → 100 |
+| Bills | 20 | Share overdue now, minus a staleness penalty | `100 × (1 − overdue/total) − min(30, worst days late)` |
+| Budgets | 15 | Spend against **pace**, weighted by limit | 1.0× → 100, 1.5× → 0 |
+| Goals | 10 | Contribution rate ÷ required rate, weighted by target | linear, clamped to 100 |
+
+Weights are ordered by how much each predicts about someone's finances a year
+out. Savings rate leads because what you keep out of what you earn determines
+everything downstream. Buffer is next because it is what makes the other three
+survivable. Bills, budgets and goals descend from obligation to self-set target
+to discretionary: missing a budget you set ambitiously is not the same failure
+as spending more than you earn, and someone with no goals and a 30% savings rate
+is not unhealthy.
+
+Scores come from a table of anchors interpolated linearly (`curve()`), not from
+nested ternaries, so every judgement call is visible and arguable. All the tables
+are steeper at the bottom than the top: going from saving nothing to saving 5% is
+a real change in someone's life, going from 30% to 35% is a rounding error, and a
+straight line would rate them the same.
+
+### Rules that make the number honest
+
+**Renormalisation, not zeros.** The total divides by the weight of the
+*applicable* pillars. Docking someone 15 points for never opening the budgets
+screen would make the score a measure of feature adoption. The accepted
+trade-off: deleting a budget you are overspending removes its penalty. Nobody
+games their own mirror, and the two pillars carrying 55% between them — savings
+and buffer — are computed from money that has already moved and cannot be dodged
+by deleting anything.
+
+**The critical ceiling.** If any applicable pillar scores below 25, the total is
+capped at 79 — the top of "Good". A weighted average will happily let a strong
+savings rate and a fat buffer carry the headline to "Excellent" while five bills
+sit a month overdue. The average is arithmetically right and the word is wrong,
+and the word is what the user reads first.
+
+**Pace, not month-end.** On the 5th everybody is under budget. Budgets are scored
+against `limit × (days elapsed / days in month)`, floored at seven days so day 1
+does not judge a weekly grocery run against a single day's allowance.
+
+**Rate, not completion, for goals.** Only goals *with a deadline* are scored — a
+goal with no date is an aspiration, and grading it would punish someone for
+writing down something they want. For the rest, what has gone in per month since
+creation is compared against what is now needed per month. A goal created
+yesterday at 0% is not failing; one that needed ₹8,000 a month and has been
+getting ₹3,000 is, and no completion percentage would say so.
+
+**Transfers and adjustments are excluded** from income and expenses — moving
+money between your own accounts is not earning or spending, and a balance
+correction is bookkeeping. Both still move `Account.balance`, so they reach the
+buffer pillar, which is where they belong.
+
+**What is measured only in the present.** The bills pillar can only see what is
+overdue *right now*. That is a data limitation, not a choice: a recurring bill is
+never marked paid, its due date rolls forward, so once this month's electricity
+is settled there is no record of whether it was settled late.
+
+### Why 90 days
+
+One calendar month is the wrong window for a verdict: a salary landing on the 1st
+instead of the 31st, an annual insurance premium, or one laptop swings a monthly
+savings rate by tens of points, and a score that jumps 30 points for a reason the
+user considers normal is a score they learn to ignore. A year is the opposite
+failure — so slow to move that someone who fixes their spending sees no reward
+for months and concludes the number is fake. 90 days absorbs one irregular month
+while still responding to a real change in habits within a few weeks.
+
+### Client responsibilities
+
+None, arithmetically. `apps/mobile/lib/health.ts` holds only presentation — band
+colours, pillar icons, and the fetch. A judgement computed in two places is two
+judgements, and the client's job is to not disagree with the server.
+
+> **Important**
+> Green is used only for the top two bands. A card glowing green at 55/100 tells
+> the user they are fine while the number says they are not, and colour is what
+> people read before text. Pillar rows are coloured by their **own** score, not
+> the total, so one weak pillar under a healthy total is findable at a glance.
+
+## Cold-start gate
+
+The API runs on Render's free tier, which suspends an idle instance and takes
+roughly 35 seconds to wake it. Without a gate, the first launch after an idle
+period shows error states on every screen while the instance boots — which reads
+as a broken app rather than a sleeping one.
+
+`apps/mobile/store/wake.ts` polls the unauthenticated `GET /health` before the
+app is allowed to render, and `components/shell/WakeGate.tsx` holds a waking
+screen in front of the router until it answers.
+
+| Phase | Meaning | What the user sees |
+|---|---|---|
+| `probing` | First attempt in flight (2.5s ceiling). Launch-only | Nothing — the splash is still up |
+| `waking` | First attempt did not answer; retrying (8s each, 60s budget) | The waking screen |
+| `awake` | Server answered | The app |
+| `unreachable` | Budget spent | "Can't reach the server" + Try again / Continue anyway |
+
+Notes on the design:
+
+- **`/health`, not `/dashboard/health`.** The probe must be cheap, tokenless and
+  meaningful before login. The liveness endpoint touches no database. The two are
+  unrelated despite the names — one is the server's pulse, the other is the
+  user's.
+- **The worst bug it fixes is not the wait.** Boot used to call `/auth/me` as its
+  first request, so a cold start timed out and threw away a perfectly good token:
+  the user read "the server was asleep" as "the app logged me out". `_layout`
+  now awaits the probe before `/auth/me`, and the boot flow discards a token only
+  when the server **answered** and refused it — a `401` or `403`. Everything else
+  buys one more attempt behind a fresh probe. That is what `ApiError.status === 0`
+  in `lib/api.ts` is for: a request that never landed says nothing about whether
+  the token is good, and the two must not be the same value to a caller.
+- **Nothing renders for a warm server.** The first attempt gets a short ceiling
+  and paints nothing, so a server answering in 300ms is never made to look slow
+  by a spinner that flickers past. The splash covers that window.
+- **It can always be escaped.** Past ~40 s the waking screen offers "Continue
+  anyway"; a failed probe insists on it. Not sooner: a measured cold start is
+  ~33 s, and an exit offered while the expected wait is still running invites
+  people to bail out just before it would have worked. A gate with no way out is
+  a worse bug than the cold start it was hiding.
+- **It runs once per launch, not per request.** Once the instance is awake it
+  stays awake for as long as it is used, so re-probing per screen would spend
+  requests to learn something already known.
+
+A re-probe (`retry()`) goes straight to `waking`, never back to `probing`: by then
+the server is known to be unresponsive, so there is no warm case left to optimise
+for, and `probing` paints nothing — which would blank a screen the user is
+already looking at.
+
+> **Important**
+> `WakeGate` renders *in place of* the `Stack`, so until it opens there is no
+> navigator. The auth-routing effect in `app/_layout.tsx` is gated on
+> `phase === "awake"` for that reason: `hydrate()` can settle to `guest` while
+> the server is still waking, and a `router.replace()` at that moment fires
+> before the root layout has mounted.
 
 ## Configuration reference
 
@@ -241,6 +561,8 @@ Set these in `apps/api/.env`.
 | `SALT_ROUNDS` | No | bcrypt cost factor. `10` locally. |
 | `NODE_ENV` | No | `production` selects the production database. Anything else selects dev. |
 | `DB_NAME` | No | Overrides the resolved database name — for a throwaway test database. |
+| `DISABLE_REMINDERS` | No | `true` stops `startReminderJob` from scheduling. Set it on any instance that shares a database with another one, and locally, so a dev run cannot notify real users. |
+| `EXPO_ACCESS_TOKEN` | No | Required only once push security is enabled in the Expo project. Without it the SDK sends unauthenticated, which works until then. |
 
 There is no `MONGO_URI`. `config/db.ts` assembles the connection string from
 `DB_USERNAME` and `DB_PASSWORD` against a fixed cluster host, then selects the

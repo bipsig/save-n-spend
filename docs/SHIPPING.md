@@ -13,7 +13,7 @@ that constraint.
 
 | Piece | Where it runs | Notes |
 | --- | --- | --- |
-| API (`apps/api`) | Render — `https://save-n-spend.onrender.com/api/v1` | Free tier, so the first request after idle takes ~35 s to cold-start. Not a bug. |
+| API (`apps/api`) | Render — `https://save-n-spend.onrender.com/api/v1` | Free tier, so the first request after idle takes ~35 s to cold-start. Not a bug — the app shows a waking screen for it. See [Cold-start gate](architecture.md#cold-start-gate). |
 | Database | MongoDB Atlas, one cluster, two databases | `save-n-spend-dev` and `save-n-spend-prod`. See §5. |
 | Mobile app (`apps/mobile`) | iPhone, sideloaded via SideStore | Also runs in the iOS Simulator and Expo Go. |
 | Shared types (`packages/types`) | Compile-time only | npm workspace, `@save-n-spend/types`. |
@@ -151,7 +151,57 @@ To confirm which database the deployed API is on, check the Render logs for
 
 ---
 
-## 6. Gotchas checklist
+## 6. Push notifications
+
+Push needs three things the rest of the app doesn't. The in-app notification feed
+works without any of them — see
+[Notifications](architecture.md#notifications) — so nothing below blocks a build.
+
+1. **A native rebuild.** `expo-notifications` has native code. Any build made
+   before it was installed will not have it, so run `npm run ipa` (or
+   `npx expo prebuild --clean` then `expo run:ios`) once.
+
+2. **An EAS project id.** `getExpoPushTokenAsync` cannot issue a token without
+   one, and `app.json` has no `extra.eas.projectId` until you link the project:
+
+   ```bash
+   cd apps/mobile
+   npx eas init
+   ```
+
+   Until then `registerForPush` logs `[push] no EAS project id` and returns
+   `null`. That is the designed fallback, not a failure.
+
+3. **A real device.** The iOS Simulator has no APNs registration and can never
+   produce a push token. Test the feed, the bell dot, and the badge in the
+   simulator; test delivery on hardware.
+
+**Note**
+`DISABLE_REMINDERS` must be **unset** on the deployed API or the hourly reminder
+job never schedules — and set locally, so a development run cannot claim a
+dedupe key that belongs to the deployed instance.
+
+**To verify push end to end**
+
+1. Sideload a build made after `eas init`, sign in, and accept the permission
+   prompt.
+2. Confirm the token reached the account — the app sends it with
+   `PATCH /users/me` on launch.
+3. Create a bill due today, then trigger the job on the API rather than waiting
+   for the hour to turn:
+
+   ```ts
+   // node -e, or a scratch script inside apps/api
+   await runReminders(new Date());
+   ```
+
+4. The notification should appear on the phone **and** under the bell. If it is
+   only under the bell, push is the part that failed — check the API logs for
+   `[push]`.
+
+---
+
+## 7. Gotchas checklist
 
 - Run `expo` commands from `apps/mobile`, never the repo root — at the root,
   `expo run:ios` scaffolds a *new* native project and rewrites `package.json`.

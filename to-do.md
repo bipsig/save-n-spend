@@ -12,3 +12,4 @@
 - [X] Keyboard auto opens when creating new category
 - [X] Update Add Goals Screen with designed Screen
 - [X] Catgory Modal auto opens sometimes when other modals are opened
+- [ ] Add App Icon

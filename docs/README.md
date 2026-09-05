@@ -49,6 +49,7 @@ Before you start, install the following.
    JWT_SECRET=<a long random string>
    SALT_ROUNDS=10
    NODE_ENV="development"
+   DISABLE_REMINDERS=true
    ```
 
    **Important**
@@ -58,6 +59,14 @@ Before you start, install the following.
    `save-n-spend-dev`, both on the same cluster — so leave it `development`
    locally. See
    [Configuration reference](architecture.md#configuration-reference).
+
+   `DISABLE_REMINDERS=true` keeps the hourly reminder job from scheduling. Leave
+   it on unless you are working on the job itself. The job writes notifications
+   and sends push for real, and because it claims a dedupe key when it does, a
+   development run that reaches a shared database also stops the deployed
+   instance from sending that same reminder. To exercise it, drop the flag and
+   call `runReminders(new Date(...))` directly rather than waiting an hour. See
+   [Notifications](architecture.md#notifications).
 
 3. Start the API.
 
