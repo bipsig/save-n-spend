@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient'
 import { AppText } from './AppText'
 import Icon from './Icon'
 import type { IconName } from '@/lib/icons'
+import { haptics } from '@/lib/haptics'
 import { colors, gradients, radius, spacing } from '@/theme'
 
 type Props = PressableProps & {
@@ -21,7 +22,12 @@ const Chip = ({ label, selected = false, active = false, grow = false, icon, dis
   const tint = selected ? 'surface' : active ? 'primary' : 'inkDim'
   return (
     <Pressable
-      onPress={onPress}
+      // `selectionAsync`, not an impact: a chip row is a set you move through, and
+      // the OS reserves that lighter tick for exactly this — landing on a choice.
+      onPress={(event) => {
+        haptics.select()
+        onPress?.(event)
+      }}
       disabled={disabled}
       style={({ pressed }) => [
         styles.base,

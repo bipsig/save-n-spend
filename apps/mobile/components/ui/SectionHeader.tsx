@@ -1,6 +1,7 @@
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { AppText } from "./AppText";
 import Icon from "./Icon";
+import PressableScale from "./PressableScale";
 
 type Props = {
   label: string;
@@ -17,12 +18,14 @@ const SectionHeader = ({ label, actionLabel = "View all", onAction }: Props) => 
       {label}
     </AppText>
     {onAction && (
-      <Pressable onPress={onAction} hitSlop={8} style={styles.link} accessibilityRole="link">
+      // Deep, like every other bare-text target: two words and a 14px chevron have
+      // no surface to shrink, so a row's shallow squeeze wouldn't read at all.
+      <PressableScale onPress={onAction} scaleTo={0.9} hitSlop={8} style={styles.link} accessibilityRole="link">
         <AppText size="xs" weight="bold" color="primary">
           {actionLabel}
         </AppText>
         <Icon name="chevronRight" size={14} color="primary" />
-      </Pressable>
+      </PressableScale>
     )}
   </View>
 );

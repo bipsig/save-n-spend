@@ -1,5 +1,6 @@
 import { Easing } from "react-native";
 import { theme } from "@/theme";
+import { haptics } from "@/lib/haptics";
 import { iconMap } from "@/lib/icons";
 import { MaterialIcons } from "@expo/vector-icons";
 import { Tabs } from "expo-router"
@@ -7,6 +8,10 @@ import { Tabs } from "expo-router"
 const TabsLayout = () => {
   return (
     <Tabs
+      // On the navigator so all four tabs tick identically — a per-screen listener
+      // is one more thing to forget when a tab is added. `selectionAsync`, not an
+      // impact: the tab bar is a set you move through, same as a chip row.
+      screenListeners={{ tabPress: () => haptics.select() }}
       screenOptions={{
         headerShown: false,
         // Tab switches slide/fade instead of hard-cutting — so "See all" into the

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { z } from "zod/v4";
@@ -10,6 +11,8 @@ import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 import Icon from "@/components/ui/Icon";
+import PressableScale from "@/components/ui/PressableScale";
+import { haptics } from "@/lib/haptics";
 import { gradients, spacing } from "@/theme";
 import { useSession } from "@/store/session";
 import { get, post } from "@/lib/api";
@@ -51,6 +54,10 @@ const LoginForm = () => {
       const me = await get<IUser>("/auth/me");
       setUser(me);
     } catch (e) {
+      // Wrong credentials is the most-hit failure in the app and the least visible —
+      // one line of small red text under a button the user is still looking at. The
+      // buzz is what says the tap did something.
+      haptics.error();
       setAuthError((e as Error).message);
     } finally {
       setSubmitting(false);
@@ -91,13 +98,15 @@ const LoginForm = () => {
             autoCapitalize="none"
             secureTextEntry={!showPassword}
             rightSlot={
-              <Pressable
+              // Deep, like every other bare glyph: a 20px icon has no surface to shrink.
+              <PressableScale
                 onPress={() => setShowPassword((s) => !s)}
+                scaleTo={0.88}
                 hitSlop={8}
                 accessibilityLabel={showPassword ? "Hide password" : "Show password"}
               >
                 <Icon name={showPassword ? "eyeOff" : "eye"} size={20} color="inkDim" />
-              </Pressable>
+              </PressableScale>
             }
           />
         )}
@@ -111,9 +120,11 @@ const LoginForm = () => {
       />
 
       {authError && (
-        <AppText size="xs" color="danger">
-          {authError}
-        </AppText>
+        <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)}>
+          <AppText size="xs" color="danger">
+            {authError}
+          </AppText>
+        </Animated.View>
       )}
 
       <View style={styles.divider}>

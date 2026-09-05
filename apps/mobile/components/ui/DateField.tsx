@@ -5,6 +5,7 @@ import type { DateTimePickerEvent } from "@react-native-community/datetimepicker
 import { AppText } from "./AppText";
 import Icon from "./Icon";
 import Button from "./Button";
+import PressableScale from "./PressableScale";
 import { colors } from "@/theme";
 
 type Mode = "date" | "datetime";
@@ -19,6 +20,10 @@ type Props = {
   mode?: Mode;
 };
 
+// Deliberately zone-less, unlike every other date label in the app: `value` is the
+// native picker's own Date, whose fields ARE what the user spun the wheels to. Reading
+// it in the account's zone would show a different day than the one just picked.
+// Crossing into the account's zone happens on the way out, in `toZonedDayISO`.
 const formatDate = (d: Date): string =>
   d.toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" });
 
@@ -72,7 +77,8 @@ const DateField = ({ label, value, onChange, minimumDate, maximumDate, mode = "d
 
   return (
     <>
-      <Pressable style={styles.row} onPress={open}>
+      {/* Same squeeze as every other selrow it sits among in the add forms. */}
+      <PressableScale style={styles.row} onPress={open} scaleTo={0.98}>
         <Icon name="date" size={18} color="inkDim" />
         <View style={styles.text}>
           <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
@@ -83,7 +89,7 @@ const DateField = ({ label, value, onChange, minimumDate, maximumDate, mode = "d
           </AppText>
         </View>
         <Icon name="chevronRight" size={20} color="inkDim" />
-      </Pressable>
+      </PressableScale>
 
       {Platform.OS === "android" && show && (
         <DateTimePicker
@@ -98,6 +104,8 @@ const DateField = ({ label, value, onChange, minimumDate, maximumDate, mode = "d
 
       {Platform.OS === "ios" && (
         <Modal visible={show} transparent animationType="slide" onRequestClose={() => setShow(false)}>
+          {/* Tap-outside-to-close. Stays a plain Pressable: it's an invisible
+              dismiss area, so there's nothing to squeeze and nothing to confirm. */}
           <Pressable style={styles.backdrop} onPress={() => setShow(false)} />
           <View style={styles.picker}>
             <DateTimePicker

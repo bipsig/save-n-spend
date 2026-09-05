@@ -1,6 +1,8 @@
 import { Pressable, StyleSheet, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import Animated, { FadeIn } from "react-native-reanimated";
 import { AppText } from "./AppText";
+import { haptics } from "@/lib/haptics";
 import { gradients } from "@/theme";
 
 type Segment<T extends string> = { key: T; label: string };
@@ -21,16 +23,25 @@ const SegmentedControl = <T extends string>({ segments, value, onChange }: Props
       return (
         <Pressable
           key={segment.key}
-          onPress={() => onChange(segment.key)}
+          onPress={() => {
+            if (selected) return; // re-picking the current segment changes nothing, so it says nothing
+            haptics.select();
+            onChange(segment.key);
+          }}
           style={[styles.segment, selected && styles.segmentOn]}
         >
           {selected && (
-            <LinearGradient
-              colors={[...gradients.brand]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0.9, y: 1 }}
-              style={styles.fill}
-            />
+            // Fades in on the segment it moved to rather than hard-cutting. Not a
+            // sliding pill: the track is laid out by flex, so a slider would need
+            // measured positions to stay honest at any label length.
+            <Animated.View entering={FadeIn.duration(160)} style={styles.fill}>
+              <LinearGradient
+                colors={[...gradients.brand]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0.9, y: 1 }}
+                style={styles.fill}
+              />
+            </Animated.View>
           )}
           <AppText
             size="sm"

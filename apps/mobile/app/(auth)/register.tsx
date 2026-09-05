@@ -1,17 +1,23 @@
 import { useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { router } from "expo-router";
 import { z } from "zod/v4";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AppText } from "@/components/ui/AppText";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
+import BackButton from "@/components/shell/BackButton";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 import Icon from "@/components/ui/Icon";
-import { colors, spacing } from "@/theme";
-import type { ColorToken } from "@/theme";
+import PasswordMeter from "@/components/ui/PasswordMeter";
+import PressableScale from "@/components/ui/PressableScale";
+import { spacing } from "@/theme";
+import { haptics } from "@/lib/haptics";
 import { post } from "@/lib/api";
+import { deviceZone } from "@/lib/zone";
+import { toast } from "@/store/toast";
 
 const schema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -20,26 +26,6 @@ const schema = z.object({
 });
 
 type FormValues = z.infer<typeof schema>;
-
-// Client-only heuristic: length + character variety → a 0–4 score. Zod still
-// gates at ≥ 8; the meter just encourages going beyond the gate.
-const strengthOf = (pw: string): number => {
-  let score = 0;
-  if (pw.length >= 8) score++;
-  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++;
-  if (/\d/.test(pw)) score++;
-  if (/[^A-Za-z0-9]/.test(pw)) score++;
-  return score;
-};
-
-// Indexed by score. `tip` nudges toward the next improvement.
-const STRENGTH: { tip: string; color: ColorToken }[] = [
-  { tip: "Use at least 8 characters", color: "danger" },
-  { tip: "Weak — add upper & lower case", color: "danger" },
-  { tip: "Fair — add a number", color: "warning" },
-  { tip: "Good — add a symbol to make it strong", color: "warning" },
-  { tip: "Strong password", color: "success" },
-];
 
 const RegisterForm = () => {
   const {
@@ -58,17 +44,27 @@ const RegisterForm = () => {
 
   // Live password value drives the strength meter without re-rendering the fields.
   const password = useWatch({ control, name: "password" }) ?? "";
-  const score = strengthOf(password);
-  const meter = STRENGTH[score];
 
   // register → on success go to login (kept separate; no auto-session).
   const onSubmit = handleSubmit(async (values) => {
     setAuthError(null);
     setSubmitting(true);
     try {
-      await post("/auth/register", values);
+      // The phone's zone seeds the account's, so a new user's first month is cut
+      // where they actually are instead of at the server's default. Sent only here:
+      // it is a starting guess, and once the account has one, changing it is a
+      // deliberate act in Settings — otherwise a week abroad would silently re-cut
+      // every month of history.
+      await post("/auth/register", { ...values, timeZone: deviceZone() });
       router.replace("/(auth)/login");
+      // The screen is replaced by Login, which looks identical to the form the user
+      // just filled in — so without this it reads as if the tap did nothing, or worse,
+      // as if the account already existed. It also says what to do next.
+      toast.success("Account created — sign in to get started");
     } catch (e) {
+      // A taken email is the usual failure here, reported as one line of small red
+      // text beneath a button the user is still watching. The buzz is what catches it.
+      haptics.error();
       setAuthError((e as Error).message);
     } finally {
       setSubmitting(false);
@@ -127,33 +123,21 @@ const RegisterForm = () => {
               autoCapitalize="none"
               secureTextEntry={!showPassword}
               rightSlot={
-                <Pressable
+                // Deep, like every other bare glyph: a 20px icon has no surface to shrink.
+                <PressableScale
                   onPress={() => setShowPassword((s) => !s)}
+                  scaleTo={0.88}
                   hitSlop={8}
                   accessibilityLabel={showPassword ? "Hide password" : "Show password"}
                 >
                   <Icon name={showPassword ? "eyeOff" : "eye"} size={20} color="inkDim" />
-                </Pressable>
+                </PressableScale>
               }
             />
           )}
         />
 
-        {password.length > 0 && (
-          <View style={styles.meter}>
-            <View style={styles.meterTrack}>
-              <View
-                style={[
-                  styles.meterFill,
-                  { width: `${(score / 4) * 100}%`, backgroundColor: colors[meter.color] },
-                ]}
-              />
-            </View>
-            <AppText size="xs" weight="semibold" color={meter.color}>
-              {meter.tip}
-            </AppText>
-          </View>
-        )}
+        <PasswordMeter password={password} />
       </View>
 
       <Button
@@ -164,9 +148,11 @@ const RegisterForm = () => {
       />
 
       {authError && (
-        <AppText size="xs" color="danger">
-          {authError}
-        </AppText>
+        <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)}>
+          <AppText size="xs" color="danger">
+            {authError}
+          </AppText>
+        </Animated.View>
       )}
 
       <AppText size="xs" color="inkDim" style={styles.terms}>
@@ -180,9 +166,8 @@ const Register = () => (
   <ScreenScaffold
     header={
       <View style={styles.head}>
-        <Pressable onPress={() => router.back()} hitSlop={8} accessibilityLabel="Go back">
-          <Icon name="chevronLeft" size={28} color="ink" />
-        </Pressable>
+        {/* The shared chevron — the last screen still carrying its own copy of it. */}
+        <BackButton />
         <AppText size="xl" weight="black">Create account</AppText>
       </View>
     }
@@ -204,19 +189,6 @@ const styles = StyleSheet.create({
   },
   passwordBlock: {
     gap: spacing.sm,
-  },
-  meter: {
-    gap: spacing.xs,
-  },
-  meterTrack: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.09)",
-    overflow: "hidden",
-  },
-  meterFill: {
-    height: "100%",
-    borderRadius: 2,
   },
   terms: {
     textAlign: "center",

@@ -1,5 +1,5 @@
 import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { BottomSheetModal, BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import type { CategoryKind, ICategory } from "@save-n-spend/types";
 import AppSheet from "./AppSheet";
@@ -7,11 +7,13 @@ import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
 import Button from "@/components/ui/Button";
 import Chip from "@/components/ui/Chip";
+import PressableScale from "@/components/ui/PressableScale";
 import IconPicker from "@/components/ui/IconPicker";
 import ColorPicker from "@/components/ui/ColorPicker";
 import { useCategories } from "@/lib/categories";
 import { useCategoryStore } from "@/store/categories";
 import { post } from "@/lib/api";
+import { haptics } from "@/lib/haptics";
 import type { IconName } from "@/lib/icons";
 import { colors, radius, spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
@@ -85,7 +87,10 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
       .map(({ parent, parentPickable, children }) => ({ parent, parentPickable, children }));
   }, [categories, kind, excludeIds, search]);
 
+  // Both row levels go through here, so the tick lives here too and neither can be
+  // missed. `select` rather than a tap: this is landing on one item out of a tree.
   const choose = (categoryId: string) => {
+    haptics.select();
     onPick(categoryId);
     dismiss();
   };
@@ -93,7 +98,7 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
   const renderGroup = ({ parent, parentPickable, children }: Group) => (
     <View key={parent._id} style={styles.group}>
       {parentPickable ? (
-        <Pressable style={styles.parentRow} onPress={() => choose(parent._id)}>
+        <PressableScale style={styles.parentRow} onPress={() => choose(parent._id)} scaleTo={0.98} haptic={false}>
           <Icon
             name={(parent.icon ?? "more") as IconName}
             size={18}
@@ -105,7 +110,7 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
           <AppText size="sm" weight="bold" style={styles.rowLabel} numberOfLines={1}>
             {parent.name}
           </AppText>
-        </Pressable>
+        </PressableScale>
       ) : (
         // Not selectable itself (e.g. already budgeted) — a plain header keeping
         // its still-pickable children grouped and legible.
@@ -117,7 +122,7 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
       {children.length > 0 && (
         <View style={styles.rail}>
           {children.map((child) => (
-            <Pressable key={child._id} style={styles.childRow} onPress={() => choose(child._id)}>
+            <PressableScale key={child._id} style={styles.childRow} onPress={() => choose(child._id)} scaleTo={0.98} haptic={false}>
               <Icon
                 name={(child.icon ?? "more") as IconName}
                 size={15}
@@ -129,7 +134,7 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
               <AppText size="sm" weight="semibold" style={styles.rowLabel} numberOfLines={1}>
                 {child.name}
               </AppText>
-            </Pressable>
+            </PressableScale>
           ))}
         </View>
       )}
@@ -163,6 +168,9 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
       dismiss();
     }
     catch (err) {
+      // Kept in the footer beside the button that failed — the name, icon, and colour
+      // the user just chose are all still on screen, and the reason belongs with them.
+      haptics.error();
       setError(err instanceof Error ? err.message : "Couldn't create the category");
     }
     finally {

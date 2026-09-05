@@ -9,7 +9,10 @@ import Icon from "@/components/ui/Icon";
 import { AppText } from "@/components/ui/AppText";
 import { RANGES, rangeNavLabel, type RangeKey } from "@/lib/dateRange";
 import { exportTransactions, type ExportFormat } from "@/lib/export";
+import { haptics } from "@/lib/haptics";
+import { toast } from "@/store/toast";
 import { spacing } from "@/theme";
+import type { ColorToken } from "@/theme";
 
 type Props = {
   /** The Activity page's current range/offset — the export sheet opens on it. */
@@ -35,7 +38,9 @@ const ExportSheet = forwardRef<BottomSheetModal, Props>(({ defaultRange = "month
   const [offset, setOffset] = useState(defaultOffset);
   const [format, setFormat] = useState<ExportFormat>("csv");
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  // Tone as well as text: "nothing in this span" is not a failure, it's a nudge to
+  // widen the range, and painting it the same red as a broken export overstates it.
+  const [message, setMessage] = useState<{ text: string; tone: ColorToken } | null>(null);
 
   // Follow the page's range/offset while the sheet is closed, so it opens on the
   // exact window the user is looking at.
@@ -62,12 +67,27 @@ const ExportSheet = forwardRef<BottomSheetModal, Props>(({ defaultRange = "month
     try {
       const res = await exportTransactions(format, range, offset);
       if (!res.shared) {
-        setMessage(`No transactions in ${rangeNavLabel(range, offset).toLowerCase()} to export.`);
+        // Stays in the sheet, because the fix is the range chips right above it.
+        haptics.warning();
+        setMessage({
+          text: `No transactions in ${rangeNavLabel(range, offset).toLowerCase()} to export.`,
+          tone: "warning",
+        });
         return;
       }
       innerRef.current?.dismiss();
+      // The share sheet already proved something happened, so this is here for the
+      // count — the one fact the user can't see anywhere else, and the one that says
+      // whether the span they picked was the span they meant.
+      toast.success(
+        `${res.count} transaction${res.count === 1 ? "" : "s"} exported as ${format.toUpperCase()}`
+      );
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Couldn't export. Try again.");
+      haptics.error();
+      setMessage({
+        text: err instanceof Error ? err.message : "Couldn't export. Try again.",
+        tone: "danger",
+      });
     } finally {
       setBusy(false);
     }
@@ -121,8 +141,8 @@ const ExportSheet = forwardRef<BottomSheetModal, Props>(({ defaultRange = "month
       </View>
 
       {message && (
-        <AppText size="sm" color="danger" style={styles.message}>
-          {message}
+        <AppText size="sm" color={message.tone} style={styles.message}>
+          {message.text}
         </AppText>
       )}
     </AppSheet>

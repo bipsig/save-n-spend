@@ -1,6 +1,8 @@
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import Icon from "@/components/ui/Icon";
+import PressableScale from "@/components/ui/PressableScale";
 import { AppText } from "@/components/ui/AppText";
+import { haptics } from "@/lib/haptics";
 import type { IconName } from "@/lib/icons";
 import type { ExportFormat } from "@/lib/export";
 import { colors, radius, spacing } from "@/theme";
@@ -17,7 +19,19 @@ const FormatCards = ({ value, onChange }: { value: ExportFormat; onChange: (f: E
     {FORMATS.map((f) => {
       const on = value === f.key;
       return (
-        <Pressable key={f.key} onPress={() => onChange(f.key)} style={[styles.card, on && styles.cardOn]}>
+        // `select`, like the chip row above it in the export sheet — two cards are
+        // still a set you're choosing between, not a commitment.
+        <PressableScale
+          key={f.key}
+          onPress={() => {
+            if (on) return; // re-picking the current format changes nothing, so it says nothing
+            haptics.select();
+            onChange(f.key);
+          }}
+          scaleTo={0.97}
+          haptic={false}
+          style={[styles.card, on && styles.cardOn]}
+        >
           <Icon name={f.icon} size={18} color={on ? "primary" : "inkDim"} />
           <View style={styles.text}>
             <AppText size="sm" weight="bold" color={on ? "ink" : "inkDim"}>
@@ -27,7 +41,7 @@ const FormatCards = ({ value, onChange }: { value: ExportFormat; onChange: (f: E
               {f.desc}
             </AppText>
           </View>
-        </Pressable>
+        </PressableScale>
       );
     })}
   </View>

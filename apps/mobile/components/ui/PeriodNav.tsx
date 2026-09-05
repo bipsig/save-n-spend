@@ -1,6 +1,8 @@
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import Icon from "@/components/ui/Icon";
+import PressableScale from "@/components/ui/PressableScale";
 import { AppText } from "@/components/ui/AppText";
+import { haptics } from "@/lib/haptics";
 import { radius } from "@/theme";
 
 type Props = {
@@ -14,15 +16,40 @@ type Props = {
 // chevron buttons. Shared by Insights and Activity.
 const PeriodNav = ({ label, canNext, onPrev, onNext }: Props) => (
   <View style={styles.nav}>
-    <Pressable onPress={onPrev} hitSlop={8} style={styles.btn}>
+    {/* `select` rather than the default tap: stepping the window is moving through
+        a set, and this is the one control people press repeatedly to get somewhere. */}
+    <PressableScale
+      onPress={() => {
+        haptics.select();
+        onPrev();
+      }}
+      scaleTo={0.9}
+      haptic={false}
+      hitSlop={8}
+      accessibilityLabel="Previous period"
+      style={styles.btn}
+    >
       <Icon name="chevronLeft" size={24} color="ink" />
-    </Pressable>
+    </PressableScale>
     <AppText size="md" weight="bold" numberOfLines={1}>
       {label}
     </AppText>
-    <Pressable onPress={onNext} disabled={!canNext} hitSlop={8} style={[styles.btn, !canNext && styles.off]}>
+    {/* At the current window there is no forward, so it neither dips nor ticks —
+        the dimmed arrow and the silence say the same thing. */}
+    <PressableScale
+      onPress={() => {
+        haptics.select();
+        onNext();
+      }}
+      disabled={!canNext}
+      scaleTo={0.9}
+      haptic={false}
+      hitSlop={8}
+      accessibilityLabel="Next period"
+      style={[styles.btn, !canNext && styles.off]}
+    >
       <Icon name="chevronRight" size={24} color={canNext ? "ink" : "inkDim"} />
-    </Pressable>
+    </PressableScale>
   </View>
 );
 

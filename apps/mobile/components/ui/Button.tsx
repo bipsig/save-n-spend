@@ -2,9 +2,11 @@ import { colors, ColorToken, FontSizeToken, gradients, radius, spacing } from "@
 import type { GradientToken } from "@/theme";
 import { ActivityIndicator, Pressable, PressableProps, StyleSheet, View } from "react-native"
 import { LinearGradient } from "expo-linear-gradient";
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
 import { AppText } from "./AppText";
 import Icon from "./Icon";
 import type { IconName } from "@/lib/icons";
+import { haptics } from "@/lib/haptics";
 
 type Variant = "primary" | "success" | "secondary" | "ghost" | "danger" | "dangerGhost";
 type Size = "sm" | "md" | "lg";
@@ -62,6 +64,22 @@ const GLOW_BY_VARIANT: Partial<Record<Variant, string>> = {
   danger: "#F5525C",
 };
 
+// Shallower than PressableScale's 0.97: a full-width CTA is large, so the same
+// ratio would travel far enough to read as the button shrinking rather than giving.
+const PRESSED_SCALE = 0.98;
+const SPRING = { damping: 18, stiffness: 320, mass: 0.4 } as const;
+
+// A gradient CTA is the app's heaviest affordance, so it gets the heavier tick.
+// A ghost/secondary is usually a Cancel — it should not feel like a commitment.
+const FEEL_BY_VARIANT: Record<Variant, () => void> = {
+  primary: haptics.press,
+  success: haptics.press,
+  danger: haptics.press,
+  secondary: haptics.tap,
+  ghost: haptics.tap,
+  dangerGhost: haptics.tap,
+};
+
 const Button = ({
   label = "Button",
   variant = "primary",
@@ -84,11 +102,17 @@ const Button = ({
   const gradient = !!gradientToken;
   const shape = pill ? styles.pill : styles.base;
 
+  // Driven on the UI thread so the squeeze holds steady while the press handler is
+  // busy — which for a CTA it almost always is.
+  const scale = useSharedValue(1);
+  const pressStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
   return (
     // The glow lives on this outer layer, not the Pressable: a view can't both
     // clip its content (overflow:hidden, needed to round the gradient) AND cast
     // an outer shadow — so the halo needs its own unclipped, opaque surface.
-    <View
+    // Animated, so the halo scales with the surface instead of detaching from it.
+    <Animated.View
       style={[
         pill ? styles.pillWrap : styles.wrap,
         gradient && !isDisabled && {
@@ -97,12 +121,20 @@ const Button = ({
           backgroundColor: colors[v.background],
         },
         isDisabled ? styles.disabled : null,
+        pressStyle,
       ]}
     >
       <Pressable
         onPress={onPress}
+        onPressIn={() => {
+          scale.value = withSpring(PRESSED_SCALE, SPRING);
+          FEEL_BY_VARIANT[variant]();
+        }}
+        onPressOut={() => {
+          scale.value = withSpring(1, SPRING);
+        }}
         disabled={isDisabled}
-        style={({ pressed }) => [
+        style={[
           shape,
           {
             backgroundColor: gradient ? "transparent" : colors[v.background],
@@ -110,7 +142,6 @@ const Button = ({
             borderWidth: v.border ? 1 : 0,
             paddingVertical: s.paddingVertical,
             paddingHorizontal: s.paddingHorizontal,
-            opacity: pressed ? 0.85 : 1,
           },
         ]}
         {...rest}
@@ -137,7 +168,7 @@ const Button = ({
           )}
         </View>
       </Pressable>
-    </View>
+    </Animated.View>
   )
 }
 

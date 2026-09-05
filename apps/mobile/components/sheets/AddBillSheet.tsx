@@ -1,21 +1,26 @@
 import { forwardRef, useImperativeHandle, useRef, useState } from "react";
-import { Pressable, StyleSheet, Switch, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { z } from "zod/v4";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { BottomSheetModal, BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";
 import CategoryPickerSheet from "./CategoryPickerSheet";
+import BackButton from "@/components/shell/BackButton";
 import Button from "@/components/ui/Button";
 import Chip from "@/components/ui/Chip";
 import Icon from "@/components/ui/Icon";
+import PressableScale from "@/components/ui/PressableScale";
+import Toggle from "@/components/ui/Toggle";
 import DateField from "@/components/ui/DateField";
 import AmountHeroInput from "@/components/ui/AmountHeroInput";
 import { AppText } from "@/components/ui/AppText";
 import { useCategoryById } from "@/lib/categories";
+import { haptics } from "@/lib/haptics";
 import { parseMoney } from "@/lib/money";
-import { startOfToday, toUtcDateISO } from "@/lib/date";
+import { startOfToday, toZonedDayISO } from "@/lib/date";
 import { post } from "@/lib/api";
+import { toast } from "@/store/toast";
 import type { IconName } from "@/lib/icons";
 import { colors, spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
@@ -83,15 +88,22 @@ const AddBillSheet = forwardRef<BottomSheetModal, Props>(({ onChanged }, ref) =>
         name: data.name.trim(),
         amount: parseMoney(data.amount),
         category: data.category,
-        dueDate: toUtcDateISO(data.dueDate),
+        dueDate: toZonedDayISO(data.dueDate),
         recurring,
         ...(recurring ? { frequency: data.frequency } : {}),
         ...(data.remind ? { reminderDays: 3 } : {}),
       });
       dismiss();
       onChanged();
+      // Named, not just "Bill added": the sheet closes onto a list the new row may
+      // have scrolled out of, and the name is what makes it findable.
+      toast.success(`${data.name.trim()} added to your bills`);
     }
     catch (err) {
+      // Kept in the sheet rather than toasted: the amount and name the user typed are
+      // still in the fields, and the reason belongs beside them. The buzz is what
+      // makes it noticeable without a banner.
+      haptics.error();
       setError(err instanceof Error ? err.message : "Couldn't add the bill");
     }
     finally {
@@ -106,9 +118,9 @@ const AddBillSheet = forwardRef<BottomSheetModal, Props>(({ onChanged }, ref) =>
         <AppText size="md" weight="black">
           Add Bill
         </AppText>
-        <Pressable onPress={() => dismiss()} hitSlop={8} accessibilityLabel="Close">
-          <Icon name="close" size={16} containerSize={32} container="circle" containerColor="glass" color="inkDim" />
-        </Pressable>
+        {/* Dismisses this sheet rather than going back — the shared button's default
+            would pop the screen underneath it. */}
+        <BackButton variant="close" onPress={dismiss} />
       </View>
 
       <View style={styles.field}>
@@ -169,7 +181,7 @@ const AddBillSheet = forwardRef<BottomSheetModal, Props>(({ onChanged }, ref) =>
         />
       </View>
 
-      <Pressable style={styles.selRow} onPress={() => pickerRef.current?.present()}>
+      <PressableScale style={styles.selRow} onPress={() => pickerRef.current?.present()} scaleTo={0.98}>
         <Icon
           name={(category?.icon ?? "add") as IconName}
           size={17}
@@ -187,7 +199,7 @@ const AddBillSheet = forwardRef<BottomSheetModal, Props>(({ onChanged }, ref) =>
           </AppText>
         </View>
         <Icon name="chevronRight" size={20} color="inkDim" />
-      </Pressable>
+      </PressableScale>
 
       <Controller
         control={control}
@@ -202,12 +214,7 @@ const AddBillSheet = forwardRef<BottomSheetModal, Props>(({ onChanged }, ref) =>
                 3 days before · notification only, money never moves
               </AppText>
             </View>
-            <Switch
-              value={value}
-              onValueChange={onChange}
-              trackColor={{ false: colors.surface2, true: colors.primary }}
-              thumbColor={colors.surface}
-            />
+            <Toggle value={value} onValueChange={onChange} />
           </View>
         )}
       />
