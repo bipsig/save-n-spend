@@ -1,62 +1,74 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { StyleSheet, View } from "react-native";
-import { BottomSheetModal, BottomSheetTextInput } from "@gorhom/bottom-sheet";
-import type { CategoryKind, ICategory } from "@save-n-spend/types";
+import { BottomSheetModal } from "@gorhom/bottom-sheet";
+import type { ICategory } from "@save-n-spend/types";
 import AppSheet from "./AppSheet";
-import { AppText } from "@/components/ui/AppText";
-import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
-import ColorPicker from "@/components/ui/ColorPicker";
-import Icon from "@/components/ui/Icon";
-import IconPicker from "@/components/ui/IconPicker";
-import Input from "@/components/ui/Input";
-import SegmentedControl from "@/components/ui/SegmentedControl";
-import { createCategory, updateCategory } from "@/lib/categories";
+import CategoryForm, { categoryCtaLabel, type CategoryFormValue } from "@/components/ui/CategoryForm";
+import { createCategory, updateCategory, useCategoryById } from "@/lib/categories";
 import { haptics } from "@/lib/haptics";
 import type { IconName } from "@/lib/icons";
 import { toast } from "@/store/toast";
 import type { ColorToken } from "@/theme";
-import { spacing } from "@/theme";
 
 type Props = {
   /** The category being edited, or `null` to create a new one. */
   category: ICategory | null;
+  /**
+   * When creating, the top-level category the new one goes under — `null` for a
+   * top-level category. Ignored while editing: `parent` is fixed at creation, since
+   * re-parenting would move history between two totals someone has already read.
+   */
+  parent?: ICategory | null;
   onSaved?: () => void;
 };
 
-const KINDS: { key: CategoryKind; label: string }[] = [
-  { key: "expense", label: "Expense" },
-  { key: "income", label: "Income" },
-];
-
 // Spec §08 — New / Edit category (Tier-2). One sheet for both: the fields are
 // identical, and `category` being null is the only difference the form cares about.
-const EditCategorySheet = forwardRef<BottomSheetModal, Props>(({ category, onSaved }, ref) => {
+//
+// The parent is decided before the sheet opens (by which "+ Add a sub-category" was
+// tapped), so no selector is passed — see CategoryPickerSheet for the variant that
+// offers one.
+const EditCategorySheet = forwardRef<BottomSheetModal, Props>(({ category, parent = null, onSaved }, ref) => {
   const innerRef = useRef<BottomSheetModal>(null);
   useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
   const dismiss = () => innerRef.current?.dismiss();
 
   const editing = category !== null;
+  // The parent to display, either way: the one being created under, or the one the
+  // row being edited already sits beneath.
+  const shownParent = useCategoryById(editing ? category.parent : parent?._id);
 
-  const [name, setName] = useState("");
-  const [kind, setKind] = useState<CategoryKind>("expense");
-  const [icon, setIcon] = useState<IconName>("food");
-  const [color, setColor] = useState<ColorToken>("accent");
+  const [form, setForm] = useState<CategoryFormValue>({
+    name: "",
+    kind: "expense",
+    parent: null,
+    icon: "food",
+    color: "accent",
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const patch = (next: Partial<CategoryFormValue>) => setForm((prev) => ({ ...prev, ...next }));
+
   // Load the row being edited (or the defaults for a new one) whenever the target
   // changes, so opening the sheet on a second category never shows the first's name.
+  //
+  // A new child inherits its parent's kind, icon, and colour: the server rejects a
+  // mismatched kind outright, and starting a child off looking like its parent is
+  // both the likely answer and a visible statement of where it belongs.
   useEffect(() => {
-    setName(category?.name ?? "");
-    setKind(category?.kind ?? "expense");
-    setIcon((category?.icon as IconName) ?? "food");
-    setColor((category?.color as ColorToken) ?? "accent");
+    setForm({
+      name: category?.name ?? "",
+      kind: category?.kind ?? parent?.kind ?? "expense",
+      parent: category ? category.parent : parent?._id ?? null,
+      icon: (category?.icon as IconName) ?? (parent?.icon as IconName) ?? "food",
+      color: (category?.color as ColorToken) ?? (parent?.color as ColorToken) ?? "accent",
+    });
     setError(null);
-  }, [category]);
+  }, [category, parent]);
 
   const save = async () => {
-    const trimmed = name.trim();
+    const trimmed = form.name.trim();
     if (trimmed.length < 2) {
       haptics.error();
       setError("Give the category a name of at least two characters.");
@@ -65,13 +77,25 @@ const EditCategorySheet = forwardRef<BottomSheetModal, Props>(({ category, onSav
     setBusy(true);
     setError(null);
     try {
-      if (editing) await updateCategory(category._id, { name: trimmed, icon, color });
-      else await createCategory({ name: trimmed, kind, icon, color });
+      if (editing) await updateCategory(category._id, { name: trimmed, icon: form.icon, color: form.color });
+      else {
+        await createCategory({
+          name: trimmed,
+          kind: form.kind,
+          icon: form.icon,
+          color: form.color,
+          parent: parent?._id ?? null,
+        });
+      }
       onSaved?.();
       dismiss();
       // Names the category, not the action: after closing the sheet the list behind
       // may have scrolled, and "Groceries saved" is findable where "Saved" isn't.
-      toast.success(editing ? `${trimmed} updated` : `${trimmed} added`);
+      toast.success(
+        editing ? `${trimmed} updated`
+          : parent ? `${trimmed} added under ${parent.name}`
+            : `${trimmed} added`
+      );
     }
     catch (err) {
       haptics.error();
@@ -90,104 +114,23 @@ const EditCategorySheet = forwardRef<BottomSheetModal, Props>(({ category, onSav
       onDismiss={() => setError(null)}
       footer={
         <Button
-          label={editing ? "Save changes" : "Create category"}
+          label={categoryCtaLabel(editing, editing ? null : parent?._id ?? null)}
           loading={busy}
           onPress={save}
         />
       }
     >
-      {/* Live preview — the chip is what this category will look like in a row. */}
-      <View style={styles.identity}>
-        <Icon name={icon} size={24} containerSize={52} container="square" gradient={color} />
-        <View style={styles.identityText}>
-          <AppText size="md" weight="black" numberOfLines={1}>
-            {name.trim() || (editing ? "Edit category" : "New category")}
-          </AppText>
-          <AppText size="xs" color="inkDim">
-            {kind === "income" ? "Money coming in" : "Money going out"}
-          </AppText>
-        </View>
-      </View>
-
-      <Input
-        label="Name"
-        placeholder="e.g. Groceries"
-        value={name}
-        onChangeText={setName}
-        autoCapitalize="words"
-        InputComponent={BottomSheetTextInput}
+      <CategoryForm
+        value={form}
+        onChange={patch}
+        editing={editing}
+        parent={shownParent}
+        error={error}
       />
-
-      <View style={styles.field}>
-        <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>
-          TYPE
-        </AppText>
-        {editing ? (
-          // Locked after creation: every transaction already filed here counts as
-          // this kind, so flipping it would restate history rather than edit a label.
-          <View style={styles.lockedKind}>
-            <Badge
-              label={kind === "income" ? "Income" : "Expense"}
-              status={kind === "income" ? "paid" : "onTrack"}
-            />
-            <AppText size="xs" color="inkDim" style={styles.lockedNote}>
-              Fixed once a category exists — its past transactions depend on it.
-            </AppText>
-          </View>
-        ) : (
-          <SegmentedControl segments={KINDS} value={kind} onChange={setKind} />
-        )}
-      </View>
-
-      <View style={styles.field}>
-        <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>
-          ICON
-        </AppText>
-        <IconPicker value={icon} onChange={setIcon} />
-      </View>
-
-      <View style={styles.field}>
-        <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>
-          COLOUR
-        </AppText>
-        <ColorPicker value={color} onChange={setColor} />
-      </View>
-
-      {error && (
-        <AppText size="sm" color="danger">
-          {error}
-        </AppText>
-      )}
     </AppSheet>
   );
 });
 
 EditCategorySheet.displayName = "EditCategorySheet";
-
-const styles = StyleSheet.create({
-  identity: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-  },
-  identityText: {
-    flex: 1,
-    gap: 3,
-  },
-  field: {
-    gap: spacing.sm,
-  },
-  // spec .flabel — tiny caps, wide tracking
-  fieldLabel: {
-    letterSpacing: 1.3,
-  },
-  lockedKind: {
-    gap: spacing.xs,
-    alignItems: "flex-start",
-  },
-  lockedNote: {
-    lineHeight: 17,
-  },
-});
 
 export default EditCategorySheet;

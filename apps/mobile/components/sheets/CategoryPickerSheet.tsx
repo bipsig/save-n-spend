@@ -6,11 +6,9 @@ import AppSheet from "./AppSheet";
 import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
 import Button from "@/components/ui/Button";
-import Chip from "@/components/ui/Chip";
+import CategoryForm, { categoryCtaLabel, type CategoryFormValue } from "@/components/ui/CategoryForm";
 import PressableScale from "@/components/ui/PressableScale";
-import IconPicker from "@/components/ui/IconPicker";
-import ColorPicker from "@/components/ui/ColorPicker";
-import { useCategories } from "@/lib/categories";
+import { buildCategoryTree, useCategories } from "@/lib/categories";
 import { useCategoryStore } from "@/store/categories";
 import { post } from "@/lib/api";
 import { haptics } from "@/lib/haptics";
@@ -46,18 +44,39 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
 
   const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newParent, setNewParent] = useState<string | null>(null);
-  const [newIcon, setNewIcon] = useState<IconName>("more");
-  const [newColor, setNewColor] = useState<ColorToken>("accent");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The heading the new category will sit under, or `null` for a top-level one. Set by
+  // which affordance was tapped, never asked as a question — see `startCreate`.
+  const [newParent, setNewParent] = useState<ICategory | null>(null);
 
-  // Top-level categories of this kind — the possible parents for a new sub-category.
-  const parentOptions = useMemo(
-    () => categories.filter((c) => c.kind === kind && !c.parent),
-    [categories, kind]
-  );
+  // The draft, in the same shape the Manage Categories sheet uses — both render
+  // `CategoryForm`, so a category created mid-transaction is created the same way and
+  // with the same wording as one created from settings.
+  const emptyDraft: CategoryFormValue = { name: "", kind, parent: null, icon: "more", color: "accent" };
+  const [draft, setDraft] = useState<CategoryFormValue>(emptyDraft);
+  const patch = (next: Partial<CategoryFormValue>) => setDraft((prev) => ({ ...prev, ...next }));
+
+  // Opening the form is what decides the parent — the tree above already shows every
+  // heading with its children, so tapping "add here" inside one answers the question by
+  // pointing at it. The alternative, a chip per heading inside the form, made the user
+  // re-read a list they had just scrolled past and grew a row every time they added a
+  // category. A new child starts out styled like its parent, as it does in settings.
+  const startCreate = (parent: ICategory | null) => {
+    haptics.tap();
+    setNewParent(parent);
+    setDraft({
+      // Whatever they searched for and didn't find is almost certainly the name they
+      // want, and retyping it is the kind of small insult that makes a flow feel long.
+      name: search.trim(),
+      kind,
+      parent: parent?._id ?? null,
+      icon: (parent?.icon as IconName) ?? "more",
+      color: (parent?.color as ColorToken) ?? "accent",
+    });
+    setError(null);
+    setCreating(true);
+  };
 
   // The tree: each top-level category with its children nested beneath it. Search
   // filters within groups but keeps the parent as context; excluded ids (budget
@@ -67,13 +86,14 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
     const term = search.trim().toLowerCase();
     const excluded = (id: string) => excludeIds?.has(id) ?? false;
 
-    return categories
-      .filter((c) => c.kind === kind && !c.parent)
-      .map((parent) => {
+    // Built from the shared tree rather than a local `!c.parent` filter, so the picker
+    // and the manage screen can never disagree about what sits where — and so a child
+    // whose parent is missing from the list is still offered, instead of being dropped
+    // along with the group it can no longer be drawn inside.
+    return buildCategoryTree(categories, kind)
+      .map(({ parent, children }) => {
         const parentMatch = term === "" || parent.name.toLowerCase().includes(term);
-        const kids = categories.filter(
-          (c) => c.parent === parent._id && (parentMatch || c.name.toLowerCase().includes(term))
-        );
+        const kids = children.filter((c) => parentMatch || c.name.toLowerCase().includes(term));
         return {
           parent,
           // Selectable unless the overlap guard excludes it; a search miss on the
@@ -119,49 +139,66 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
         </AppText>
       )}
 
-      {children.length > 0 && (
-        <View style={styles.rail}>
-          {children.map((child) => (
-            <PressableScale key={child._id} style={styles.childRow} onPress={() => choose(child._id)} scaleTo={0.98} haptic={false}>
-              <Icon
-                name={(child.icon ?? "more") as IconName}
-                size={15}
-                containerSize={30}
-                containerRadius={10}
-                container="square"
-                gradient={(child.color ?? "accent") as ColorToken}
-              />
-              <AppText size="sm" weight="semibold" style={styles.rowLabel} numberOfLines={1}>
-                {child.name}
-              </AppText>
-            </PressableScale>
-          ))}
-        </View>
-      )}
+      {/* The rail renders even for a childless heading, because it carries the "add
+          here" affordance — which is the only thing that tells a user this heading can
+          take sub-categories at all. */}
+      <View style={styles.rail}>
+        {children.map((child) => (
+          <PressableScale key={child._id} style={styles.childRow} onPress={() => choose(child._id)} scaleTo={0.98} haptic={false}>
+            <Icon
+              name={(child.icon ?? "more") as IconName}
+              size={15}
+              containerSize={30}
+              containerRadius={10}
+              container="square"
+              gradient={(child.color ?? "accent") as ColorToken}
+            />
+            <AppText size="sm" weight="semibold" style={styles.rowLabel} numberOfLines={1}>
+              {child.name}
+            </AppText>
+          </PressableScale>
+        ))}
+
+        {/* Deliberately unboxed, unlike the rows above it: this is an action inside the
+            group, and giving it the same glass panel would make it read as a fourth
+            thing you can pick. Names the heading, so the consequence of tapping is on
+            the control rather than discovered afterwards. */}
+        <PressableScale style={styles.addRow} onPress={() => startCreate(parent)} scaleTo={0.97} haptic={false}>
+          <Icon name="add" size={15} color="primary" />
+          <AppText size="xs" weight="bold" color="primary" numberOfLines={1}>
+            {`New under ${parent.name}`}
+          </AppText>
+        </PressableScale>
+      </View>
     </View>
   );
 
   const reset = () => {
     setSearch("");
     setCreating(false);
-    setNewName("");
     setNewParent(null);
-    setNewIcon("more");
-    setNewColor("accent");
+    setDraft(emptyDraft);
     setError(null);
   };
 
   const onCreate = async () => {
-    if (newName.trim().length === 0) return;
+    const trimmed = draft.name.trim();
+    if (trimmed.length < 2) {
+      haptics.error();
+      setError("Give the category a name of at least two characters.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
       const created = await post<ICategory>("/categories", {
-        name: newName.trim(),
+        name: trimmed,
+        // Always the picker's kind, never the draft's: the form locks type here because
+        // the transaction being added is what decides it.
         kind,
-        icon: newIcon,
-        color: newColor,
-        ...(newParent ? { parent: newParent } : {}),
+        icon: draft.icon,
+        color: draft.color,
+        ...(draft.parent ? { parent: draft.parent } : {}),
       });
       await useCategoryStore.getState().load();
       onPick(created._id);
@@ -182,66 +219,67 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
   // form/tree scrolls; the error sits with them.
   const footer = creating ? (
     <>
+      {/* Kept in the pinned footer rather than passed to the form, where it would render
+          below a long icon grid the user has scrolled past — beside the button that
+          failed is where the reason belongs. */}
       {error && (
         <AppText size="xs" color="danger">
           {error}
         </AppText>
       )}
-      <Button label="Create category" onPress={onCreate} loading={saving} disabled={newName.trim().length === 0} />
+      {/* Tracks the draft's parent, so the button never says "category" while the form
+          above it is showing a sub-category being filed under a heading. */}
+      <Button
+        label={categoryCtaLabel(false, draft.parent)}
+        onPress={onCreate}
+        loading={saving}
+        disabled={draft.name.trim().length === 0}
+      />
       <Button label="Back" variant="ghost" onPress={() => setCreating(false)} />
     </>
   ) : (
-    <Button label="+ Create new category" variant="secondary" onPress={() => setCreating(true)} />
+    // The top-level route. Each group in the tree carries its own "new under …" row, so
+    // this one is explicitly for a heading that doesn't exist yet — named so it isn't
+    // mistaken for the generic "add a category" button it used to be.
+    <Button label="+ New top-level category" variant="secondary" onPress={() => startCreate(null)} />
   );
 
   return (
-    <AppSheet ref={innerRef} onDismiss={reset} scrollable snapPoints={SNAP_POINTS} footer={footer}>
-      <AppText size="md" weight="black">
-        Pick category
-      </AppText>
+    // The tree and the create form are different content in the same scroll view, so
+    // without this the form opens at whatever offset the tree was left at — typically
+    // below its own name field.
+    <AppSheet
+      ref={innerRef}
+      onDismiss={reset}
+      scrollable
+      snapPoints={SNAP_POINTS}
+      footer={footer}
+      scrollResetKey={creating ? "form" : "tree"}
+    >
+      {/* Only while picking. The create form leads with its own live preview, which
+          names what is being made — a title above it just says it twice. */}
+      {!creating && (
+        <AppText size="md" weight="black">
+          Pick category
+        </AppText>
+      )}
 
       {creating ? (
         <View style={styles.createBlock}>
-          <AppText size="xs" weight="bold" color="inkDim" style={styles.headerLabel}>
-            NEW CATEGORY NAME
-          </AppText>
-          <BottomSheetTextInput
-            placeholder="e.g. Subscriptions"
-            placeholderTextColor={colors.gray400}
-            value={newName}
-            onChangeText={setNewName}
-            style={styles.textInput}
+          <CategoryForm
+            // `kind` comes from the prop, never the draft: the draft is only reset on
+            // dismiss, so a user who closes the picker and switches the transaction to
+            // Income would otherwise see a form still describing money going out.
+            value={{ ...draft, kind }}
+            onChange={patch}
+            // No `parentOptions`, so no selector: the parent came from the row that was
+            // tapped and is shown as the breadcrumb over the preview instead.
+            parent={newParent}
+            // Type is settled before the sheet ever opens: an expense transaction can
+            // only be filed under an expense category, so offering the toggle here would
+            // offer a category the form behind this one can't use.
+            kindNote={`Matches the ${kind} you're adding.`}
           />
-
-          {parentOptions.length > 0 && (
-            <>
-              <AppText size="xs" weight="bold" color="inkDim" style={styles.headerLabel}>
-                PARENT (OPTIONAL)
-              </AppText>
-              <View style={styles.parentRow2}>
-                <Chip label="Top-level" selected={newParent === null} onPress={() => setNewParent(null)} />
-                {parentOptions.map((parent) => (
-                  <Chip
-                    key={parent._id}
-                    label={parent.name}
-                    icon={parent.icon as IconName}
-                    selected={newParent === parent._id}
-                    onPress={() => setNewParent(parent._id)}
-                  />
-                ))}
-              </View>
-            </>
-          )}
-
-          <AppText size="xs" weight="bold" color="inkDim" style={styles.headerLabel}>
-            ICON
-          </AppText>
-          <IconPicker value={newIcon} onChange={setNewIcon} />
-
-          <AppText size="xs" weight="bold" color="inkDim" style={styles.headerLabel}>
-            COLOUR
-          </AppText>
-          <ColorPicker value={newColor} onChange={setNewColor} />
         </View>
       ) : (
         <>
@@ -259,8 +297,11 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
           {groups.length > 0 ? (
             <View style={styles.tree}>{groups.map(renderGroup)}</View>
           ) : (
+            // A search with no hits is the most likely moment someone wants a new
+            // category, and with the tree filtered away every "new under …" row has gone
+            // with it — so the empty state has to offer the route itself.
             <AppText size="sm" color="inkDim">
-              No categories match.
+              {`No categories match “${search.trim()}”. Create it below, or clear the search to file it under a heading.`}
             </AppText>
           )}
         </>
@@ -317,6 +358,15 @@ const styles = StyleSheet.create({
     borderLeftColor: "rgba(255,255,255,0.14)",
     gap: spacing.sm,
   },
+  // No panel and no icon, so it sits in the rail as an action rather than a fourth
+  // pickable row. Padded to a comfortable target anyway.
+  addRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+  },
   childRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -331,23 +381,10 @@ const styles = StyleSheet.create({
   rowLabel: {
     flex: 1,
   },
+  // The form supplies its own field spacing; this only sets the rhythm between its
+  // blocks, matching the gap AppSheet gives the picker's own children.
   createBlock: {
     gap: spacing.md,
-  },
-  parentRow2: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm,
-  },
-  textInput: {
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    borderRadius: radius.md,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    color: colors.ink,
-    fontSize: 16,
   },
 });
 
