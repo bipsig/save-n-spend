@@ -5,7 +5,8 @@
     "dev": "nodemon --exec ts-node src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "seed": "ts-node src/scripts/seed.ts"
+    "seed": "ts-node src/scripts/seed.ts",
+    "test": "node --require ts-node/register --test src/services/highlightRules.test.ts"
   },
   "dependencies": {
     "@save-n-spend/types": "*",
