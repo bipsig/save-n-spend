@@ -253,6 +253,63 @@ An empty state should reflect the situation. On a closed month, the Budget
 screen says *"Nothing budgeted in July 2026"* and offers to record what the
 limit should have been, rather than *"No budgets yet"*.
 
+Give `EmptyState` a CTA only when the user can act on it. Activity shows
+*"Add transaction"* when nothing has ever been recorded, and drops it when a
+**search** came back empty — the fix there is a different query, not a new entry.
+
+## First run
+
+A new account is not short of data by accident — it is short of data because the
+user has not done anything yet, and the app's job on that first launch is to say
+what to do rather than to render zeroes.
+
+**The welcome tour** — [`app/(auth)/welcome.tsx`](../apps/mobile/app/(auth)/welcome.tsx),
+four paged slides, shown once between *Create account* and *Login*.
+
+It sits in `(auth)` on purpose. The root gate in
+[`app/_layout.tsx`](../apps/mobile/app/_layout.tsx) sends any guest outside
+`(auth)` to Login and any authed user inside it to `(tabs)`, so a welcome route
+at the root would be bounced before it painted — and the same rule means the tour
+**cannot be reopened once signed in**. That is why the getting-started answer in
+Help exists.
+
+Placing it after registration also means it needs no stored "seen" flag.
+Registration does not open a session, so there is no first-authed-launch to hang
+a tour off; a flag would either miss a reinstall or fire for every existing user
+after an update. The event happens once per account, so triggering on the event
+is free and cannot drift.
+
+**The Get started checklist** — [`components/data/GetStartedCard.tsx`](../apps/mobile/components/data/GetStartedCard.tsx),
+on the Dashboard, five steps, retires itself when they are all done.
+
+Every tick is **derived** from data the screen already loads
+([`lib/onboarding.ts`](../apps/mobile/lib/onboarding.ts)), never stored. A
+persisted "step 3 done" flag can disagree with reality — delete your only budget
+and it would still congratulate you — does not survive a reinstall, and needs a
+migration the first time the list changes. Derivation is self-correcting: undo
+the thing and the tick comes back off.
+
+Two details in there are worth not re-learning:
+
+- **"Has an account" would tick itself.** Registration creates a "Cash" account
+  at zero for everybody ([`authController.ts`](../apps/api/src/controllers/authController.ts)),
+  so the step tests for an account the user *added* — a second unarchived one, or a
+  non-zero opening balance. It asks for a new account rather than for a balance on
+  the seeded one because `updateAccountSchema` is `.strict()` with no
+  `startingBalance`: that field is settable only at creation, so the obvious copy
+  ("set your opening balance") would send the user to a screen where the control
+  does not exist.
+- **The card must not flash for an established user.** Every list hook starts at
+  `loading: true` with an empty array, which for one frame is indistinguishable
+  from a brand-new account. Latch a `listsReady` state once they have all settled;
+  do not gate on `loading` directly, because `useFocusEffect` re-enters loading on
+  every focus and the card would blink off and back on each visit.
+
+Dismissal is the one piece of stored onboarding state, in
+`store/settings`'s `getStartedDismissed` — a list of user ids rather than a
+boolean, because the flag is device-local but the checklist is per-account, and
+the person who would lose theirs is the new user who needs it.
+
 ## Refetch on focus
 
 Returning from a modal route should pick up what changed there. Refetch on

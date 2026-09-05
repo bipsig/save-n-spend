@@ -16,3 +16,5 @@
 - [ ] Escape and length-cap the Activity search term — it goes straight into `$regex` (transactionController.ts:89, transactionSchema.ts:42), so `(` 500s and `(a+)+b` backtracks on the database
 - [X] Highlights, per docs/insights-engine.md — deterministic rules, no model; its own screen behind the More-tab hero rather than on the Insights tab, so insights stayed untouched
 - [ ] Fixtures for `highlightSnapshotService` — the rules are covered, the Mongo-and-calendar half is not (budget created mid-month, backdated transaction in a closed month)
+- [X] First-run experience — a welcome tour after registration and a derived Get started checklist on the dashboard (see docs/mobile-patterns.md § First run)
+- [ ] No test runner in `apps/mobile`, so `lib/onboarding.ts` is only covered by a throwaway harness. Its runtime imports are all `import type`, so `tsc` emits a dependency-free module that `node --test` can require directly — worth making permanent if a second pure module shows up
