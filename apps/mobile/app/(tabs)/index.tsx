@@ -8,11 +8,11 @@ import Fab from "@/components/ui/Fab";
 import BillRow from "@/components/rows/BillRow";
 import GoalCard from "@/components/rows/GoalCard";
 import TransactionRow from "@/components/rows/TransactionRow";
-import formatMoney from "@/lib/money";
-import { dashboard } from "@/lib/mock";
+import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { radius, spacing } from "@/theme";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useDashboardSummary } from "@/lib/dashboard";
+import { useHealthScore } from "@/lib/health";
 import { useBills, groupBills } from "@/lib/bills";
 import { useGoals, sortGoals } from "@/lib/goals";
 import { useTransactions } from "@/lib/transactions";
@@ -22,6 +22,7 @@ import SkeletonState from "@/components/states/SkeletonState";
 import { useCallback } from "react";
 
 const HomeScreen = () => {
+  usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
 
   const router = useRouter();
 
@@ -36,12 +37,18 @@ const HomeScreen = () => {
   const { items: goals, refetch: goalsRefetch } = useGoals();
   const { items: transactions, refetch: transactionsRefetch } = useTransactions();
 
+  // Its own request rather than a field on the summary: the summary describes a named
+  // month, the score describes the trailing 90 days as of now. One response carrying
+  // both would have two fields measured over two different spans.
+  const { data: health, refetch: healthRefetch } = useHealthScore();
+
   useFocusEffect(useCallback(() => {
     summaryRefetch();
+    healthRefetch();
     billsRefetch();
     goalsRefetch();
     transactionsRefetch();
-  }, [summaryRefetch, billsRefetch, goalsRefetch, transactionsRefetch]));
+  }, [summaryRefetch, healthRefetch, billsRefetch, goalsRefetch, transactionsRefetch]));
 
   // Action queue — overdue first, then the nearest upcoming, capped at 3.
   const billGroups = groupBills(bills);
@@ -90,22 +97,19 @@ const HomeScreen = () => {
       header={
         <AppHeader
           name={userName ?? ""}
-          onBellPress={() => console.log("Bell pressed")}
+          onBellPress={() => router.push("/notifications")}
         />
       }
       floating={
         <Fab onPress={() => router.push("/add-transaction")} />
       }
     >
-      <HealthScoreCard
-        score={dashboard.healthScore}
-        rating={dashboard.rating}
-        stats={[
-          { label: "Savings", value: "Good" },
-          { label: "Budget", value: "On Track" },
-          { label: "Debt", value: "Low" },
-        ]}
-      />
+      {/* Absent until it has loaded rather than rendered as a placeholder: a score is a
+          judgement, and a skeleton in the shape of one invites the user to read a number
+          that isn't there yet. */}
+      {health && (
+        <HealthScoreCard health={health} onPress={() => router.push("/health")} />
+      )}
 
       <View style={styles.grid}>
         <View style={styles.gridRow}>
