@@ -33,9 +33,9 @@ const FAQS: Faq[] = [
     tint: "violet",
   },
   {
-    question: "Why can't I edit an account's balance?",
+    question: "My balance doesn't match my bank. Can I fix it?",
     answer:
-      "A balance isn't stored as a number you set — it's the opening balance plus every transaction since. Editing it directly would silently restate every total that depends on it. To correct one, add a transaction for the difference; the balance follows.",
+      "Yes. Open the account under Accounts, type in the figure your bank shows, and save — we work out the gap and record it as a correction, so your balance is right without you doing any arithmetic. It's a correction, not income or spending, so your totals and budgets don't move. Do it whenever you want to be sure; the account remembers when you last checked.",
     icon: "bank",
     tint: "blue",
   },

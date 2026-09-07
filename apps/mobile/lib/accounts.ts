@@ -28,7 +28,7 @@ export const useDefaultAccount = () : IAccount | undefined => {
 export type AccountDraft = {
   name: string;
   type: AccountType;
-  /** Paise. Only settable at creation — see `updateAccount`. */
+  /** Paise. The opening figure. To correct the balance later, see `syncAccountBalance`. */
   startingBalance: number;
   icon?: string;
   color?: string;
@@ -41,12 +41,28 @@ export const createAccount = async (draft: AccountDraft): Promise<void> => {
 
 // Deliberately no `startingBalance`: it is a term in the balance the server
 // maintains, so editing it after the fact would silently restate every total.
-// Correcting one means a transaction, not an edit.
+// Correcting the CURRENT balance is `syncAccountBalance` below, which goes through
+// a separate endpoint precisely so it can never happen by accident during a rename.
 export const updateAccount = async (
   id: string,
   patchBody: { name?: string; type?: AccountType; icon?: string; color?: string }
 ): Promise<void> => {
   await patch<IAccount>(`/accounts/${id}`, patchBody);
+  await useAccountStore.getState().load();
+};
+
+// Reconcile against what the bank actually says. `balance` is the TARGET figure in
+// paise — the number the user is reading off their banking app — not a difference:
+// the server works out the gap and records it as an adjustment, so the balance stays
+// the sum of its history instead of becoming a number someone typed over the top.
+//
+// Signed, because a credit card's balance is negative as it is used.
+export const syncAccountBalance = async (
+  id: string,
+  balance: number,
+  note?: string
+): Promise<void> => {
+  await patch<IAccount>(`/accounts/${id}/balance`, note ? { balance, note } : { balance });
   await useAccountStore.getState().load();
 };
 

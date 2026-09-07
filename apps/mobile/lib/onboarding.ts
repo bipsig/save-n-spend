@@ -52,11 +52,11 @@ interface Inputs {
  * the user has told the app about money it did not invent.
  *
  * The step deliberately asks for a NEW account rather than for an opening balance on the
- * seeded one, because the latter is impossible: `updateAccountSchema` on the API is
- * `.strict()` and has no `startingBalance` field, so it is settable only at creation.
- * Asking the user to edit it would send them to a screen where the control does not
- * exist. (The app's answer to "my balance is wrong" is a correcting transaction — see
- * the FAQ in `app/help.tsx`.)
+ * seeded one, because `startingBalance` is settable only at creation: `updateAccountSchema`
+ * on the API is `.strict()` and has no such field, since it is a term the running balance
+ * is built from and restating it would restate every total after it. The balance itself
+ * CAN be corrected later — `PATCH /accounts/:id/balance` records the difference as an
+ * adjustment — but that is a different write, and it is not what this step is asking for.
  *
  * Two clauses, not one: a second live account is the normal path, and the
  * `startingBalance` check covers the user who added their bank and then archived Cash,
@@ -91,7 +91,7 @@ export const buildSteps = ({ transactions, accounts, budgets, bills, goals }: In
   {
     key: 'account',
     label: 'Add your bank account',
-    hint: 'Set its balance as you add it — that is the only time you can. Net worth is guesswork until you do.',
+    hint: 'Set its balance as you add it. Net worth is guesswork until you do — and you can square it against your bank any time after.',
     icon: 'bank',
     tint: 'blue',
     route: '/manage-accounts',

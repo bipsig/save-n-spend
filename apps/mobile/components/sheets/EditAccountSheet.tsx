@@ -11,7 +11,8 @@ import ColorPicker from "@/components/ui/ColorPicker";
 import Icon from "@/components/ui/Icon";
 import IconPicker from "@/components/ui/IconPicker";
 import Input from "@/components/ui/Input";
-import { createAccount, updateAccount } from "@/lib/accounts";
+import { createAccount, syncAccountBalance, updateAccount } from "@/lib/accounts";
+import { formatTxnDate } from "@/lib/date";
 import { haptics } from "@/lib/haptics";
 import type { IconName } from "@/lib/icons";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
@@ -37,6 +38,16 @@ const TYPES: { key: AccountType; label: string; icon: IconName }[] = [
 const iconForType = (type: AccountType): IconName =>
   TYPES.find((t) => t.key === type)?.icon ?? "wallet";
 
+// Only these two can legitimately hold less than nothing — an overdraft and a card
+// balance owed. Cash and a wallet cannot, so offering them a sign would just be a
+// switch that makes the figure wrong.
+const CAN_GO_NEGATIVE: AccountType[] = ["bank", "credit_card"];
+
+const SIGN_LABELS: Partial<Record<AccountType, { positive: string; negative: string }>> = {
+  bank: { positive: "In account", negative: "Overdrawn" },
+  credit_card: { positive: "In credit", negative: "Owed" },
+};
+
 // Rupees typed by a human → integer paise, the only unit the API accepts.
 const toPaise = (rupees: string): number | null => {
   const trimmed = rupees.trim();
@@ -46,8 +57,10 @@ const toPaise = (rupees: string): number | null => {
   return Math.round(value * 100);
 };
 
-// Spec §08 — New / Edit account (Tier-2). One sheet for both; `account === null`
-// is the only branch, and it is the only time an opening balance can be set.
+// Spec §08 — New / Edit account (Tier-2). One sheet for both; `account === null` is the
+// only branch. Creating sets an opening balance, which can never be edited again;
+// editing instead offers a reconciliation against the bank, which is a different write
+// through a different endpoint.
 const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, onSaved }, ref) => {
   const innerRef = useRef<BottomSheetModal>(null);
   useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
@@ -64,14 +77,39 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, onSaved
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // The balance correction, when editing. Deliberately NOT prefilled with the current
+  // balance: a prefill would print a real figure into a text field, which privacy mode
+  // could not mask, and it would make "I didn't touch this" indistinguishable from
+  // "set it to what it already was". Blank means leave the balance alone. The magnitude
+  // and the sign are separate because `decimal-pad` has no minus key.
+  const [actual, setActual] = useState("");
+  const [negative, setNegative] = useState(false);
+  const [note, setNote] = useState("");
+
   useEffect(() => {
     setName(account?.name ?? "");
     setType(account?.type ?? "bank");
     setOpening("");
     setIcon((account?.icon as IconName) ?? "bank");
     setColor((account?.color as ColorToken) ?? "info");
+    setActual("");
+    setNote("");
+    // Seeded from where the balance already sits, so a card that is normally owed
+    // opens on "Owed" and the common correction needs one tap fewer.
+    setNegative((account?.balance ?? 0) < 0);
     setError(null);
   }, [account]);
+
+  // The correction the sheet is about to make, or `null` when there is nothing to do.
+  // `undefined` marks an unparseable figure, so the save path can refuse it rather
+  // than quietly treating a typo as "no change".
+  const target = (() => {
+    if (!editing || actual.trim() === "") return null;
+    const magnitude = toPaise(actual);
+    if (magnitude === null) return undefined;
+    return negative && CAN_GO_NEGATIVE.includes(type) ? -magnitude : magnitude;
+  })();
+  const delta = typeof target === "number" && account ? target - account.balance : 0;
 
   // Changing the type on a new account also moves its glyph, unless the icon has
   // already been picked away from the previous type's default.
@@ -93,14 +131,30 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, onSaved
       setError("Enter the opening balance as a number, or leave it blank for zero.");
       return;
     }
+    if (target === undefined) {
+      haptics.error();
+      setError("Enter the balance as a number, or leave it blank to keep the one you have.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      if (editing) await updateAccount(account._id, { name: trimmed, type, icon, color });
+      if (editing) {
+        await updateAccount(account._id, { name: trimmed, type, icon, color });
+        // Second call on purpose, and skipped entirely when the field was left blank —
+        // so renaming an account never sends anything that could move money. The server
+        // records the difference as an adjustment; see `syncAccountBalance`.
+        if (target !== null) {
+          await syncAccountBalance(account._id, target, note.trim() || undefined);
+        }
+      }
       else await createAccount({ name: trimmed, type, startingBalance, icon, color });
       onSaved?.();
       dismiss();
-      toast.success(editing ? `${trimmed} updated` : `${trimmed} added`);
+      // Names the correction when there was one: the balance changing is the bigger of
+      // the two things that just happened, and a bare "updated" would hide it.
+      if (editing && delta !== 0) toast.success(`${trimmed} balance updated`);
+      else toast.success(editing ? `${trimmed} updated` : `${trimmed} added`);
     }
     catch (err) {
       haptics.error();
@@ -165,15 +219,72 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, onSaved
         </View>
       </View>
 
-      {/* Only at creation. The balance the API maintains is opening balance plus
-          every transaction since, so editing this term later would silently
-          restate every total — a wrong opening balance is fixed with a
-          transaction, not by rewriting the starting point. */}
+      {/* Two different fields wearing the same shape. At creation this is the opening
+          balance — a term the running total is built from, which is why it can never be
+          edited again. When editing it is a reconciliation: the user reads a figure off
+          their banking app, and the server records the gap as an adjustment rather than
+          overwriting a number that is supposed to be the sum of its history. */}
       {editing ? (
-        <AppText size="xs" color="inkDim" style={styles.note}>
-          The balance moves with your transactions, so it isn&apos;t edited here. To
-          correct it, add a transaction for the difference.
-        </AppText>
+        <View style={styles.field}>
+          <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>
+            UPDATE BALANCE
+          </AppText>
+
+          {CAN_GO_NEGATIVE.includes(type) && (
+            <View style={styles.types}>
+              <Chip
+                label={SIGN_LABELS[type]?.positive ?? "Positive"}
+                selected={!negative}
+                onPress={() => setNegative(false)}
+              />
+              <Chip
+                label={SIGN_LABELS[type]?.negative ?? "Negative"}
+                selected={negative}
+                onPress={() => setNegative(true)}
+              />
+            </View>
+          )}
+
+          <AmountHeroInput value={actual} onChangeText={setActual} />
+
+          <AppText size="xs" color="inkDim" style={styles.note}>
+            {/* The recorded figure goes through `formatMoney`, so privacy mode still
+                holds — which is also why the field above starts blank rather than
+                prefilled with it. */}
+            We have {formatMoney(account.balance)} recorded. Enter what your bank shows
+            and we&apos;ll square the difference. Leave it blank to keep what you have.
+          </AppText>
+
+          {/* Says what the correction will do before it is made — the whole safety of
+              typing a balance in by hand is seeing the gap it implies first. */}
+          {delta !== 0 && (
+            <AppText size="xs" weight="bold" color={delta > 0 ? "success" : "danger"}>
+              {delta > 0 ? "Adds " : "Removes "}
+              {formatMoney(Math.abs(delta))} to match
+            </AppText>
+          )}
+          {target !== null && delta === 0 && (
+            <AppText size="xs" color="inkDim">
+              That already matches — nothing to correct.
+            </AppText>
+          )}
+
+          {delta !== 0 && (
+            <Input
+              label="Reason (optional)"
+              placeholder="e.g. Interest credited"
+              value={note}
+              onChangeText={setNote}
+              InputComponent={BottomSheetTextInput}
+            />
+          )}
+
+          <AppText size="xs" color="inkDim" style={styles.note}>
+            {account.lastSyncedAt
+              ? `Last checked ${formatTxnDate(account.lastSyncedAt)}.`
+              : "You haven't checked this against your bank yet."}
+          </AppText>
+        </View>
       ) : (
         <View style={styles.field}>
           <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>
