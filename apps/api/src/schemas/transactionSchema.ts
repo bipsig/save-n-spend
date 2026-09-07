@@ -39,7 +39,11 @@ export const listTransactionQuerySchema = z.object({
     endDate: z.iso.date().optional(),
     category: z.string().optional(),
     type: z.enum(["expense", "income", "transfer"]).optional(),
-    search: z.string().optional(),
+    // Capped because the term becomes a `$regex` the database has to run against every
+    // candidate title. Escaping (see `escapeRegex` in the controller) removes the
+    // pathological-backtracking risk; the cap removes the merely-expensive one. 80 is
+    // far more than any transaction title is worth searching for.
+    search: z.string().trim().max(80).optional(),
     page: z.coerce.number().int().positive().default(1),
     limit: z.coerce.number().int().positive().max(100).default(20),
 }).refine((data) => (!!data.startDate === !!data.endDate), {

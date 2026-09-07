@@ -11,6 +11,10 @@ import Category from "../models/Category";
 import { dayBoundsFromKeyInZone } from "../utils/timezone";
 import { resolveZone } from "../utils/userZone";
 
+// Neutralise every regex metacharacter so a search term can only ever match itself.
+// `$&` is the whole match, so each special character comes back escaped.
+const escapeRegex = (term: string): string => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 export const createTransaction = async (req: Request, res: Response): Promise<void> => {
     const reqBody = createTransactionSchema.parse(req.body);
     const accountIds = [reqBody.account];
@@ -88,7 +92,13 @@ export const filterTransactions = async (req: Request, res: Response): Promise<v
     }
     if (search) {
         filters.title = {
-            $regex: search,
+            // Escaped, not interpolated. The term reaches `$regex` as a pattern, so a
+            // lone `(` is an invalid expression the driver rejects with a 500, and
+            // `(a+)+b` backtracks catastrophically inside the database rather than in
+            // our process. Escaping every metacharacter makes it a literal substring —
+            // which is the only thing a search box ever meant. The length cap lives in
+            // the schema.
+            $regex: escapeRegex(search),
             $options: "i"
         }
     }
