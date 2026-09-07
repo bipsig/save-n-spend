@@ -61,15 +61,33 @@ const AppLockGate = ({ children }: Props) => {
     }
   }, []);
 
-  // Cold start with the lock on: come up locked, so the first paint after the
-  // splash is the lock screen and not a flash of the user's balances.
+  // Whether the cold-start decision has been made. Made exactly once per launch, which
+  // is what lets this effect watch `status` and `appLock` without ever locking the app
+  // again afterwards.
+  const armedAtBoot = useRef(false);
+
+  // Cold start with the lock on: come up locked, so the first paint after the splash is
+  // the lock screen and not a flash of the user's balances.
+  //
+  // Waits for BOTH halves of boot, which is the bug this used to have. Keyed on
+  // `hydrated` alone, it fired the moment settings came back from AsyncStorage — a local
+  // read that always beats `/auth/me` over the network — so `status` was still "loading",
+  // the condition failed, and nothing ever re-ran it. App Lock worked on every return
+  // from the background and never once on a cold start.
+  //
+  // The naive fix of adding `status` to the deps locks the app again immediately after a
+  // fresh login, since that is also a transition into "authed". `armedAtBoot` is what
+  // separates the two: by the time someone reaches the login screen, boot has already
+  // resolved to "guest" and the decision is spent. It also preserves the original
+  // intent — switching the toggle on from Settings must not lock the screen the user is
+  // standing on — even though `appLock` is now in the deps.
   useEffect(() => {
-    if (!hydrated) return;
+    if (armedAtBoot.current) return;
+    if (!hydrated || status === "loading") return;
+
+    armedAtBoot.current = true;
     if (appLock && status === "authed") setLocked(true);
-    // Deliberately not keyed on `appLock`: switching the toggle on from Settings
-    // must not lock the screen the user is standing on.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated]);
+  }, [hydrated, status, appLock]);
 
   // Turning the lock off, or signing out, clears any standing lock.
   useEffect(() => {
