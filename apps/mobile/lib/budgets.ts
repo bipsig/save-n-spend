@@ -33,6 +33,16 @@ export const useBudgets = (month?: string) => {
     if (status === "authed") refetch();
   }, [status, refetch]);
 
+  // Clear on month change so the screen falls back to its skeleton instead of holding
+  // the previous month's rows under the new month's heading. Without this, stepping back
+  // a month showed last month's limits and spend as though they were the answer — and
+  // the numbers were plausible enough that nothing looked wrong. Same treatment the
+  // insights window gets (see lib/insights.ts).
+  useEffect(() => {
+    setItems([]);
+    setLoading(true);
+  }, [month]);
+
   return { items, loading, error, refetch };
 };
 

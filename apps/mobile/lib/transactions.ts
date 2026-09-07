@@ -110,6 +110,20 @@ export const useTransactionFeed = (params: FeedParams) => {
     if (status === "authed") load(1, true);
   }, [status, load]);
 
+  // Drop the rows when the RANGE changes, so the list falls back to its skeleton rather
+  // than showing last week's transactions beneath a card labelled "This Week". The
+  // summary card above is computed server-side for the new range and arrives separately,
+  // so without this the two disagreed for as long as the request took.
+  //
+  // Only the range, not `key`: category and search are refinements the user can see they
+  // just made from the chips and the field, and clearing on every debounced keystroke
+  // would strobe the whole list while they typed.
+  const rangeKey = `${params.startDate ?? ""}|${params.endDate ?? ""}`;
+  useEffect(() => {
+    setItems([]);
+    setLoading(true);
+  }, [rangeKey]);
+
   const loadMore = useCallback(() => {
     if (!hasMore || loading || loadingMore) return;
     load(page + 1, false);
@@ -164,6 +178,15 @@ export const useTransactionSummary = (params: { startDate?: string; endDate?: st
   useEffect(() => {
     if (status === "authed") refetch();
   }, [status, refetch]);
+
+  // Clear on a range change, so `data === null` is a reliable "these totals are not for
+  // the range currently on screen". Holding the old ones was worse than showing nothing:
+  // the label said "This Week" while the figures were still last week's, and the reader
+  // had no way to tell.
+  useEffect(() => {
+    setData(null);
+    setLoading(true);
+  }, [key]);
 
   return { data, loading, error, refetch };
 };

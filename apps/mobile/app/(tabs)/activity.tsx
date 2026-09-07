@@ -57,49 +57,61 @@ const SummaryCard = ({
   income,
   expense,
   savings,
+  pending = false,
 }: {
   label: string;
   income: number;
   expense: number;
   savings: number;
-}) => (
-  <GradientCard gradient="brand" style={styles.summary}>
-    <AppText color="inkDim" size="xs" weight="semibold" style={styles.summaryLabel}>
-      {label}
-    </AppText>
+  /**
+   * The totals for THIS label haven't arrived yet. Renders a dash rather than a figure:
+   * the label changes the instant the user picks a new range, and printing the previous
+   * range's money beside it was a claim the card could not support. A dash says "not yet"
+   * in the space the number will occupy, so nothing reflows when it lands.
+   */
+  pending?: boolean;
+}) => {
+  const money = (paise: number) => (pending ? "—" : formatMoney(paise));
 
-    <View style={styles.summaryRow}>
-      <View style={styles.summaryCol}>
-        <AppText color="inkDim" size="xs">
-          Total Income
-        </AppText>
-        <AppText size="lg" weight="black">
-          {formatMoney(income)}
-        </AppText>
+  return (
+    <GradientCard gradient="brand" style={styles.summary}>
+      <AppText color="inkDim" size="xs" weight="semibold" style={styles.summaryLabel}>
+        {label}
+      </AppText>
+
+      <View style={styles.summaryRow}>
+        <View style={styles.summaryCol}>
+          <AppText color="inkDim" size="xs">
+            Total Income
+          </AppText>
+          <AppText size="lg" weight="black">
+            {money(income)}
+          </AppText>
+        </View>
+
+        <View style={[styles.summaryCol, styles.summaryColRight]}>
+          <AppText color="inkDim" size="xs">
+            Total Expenses
+          </AppText>
+          <AppText size="lg" weight="black">
+            {money(expense)}
+          </AppText>
+        </View>
       </View>
 
-      <View style={[styles.summaryCol, styles.summaryColRight]}>
+      <View style={styles.summaryDivider} />
+
+      <View style={styles.netRow}>
         <AppText color="inkDim" size="xs">
-          Total Expenses
+          Net Savings
         </AppText>
-        <AppText size="lg" weight="black">
-          {formatMoney(expense)}
+        <AppText size="lg" weight="black" style={styles.netAmount}>
+          {money(savings)}
         </AppText>
       </View>
-    </View>
-
-    <View style={styles.summaryDivider} />
-
-    <View style={styles.netRow}>
-      <AppText color="inkDim" size="xs">
-        Net Savings
-      </AppText>
-      <AppText size="lg" weight="black" style={styles.netAmount}>
-        {formatMoney(savings)}
-      </AppText>
-    </View>
-  </GradientCard>
-);
+    </GradientCard>
+  );
+};
 
 const ActivityScreen = () => {
   usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
@@ -308,6 +320,7 @@ const ActivityScreen = () => {
               income={summary.data?.income ?? 0}
               expense={summary.data?.expenses ?? 0}
               savings={summary.data?.savings ?? 0}
+              pending={!summary.data}
             />
           }
           ListFooterComponent={

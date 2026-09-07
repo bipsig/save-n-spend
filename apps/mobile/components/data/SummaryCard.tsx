@@ -4,13 +4,21 @@ import Card from "@/components/data/Card"
 import { StyleSheet, View } from "react-native"
 import Icon from "../ui/Icon"
 import { AppText } from "../ui/AppText"
+import Money from "../ui/Money"
 
 type Props = {
   icon: IconName
   iconColor?: ColorToken
   iconBg?: ColorToken
   label: string
-  amount: string
+  /**
+   * Integer paise, not a preformatted string. The card renders it through `Money`, which
+   * makes a masked figure its own tap-to-peek target — the gesture Settings promises
+   * ("tap any one to peek for 10s"). A caller that formats first would hand over a string
+   * with no way back to the number, and the tile would be the one masked amount on the
+   * dashboard that could not be looked at.
+   */
+  amount: number
   caption?: string
   captionColor?: ColorToken
 }
@@ -46,9 +54,7 @@ const SummaryCard = ({
           {label}
         </AppText>
       </View>
-      <AppText weight="black" size="lg">
-        {amount}
-      </AppText>
+      <Money value={amount} weight="black" size="lg" />
       {caption && (
         <AppText weight="semibold" size="xs" color={captionColor}>
           {caption}
