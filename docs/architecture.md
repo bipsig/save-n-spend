@@ -117,6 +117,45 @@ from the transaction history, and nothing in the system will detect it.
 This is why MongoDB Atlas is a hard requirement rather than a preference:
 multi-document transactions need a replica set.
 
+### Correcting a balance without breaking the invariant
+
+Balances drift. A cash purchase never gets recorded, a bank fee arrives that
+nobody entered, and the figure in the app stops matching the figure in the bank.
+`PATCH /accounts/{id}/balance` is how a user fixes that, and it is built to leave
+the invariant intact.
+
+The request body is the **target** balance — the number the user is reading off
+their banking app. The controller does not `$set` it:
+
+```
+delta = target - account.balance
+
+delta === 0  →  stamp lastSyncedAt, write nothing else
+delta > 0    →  positiveAdjustment for  delta,  applyEffects("add")
+delta < 0    →  negativeAdjustment for −delta,  applyEffects("add")
+```
+
+So the balance still moves only through `applyEffects`, and it is still exactly
+the sum of its history — the history simply now contains a row that says "we were
+off by this much". The alternative, a direct `$set`, would produce the right
+number today and an unexplainable one the moment anything recomputed it.
+
+The adjustment types already existed for this shape of write and are excluded
+from income and expense everywhere they are summed, so a correction never shows
+up as earnings or spending. They are also hidden from the default transactions
+listing: a correction is bookkeeping, and a row in the Activity feed that the
+user did not create is a row they cannot explain.
+
+`Account.lastSyncedAt` records when the user last reconciled, and is stamped even
+when the balance already matched — "I checked and it was fine" is the answer the
+next reconciliation wants, and it is not the same answer as "never checked".
+
+### The one exception
+
+`apps/api/src/scripts/seed.ts` recomputes balances from scratch. It is the only
+code allowed to, it refuses to run against a production database, and it is not
+a pattern to copy.
+
 ## Response envelope
 
 Every response — success or failure — has the same four fields.
@@ -204,6 +243,47 @@ On the client, the token lives in `store/session.ts`, persisted with
 expo-secure-store and hydrated synchronously on boot. `lib/api.ts` reads it per
 request, and signs the user out automatically on any 401 outside `/auth/*` —
 which is what returns them to the login screen.
+
+### Deactivated accounts
+
+`DELETE /users/me` does not delete anything. It stamps `User.deactivatedAt` and
+unsets `pushToken`. Every transaction, budget, bill, goal, account and category
+stays exactly as it was, indefinitely.
+
+The reasoning: the overwhelmingly common reason to tap that button is "I'm done
+with this app for now", and years of a person's spending history is not
+recoverable from anywhere else. Every other `DELETE` in this API already archives
+rather than erases, so this makes the account itself consistent with the rest of
+it instead of being the one endpoint that behaved differently.
+
+Three places make it coherent, and all three are needed:
+
+| Part | Where | What it does |
+|---|---|---|
+| The gate | `authController.me` | `GET /auth/me` throws `401` when `deactivatedAt` is set. |
+| The undo | `authController.login` | Clears `deactivatedAt` **before** the token is issued. |
+| The side effect | `deleteMe` + `reminderJob` | `pushToken` unset; the sweep filters `deactivatedAt: null`. |
+
+**Signing in is the undo.** Correct credentials are proof enough that the person
+coming back is the person who left, so there is nothing to confirm — and asking
+would mean showing a "your account is deactivated" screen to someone who may not
+remember deactivating it.
+
+**Important**
+The gate is on `/auth/me` and nowhere else. `protect` verifies the JWT signature
+and never reads the database; giving every request a user lookup to catch this
+would tax thousands of calls to guard one. `/auth/me` is what the app asks on
+launch to decide whether to show the tabs at all, so a `401` there is enough to
+put a deactivated account back at the login screen — which is exactly where the
+reactivation path starts.
+
+The consequence, accepted knowingly: a token issued before the deactivation can
+still reach other endpoints until it expires. That token belongs to the person who
+deactivated the account moments earlier on that same device, and the only data it
+can reach is their own — which is still sitting there either way.
+
+`{ deactivatedAt: null }` matches both a live account and one written before the
+field existed, which is why the reminder job's filter can stay a single equality.
 
 ## Period windowing
 
@@ -347,7 +427,9 @@ key however many times it is evaluated:
 | Budget at 80% / over | `budget:<id>:<YYYY-MM>:warn` / `:over` |
 | Goal milestone | `goal:<id>:milestone:<25\|50\|75\|100>` |
 | Goal deadline near | `goal:<id>:deadline:<deadlineDayKey>` |
+| Daily summary | `daily:<dayKeyCovered>` |
 | Weekly summary | `weekly:<weekStartDayKey>` |
+| Monthly summary | `monthly:<YYYY-MM>` |
 
 "Due today" has its own key on purpose: someone reminded three days early should
 still hear about it on the morning it is actually due.
@@ -368,13 +450,57 @@ started from `server.ts` after the database connects:
 |---|---|
 | Bill reminder / overdue | Unpaid, unsettled for this period, within the user's lead time. |
 | Goal deadline | Deadline 0–7 zone-local days away and the goal is not funded. |
+| Daily summary | Any day, and yesterday had activity. |
 | Weekly summary | Monday, and the week had activity. |
+| Monthly summary | The 1st, and the month had activity. |
 
 The tick runs hourly in UTC and sends to each user when their **own** zone reads
 9 a.m. or later (`partsInZone(now, zone).hour >= SEND_HOUR`). The comparison is
 `>=` rather than `===` deliberately: a restart or a slow tick can swallow the 9
 o'clock hour entirely, and it is better to send at 11 than not at all. Sending
 twice is what the dedupe keys prevent.
+
+### Digest notifications
+
+Three digests, each covering the period that just **closed** — never a rolling
+window. A push headed "31 May in review" that includes this morning's coffee is
+one the reader can prove wrong.
+
+| Digest | Period | Hour | Default |
+|---|---|---|---|
+| Daily | Yesterday, zone-local midnight to midnight | 9am | off |
+| Weekly | Monday to Sunday, closed by this Monday's midnight | 10am | off |
+| Monthly | The previous calendar month | 11am | **on** |
+
+**The hours are the point.** The 1st of a month can be a Monday, and on that
+morning all three periods have just closed at once. Sent together they arrive as
+a stack of three pushes that looks like a bug; an hour apart they read as what
+they are — yesterday, then the week, then the month. The hours are floors, not
+exact times, so a server that was down all morning still delivers all three on
+the first tick it manages: bunched on the recovery path, which is the right
+trade against silence.
+
+Bills and goal deadlines share 9am with the daily digest, because they are about
+what is *coming* rather than what happened and so don't compete for the same
+attention.
+
+**Defaults follow frequency.** Daily and weekly are opt-in; monthly is on. 365
+pushes a year is the kind of thing people uninstall an app over and has to be
+asked for. Twelve a year, on the morning the month just ended, is a reasonable
+thing for a money app to assume is wanted. This is `wantsNotification` in
+`notificationService.ts` — `=== true` for the opt-in kinds, `!== false` for
+monthly.
+
+**An empty period sends nothing.** A day with no transactions is the most common
+day there is, and a digest of it is the surest way to train someone to swipe
+these away unread. All three check `count === 0` and return.
+
+Periods are bounded with `startOfDayInZone` / `startOfWeekInZone` /
+`startOfMonthInZone` plus the matching `addDaysInZone` / `addMonthsInZone`, so
+February, a 31-day month, and a month containing a DST change all need no special
+case — a New York user's March window correctly runs from `-05:00` to `-04:00`.
+Dedupe keys name the **period covered**, not the day the job ran, so re-running a
+morning is idempotent.
 
 **Important**
 Notification copy is composed on the server, where no app is running to format
@@ -545,6 +671,29 @@ already looking at.
 > `phase === "awake"` for that reason: `hydrate()` can settle to `guest` while
 > the server is still waking, and a `router.replace()` at that moment fires
 > before the root layout has mounted.
+
+### App Lock and the two halves of boot
+
+`AppLockGate` renders the lock as an **overlay over** the `Stack`, not in place of
+it — unlocking has to put the user back on the screen they left, and a navigation
+swap would drop them on the home tab.
+
+Coming up locked on a cold start needs **both** halves of boot to have resolved,
+and this is where it went wrong. The effect was keyed on `hydrated` alone, which
+is the settings store returning from AsyncStorage — a local read that always beats
+`/auth/me` over the network. So it fired while `status` was still `"loading"`, the
+`status === "authed"` condition failed, and nothing ever re-ran it. **App Lock
+worked on every return from the background and never once on a cold start.**
+
+Adding `status` to the deps is the naive fix and is also wrong: a fresh login is
+another transition into `"authed"`, so the app would lock the instant someone
+signed in. A `armedAtBoot` ref separates the two — the cold-start decision is made
+exactly once per launch, and by the time anyone reaches the login screen boot has
+already resolved to `"guest"` and the decision is spent.
+
+That ref is also what preserves the original intent, now that `appLock` is in the
+deps: switching the toggle on from Settings must not lock the screen the user is
+standing on.
 
 ## Configuration reference
 

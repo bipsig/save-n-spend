@@ -300,8 +300,9 @@ is about the API being asleep.
 ## Testing
 
 **This is the first thing in this repository that is straightforward to test, and it
-is the first thing that is tested** — `src/services/highlightRules.test.ts` is the
-repo's first test file. Run it with `npm test --workspace=apps/api`.
+is the first thing that is tested** — `src/services/highlightRules.test.ts` was the
+repo's first test file, and `highlightSnapshotMath.test.ts` is now beside it. Run both
+with `npm test --workspace=apps/api`.
 
 It uses `node:test` and `node:assert/strict`: both are in the standard library, so
 the suite added **zero dependencies**. On a free-tier deploy that matters more than
@@ -333,18 +334,38 @@ in savings rate), a goal with no contributions, a goal with no deadline, a categ
 whose usual month is too small to be news, the first-week gate on both pace rules,
 every rupee floor, the ranking order, and the cap at four.
 
-**Known gaps**, all of them in the snapshot builder rather than the rules — the half
-that touches Mongo and the calendar, and so the half that needs a different kind of
-test:
+### The snapshot half
 
-- a budget created mid-month, where `spent` covers less of the month than `daysElapsed` implies
-- a backdated transaction landing in a month the averages already closed over
-- the month boundary itself: that `daysElapsed` is `1` on the 1st, not `0`
+The gaps this section used to list were all in the snapshot builder — the half that
+touches Mongo and the calendar. Most of them were not really about Mongo: they were
+about arithmetic that happened to be written next to a query.
 
-The last one is guarded twice over rather than tested — `Math.max(1, …)` in the
-builder means `projectToMonthEnd` can never divide by zero, and `MIN_PACE_DAYS = 7`
-means no pace rule reads the number that early anyway. Worth a test when the builder
-gets one, not worth a fixture in a pure-rules suite that cannot construct the case.
+So the arithmetic moved. `highlightSnapshotMath.ts` holds the calendar window and the
+category rollup as pure functions of their arguments; `highlightSnapshotService.ts`
+keeps the queries and hands rows over. The seam is drawn at **rows in, facts out**
+rather than at the Mongo boundary, because the aggregation's shape is the easy part to
+get right and the calendar is not.
+
+`highlightSnapshotMath.test.ts` covers it in 25 cases across three groups:
+
+| Group | What it pins |
+|---|---|
+| `snapshotWindow` — the month | That the month comes from the user's zone, not UTC (00:30 on 1 October in Delhi is still 30 September in UTC); that `daysElapsed` is `1` on the 1st and counts calendar dates rather than elapsed hours; February in a leap year; **31 days in a month containing a 23-hour day** (New York, March) — dividing hours by 24 would make that 30.96 and skew every pace projection in the month. |
+| `snapshotWindow` — the comparison | That the current month is never one of its own comparison months; the **January year-cross**, where string arithmetic on `"YYYY-MM"` would produce `"2026--2"`; and that `windowStart` and `completeLabels` agree, so spend is never fetched and then silently dropped. |
+| `snapshotWindow` — the divisor | That an account opened this month averages over one month, not three — dividing its non-existent history by three would tell the user every category had collapsed; that the divisor grows with the history up to the cap; and that it is never zero. |
+| `categoryRoller` | Child under parent, top-level as itself, uncategorised as its own slice, and a **since-deleted** category named rather than printed as a hex string. |
+| `rollUpFlows` | That a **backdated transaction lands in the closed month it belongs to** and not in this one; that a row outside the window is dropped rather than counted somewhere approximate; that averages divide by `monthsAveraged`; that a month before the account existed is **absent rather than zero** while a genuinely empty month inside the history *is* zero; that siblings sum on both sides of a comparison; and that every figure stays a whole number of paise. |
+
+The absent-versus-zero distinction is the one worth restating: a zero-income month is
+a real answer the savings-rate rule will act on, so "we have no idea" has to look
+different from "you earned nothing".
+
+**What is still not tested.** One thing, and it needs a database rather than a
+fixture: `budgetProgress`. A budget created on the 20th is compared against spend from
+the **1st**, because a budget is *for* a month and that is also what the Budget screen
+shows — `daysElapsed` is unaffected either way, since it counts from the 1st
+regardless. That is the intended reading, now written down; pinning it requires a Mongo
+harness, which is the next thing to add here if the behaviour is ever in doubt.
 
 ## The surface
 

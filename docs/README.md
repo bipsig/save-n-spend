@@ -17,6 +17,7 @@ assumes you are comfortable with TypeScript, React Native, and Express.
 | [Design system](design-system.md) | Style a screen with the correct tokens, or add a component that matches the rest of the app. |
 | [Mobile patterns](mobile-patterns.md) | Add a screen, a bottom sheet, or a period selector, and follow the conventions the existing screens already use. |
 | [Insights engine](insights-engine.md) | Highlights — the rule set, the ranking, the cold-start gate, and why there is no LLM. |
+| [Shortcuts and Back Tap](native-shortcuts.md) | Reach the app from outside it — Back Tap, the Action Button, Siri — and why widgets are out. |
 | [Shipping](SHIPPING.md) | Build an `.ipa` and get it onto a physical iPhone. |
 
 ## Prerequisites
@@ -96,13 +97,28 @@ Before you start, install the following.
 
 ## Verify a change
 
-The repository has no test suite yet. Before you hand off a change, run the
-type checker for each workspace you touched.
+Run the type checker for each workspace you touched, and the API's tests.
 
 ```bash
 npx tsc --noEmit --project apps/mobile
 npx tsc --noEmit --project apps/api
+npm test --workspace=apps/api
 ```
+
+The suite is `node:test` and `node:assert/strict` — standard library, **zero
+dependencies**, which on a free-tier deploy matters more than nicer matchers.
+`tsconfig.build.json` keeps test files out of `dist/`, so nothing test-related
+ships to Render.
+
+It covers the two pure halves of the highlights engine: `highlightRules.test.ts`
+(the sentences, the thresholds, the ranking) and `highlightSnapshotMath.test.ts`
+(the calendar window and the category rollup). Both are fixtures in, assertions
+out — no database, no network, no clock. See
+[Testing](insights-engine.md#testing).
+
+`apps/mobile` has no runner. Anything genuinely testable there should be a pure
+module with `import type`-only runtime imports, which `tsc` emits as something
+`node --test` can require directly.
 
 A release build hides JavaScript errors behind a bare `EXC_CRASH`/`SIGABRT`
 with no message, so reproduce runtime problems in a release configuration

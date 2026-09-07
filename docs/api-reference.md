@@ -81,7 +81,35 @@ Updates the caller's own profile and preferences. All fields optional.
 | `prefs.notifications.billReminderLead` | 1 \| 3 \| 7 | Days of lead time before a bill is due. |
 | `prefs.notifications.budgetAlerts` | boolean | |
 | `prefs.notifications.goalMilestones` | boolean | |
-| `prefs.notifications.weeklySummary` | boolean | |
+| `prefs.notifications.dailySummary` | boolean | Yesterday's totals, 9am local. Defaults to **off**. |
+| `prefs.notifications.weeklySummary` | boolean | The week that ended, Monday 10am local. Defaults to **off**. |
+| `prefs.notifications.monthlySummary` | boolean | The month that ended, the 1st at 11am local, with the biggest spending category. Defaults to **on**. |
+
+The three digests have separate switches and separate hours. See
+[Digest notifications](architecture.md#digest-notifications).
+
+### DELETE /users/me
+
+**Deactivates** the account. Nothing is erased.
+
+`deactivatedAt` is stamped and `pushToken` is unset. `204`, no body.
+
+| Consequence | When |
+|---|---|
+| `GET /auth/me` returns `401` | Immediately. This is the only gate — see below. |
+| Reminders and digests stop | Immediately (`reminderJob` filters on `deactivatedAt: null`). |
+| Transactions, budgets, bills, goals, accounts, categories | Untouched, indefinitely. |
+
+Signing in again with the same credentials clears `deactivatedAt` before the
+token is issued, and the account is live with all of its data.
+
+**Important**
+`protect` verifies the JWT signature and never reads the database, so a token
+issued *before* the deactivation keeps working on other endpoints until it
+expires (7 days). That token belongs to the person who deactivated the account
+moments earlier on that same device, and the only data it can reach is their
+own — which is still there either way. Adding a user lookup to every request to
+close this would tax thousands of calls to guard one.
 
 ## Accounts
 
@@ -91,6 +119,7 @@ Updates the caller's own profile and preferences. All fields optional.
 | `POST` | `/accounts` | Creates an account. |
 | `GET` | `/accounts/{id}` | Retrieves one account. |
 | `PATCH` | `/accounts/{id}` | Updates an account's name, type, icon, or color. |
+| `PATCH` | `/accounts/{id}/balance` | Reconciles the balance against the bank. |
 | `DELETE` | `/accounts/{id}` | **Archives** the account. It is not deleted. |
 
 ### POST /accounts
@@ -111,6 +140,42 @@ patched directly. See
 
 Deleting archives rather than removes, because past transactions reference the
 account and would otherwise lose their source.
+
+### PATCH /accounts/{id}/balance
+
+Sets the balance to what the user's bank actually says, by recording the
+difference as an adjustment transaction.
+
+| Field | Type | Constraints |
+|---|---|---|
+| `balance` | integer | Required. Paise. **The target figure, not a delta.** Signed and unbounded — a credit card's balance is negative as it is used. |
+| `note` | string | Optional, 1–120 chars. Becomes the adjustment's title. Defaults to `"Balance correction"`. |
+
+**Important**
+The body is the balance the user is *reading off their banking app*. The server
+computes `target - current` and writes a `positiveAdjustment` or
+`negativeAdjustment` for the absolute difference, then stamps `lastSyncedAt`.
+
+It is deliberately **not** a field on `PATCH /accounts/{id}`: this is the only
+account write that moves money, and keeping it on its own path means a rename
+can never carry a balance change with it.
+
+A `$set` on `balance` would be the obvious implementation and is wrong — it
+would break the invariant that the stored balance is the sum of its history.
+See [The account balance invariant](architecture.md#the-account-balance-invariant).
+
+**Responses**
+
+| Case | Response |
+|---|---|
+| Difference is non-zero | `200` with the updated account. Message `"Balance updated"`. |
+| Already matches | `200`, `lastSyncedAt` stamped, **no transaction written**. Message `"Balance already matched"`. |
+| Account archived or not the caller's | `404`. |
+
+Adjustments are excluded from income and expense everywhere: the dashboard
+summary, `GET /transactions/summary`, the health score, and the highlight
+snapshot all match on `type: { $in: ["income", "expense"] }`. They are also
+hidden from the default `GET /transactions` listing — see that endpoint.
 
 ## Categories
 
@@ -221,13 +286,18 @@ expense is negative because `type` is `expense`, not because the number is.
 | `endDate` | `YYYY-MM-DD` | — | End of the range. |
 | `category` | string | — | Category ID. |
 | `type` | enum | — | `expense` \| `income` \| `transfer`. |
-| `search` | string | — | Free-text match on the title. |
+| `search` | string | — | Free-text match on the title. Regex-escaped and capped at 80 chars, so `(` is a literal bracket rather than a 500 and `(a+)+b` can't be handed to the database as a backtracking bomb. |
 | `page` | integer | `1` | 1-based page number. |
 | `limit` | integer | `20` | Page size. Maximum 100. |
 
 **Important**
 `startDate` and `endDate` must be supplied together. Sending one without the
 other returns `400 startDate and endDate must be provided together`.
+
+With no `type`, the listing excludes `positiveAdjustment` and
+`negativeAdjustment` — balance corrections are bookkeeping, not activity, and a
+user reconciling an account should not find a row in their feed they can't
+explain. Pass `type` explicitly to see them.
 
 Results are paginated with `mongoose-paginate-v2`.
 
@@ -382,7 +452,8 @@ create endpoint. See
 | `hasNextPage` | boolean | Whether an older page exists. |
 
 `type` is one of `billReminder`, `billOverdue`, `budgetWarning`,
-`budgetExceeded`, `goalMilestone`, `goalDeadline`, `weeklySummary`.
+`budgetExceeded`, `goalMilestone`, `goalDeadline`, `dailySummary`,
+`weeklySummary`, `monthlySummary`.
 
 `link` is `{ screen, id? }` and is what the row opens when tapped. A
 notification with no `link` is informational and navigates nowhere.

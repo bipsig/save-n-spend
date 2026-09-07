@@ -14,7 +14,9 @@ For tokens and components, see [Design system](design-system.md).
 - [Add a full-screen form](#add-a-full-screen-form)
 - [Add a bottom sheet](#add-a-bottom-sheet)
 - [Add a period selector](#add-a-period-selector)
+- [Show an amount](#show-an-amount)
 - [Handle loading, empty, and error states](#handle-loading-empty-and-error-states)
+- [First run](#first-run)
 - [Refetch on focus](#refetch-on-focus)
 
 ## Navigation structure
@@ -234,6 +236,42 @@ Budget screen relabels **Remaining** as **Unspent** and swaps **Days Left** and
 **Daily Limit** for **Days** and **Avg/Day** once the month has ended, because a
 pace target is meaningless for a month that is already over.
 
+## Show an amount
+
+Money is integer paise everywhere, and every screen has a privacy mode to honour.
+Which helper to reach for depends on whether the amount can be tapped.
+
+| Use | When |
+|---|---|
+| `<Money value={paise} />` | Default. An amount rendered on a screen. |
+| `formatMoney(paise)` (default export of `lib/money.ts`) | The amount is going somewhere that can't be a component — a `sub` string, a toast, a sheet body. Masks. |
+| `formatMoneyExact(paise)` | Never on screen. Files the user explicitly asked us to generate — see `lib/export.ts`. |
+| `usePrivacyMask()` | A screen that composes amounts with `formatMoney` must call this once, to subscribe: without it a peek won't re-render the strings it computed. |
+
+**Prefer `Money` to `formatMoney`.** With privacy mode off it is exactly
+`<AppText>{formatMoney(v)}</AppText>`. With it on, the masked figure becomes its own
+tap target that reveals **every** amount in the app for ten seconds. Revealing one
+figure at a time would mean tapping across a screen to add two numbers up, which is
+the opposite of a privacy feature anyone leaves switched on.
+
+It is `Pressable` only *while masked*, so a transaction row's amount reveals on the
+first tap and passes subsequent taps through to the row. Pass `align="right"` in a
+right-aligned row: the dots are narrower than most figures, and the tap target has to
+sit where the figure does.
+
+**A component that takes a pre-formatted string cannot be masked.** `SummaryCard` used
+to take `amount: string` and was handed `formatMoney(...)` by its callers — which
+worked, but meant its figures could never become tappable. It takes `amount: number`
+now and renders `Money` itself. If you are about to give a component a formatted
+string, take the paise instead.
+
+**The eye lives in the scaffold.** `components/shell/PeekButton.tsx` renders nothing at
+all while privacy mode is off, which is what lets `ScreenScaffold` include it in the
+default title row unconditionally. A screen that hides figures without offering the way
+to reveal them is a dead end — that was the bug: the eye existed only on the dashboard,
+so switching privacy mode on and opening Budget left the user with masked figures and no
+control. **A screen passing a custom `header` has to include `<PeekButton />` itself.**
+
 ## Handle loading, empty, and error states
 
 Every list screen renders four states from `components/states/`.
@@ -256,6 +294,45 @@ limit should have been, rather than *"No budgets yet"*.
 Give `EmptyState` a CTA only when the user can act on it. Activity shows
 *"Add transaction"* when nothing has ever been recorded, and drops it when a
 **search** came back empty — the fix there is a different query, not a new entry.
+
+### Clear the data when the period changes
+
+`loading && items.length === 0` is right for a refetch of the *same* question. It is
+wrong when the question itself changed.
+
+Stepping the Budget month back, or switching Activity from This Week to This Month,
+changes the heading immediately and the rows a network round-trip later. In between,
+the screen shows last month's limits under this month's heading — and the figures are
+plausible enough that nothing looks wrong. That is worse than a skeleton: a skeleton
+says "not yet", stale data makes a claim.
+
+So a screen whose data is scoped to a period clears it when the period changes, in a
+second effect beside the fetch:
+
+```ts
+useEffect(() => {
+  setItems([]);
+  setLoading(true);
+}, [month]);          // or a range key, per the table below
+```
+
+| Hook | Clears on | Not on |
+|---|---|---|
+| `useBudgets` (`lib/budgets.ts`) | `month` | — |
+| `useTransactionFeed` (`lib/transactions.ts`) | `startDate`/`endDate` | `category`, `search` |
+| `useTransactionSummary` (`lib/transactions.ts`) | the whole filter key | — |
+| `useInsights` (`lib/insights.ts`) | the window | — |
+
+`useTransactionFeed` clears on the **range only**, deliberately. Category and search
+are refinements the user can see they just made, from the chips and the field they are
+typing in, and clearing on every debounced keystroke would strobe the whole list.
+
+**A server-computed total needs its own treatment.** Activity's summary card is
+computed for the range by the API, so clearing the feed does not help it — it would
+keep printing last week's money beside a label reading "This Month". `SummaryCard`
+takes a `pending` prop and renders **a dash** in the space the figure will occupy.
+Showing `₹0` would have been a different falsehood, and a dash reflows nothing when
+the real number lands.
 
 ## First run
 
