@@ -84,7 +84,7 @@ const FAQS: Faq[] = [
   {
     question: "What does deleting my account remove?",
     answer:
-      "Everything: your profile and every transaction, budget, bill, goal, account, and category in it. It runs as one operation, so it either all goes or none of it does — and it cannot be undone.",
+      "Nothing, yet. You're signed out and the app stops contacting you — no reminders, no summaries — but your transactions, budgets, bills, goals, accounts, and categories all stay exactly as they are. Sign in again with the same email and password and everything comes back untouched. Years of your own spending history isn't recoverable from anywhere else, so we'd rather keep it than take you at your word on a tap.",
     icon: "logout",
     tint: "red",
   },

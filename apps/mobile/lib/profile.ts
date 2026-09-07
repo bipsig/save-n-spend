@@ -32,10 +32,10 @@ export const updatePrefs = async (prefs: PrefsPatch): Promise<IUser> =>
 export const changePassword = (currentPassword: string, newPassword: string): Promise<null> =>
   post<null>("/auth/change-password", { currentPassword, newPassword });
 
-// Irreversible on the server: it deletes the user and every transaction, budget,
-// bill, goal, account, and category they own. Signing out afterwards is what
-// returns the app to the login screen — the token it held is now for a user that
-// no longer exists.
+// Deactivates rather than erases. The server keeps the user and everything they own
+// and only stamps them as gone, so signing in again with the same credentials restores
+// the lot (see `userController.deleteMe` on the API). Signing out afterwards is what
+// returns the app to the login screen — which is also where the way back in starts.
 export const deleteAccount = async (): Promise<void> => {
   await del<null>("/users/me");
   await useSession.getState().signOut();

@@ -358,7 +358,7 @@ const SettingsScreen = () => {
           kind="danger"
           icon="delete"
           label="Delete account"
-          sub="Erases every transaction, budget, and goal"
+          sub="Signs you out and stops all reminders"
           onPress={() => deleteRef.current?.present()}
         />
       </Card>
@@ -426,7 +426,10 @@ const SettingsScreen = () => {
         ref={deleteRef}
         icon="delete"
         title="Delete account?"
-        body="This erases your account and every transaction, budget, bill, goal, and category in it. It cannot be undone."
+        // Says the reversibility out loud rather than letting the user discover it. The
+        // hold is kept anyway: this still signs them out and silences every reminder, so
+        // it should not be reachable by a stray tap on the row above.
+        body="You'll be signed out and we'll stop sending you reminders. Nothing is erased — sign in again with the same email and password and every transaction, budget, bill, goal, and account comes back as it was."
         confirmLabel="Delete my account"
         hold
         onConfirm={deleteAccount}
