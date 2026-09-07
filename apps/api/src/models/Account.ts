@@ -9,6 +9,13 @@ export interface IAccount extends Document {
     icon?: string
     color?: string
     isArchived: boolean
+    /**
+     * When the user last reconciled this account against their bank. Stamped even when
+     * the balance already matched, because "I checked and it was right" is information
+     * the user wants back — it is the difference between a stale figure and a confirmed
+     * one. Absent on accounts that have never been synced.
+     */
+    lastSyncedAt?: Date | null
 }
 
 const AccountSchema = new Schema<IAccount>({
@@ -19,7 +26,8 @@ const AccountSchema = new Schema<IAccount>({
     startingBalance: { type: Number, required: true, default: 0 },
     icon: { type: String },
     color: { type: String },
-    isArchived: { type: Boolean, default: false }
+    isArchived: { type: Boolean, default: false },
+    lastSyncedAt: { type: Schema.Types.Date, default: null }
 }, { timestamps: true })
 
 AccountSchema.index({ userId: 1, isArchived: 1 });

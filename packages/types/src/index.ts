@@ -57,6 +57,9 @@ export interface IAccount {
   icon?: string
   color?: string
   isArchived: boolean
+  // ISO string. When the user last reconciled this account against their bank.
+  // Absent on accounts that have never been synced.
+  lastSyncedAt?: string | null
 }
 
 export interface ICategory {
