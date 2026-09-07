@@ -5,6 +5,7 @@ import Animated, { LinearTransition } from "react-native-reanimated";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { AccountType, IAccount } from "@save-n-spend/types";
 import BackButton from "@/components/shell/BackButton";
+import PeekButton from "@/components/shell/PeekButton";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import Card from "@/components/data/Card";
 import ManageRow from "@/components/rows/ManageRow";
@@ -76,6 +77,7 @@ const ManageAccountsScreen = () => {
           <AppText size="xl" weight="black" style={styles.headTitle}>
             Accounts
           </AppText>
+          <PeekButton />
           <Button label="New" icon="add" pill onPress={openNew} />
         </View>
       }

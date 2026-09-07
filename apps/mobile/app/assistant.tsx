@@ -2,6 +2,7 @@ import { StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import type { IHighlight } from "@save-n-spend/types";
 import BackButton from "@/components/shell/BackButton";
+import PeekButton from "@/components/shell/PeekButton";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import Card from "@/components/data/Card";
 import { AppText } from "@/components/ui/AppText";
@@ -90,6 +91,7 @@ const AssistantScreen = () => {
       <AppText size="xl" weight="black" style={styles.headTitle}>
         Highlights
       </AppText>
+      <PeekButton />
     </View>
   );
 

@@ -3,6 +3,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppText } from "../ui/AppText";
 import GlowBackground from "./GlowBackground";
+import PeekButton from "./PeekButton";
 import { spacing } from "@/theme";
 
 type Props = {
@@ -47,7 +48,15 @@ const ScreenScaffold = ({
               <AppText weight="black" size="xl">
                 {title}
               </AppText>
-              {headerRight}
+              {/* Every screen gets the eye, not just the dashboard: privacy mode masks
+                  amounts app-wide, so a screen that hides figures without offering the
+                  way to reveal them is a dead end. It renders nothing at all while
+                  privacy mode is off, so this costs the other screens no space.
+                  Screens passing a custom `header` have to include it themselves. */}
+              <View style={styles.titleActions}>
+                <PeekButton />
+                {headerRight}
+              </View>
             </View>
             {subtitle && (
               <AppText size="sm" color="inkDim">
@@ -91,6 +100,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+  },
+  titleActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
   },
   scroll: {
     flex: 1,

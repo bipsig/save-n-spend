@@ -1,5 +1,6 @@
 import { StyleSheet, View } from "react-native";
 import BackButton from "@/components/shell/BackButton";
+import PeekButton from "@/components/shell/PeekButton";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import Card from "@/components/data/Card";
 import ProgressBar from "@/components/data/ProgressBar";
@@ -70,6 +71,7 @@ const HealthScreen = () => {
       <AppText size="xl" weight="black" style={styles.headTitle}>
         Health score
       </AppText>
+      <PeekButton />
     </View>
   );
 
