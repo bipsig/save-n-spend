@@ -18,6 +18,13 @@ type Props = {
   size?: FontSizeToken;
   color?: ColorToken;
   numberOfLines?: number;
+  /**
+   * Which edge the figure is pinned to. Only matters while masked: the dots are narrower
+   * than most figures, so a right-aligned row needs the tap target pinned right or the
+   * masked amount sits a few pixels off from where the real one does. Tiles and heroes
+   * read left, which is why that is the default.
+   */
+  align?: "left" | "right";
 };
 
 // An amount that can be looked at.
@@ -32,7 +39,7 @@ type Props = {
 // sits in: a transaction row's amount reveals on the first tap, and once revealed
 // taps pass straight through to the row and open the detail sheet as usual. The
 // amount stops being a control the moment it has nothing left to tell you.
-const Money = ({ value, prefix = "", weight, size, color, numberOfLines }: Props) => {
+const Money = ({ value, prefix = "", weight, size, color, numberOfLines, align = "left" }: Props) => {
   const masked = usePrivacyMask();
   const peek = useSettings((s) => s.peek);
 
@@ -61,7 +68,7 @@ const Money = ({ value, prefix = "", weight, size, color, numberOfLines }: Props
         peek();
       }}
       hitSlop={8}
-      style={styles.press}
+      style={align === "right" ? styles.pressRight : undefined}
       accessibilityRole="button"
       accessibilityLabel="Amount hidden. Tap to show amounts for ten seconds."
     >
@@ -73,7 +80,7 @@ const Money = ({ value, prefix = "", weight, size, color, numberOfLines }: Props
 const styles = StyleSheet.create({
   // The dots are narrower than most figures, so without this a masked amount in a
   // right-aligned row would sit a few pixels off from where the real one does.
-  press: {
+  pressRight: {
     alignItems: "flex-end",
   },
 });

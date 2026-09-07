@@ -185,14 +185,14 @@ const HomeScreen = () => {
             iconColor="success"
             iconBg="successSoft"
             label="Income"
-            amount={formatMoney(dashboardSummary.income)}
+            amount={dashboardSummary.income}
           />
           <SummaryCard
             icon="expenses"
             iconColor="danger"
             iconBg="dangerSoft"
             label="Expenses"
-            amount={formatMoney(dashboardSummary.expenses)}
+            amount={dashboardSummary.expenses}
           />
         </View>
 
@@ -202,7 +202,7 @@ const HomeScreen = () => {
             iconColor="info"
             iconBg="infoSoft"
             label="Savings"
-            amount={formatMoney(dashboardSummary.savings)}
+            amount={dashboardSummary.savings}
             caption={savingsCaption}
             captionColor="info"
           />
@@ -211,7 +211,7 @@ const HomeScreen = () => {
             iconColor="primary"
             iconBg="accentSoft"
             label="Net Worth"
-            amount={formatMoney(dashboardSummary.netWorth)}
+            amount={dashboardSummary.netWorth}
           />
         </View>
       </View>
