@@ -52,10 +52,16 @@ export const wantsNotification = (prefs: Partial<INotificationPrefs> | undefined
         case "goalMilestone":
         case "goalDeadline":
             return prefs?.goalMilestones !== false;
+        // The two opt-in kinds. A digest nobody asked for is the notification people
+        // uninstall an app over, and the daily one would arrive 365 times a year.
+        case "dailySummary":
+            return prefs?.dailySummary === true;
         case "weeklySummary":
-            // The one kind that is off by default: a weekly digest nobody asked for is
-            // the notification people uninstall an app over.
             return prefs?.weeklySummary === true;
+        case "monthlySummary":
+            // On by default, unlike its siblings: twelve a year, on the one morning the
+            // month just ended, is a reasonable thing for a money app to assume is wanted.
+            return prefs?.monthlySummary !== false;
         case "billReminder":
         case "billOverdue":
             return true;

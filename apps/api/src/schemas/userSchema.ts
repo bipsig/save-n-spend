@@ -21,7 +21,9 @@ export const updateMeSchema = z.object({
             billReminderLead: z.union([z.literal(1), z.literal(3), z.literal(7)]).optional(),
             budgetAlerts: z.boolean().optional(),
             goalMilestones: z.boolean().optional(),
+            dailySummary: z.boolean().optional(),
             weeklySummary: z.boolean().optional(),
+            monthlySummary: z.boolean().optional(),
         }).strict().optional(),
     }).strict().optional(),
 }).strict();

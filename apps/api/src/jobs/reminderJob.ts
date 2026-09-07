@@ -7,10 +7,20 @@ import User from "../models/User";
 import { daysUntilDue, isSettledForPeriod } from "../services/billService";
 import { notify, wantsNotification, type NotifiableUser } from "../services/notificationService";
 import { formatAmount } from "../utils/money";
-import { addDaysInZone, dayKeyInZone, normalizeZone, partsInZone, startOfWeekInZone } from "../utils/timezone";
+import {
+    addDaysInZone,
+    addMonthsInZone,
+    dayKeyInZone,
+    monthLabelInZone,
+    normalizeZone,
+    partsInZone,
+    startOfDayInZone,
+    startOfMonthInZone,
+    startOfWeekInZone,
+} from "../utils/timezone";
 
 // The scheduled half of notifications: the nudges nobody's action triggers — a bill due
-// on Friday, a goal deadline next week, last week's summary.
+// on Friday, a goal deadline next week, yesterday's spending, last month's wrap-up.
 //
 // The tick is hourly in whatever zone the server happens to run in, and every decision
 // inside it is made against each user's OWN wall clock. That is the whole design: a job
@@ -19,6 +29,24 @@ import { addDaysInZone, dayKeyInZone, normalizeZone, partsInZone, startOfWeekInZ
 
 /** No reminder is sent before 9am local — an overdue bill at 3am is not a kindness. */
 const SEND_HOUR = 9;
+
+/**
+ * Each digest gets its own hour.
+ *
+ * The 1st of a month can be a Monday, and on that morning all three periods have just
+ * closed at once. Sent together they arrive as a stack of three pushes that look like a
+ * bug; an hour apart they read as what they are — yesterday, then the week, then the
+ * month. Bills and goals keep 9am with the daily digest because they are about what is
+ * coming rather than what happened, so they don't compete for the same attention.
+ *
+ * These are floors, not exact times: the `hour >=` comparison below is deliberate (see
+ * the note there), so a server that was down all morning still delivers all three on
+ * the first tick it manages — bunched, but delivered. Bunching on the recovery path is
+ * the right trade against silence.
+ */
+const DAILY_HOUR = 9;
+const WEEKLY_HOUR = 10;
+const MONTHLY_HOUR = 11;
 
 /** How far ahead a goal deadline starts being mentioned. */
 const DEADLINE_WINDOW_DAYS = 7;
@@ -42,9 +70,49 @@ type ReminderUser = {
             billReminderLead?: number;
             budgetAlerts?: boolean;
             goalMilestones?: boolean;
+            dailySummary?: boolean;
             weeklySummary?: boolean;
+            monthlySummary?: boolean;
         };
     };
+};
+
+/** What every digest is made of: the money that moved in a closed period, and how many
+ *  times it moved. Transfers and adjustments are excluded exactly as insights excludes
+ *  them — a digest that counted a transfer as income would be reporting a fiction. */
+type PeriodFlows = { income: number; expense: number; count: number };
+
+const flowsBetween = async (
+    userId: mongoose.Types.ObjectId,
+    start: Date,
+    end: Date,
+): Promise<PeriodFlows> => {
+    const rows = await Transaction.aggregate<{ _id: "income" | "expense"; total: number; count: number }>([
+        {
+            $match: {
+                userId,
+                type: { $in: ["income", "expense"] },
+                occurredAt: { $gte: start, $lt: end },
+            },
+        },
+        { $group: { _id: "$type", total: { $sum: "$amount" }, count: { $sum: 1 } } },
+    ]);
+
+    return {
+        income: rows.find((row) => row._id === "income")?.total ?? 0,
+        expense: rows.find((row) => row._id === "expense")?.total ?? 0,
+        count: rows.reduce((sum, row) => sum + row.count, 0),
+    };
+};
+
+/** "Spent ₹1,200, earned ₹0 — ₹1,200 more than you earned." The one sentence all three
+ *  digests end with, so the family reads consistently however often it arrives. */
+const flowLine = (flows: PeriodFlows, currency?: string): string => {
+    const net = flows.income - flows.expense;
+    return `Spent ${formatAmount(flows.expense, currency)}, earned ${formatAmount(flows.income, currency)}`
+        + (net >= 0
+            ? ` — ${formatAmount(net, currency)} put aside.`
+            : ` — ${formatAmount(-net, currency)} more than you earned.`);
 };
 
 const remindBills = async (user: ReminderUser, zone: string, now: Date): Promise<void> => {
@@ -128,6 +196,34 @@ const remindGoalDeadlines = async (user: ReminderUser, zone: string, now: Date):
     }
 };
 
+const sendDailySummary = async (user: ReminderUser, zone: string, now: Date): Promise<void> => {
+    if (!wantsNotification(user.prefs?.notifications, "dailySummary")) return;
+
+    // Yesterday, in the user's zone: today's midnight closes it, the midnight before
+    // opens it. Never "the last 24 hours" — a digest headed "Yesterday" that includes
+    // this morning's coffee is a digest the reader can prove wrong.
+    const end = startOfDayInZone(now, zone);
+    const start = addDaysInZone(end, zone, -1);
+
+    const flows = await flowsBetween(user._id, start, end);
+
+    // A day with nothing in it is the most common day there is, and the surest way to
+    // train someone to swipe these away unread. Silence is the correct digest.
+    if (flows.count === 0) return;
+
+    await notify(user as NotifiableUser, {
+        type: "dailySummary",
+        // Names the date rather than saying "Yesterday": the push may be read at
+        // lunchtime, or a day late after an outage, and the date is still true then.
+        title: `${dateLabel(start, zone)} in review`,
+        body: `${flowLine(flows, user.currency)} ${plural(flows.count, "transaction")}.`,
+        // Keyed by the DAY COVERED, not by today, so a re-run or a second instance
+        // evaluating the same morning lands on the same key.
+        dedupeKey: `daily:${dayKeyInZone(start, zone)}`,
+        link: { screen: "insights" },
+    });
+};
+
 const sendWeeklySummary = async (user: ReminderUser, zone: string, now: Date): Promise<void> => {
     if (!wantsNotification(user.prefs?.notifications, "weeklySummary")) return;
 
@@ -136,34 +232,77 @@ const sendWeeklySummary = async (user: ReminderUser, zone: string, now: Date): P
     const end = startOfWeekInZone(now, zone);
     const start = addDaysInZone(end, zone, -7);
 
-    const sums = await Transaction.aggregate([
-        {
-            $match: {
-                userId: user._id,
-                type: { $in: ["income", "expense"] },
-                occurredAt: { $gte: start, $lt: end },
-            }
-        },
-        { $group: { _id: "$type", total: { $sum: "$amount" } } }
-    ]);
-
-    const income = sums.find((row) => row._id === "income")?.total ?? 0;
-    const expense = sums.find((row) => row._id === "expense")?.total ?? 0;
+    const flows = await flowsBetween(user._id, start, end);
 
     // A digest of a week with nothing in it is the definition of a notification worth
     // not sending.
-    if (income === 0 && expense === 0) return;
-
-    const net = income - expense;
+    if (flows.count === 0) return;
 
     await notify(user as NotifiableUser, {
         type: "weeklySummary",
         title: "Your week in review",
-        body: `Spent ${formatAmount(expense, user.currency)}, earned ${formatAmount(income, user.currency)}`
-            + (net >= 0
-                ? ` — ${formatAmount(net, user.currency)} put aside.`
-                : ` — ${formatAmount(-net, user.currency)} more than you earned.`),
+        body: flowLine(flows, user.currency),
         dedupeKey: `weekly:${dayKeyInZone(end, zone)}`,
+        link: { screen: "insights" },
+    });
+};
+
+/** The single most useful line in a monthly wrap-up: where the most of it went.
+ *  Deliberately NOT rolled up into a parent category, unlike the insights breakdown —
+ *  "Groceries" tells the reader more in a push than "Food & Dining" does. */
+const topSpendCategory = async (
+    userId: mongoose.Types.ObjectId,
+    start: Date,
+    end: Date,
+): Promise<{ name: string; total: number } | null> => {
+    const [top] = await Transaction.aggregate<{ total: number; category?: { name?: string }[] }>([
+        {
+            $match: {
+                userId,
+                type: "expense",
+                category: { $ne: null },
+                occurredAt: { $gte: start, $lt: end },
+            },
+        },
+        { $group: { _id: "$category", total: { $sum: "$amount" } } },
+        { $sort: { total: -1 } },
+        { $limit: 1 },
+        // After the limit, so exactly one category document is ever read.
+        { $lookup: { from: "categories", localField: "_id", foreignField: "_id", as: "category" } },
+        { $project: { total: 1, "category.name": 1 } },
+    ]);
+
+    const name = top?.category?.[0]?.name;
+    // Dropped rather than guessed at when the category has been deleted since: the rest
+    // of the digest is still worth sending without this sentence.
+    return name ? { name, total: top.total } : null;
+};
+
+const sendMonthlySummary = async (user: ReminderUser, zone: string, now: Date): Promise<void> => {
+    if (!wantsNotification(user.prefs?.notifications, "monthlySummary")) return;
+
+    // The month that just ended. Bounded by the two zone-local month starts rather than
+    // by day arithmetic, so February and the month a DST change falls in need no case.
+    const end = startOfMonthInZone(now, zone);
+    const start = addMonthsInZone(end, zone, -1);
+
+    const [flows, top] = await Promise.all([
+        flowsBetween(user._id, start, end),
+        topSpendCategory(user._id, start, end),
+    ]);
+
+    if (flows.count === 0) return;
+
+    const monthName = new Intl.DateTimeFormat("en-IN", { timeZone: zone, month: "long" }).format(start);
+
+    await notify(user as NotifiableUser, {
+        type: "monthlySummary",
+        title: `${monthName} in review`,
+        body: flowLine(flows, user.currency)
+            + (top ? ` Most went to ${top.name} — ${formatAmount(top.total, user.currency)}.` : ""),
+        // The label carries the year, so this key can never collide with the same month
+        // next year even though the notification TTL would have re-armed it by then.
+        dedupeKey: `monthly:${monthLabelInZone(start, zone)}`,
         link: { screen: "insights" },
     });
 };
@@ -179,14 +318,20 @@ const sendWeeklySummary = async (user: ReminderUser, zone: string, now: Date): P
  * per zone-offset bucket rather than a per-user job.
  */
 export const runReminders = async (now: Date = new Date()): Promise<void> => {
-    const users = await User.find({ "prefs.notifications.enabled": { $ne: false } })
+    // `deactivatedAt: null` matches both a live account and one written before the field
+    // existed. Someone who deleted their account must stop hearing from it, even though
+    // their data is still there waiting for them.
+    const users = await User.find({
+            "prefs.notifications.enabled": { $ne: false },
+            deactivatedAt: null
+        })
         .select("currency pushToken prefs.timeZone prefs.notifications")
         .lean();
 
     for (const user of users) {
         try {
             const zone = normalizeZone(user.prefs?.timeZone);
-            const { hour, weekday } = partsInZone(now, zone);
+            const { hour, weekday, day } = partsInZone(now, zone);
 
             // `>=` rather than `===` on purpose: a restart or a slow tick can swallow the
             // 9 o'clock hour entirely, and a reminder that arrives at 10 is worth far more
@@ -197,9 +342,19 @@ export const runReminders = async (now: Date = new Date()): Promise<void> => {
             await remindBills(user as ReminderUser, zone, now);
             await remindGoalDeadlines(user as ReminderUser, zone, now);
 
+            // The three digests, each behind its own hour so a Monday the 1st delivers
+            // them spread across the morning instead of as one stack of three.
+            if (hour >= DAILY_HOUR) {
+                await sendDailySummary(user as ReminderUser, zone, now);
+            }
+
             // Monday, where the user is.
-            if (weekday === 1) {
+            if (weekday === 1 && hour >= WEEKLY_HOUR) {
                 await sendWeeklySummary(user as ReminderUser, zone, now);
+            }
+
+            if (day === 1 && hour >= MONTHLY_HOUR) {
+                await sendMonthlySummary(user as ReminderUser, zone, now);
             }
         }
         catch (err) {

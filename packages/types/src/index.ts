@@ -16,7 +16,18 @@ export interface INotificationPrefs {
   billReminderLead: BillReminderLead;
   budgetAlerts: boolean;     // at 80% of a limit, and again when a category goes over
   goalMilestones: boolean;   // at 25 / 50 / 75 / 100% saved
-  weeklySummary: boolean;
+  /**
+   * The three digests, each covering the period that just closed. Separate switches
+   * rather than one "summaries" setting because they differ by two orders of magnitude
+   * in how often they arrive — 365 a year against 12 — and someone who wants the
+   * monthly wrap-up has said nothing about wanting a push every morning.
+   *
+   * Their default reflects the same thing: daily and weekly are off until asked for,
+   * monthly is on. See `wantsNotification` in the API.
+   */
+  dailySummary: boolean;     // yesterday, at 9am local
+  weeklySummary: boolean;    // the week that ended, Monday 10am local
+  monthlySummary: boolean;   // the month that ended, on the 1st at 11am local
 }
 
 // Account-level preferences: they follow the user across devices, so they live
@@ -135,7 +146,9 @@ export type NotificationType =
   | 'budgetExceeded'    // …and then went over it
   | 'goalMilestone'     // 25 / 50 / 75 / 100% saved
   | 'goalDeadline'      // deadline within a week and still short
-  | 'weeklySummary'
+  | 'dailySummary'      // yesterday's income and spending
+  | 'weeklySummary'     // the week that just ended
+  | 'monthlySummary'    // the month that just ended, sent on the 1st
 
 /**
  * Where tapping the notification lands. A screen name plus the id of the thing it is

@@ -8,7 +8,9 @@ export interface INotificationPrefs {
   billReminderLead: number;
   budgetAlerts: boolean;
   goalMilestones: boolean;
+  dailySummary: boolean;
   weeklySummary: boolean;
+  monthlySummary: boolean;
 }
 
 export interface IUser extends Document {
@@ -34,8 +36,6 @@ export interface IUser extends Document {
   totpSecret?: string | null;
   totpEnabled: boolean;
 
-  // timestamps
-  createdAt: Date;
   /**
    * Set when the user deletes their account. Nothing is erased: the row and everything
    * it owns stay exactly as they were, and signing in again clears this field and hands
@@ -46,6 +46,8 @@ export interface IUser extends Document {
    */
   deactivatedAt?: Date | null;
 
+  // timestamps
+  createdAt: Date;
   updatedAt: Date;
 }
 
@@ -75,7 +77,12 @@ const UserSchema = new Schema<IUser>(
         billReminderLead: { type: Number, enum: [1, 3, 7], default: 3 },
         budgetAlerts: { type: Boolean, default: true },
         goalMilestones: { type: Boolean, default: true },
-        weeklySummary: { type: Boolean, default: false }
+        // Daily and weekly default off, monthly on. A push every morning is the kind
+        // of thing people uninstall an app over, so it has to be asked for; twelve a
+        // year, on a day the user is already thinking about last month, is not.
+        dailySummary: { type: Boolean, default: false },
+        weeklySummary: { type: Boolean, default: false },
+        monthlySummary: { type: Boolean, default: true }
       }
     },
 
@@ -89,6 +96,8 @@ const UserSchema = new Schema<IUser>(
 
     totpSecret: { type: String, default: null },
     totpEnabled: { type: Boolean, default: false },
+
+    deactivatedAt: { type: Schema.Types.Date, default: null },
   },
   { timestamps: true }
 );
@@ -96,8 +105,6 @@ const UserSchema = new Schema<IUser>(
 // Never leak sensitive fields in any API response
 UserSchema.set('toJSON', {
   transform(_doc, ret) {
-
-    deactivatedAt: { type: Schema.Types.Date, default: null },
     delete ret.password;
     delete ret.resetToken;
     delete ret.resetTokenExpiry;
