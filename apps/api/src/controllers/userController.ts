@@ -1,14 +1,8 @@
 import { updateMeSchema } from "../schemas/userSchema"
 import { Request, Response } from 'express';
-import mongoose from "mongoose";
 import * as reply from '../utils/response';
 import User from "../models/User";
 import Account from "../models/Account";
-import Category from "../models/Category";
-import Transaction from "../models/Transaction";
-import Budget from "../models/Budget";
-import Bill from "../models/Bill";
-import Goal from "../models/Goal";
 import { AppError } from "../utils/AppError";
 
 export const getMe = async (req: Request, res: Response): Promise<void> => {
@@ -79,11 +73,22 @@ export const updateMe = async (req: Request, res: Response): Promise<void> => {
   reply.ok(res, user, "Profile Updated");
 }
 
-// Erase the account and everything it owns. Unlike the per-resource DELETEs —
-// which archive so a transaction keeps its history — this is a real deletion:
-// the user asked for their data to be gone, so leaving archived rows behind
-// would defeat the point. One transaction, so a partial wipe can't strand
-// orphaned documents under a user id that no longer exists.
+// Deactivate the account. Nothing is erased.
+//
+// This used to wipe seven collections in one transaction, which was honest about the
+// wording but wrong about the intent: the overwhelmingly common reason to tap this is
+// "I'm done with this app for now", and years of a person's spending history is not
+// recoverable from anywhere else. So the row and everything it owns stay put, and
+// signing in again clears `deactivatedAt` and hands it all back (see authController).
+//
+// What does happen immediately:
+//   - `deactivatedAt` is stamped, which locks the account out of `/auth/me` and so out
+//     of the app, and drops it from the reminder job's sweep.
+//   - `pushToken` is unset, because a deactivated account must not keep sending
+//     notifications to a phone whose owner believes they left.
+//
+// Per-resource DELETEs already archive rather than erase, so this is now consistent with
+// the rest of the API rather than the one endpoint that behaved differently.
 export const deleteMe = async (req: Request, res: Response): Promise<void> => {
   const userId = req.user?.userId;
 
@@ -93,21 +98,10 @@ export const deleteMe = async (req: Request, res: Response): Promise<void> => {
     throw AppError.notFound("User not found");
   }
 
-  const session = await mongoose.startSession();
-  try {
-    await session.withTransaction(async () => {
-      await Transaction.deleteMany({ userId }, { session });
-      await Budget.deleteMany({ userId }, { session });
-      await Bill.deleteMany({ userId }, { session });
-      await Goal.deleteMany({ userId }, { session });
-      await Account.deleteMany({ userId }, { session });
-      await Category.deleteMany({ userId }, { session });
-      await User.deleteOne({ _id: userId }, { session });
-    });
-  }
-  finally {
-    session.endSession();
-  }
+  user.deactivatedAt = new Date();
+  user.set("pushToken", undefined);
 
-  reply.noContent(res, "Account deleted");
+  await user.save();
+
+  reply.noContent(res, "Account deactivated");
 }

@@ -115,6 +115,18 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     throw AppError.unauthorized("Invalid credentials!");
   }
 
+  // Signing in IS the undo for a deleted account (see userController.deleteMe). Correct
+  // credentials are proof enough that the person coming back is the person who left, so
+  // there is nothing else to confirm — and asking would mean showing a "your account is
+  // deactivated" screen to someone who may not remember deactivating it.
+  //
+  // Cleared before the token is issued, so the account is live by the time the app makes
+  // its first authenticated call.
+  if (user.deactivatedAt) {
+    user.deactivatedAt = null;
+    await user.save();
+  }
+
   const accessToken: string = generateAccessToken (user);
   const responseData = {
     accessToken,
@@ -132,6 +144,19 @@ export const me = async (req: Request, res: Response): Promise<void> => {
 
   if (!user) {
     throw AppError.notFound("User not found");
+  }
+
+  // The one place a deactivated account is turned away. `protect` only verifies the
+  // signature — it never reads the database, and giving every request a user lookup to
+  // catch this would tax thousands of calls to guard one. This endpoint is what the app
+  // asks on launch to decide whether to show the tabs at all, so a 401 here is enough to
+  // put a deactivated account back at the login screen, which is exactly where the
+  // reactivation path starts. A still-valid token from before the deactivation can
+  // therefore reach other endpoints until it expires; that token belongs to the person
+  // who deactivated the account moments earlier on that same device, so the only thing
+  // it can reach is their own untouched data.
+  if (user.deactivatedAt) {
+    throw AppError.unauthorized("Account is deactivated");
   }
 
   reply.ok(res, user, "User fetched successfully");

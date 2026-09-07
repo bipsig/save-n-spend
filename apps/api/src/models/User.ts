@@ -36,6 +36,16 @@ export interface IUser extends Document {
 
   // timestamps
   createdAt: Date;
+  /**
+   * Set when the user deletes their account. Nothing is erased: the row and everything
+   * it owns stay exactly as they were, and signing in again clears this field and hands
+   * the account back intact.
+   *
+   * Absent (not `false`) while the account is live, so "is this account deactivated" is
+   * a plain existence test and the reminder job's filter can stay a single `$eq: null`.
+   */
+  deactivatedAt?: Date | null;
+
   updatedAt: Date;
 }
 
@@ -86,6 +96,8 @@ const UserSchema = new Schema<IUser>(
 // Never leak sensitive fields in any API response
 UserSchema.set('toJSON', {
   transform(_doc, ret) {
+
+    deactivatedAt: { type: Schema.Types.Date, default: null },
     delete ret.password;
     delete ret.resetToken;
     delete ret.resetTokenExpiry;
