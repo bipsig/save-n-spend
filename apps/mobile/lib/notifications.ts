@@ -21,7 +21,12 @@ export const LOOK: Record<NotificationType, Look> = {
   budgetExceeded: { icon: "budgetOver", tint: "red" },
   goalMilestone: { icon: "trophy", tint: "green" },
   goalDeadline: { icon: "flag", tint: "amber" },
+  // The three digests share one look on purpose — they are the same kind of thing at
+  // three cadences, and giving them three icons would imply a difference in what they
+  // mean rather than in how often they arrive.
+  dailySummary: { icon: "summary", tint: "violet" },
   weeklySummary: { icon: "summary", tint: "violet" },
+  monthlySummary: { icon: "summary", tint: "violet" },
 };
 
 /**

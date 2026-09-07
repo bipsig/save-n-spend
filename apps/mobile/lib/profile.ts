@@ -53,7 +53,12 @@ export const FALLBACK_PREFS: IUserPrefs = {
     billReminderLead: 3,
     budgetAlerts: true,
     goalMilestones: true,
+    // Mirrors the schema defaults on the server (models/User.ts): the two frequent
+    // digests are opt-in, the monthly one is not. A mismatch here would show the wrong
+    // switch position for the one frame before the user document lands.
+    dailySummary: false,
     weeklySummary: false,
+    monthlySummary: true,
   },
 };
 

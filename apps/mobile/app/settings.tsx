@@ -252,15 +252,41 @@ const SettingsScreen = () => {
           on={notifications.goalMilestones}
           onToggle={(next) => setNotification({ goalMilestones: next })}
         />
+        {/* The three digests, listed shortest period first so the frequency reads down
+            the group. Each `sub` names the period it covers and how often it lands —
+            never a clock time. The server staggers them an hour apart, but that is a
+            scheduling detail: no one turns a switch on wanting to know it fires at 10am,
+            and an exact hour would be a promise the hourly job can't keep anyway. Help
+            answers it for anyone who does wonder. */}
+        <SettingsRow
+          kind="toggle"
+          icon="summary"
+          tint="teal"
+          label="Daily summary"
+          sub="Yesterday's spending, each morning"
+          dimmed={!notifications.enabled}
+          on={notifications.dailySummary}
+          onToggle={(next) => setNotification({ dailySummary: next })}
+        />
         <SettingsRow
           kind="toggle"
           icon="summary"
           tint="teal"
           label="Weekly summary"
-          sub="Every Monday morning"
+          sub="The week just gone, every Monday"
           dimmed={!notifications.enabled}
           on={notifications.weeklySummary}
           onToggle={(next) => setNotification({ weeklySummary: next })}
+        />
+        <SettingsRow
+          kind="toggle"
+          icon="summary"
+          tint="teal"
+          label="Monthly summary"
+          sub="Last month on the 1st, with your biggest category"
+          dimmed={!notifications.enabled}
+          on={notifications.monthlySummary}
+          onToggle={(next) => setNotification({ monthlySummary: next })}
         />
       </Card>
 

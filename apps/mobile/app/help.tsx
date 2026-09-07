@@ -74,6 +74,17 @@ const FAQS: Faq[] = [
     icon: "activity",
     tint: "teal",
   },
+  // The one place the schedule is spelled out. Settings deliberately doesn't name
+  // times, so this answers it for the person who turned all three on and wondered
+  // why they didn't land together. Still no exact hours: the job runs hourly and
+  // catches up after an outage, so "morning" is the most it can honestly promise.
+  {
+    question: "When do the summaries arrive?",
+    answer:
+      "In the morning, and each covers the period that just finished: yesterday, last week on a Monday, and last month on the 1st. They come a little apart rather than together — the 1st can be a Monday, and three at once reads as a glitch. The monthly one is on to start with and also names your biggest category; daily and weekly are off until you ask for them, under Settings › Notifications. A period with nothing in it is skipped rather than sent empty.",
+    icon: "summary",
+    tint: "teal",
+  },
   {
     question: "What does exporting give me?",
     answer:
