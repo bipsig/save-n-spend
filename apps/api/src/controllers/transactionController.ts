@@ -90,6 +90,14 @@ export const filterTransactions = async (req: Request, res: Response): Promise<v
     if (type) {
         filters.type = type;
     }
+    else {
+        // Balance corrections move an account's balance but are not money coming in or
+        // going out, and Activity reads as a history of what the user actually did with
+        // their money. They stay out of it. Exports still carry them (see
+        // `lib/export.ts`), because an export is a ledger rather than a narrative, and a
+        // ledger whose rows do not add up to the balance is worse than a longer one.
+        filters.type = { $nin: ["positiveAdjustment", "negativeAdjustment"] };
+    }
     if (search) {
         filters.title = {
             // Escaped, not interpolated. The term reaches `$regex` as a pattern, so a
