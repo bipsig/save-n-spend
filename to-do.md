@@ -26,6 +26,7 @@
 - [X] no eye buttons in tabs other than dashboard — extracted `components/shell/PeekButton.tsx` and put it in `ScreenScaffold`, so every screen has it
 - [X] app lock works fine when taken to background but not on a cold start — the effect was keyed on `hydrated` alone, which always won the race against `/auth/me`
 - [X] just like monday a notification for last week similar notification for every day for the previous day and notification for 1st day of the month. Handled the collision with a time slot each — daily 9am, weekly 10am, monthly 11am, all zone-local, because the 1st can be a Monday (see docs/architecture.md § Digest notifications). Daily and weekly are opt-in, monthly is on by default; an empty period sends nothing
+- [ ] Greeting is always Good Evening => Make that something crwative, where we consider not only time of day, somedays the day of the week, some days the payday some festivals, etc, etc.
 
 ## 2.0.0 — Shortcuts, Back Tap and the Action Button
 
