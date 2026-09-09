@@ -1,0 +1,88 @@
+# Wakes the Render service each morning, so the uptime pinger has something to keep alive.
+#
+# Why this exists at all: cron-job.org can *maintain* wakefulness but it cannot *initiate*
+# it. Render's free tier spins the instance down after ~15 minutes idle, and the cold start
+# that follows takes 50 seconds or more — longer than cron-job.org's free plan will hold a
+# request open, and Render itself 503s some of those requests within 10s rather than
+# queueing them. So the overnight gap guaranteed a dead morning: every ping from 8:00
+# onwards got a 503 until someone opened the app, whose splash-screen poll
+# (`apps/mobile/store/wake.ts`) is patient enough to sit through the whole cold start.
+#
+# GitHub Actions has no such time limit, so it can do the one thing the pinger can't:
+# absorb the first slow request. It runs once, just before the pinger's window opens, and
+# hands over a warm instance.
+#
+# The service still sleeps overnight, which is the point — the free tier's 750 instance
+# hours a month are what the whole app's "free forever" promise rests on.
+name: Wake the API
+
+on:
+  # 01:15 UTC = 06:45 IST, fifteen minutes ahead of the cron-job.org window (7:00–23:00
+  # IST) so the instance is already warm when the first ping lands. GitHub's cron is
+  # UTC-only and has no timezone field, hence the offset arithmetic; India has no DST, so
+  # this needs no seasonal adjustment.
+  #
+  # Scheduled runs are queued, not guaranteed on the minute — GitHub is explicit that they
+  # can be delayed during periods of high load. That's survivable rather than fatal: a run
+  # that lands at 7:05 costs the 7:00 ping, and the 7:05 one succeeds. If it turns out to
+  # drift further than that, move this earlier rather than making the loop longer.
+  schedule:
+    - cron: '15 1 * * *'
+
+  # Kept so this can be triggered by hand from the Actions tab — both to test the workflow
+  # without waiting for tomorrow, and to recover an afternoon the instance dropped out of.
+  workflow_dispatch:
+
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    # Generous on purpose: the loop below can legitimately run for ~14 minutes on a very
+    # bad morning, and a job killed mid-cold-start would leave exactly the state this
+    # workflow exists to prevent.
+    timeout-minutes: 20
+
+    steps:
+      # No checkout step: nothing in the repo is needed, and skipping it takes several
+      # seconds off a job whose whole purpose is to be early.
+      - name: Ping /health until it answers
+        env:
+          # `/health` and not `/api/v1/...` — it's unauthenticated, and it answers as soon
+          # as the port is bound rather than waiting on the Atlas handshake, so a 200 here
+          # is an honest signal that the container is up.
+          HEALTH_URL: https://save-n-spend.onrender.com/health
+        run: |
+          set -uo pipefail
+
+          # --max-time 90 is the number that matters. Render's own warning says a cold
+          # start "can delay requests by 50 seconds or more", so anything under a minute
+          # risks hanging up on a wake that was about to succeed.
+          ATTEMPTS=8
+          MAX_TIME=90
+          BACKOFF=15
+
+          for attempt in $(seq 1 "$ATTEMPTS"); do
+            # A 5xx from Render's edge is a normal part of a cold start, not an error to
+            # abort on, so the exit code is captured rather than allowed to fail the step.
+            response=$(curl -sS -w '\n%{http_code} %{time_total}' --max-time "$MAX_TIME" "$HEALTH_URL" 2>&1) || true
+            status=$(printf '%s' "$response" | tail -n 1 | cut -d' ' -f1)
+            seconds=$(printf '%s' "$response" | tail -n 1 | cut -d' ' -f2)
+            body=$(printf '%s' "$response" | sed '$d')
+
+            echo "attempt $attempt/$ATTEMPTS — HTTP ${status:-none} in ${seconds:-?}s — ${body}"
+
+            if [ "$status" = "200" ]; then
+              # The body carries `db`, so a warm container still waiting on Atlas is
+              # visible in the log rather than being reported as a clean wake.
+              echo "$body" | grep -q '"db":"connected"' \
+                && echo "::notice::awake in ${seconds}s, database connected" \
+                || echo "::warning::awake in ${seconds}s but the database is still connecting"
+              exit 0
+            fi
+
+            [ "$attempt" -lt "$ATTEMPTS" ] && sleep "$BACKOFF"
+          done
+
+          # Failing loudly is deliberate — a silent pass would mean the first sign of
+          # trouble is a user opening the app to a splash screen that never lifts.
+          echo "::error::the API did not return 200 after $ATTEMPTS attempts; check the Render dashboard"
+          exit 1
