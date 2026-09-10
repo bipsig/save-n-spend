@@ -25,28 +25,38 @@ import {
 // The tick is hourly in whatever zone the server happens to run in, and every decision
 // inside it is made against each user's OWN wall clock. That is the whole design: a job
 // has no request to read a zone off, so it reads each user's `prefs.timeZone`, and a
-// reminder meant for 9am arrives at 9am in Delhi and at 9am in Berlin off one schedule.
+// reminder meant for 6pm arrives at 6pm in Delhi and at 6pm in Berlin off one schedule.
 
-/** No reminder is sent before 9am local — an overdue bill at 3am is not a kindness. */
-const SEND_HOUR = 9;
+/**
+ * No reminder is sent before 6pm local — an overdue bill at 3am is not a kindness.
+ *
+ * Evening rather than morning is a hosting constraint wearing the costume of a product
+ * decision. Render's free tier spins an idle instance down and takes 50s or more to come
+ * back, longer than any free uptime pinger will hold a request open — so a pinger can keep
+ * the service awake but cannot wake it, which makes the first hour of the day the least
+ * reliable moment to promise anything. By 6pm the instance has been up for hours. These
+ * four constants are the only thing to change if the API ever leaves the free tier.
+ */
+const SEND_HOUR = 18;
 
 /**
  * Each digest gets its own hour.
  *
- * The 1st of a month can be a Monday, and on that morning all three periods have just
+ * The 1st of a month can be a Monday, and on that evening all three periods have just
  * closed at once. Sent together they arrive as a stack of three pushes that look like a
  * bug; an hour apart they read as what they are — yesterday, then the week, then the
- * month. Bills and goals keep 9am with the daily digest because they are about what is
+ * month. Bills and goals keep 6pm with the daily digest because they are about what is
  * coming rather than what happened, so they don't compete for the same attention.
  *
  * These are floors, not exact times: the `hour >=` comparison below is deliberate (see
- * the note there), so a server that was down all morning still delivers all three on
- * the first tick it manages — bunched, but delivered. Bunching on the recovery path is
- * the right trade against silence.
+ * the note there), so a server that was down all day still delivers all three on the
+ * first tick it manages — bunched, but delivered. Bunching on the recovery path is the
+ * right trade against silence. 8pm still leaves the monthly digest three hours of slack
+ * before the uptime window closes.
  */
-const DAILY_HOUR = 9;
-const WEEKLY_HOUR = 10;
-const MONTHLY_HOUR = 11;
+const DAILY_HOUR = 18;
+const WEEKLY_HOUR = 19;
+const MONTHLY_HOUR = 20;
 
 /** How far ahead a goal deadline starts being mentioned. */
 const DEADLINE_WINDOW_DAYS = 7;
@@ -144,7 +154,7 @@ const remindBills = async (user: ReminderUser, zone: string, now: Date): Promise
 
         if (days === 0) {
             // Its own key, so someone reminded three days early still hears about it on
-            // the morning it is actually due — which is the one that gets it paid.
+            // the day it is actually due — which is the one that gets it paid.
             await notify(user as NotifiableUser, {
                 type: "billReminder",
                 title: `${bill.name} is due today`,
@@ -201,7 +211,7 @@ const sendDailySummary = async (user: ReminderUser, zone: string, now: Date): Pr
 
     // Yesterday, in the user's zone: today's midnight closes it, the midnight before
     // opens it. Never "the last 24 hours" — a digest headed "Yesterday" that includes
-    // this morning's coffee is a digest the reader can prove wrong.
+    // today's lunch is a digest the reader can prove wrong.
     const end = startOfDayInZone(now, zone);
     const start = addDaysInZone(end, zone, -1);
 
@@ -218,7 +228,7 @@ const sendDailySummary = async (user: ReminderUser, zone: string, now: Date): Pr
         title: `${dateLabel(start, zone)} in review`,
         body: `${flowLine(flows, user.currency)} ${plural(flows.count, "transaction")}.`,
         // Keyed by the DAY COVERED, not by today, so a re-run or a second instance
-        // evaluating the same morning lands on the same key.
+        // evaluating the same day lands on the same key.
         dedupeKey: `daily:${dayKeyInZone(start, zone)}`,
         link: { screen: "insights" },
     });
@@ -343,7 +353,7 @@ export const runReminders = async (now: Date = new Date()): Promise<void> => {
             await remindGoalDeadlines(user as ReminderUser, zone, now);
 
             // The three digests, each behind its own hour so a Monday the 1st delivers
-            // them spread across the morning instead of as one stack of three.
+            // them spread across the evening instead of as one stack of three.
             if (hour >= DAILY_HOUR) {
                 await sendDailySummary(user as ReminderUser, zone, now);
             }
@@ -367,7 +377,7 @@ export const runReminders = async (now: Date = new Date()): Promise<void> => {
 /**
  * Starts the hourly tick. Called once, after the DB connection is up.
  *
- * Hourly rather than daily because "9am" means twenty-something different instants
+ * Hourly rather than daily because "6pm" means twenty-something different instants
  * across the zone database, and the only schedule that covers all of them is one that
  * wakes up every hour and asks each user what time it is for them.
  */
