@@ -125,9 +125,8 @@ const AddTransaction = () => {
         if (transaction.note || transaction.location) setExtrasOpen(true);
       }
       catch (err) {
-        // Buzzes even though nothing was pressed: the form is now showing blank
-        // defaults for a transaction the user opened to edit, and saving it would
-        // overwrite real data. That's worth interrupting for.
+        // Buzzes even though nothing was pressed: the form is showing blank defaults for
+        // a transaction the user opened to edit, and saving would overwrite real data.
         haptics.error();
         setSubmitError(err instanceof Error ? err.message : "Couldn't load transaction");
       }
@@ -187,10 +186,9 @@ const AddTransaction = () => {
     }
   };
 
-  // The tick fires only where the figure actually changed. A key the rules reject —
-  // a second decimal point, a third decimal place, the digit ceiling, backspace on
-  // an empty field — stays silent, so the absence of a tap is the answer instead of
-  // a buzz that claims something was typed.
+  // The tick fires only where the figure changed. A key the rules reject — a second
+  // decimal point, a third decimal place, the ceiling, backspace on empty — stays silent,
+  // so the absence of a tap is the answer.
   const pressKey = (key: (typeof KEYS)[number]) => {
     const cur = amountRaw ?? "";
     if (key === "back") {
@@ -212,9 +210,8 @@ const AddTransaction = () => {
     setAmount(cur === "0" ? key : cur + key); // a lone leading zero is replaced, not appended
   };
 
-  // The account checks RHF can't do live in the resolver. Each buzzes, because the
-  // message lands at the bottom of a long form and the row it's about may be
-  // scrolled out of sight — the tick is what says "look, nothing was saved".
+  // The account checks RHF can't do in the resolver. Each buzzes: the message lands at the
+  // bottom of a long form and the row it's about may be scrolled out of sight.
   const reject = (message: string) => {
     haptics.error();
     setSubmitError(message);
@@ -243,8 +240,8 @@ const AddTransaction = () => {
       ...(data.location.trim() ? { location: data.location.trim() } : {}),
     };
 
-    // Shaped to the server contract: a spend carries title + category; a transfer
-    // carries toAccount and neither. Amount is positive paise; `type` gives direction.
+    // A spend carries title + category; a transfer carries toAccount and neither. Amount
+    // is positive paise; `type` gives the direction.
     const payload = data.type === "transfer"
       ? { type: data.type, amount: parseMoney(data.amount), account: account._id, toAccount: toAccount!._id, occurredAt: occurredAt.toISOString(), ...extras }
       : { type: data.type, amount: parseMoney(data.amount), account: account._id, category: data.category, title: data.title, occurredAt: occurredAt.toISOString(), ...extras };
@@ -263,9 +260,8 @@ const AddTransaction = () => {
         await post("/transactions", payload);
       }
       router.back();
-      // The screen is already gone by the time this shows, so it's the only receipt —
-      // and it names the amount and direction, which is what the user would otherwise
-      // have to hunt for in the list to be sure the right thing was recorded.
+      // The screen is already gone by the time this shows, so it is the only receipt —
+      // hence naming the amount and direction rather than just "Saved".
       const amount = formatMoney(parseMoney(data.amount));
       if (isEdit) toast.success(`Changes saved — ${amount}`);
       else if (data.type === "transfer") toast.success(`${amount} moved to ${toAccount!.name}`);
@@ -273,8 +269,8 @@ const AddTransaction = () => {
       else toast.success(`${amount} spent on ${data.title.trim()}`);
     }
     catch (err) {
-      // Kept on the screen rather than toasted: everything the user typed is still in
-      // the fields, and the reason has to be readable next to it.
+      // On the screen rather than toasted — everything the user typed is still in the
+      // fields, and the reason has to be readable next to it.
       reject(err instanceof Error ? err.message : "Error creating new transaction");
     }
     finally {
@@ -285,8 +281,7 @@ const AddTransaction = () => {
   // Spec .shead — ✕ on the left, centered title, balancing spacer on the right.
   const header = (
     <View style={styles.header}>
-      {/* The shared ✕ — same glyph, same squeeze, same tick as every other modal
-          route, instead of this screen's own hand-rolled copy of it. */}
+      {/* The shared ✕, so this route squeezes and ticks like every other modal. */}
       <BackButton variant="close" />
       <AppText weight="black" size="lg">
         {isEdit ? "Edit Transaction" : "Add Transaction"}
@@ -296,13 +291,11 @@ const AddTransaction = () => {
   );
 
   return (
-    // A native modal route hosts its own portal — without this, gorhom sheets
-    // (the account picker) render behind the modal and read as unclickable.
+    // A native modal route hosts its own portal — without this, gorhom sheets render
+    // behind the modal and read as unclickable.
     <BottomSheetModalProvider>
     <ScreenScaffold header={header} scroll={false}>
       <View style={styles.body}>
-        {/* Fixed top — the amount you're typing and its numpad stay paired on
-            screen; only the secondary fields below scroll. */}
         {/* Type — Expense / Income / Transfer. Immutable in edit mode. */}
         <View pointerEvents={isEdit ? "none" : "auto"} style={isEdit ? styles.segRowLocked : undefined}>
           <SegmentedControl segments={TYPE_SEGMENTS} value={type} onChange={switchType} />
@@ -339,9 +332,8 @@ const AddTransaction = () => {
           keyboardDismissMode="on-drag"
           keyboardShouldPersistTaps="handled"
         >
-          {/* Switching type rebuilds this list — a transfer has no title and no
-              category, and gains a destination. Fading each block in and out keeps
-              that from reading as a glitch, which a hard cut at this size does. */}
+          {/* Switching type rebuilds this list — a transfer has no title or category, and
+              gains a destination. The fades keep that from reading as a glitch. */}
           {type !== "transfer" && (
             <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)}>
               <Controller
@@ -360,8 +352,7 @@ const AddTransaction = () => {
             </Animated.View>
           )}
 
-          {/* Category — opens the shared tiered picker (search + create on the fly),
-              same as Bills / Budgets. Hidden for transfers. */}
+          {/* The shared tiered picker, same as Bills / Budgets. Hidden for transfers. */}
           {type !== "transfer" && (
             <Animated.View
               entering={FadeIn.duration(180)}
@@ -379,9 +370,8 @@ const AddTransaction = () => {
                 />
                 <View style={styles.selText}>
                   <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>CATEGORY</AppText>
-                  {/* Inline breadcrumb: the row already has a field label above, so the
-                      parent shares the value line rather than adding a third. Filing
-                      something under "Fuel" should show that it lands in Transportation. */}
+                  {/* Inline breadcrumb: the row already has a label, so the parent shares
+                      the value line — "Fuel" has to show it lands in Transportation. */}
                   <CategoryName
                     categoryId={watch("category")}
                     size="sm"
@@ -398,8 +388,8 @@ const AddTransaction = () => {
             </Animated.View>
           )}
 
-          {/* Accounts — a spend picks one source; a transfer picks source → destination.
-              Not editable in edit mode (would need cross-account balance reconciliation). */}
+          {/* A spend picks one source; a transfer picks source → destination. Not editable
+              in edit mode — it would need cross-account balance reconciliation. */}
           {!isEdit && type !== "transfer" && (
             <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)}>
               <PressableScale style={styles.selRow} onPress={() => accountRef.current?.present()} scaleTo={0.98}>
@@ -457,8 +447,8 @@ const AddTransaction = () => {
           </PressableScale>
 
           {extrasOpen && (
-            // Fades in rather than appearing fully formed, so the two fields read as
-            // having been revealed by the row above them rather than as a jump.
+            // Fades in, so the two fields read as revealed by the row above rather than
+            // as a jump.
             <Animated.View
               entering={FadeIn.duration(200)}
               exiting={FadeOut.duration(120)}
@@ -506,10 +496,9 @@ const AddTransaction = () => {
 
         <View style={styles.numpad}>
           {KEYS.map((key) => (
-            // Deliberately a plain Pressable, not PressableScale: a keypad is pressed
-            // fast and repeatedly, and a spring that's still settling when the next
-            // digit lands reads as lag. The instant background lift is the affordance
-            // here; the tick comes from `pressKey`, which only fires when a digit took.
+            // A plain Pressable, not PressableScale: a keypad is pressed fast, and a
+            // spring still settling when the next digit lands reads as lag. The instant
+            // background lift is the affordance instead.
             <Pressable
               key={key}
               onPress={() => pressKey(key)}
@@ -560,8 +549,8 @@ const styles = StyleSheet.create({
   headerSpacer: {
     width: 32, // balances the ✕ so the title sits centered
   },
-  // Fixed top / scrollable middle / fixed bottom — keeps the amount hero and the
-  // numpad on screen together, whatever the middle fields do.
+  // Fixed top / scrollable middle / fixed bottom, so the amount hero and the numpad stay
+  // on screen together whatever the middle fields do.
   body: {
     flex: 1,
     gap: spacing.md,
@@ -576,8 +565,8 @@ const styles = StyleSheet.create({
   field: {
     gap: spacing.sm,
   },
-  // A fading block that holds more than one row has to carry the gap the scroll
-  // container used to give those rows directly.
+  // A fading block holding more than one row has to carry the gap the scroll container
+  // would have given those rows directly.
   stack: {
     gap: spacing.lg,
   },

@@ -7,12 +7,10 @@ import { useSettings } from "@/store/settings"
 // requires an amount to be on screen and visibly tappable — this is the control the
 // user can find without hunting, and the one that puts the mask back.
 //
-// Absent entirely with privacy mode off: an eye that does nothing would imply the
-// app is hiding something. That self-hiding is what lets `ScreenScaffold` render it on
-// every screen unconditionally, which is the point of it living here rather than inside
-// `AppHeader`: it used to exist only on the dashboard, so switching privacy mode on and
-// then opening Budget left the user with masked figures and no way to reveal them
-// except by navigating back.
+// Absent entirely with privacy mode off: an eye that does nothing would imply the app is
+// hiding something. That self-hiding is what lets `ScreenScaffold` render it on every screen
+// unconditionally, which is why it lives here rather than in `AppHeader` — on a screen without
+// it, masked figures would have no way to be revealed.
 const PeekButton = () => {
   const privacyMode = useSettings((s) => s.privacyMode)
   const peeking = useSettings((s) => s.peeking)

@@ -31,15 +31,14 @@ const RootLayout = () => {
   const segments = useSegments();
   const wakePhase = useWake((s) => s.phase);
 
-  // Device-local settings, read once at boot. Kicked off outside the session
-  // effect because it gates the lock overlay, which must decide before the first
-  // paint — and it has nothing to do with whether there is a token.
+  // Device-local settings, read once at boot. Outside the session effect because it gates
+  // the lock overlay, which must decide before the first paint.
   useEffect(() => {
     void useSettings.getState().hydrate();
   }, []);
 
-  // Is the server even up? Started here, first and unconditionally, so it runs in
-  // parallel with the SecureStore read below rather than after it. See store/wake.
+  // Is the server even up? First and unconditional, so it runs in parallel with the
+  // SecureStore read below. See store/wake.
   useEffect(() => {
     void useWake.getState().probe();
   }, []);
@@ -52,15 +51,13 @@ const RootLayout = () => {
       // Read fresh — the render-time closure would be stale after the await.
       const token = useSession.getState().token;
       if (!token) return; // no token → hydrate already set `guest`
-      // Held until the server answers. Without this, `/auth/me` is the request that
-      // pays for the cold start, it times out, and a perfectly good token is thrown
-      // away — the user reads a sleeping server as having been logged out.
+      // Held until the server answers, or `/auth/me` is the request that pays for the
+      // cold start, times out, and throws away a perfectly good token.
       await useWake.getState().probe();
 
-      // A saved token is only ever discarded because the server ANSWERED and refused it.
-      // Anything else — no signal, a gateway error, an instance still coming up — says
-      // nothing about whether the token is good, so it buys one more attempt behind a
-      // fresh probe instead of costing the user their session.
+      // A saved token is only discarded because the server ANSWERED and refused it. No
+      // signal, a gateway error, an instance still coming up: none of those say the token
+      // is bad, so each buys one more attempt behind a fresh probe.
       for (let attempt = 1; attempt <= 2; attempt++) {
         try {
           const me = await get<IUser>("/auth/me");
@@ -76,8 +73,8 @@ const RootLayout = () => {
       }
 
       if (!alive) return;
-      // Out of attempts. Open the gate before signing out, or the unreachable screen
-      // would sit on top of the login screen we are sending them to.
+      // Open the gate before signing out, or the unreachable screen sits on top of the
+      // login screen we are sending them to.
       useWake.getState().proceedAnyway();
       await signOut(); // expired, invalid, or unreachable twice → back to `guest`
     })();
@@ -86,22 +83,18 @@ const RootLayout = () => {
     };
   }, [hydrate, setUser, signOut]);
 
-  // Splash: hold it until there is something to replace it with, so the first paint is
-  // never a blank frame. That is the boot decision in the normal case — but if the
-  // server is asleep, WakeGate's screen is what comes next, and it cannot be seen from
+  // Held until there is something to replace it with, so the first paint is never blank.
+  // If the server is asleep that something is WakeGate's screen, which cannot be seen from
   // behind the splash.
   const ready = wakePhase === "probing" ? false : wakePhase === "awake" ? status !== "loading" : true;
   useEffect(() => {
     if (ready) SplashScreen.hideAsync();
   }, [ready]);
 
-  // Categories follow the session: load the user's set once they're authed
-  // (covers both boot-with-token and a fresh login), clear it on sign-out.
-  //
-  // The notification feed joins them: the bell's unread dot is painted from it on
-  // every screen, so it can't wait for someone to open the alerts list. The push
-  // token is registered here too, on every authed launch — it is stable, and
-  // re-sending is how a reinstall or an OS-reissued token gets picked up.
+  // The stores follow the session, covering both boot-with-token and a fresh login. The
+  // notification feed is loaded here because the bell's unread dot is painted from it on
+  // every screen; the push token is re-sent on every authed launch, which is how a
+  // reinstall or an OS-reissued token gets picked up.
   useEffect(() => {
     if (status === "authed") {
       useCategoryStore.getState().load();
@@ -116,16 +109,15 @@ const RootLayout = () => {
     }
   }, [status]);
 
-  // Listeners for notifications arriving and being tapped, mounted for as long as the
-  // session lasts. Gated on `authed` because every route they can open is behind the gate.
+  // Mounted for as long as the session lasts. Gated on `authed` because every route they
+  // can open is behind the gate.
   useNotificationBridge(status === "authed");
 
   // The gate — the only place the app swaps between (auth) and (tabs).
   useEffect(() => {
     if (status === "loading") return; // boot not done → do nothing yet
-    // WakeGate renders in place of the Stack, so until it opens there is no navigator
-    // to navigate: `hydrate()` can settle to `guest` while the server is still waking,
-    // and a replace() at that moment would fire before the root layout has mounted.
+    // WakeGate renders in place of the Stack, so until it opens there is no navigator to
+    // navigate — `hydrate()` can settle to `guest` while the server is still waking.
     if (wakePhase !== "awake") return;
     const inAuth = segments[0] === "(auth)";
     if (status === "guest" && !inAuth) router.replace("/(auth)/login");
@@ -138,13 +130,11 @@ const RootLayout = () => {
         <SafeAreaProvider>
           <BottomSheetModalProvider>
             <StatusBar style="light" />
-            {/* Inside the providers so the lock overlay gets the same safe area and
-                gesture context, but outside the Stack so it covers every route. */}
+            {/* Inside the providers for the safe area and gesture context, outside the
+                Stack so it covers every route. */}
             <AppLockGate>
-              {/* Inside the lock gate, not around it: if the app comes up locked while
-                  the server is still waking, the lock is the thing that has to be on
-                  top — the wake screen is not private, but it must not be reachable
-                  before the user has proved who they are. */}
+              {/* Inside the lock gate, not around it: coming up locked while the server
+                  wakes, the lock has to be the thing on top. */}
               <WakeGate>
                 <Stack screenOptions={{
                   headerShown: false,
@@ -157,14 +147,13 @@ const RootLayout = () => {
               </WakeGate>
             </AppLockGate>
           </BottomSheetModalProvider>
-          {/* Outside BottomSheetModalProvider on purpose. gorhom renders its portal
-              host after that provider's children, so anything inside it sits under
-              an open sheet — and a save that fails while a sheet is up is exactly
-              when the message has to be readable. Still inside SafeAreaProvider,
-              which is where it gets the inset it hangs from. */}
+          {/* Outside BottomSheetModalProvider on purpose: gorhom renders its portal host
+              after that provider's children, so anything inside sits under an open sheet —
+              and a save that fails while a sheet is up is when the message must be read.
+              Still inside SafeAreaProvider, where it gets its inset. */}
           <Toast />
-          {/* Outside the sheet provider for the same reason as Toast: a peek
-              started from an amount inside a sheet still has to show its clock. */}
+          {/* Outside the sheet provider for the same reason as Toast — a peek started
+              from an amount inside a sheet still has to show its clock. */}
           <PeekBar />
         </SafeAreaProvider>
       </QueryClientProvider>

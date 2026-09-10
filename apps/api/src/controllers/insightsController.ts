@@ -20,9 +20,8 @@ import { resolveZone } from "../utils/userZone";
 
 // GET /insights?period=week|month|year
 //
-// Every window, bucket, and day count below is cut in the user's zone. That is not
-// cosmetic: a chart whose day buckets are UTC days but whose row list groups by
-// local days shows a spend on one bar and under a different heading, and the sum of
+// Every window, bucket and day count below is cut in the user's zone. UTC buckets under
+// locally-grouped rows put a spend on one bar and under a different heading, and the sum of
 // the bars stops matching the total above them.
 
 export const getInsights = async (req: Request, res: Response): Promise<void> => {
@@ -55,12 +54,11 @@ type periodType = {
     previousEndDate: Date
 }
 
-// `offset` slides the whole window back by that many periods (0 = current, -1 =
-// previous, …). The anchor still starts from the unit that contains "now", so
-// switching period type always re-anchors to the current week/month/year.
+// `offset` slides the window back by that many periods (0 = current, -1 = previous, …),
+// always anchored on the unit containing "now" so switching period type re-anchors.
 //
-// Stepped with the zone-aware helpers rather than by adding milliseconds: a month
-// is 28–31 days, and across a DST change a week is not 168 hours.
+// Stepped with the zone-aware helpers, not by adding milliseconds: a month is 28–31 days,
+// and across a DST change a week is not 168 hours.
 const parsePeriod = (period: string, offset: number, zone: string): periodType => {
 
     const now = new Date();
@@ -187,11 +185,9 @@ const getAccountBreakDown = async (startTime: Date, endTime: Date, req: Request)
     return result;
 }
 
-// Whole calendar days between two instants, as the user's calendar counts them.
-// Both ends are floored to their local midnight first, so the answer is a count of
-// date boundaries crossed rather than of 24-hour spans — which is what "average
-// per day" means to a person. `Math.round` absorbs the 23- and 25-hour days a DST
-// change puts in the middle.
+// Whole calendar days between two instants. Both ends floored to local midnight first, so
+// this counts date boundaries crossed rather than 24-hour spans — what "average per day"
+// means to a person. `Math.round` absorbs the 23- and 25-hour DST days.
 const daysBetweenInZone = (from: Date, to: Date, zone: string): number => {
     const a = startOfDayInZone(from, zone).getTime();
     const b = startOfDayInZone(to, zone).getTime();
@@ -254,9 +250,9 @@ const getIncomeVsExpense = async (startTime: Date, endTime: Date, period: string
     }
 
     const unit = period === "year" ? "year" : period === "month" ? "month" : "week";
-    // `timezone` is what makes Mongo cut the unit where the user lives; without it
-    // the server's buckets and the labels the client prints drift apart by the
-    // offset, and near a month boundary by a whole unit.
+    // `timezone` is what makes Mongo cut the unit where the user lives; without it the
+    // server's buckets and the client's labels drift by the offset — near a month
+    // boundary, by a whole unit.
     const truncSpec: Record<string, unknown> = { date: "$occurredAt", unit, timezone: zone };
     if (unit === "week") truncSpec.startOfWeek = "monday";
 
@@ -277,10 +273,8 @@ const getIncomeVsExpense = async (startTime: Date, endTime: Date, period: string
         }
     ]);
 
-    // Matched on the bucket's zone-local date rather than on its exact instant.
-    // Both sides truncate to the same local midnight, but only one of them went
-    // through BSON — so comparing day keys is immune to a millisecond of rounding
-    // that comparing timestamps is not.
+    // Matched on the bucket's zone-local date, not its instant: only one side went through
+    // BSON, so comparing day keys is immune to a millisecond of rounding.
     const byStart = new Map<string, { income: number; expense: number }>();
     for (const row of rows) {
         byStart.set(dayKeyInZone(new Date(row._id), zone), { income: row.income, expense: row.expense });
@@ -295,13 +289,9 @@ const getIncomeVsExpense = async (startTime: Date, endTime: Date, period: string
 }
 
 /**
- * The expense trend for the window: one bucket per day (week/month) or per month
- * (year), dense and in order, zeros included.
- *
- * Zero-filled here rather than on the client, which used to rebuild the bucket list
- * from `periodStart` and had no way to know which zone the server had cut them in.
- * The server knows, so the server does it — and the client is left with a plain map
- * over an array it can trust to line up with its own axis labels.
+ * The expense trend: one bucket per day (week/month) or per month (year), dense and in
+ * order, zeros included. Zero-filled here because only the server knows which zone the
+ * buckets were cut in, leaving the client a plain map over an array it can trust.
  */
 const getTrend = async (startTime: Date, endTime: Date, period: string, zone: string, req: Request) => {
     const monthly = period === "year";
@@ -316,8 +306,8 @@ const getTrend = async (startTime: Date, endTime: Date, period: string, zone: st
         },
         {
             $group: {
-                // Grouped straight into the calendar key the client will read, so no
-                // instant is ever re-interpreted downstream.
+                // Grouped straight into the calendar key the client reads, so no instant
+                // is re-interpreted downstream.
                 _id: {
                     $dateToString: {
                         date: "$occurredAt",
@@ -332,9 +322,8 @@ const getTrend = async (startTime: Date, endTime: Date, period: string, zone: st
 
     const byKey = new Map<string, number>(rows.map((row) => [row._id as string, row.total as number]));
 
-    // A window that hasn't finished stops after today instead of trailing a long
-    // zero tail into the future — the chart should show the month so far, not a
-    // cliff at the current date followed by a flat line to the 31st.
+    // An unfinished window stops after today: the chart should show the month so far, not
+    // a cliff at the current date followed by a flat line to the 31st.
     const now = new Date();
     const cap = monthly
         ? addMonthsInZone(startOfMonthInZone(now, zone), zone, 1)

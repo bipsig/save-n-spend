@@ -8,15 +8,13 @@ import {
 } from "./highlightSnapshotMath";
 import type { CategoryShape, FlowRow, SpendRow } from "./highlightSnapshotMath";
 
-// The other half of the highlight coverage. highlightRules.test.ts pins the sentences;
-// this pins the numbers they are handed — which months count, what divides the
-// averages, and where a transaction's amount lands once children roll into parents.
+// The other half of the highlight coverage. highlightRules.test.ts pins the sentences; this
+// pins the numbers they are handed — which months count, what divides the averages, and where
+// an amount lands once children roll into parents.
 //
-// Unlike the rules suite, dates appear everywhere here, because dates are the subject.
-// Every fixture states an absolute instant in UTC and a zone to read it in, so the
-// suite gives the same answer wherever and whenever it is run. Where the two disagree
-// — a Delhi user just past midnight, a New York user in the week the clocks move —
-// that disagreement IS the test.
+// Every fixture states an absolute instant in UTC and a zone to read it in, so the suite gives
+// the same answer wherever it runs. Where the two disagree — a Delhi user just past midnight,
+// a New York user in the week the clocks move — that disagreement IS the test.
 
 const DELHI = "Asia/Kolkata";
 const NEW_YORK = "America/New_York";
@@ -26,9 +24,8 @@ const LONG_HISTORY = new Date("2020-01-01T00:00:00Z");
 
 describe("snapshotWindow: which month the user is standing in", () => {
     it("reads the month from the user's zone, not from UTC", () => {
-        // 00:30 on 1 October in Delhi; still 19:00 on 30 September in UTC. The
-        // dashboard says October, so a highlight that said September would be
-        // contradicting the screen it sits on.
+        // 00:30 on 1 October in Delhi, still 19:00 on 30 September in UTC. The dashboard says
+        // October, so a highlight saying September contradicts the screen it sits on.
         const window = snapshotWindow(DELHI, new Date("2026-09-30T19:00:00Z"), LONG_HISTORY);
 
         assert.equal(window.label, "2026-10");
@@ -37,15 +34,13 @@ describe("snapshotWindow: which month the user is standing in", () => {
     });
 
     it("counts the first of the month as one day elapsed, not zero", () => {
-        // A pace rule divides by this. Zero would be a crash or an infinity
-        // depending on which rule got there first.
+        // A pace rule divides by this; zero is a crash or an infinity.
         const window = snapshotWindow(DELHI, new Date("2026-09-30T19:00:00Z"), LONG_HISTORY);
         assert.equal(window.daysElapsed, 1);
     });
 
     it("counts elapsed days by the calendar date, not by elapsed hours", () => {
-        // 11:30am on the 8th. Seven and a bit 24-hour periods have passed since the
-        // 1st, but the answer a person expects is 8.
+        // 11:30am on the 8th: seven and a bit 24-hour periods, but a person expects 8.
         const window = snapshotWindow(DELHI, new Date("2026-09-08T06:00:00Z"), LONG_HISTORY);
         assert.equal(window.daysElapsed, 8);
         assert.equal(window.daysInMonth, 30);
@@ -58,9 +53,8 @@ describe("snapshotWindow: which month the user is standing in", () => {
     });
 
     it("counts 31 days in a month containing a 23-hour day", () => {
-        // New York, March 2026: the clocks go forward, so the month is 743 hours
-        // rather than 744. Dividing hours by 24 would make this 30.96 days and every
-        // pace projection in the month slightly wrong.
+        // New York, March 2026: the clocks go forward, so the month is 743 hours, not 744.
+        // Dividing hours by 24 gives 30.96 days and skews every pace projection in it.
         const window = snapshotWindow(NEW_YORK, new Date("2026-03-15T16:00:00Z"), LONG_HISTORY);
         assert.equal(window.label, "2026-03");
         assert.equal(window.daysInMonth, 31);
@@ -77,9 +71,8 @@ describe("snapshotWindow: the comparison months", () => {
     });
 
     it("reaches back across the year boundary in January", () => {
-        // The bug this guards is string arithmetic on "YYYY-MM": subtracting 1 from
-        // the month of "2026-01" gives "2026-00", and three months back gives
-        // "2026--2". Stepping the zone-local month instead needs no special case.
+        // Guards against string arithmetic on "YYYY-MM": a month back from "2026-01" gives
+        // "2026-00", three back "2026--2". Stepping the zone-local month needs no special case.
         const window = snapshotWindow(DELHI, new Date("2026-01-15T06:00:00Z"), LONG_HISTORY);
 
         assert.equal(window.label, "2026-01");
@@ -88,9 +81,8 @@ describe("snapshotWindow: the comparison months", () => {
     });
 
     it("starts the query window at the first instant of the oldest month it compares", () => {
-        // `windowStart` bounds the aggregation, `completeLabels` bounds the rollup.
-        // If they disagreed, spend would be fetched and then silently dropped — or
-        // worse, a month would be averaged over rows the query never returned.
+        // `windowStart` bounds the aggregation, `completeLabels` the rollup. Disagreeing, they
+        // would drop fetched spend — or average a month over rows the query never returned.
         const window = snapshotWindow(DELHI, new Date("2026-09-08T06:00:00Z"), LONG_HISTORY);
 
         // Midnight on 1 June in Delhi is 18:30 on 31 May in UTC.
@@ -101,8 +93,8 @@ describe("snapshotWindow: the comparison months", () => {
 
 describe("snapshotWindow: how many months the averages may claim", () => {
     it("averages over one month for an account opened this month", () => {
-        // Dividing this person's June–August spend (of which there is none) by three
-        // would tell them every category had collapsed.
+        // Dividing this person's June–August spend, of which there is none, by three would
+        // tell them every category had collapsed.
         const window = snapshotWindow(DELHI, new Date("2026-09-08T06:00:00Z"), new Date("2026-09-02T06:00:00Z"));
         assert.equal(window.monthsAveraged, 1);
     });
@@ -148,9 +140,8 @@ describe("categoryRoller", () => {
     });
 
     it("names a since-deleted category rather than printing its id", () => {
-        // Transactions keep pointing at a category the user has since removed. A
-        // 24-character hex string in a sentence written for a person is worse than
-        // admitting the label is gone.
+        // Transactions keep pointing at a category since removed, and a hex string in a
+        // sentence written for a person is worse than admitting the label is gone.
         const roll = categoryRoller(CATEGORIES);
         assert.equal(roll.rollName("68bd0c1f9a7e4c0012ab34cd"), "Uncategorised");
     });
@@ -192,9 +183,8 @@ describe("rollUpFlows", () => {
     });
 
     it("puts a backdated transaction in the closed month it belongs to", () => {
-        // Recorded today, dated July. It must move the July average and leave this
-        // month's spend alone — the opposite mistake makes the pace rules announce a
-        // spike on a day the user spent nothing.
+        // Recorded today, dated July: it must move the July average and leave this month's
+        // spend alone, or the pace rules announce a spike on a day nothing was spent.
         const flows = run(
             [{ month: "2026-07", type: "expense", total: 900_00 }],
             [{ month: "2026-07", categoryId: "groceries", total: 900_00 }],
@@ -212,9 +202,8 @@ describe("rollUpFlows", () => {
     });
 
     it("ignores a month outside the window instead of averaging it in somewhere", () => {
-        // The aggregation bounds `occurredAt`, so this should not arrive — but a row
-        // belongs to the current month or to a complete month behind it, and there is
-        // no third bucket to quietly put it in.
+        // The aggregation bounds `occurredAt`, so this should not arrive — but a row belongs
+        // to the current month or a complete one behind it, never a third bucket.
         const flows = run(
             [{ month: "2026-02", type: "expense", total: 999_00 }],
             [{ month: "2026-02", categoryId: "groceries", total: 999_00 }],
@@ -226,8 +215,8 @@ describe("rollUpFlows", () => {
     });
 
     it("divides the averages by the months there is history for", () => {
-        // Same 600 in the one month this account has existed for. Over three months
-        // it would read as 200 and the current month would look like a 3× blowout.
+        // The same 600 over the one month this account has existed for. Over three it reads
+        // as 200, and the current month looks like a 3× blowout.
         const spend: SpendRow[] = [{ month: "2026-08", categoryId: "groceries", total: 600_00 }];
 
         const young = run([], spend, new Date("2026-07-20T06:00:00Z"));
@@ -238,8 +227,8 @@ describe("rollUpFlows", () => {
     });
 
     it("omits months before the account existed rather than reporting them as zero", () => {
-        // A zero-income month is a real answer the savings-rate rule would act on.
-        // "We have no idea" has to look different from "you earned nothing".
+        // A zero-income month is a real answer the savings-rate rule acts on, so "no idea"
+        // has to look different from "you earned nothing".
         const flows = run(
             [{ month: "2026-08", type: "income", total: 400_00 }],
             [],
@@ -250,8 +239,7 @@ describe("rollUpFlows", () => {
     });
 
     it("reports a genuinely empty month inside the history as zero", () => {
-        // The account existed and nothing was recorded. That IS zero, and the rules
-        // are entitled to see it — unlike the case above.
+        // The account existed and nothing was recorded. That IS zero, unlike the case above.
         const flows = run([{ month: "2026-08", type: "income", total: 400_00 }], []);
 
         assert.deepEqual(flows.months, [
@@ -262,9 +250,8 @@ describe("rollUpFlows", () => {
     });
 
     it("sums siblings into one slice on both sides of the comparison", () => {
-        // Two children of Food & Dining, this month and last. If either side failed
-        // to combine them, the highlight would compare half a category against a
-        // whole one and find a change that isn't there.
+        // Two children of Food & Dining, this month and last. Either side failing to combine
+        // them compares half a category against a whole one and finds a change that isn't there.
         const flows = run(
             [],
             [
@@ -298,8 +285,7 @@ describe("rollUpFlows", () => {
     });
 
     it("returns whole paise, so no highlight ever prints a fraction of one", () => {
-        // 100 divided by three months. Money is an integer count of paise everywhere
-        // else in the app and must not stop being one here.
+        // 100 over three months. Money is an integer count of paise everywhere else.
         const flows = run([], [{ month: "2026-08", categoryId: "groceries", total: 100 }]);
 
         const average = find(flows.categoryAverages, "food")?.total;

@@ -42,9 +42,8 @@ const defaultDeadline = (): Date => {
   return d;
 };
 
-// Whole calendar months from today to the deadline — the unit people actually
-// save in. Floored at 1 so a deadline inside this month reads as one payment
-// rather than dividing by zero.
+// Whole calendar months from today to the deadline — the unit people actually save in.
+// Floored at 1, so a deadline inside this month reads as one payment, not a divide by zero.
 const monthsUntil = (deadline: Date): number => {
   const now = startOfToday();
   const months =
@@ -103,8 +102,7 @@ const AddGoal = () => {
 
   const setAmount = (next: string) => setValue("amount", next, { shouldValidate: true });
 
-  // Ticks only where the figure changed, same as Add Transaction: a rejected key
-  // stays silent so the silence is the answer, not a buzz that claims otherwise.
+  // Ticks only when the figure changed, as in Add Transaction: a rejected key stays silent.
   const pressKey = (key: (typeof KEYS)[number]) => {
     const cur = amountRaw ?? "";
     if (key === "back") {
@@ -126,8 +124,7 @@ const AddGoal = () => {
     setAmount(cur === "0" ? key : cur + key); // a lone leading zero is replaced, not appended
   };
 
-  // The pace line turns a target into a decision: what it costs per month to
-  // actually hit it. Only meaningful once there's both a target and a deadline.
+  // What the target costs per month. Only meaningful with both a target and a deadline.
   const months = deadline ? monthsUntil(deadline) : 0;
   const paceLine =
     target > 0 && deadline
@@ -148,8 +145,7 @@ const AddGoal = () => {
         ...(deadline ? { deadline: toZonedDayISO(deadline) } : {}),
       });
       router.back();
-      // The pace is the whole reason for setting a deadline, so the receipt repeats
-      // it — the screen that worked it out is gone by the time this lands.
+      // The receipt repeats the pace: the screen that worked it out is gone by now.
       toast.success(
         deadline
           ? `${data.name.trim()} started — ${formatMoney(Math.ceil(parseMoney(data.amount) / months))} a month`
@@ -157,9 +153,8 @@ const AddGoal = () => {
       );
     }
     catch (err) {
-      // Kept on the screen: the name, target, icon and colour the user just chose are
-      // all still here, and the reason belongs beside them. The buzz is what makes a
-      // line of small red text at the bottom of a long form noticeable.
+      // Kept on the screen, beside the name, target, icon and colour just chosen. The buzz
+      // is what makes small red text at the bottom of a long form noticeable.
       haptics.error();
       setSubmitError(err instanceof Error ? err.message : "Couldn't create the goal");
     }
@@ -321,10 +316,8 @@ const AddGoal = () => {
 
         <View style={styles.numpad}>
           {KEYS.map((key) => (
-            // Deliberately a plain Pressable, not PressableScale: a keypad is pressed
-            // fast and repeatedly, and a spring that's still settling when the next
-            // digit lands reads as lag. The instant background lift is the affordance
-            // here; the tick comes from `pressKey`, which only fires when a digit took.
+            // A plain Pressable, not PressableScale: a keypad is pressed fast, and a spring
+            // still settling when the next digit lands reads as lag.
             <Pressable
               key={key}
               onPress={() => pressKey(key)}

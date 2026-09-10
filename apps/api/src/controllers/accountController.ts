@@ -71,17 +71,15 @@ export const updateAccount = async (req: Request, res: Response): Promise<void> 
 
 // Reconcile an account against the balance the bank actually reports.
 //
-// The balance is a stored field kept in step with transactions by `applyEffects`, so
-// it is never recomputed from scratch — which means it cannot simply be assigned. A
-// bare `$set` would leave `balance` disagreeing with the sum of the rows that produced
-// it, and every later transaction would `$inc` from a figure with no history behind it.
+// `balance` is a stored field kept in step with transactions by `applyEffects`, never
+// recomputed, so it cannot simply be assigned: a bare `$set` leaves it disagreeing with the sum
+// of the rows that produced it, and every later transaction `$inc`s from a figure with no
+// history behind it.
 //
-// So a sync writes the DIFFERENCE as an adjustment transaction and lets the existing
-// balance machinery apply it. Adjustments already exist for exactly this: they move a
-// balance and are excluded from income and expense everywhere those are computed (see
-// `healthService`), because correcting a figure is bookkeeping, not earning or spending.
-// The invariant survives, the correction is dated, and it can be undone by reverting
-// the row rather than by guessing what the balance used to be.
+// So a sync writes the DIFFERENCE as an adjustment transaction and lets the existing balance
+// machinery apply it. Adjustments exist for exactly this — they move a balance and are excluded
+// from income and expense everywhere those are computed, because correcting a figure is
+// bookkeeping. The invariant survives, and the correction is dated and revertible.
 export const syncAccountBalance = async (req: Request, res: Response): Promise<void> => {
     const { id: accountId } = req.params;
     const reqBody = syncAccountBalanceSchema.parse(req.body);

@@ -14,11 +14,9 @@ import { spacing } from "@/theme";
 
 type Props = { children: React.ReactNode };
 
-// The lock screen renders OVER the app rather than replacing it, so unlocking
-// puts the user back exactly where they were — a navigation swap would drop them
-// on the home tab and lose the screen they had open.
-//
-// Only an authed session is worth locking: the login screen has nothing behind it.
+// The lock screen renders OVER the app rather than replacing it, so unlocking puts the user
+// back where they were — a navigation swap would drop them on the home tab. Only an authed
+// session is worth locking; the login screen has nothing behind it.
 const AppLockGate = ({ children }: Props) => {
   const status = useSession((s) => s.status);
   const hydrated = useSettings((s) => s.hydrated);
@@ -31,9 +29,8 @@ const AppLockGate = ({ children }: Props) => {
 
   // When the app last went to the background. `null` = it hasn't since launch.
   const backgroundedAt = useRef<number | null>(null);
-  // The biometric prompt itself pushes the app to `inactive`. Without this flag
-  // that transition would be read as "the user left", re-arming the lock and
-  // prompting again the moment the prompt is dismissed.
+  // The biometric prompt itself pushes the app to `inactive`, which would otherwise read
+  // as "the user left" and re-prompt the moment the prompt is dismissed.
   const promptingRef = useRef(false);
 
   const unlock = useCallback(async () => {
@@ -51,36 +48,22 @@ const AppLockGate = ({ children }: Props) => {
       setLocked(false);
     }
     else {
-      // Nothing on success: the app snapping back to the screen the user left is
-      // the loudest possible confirmation, and Face ID has already given its own.
-      // A failure is the opposite — the prompt vanishes and the lock screen looks
-      // exactly as it did, so without this the only evidence is a line of small
-      // grey text the user has no reason to re-read.
+      // Only on failure: the prompt vanishes and the lock screen looks unchanged, so
+      // without this the only evidence is a line of small grey text.
       haptics.error();
       setFailed(true);
     }
   }, []);
 
-  // Whether the cold-start decision has been made. Made exactly once per launch, which
-  // is what lets this effect watch `status` and `appLock` without ever locking the app
-  // again afterwards.
+  // Cold start with the lock on: come up locked, so the first paint after the splash is the
+  // lock screen and not a flash of the user's balances.
+  //
+  // Must wait for BOTH halves of boot — settings hydrate from AsyncStorage well before
+  // `/auth/me` returns, so keying on `hydrated` alone reads `status` as still "loading".
+  // The decision is then spent for the launch, which is what stops a fresh login (also a
+  // transition into "authed") or switching the toggle on from Settings from re-locking.
   const armedAtBoot = useRef(false);
 
-  // Cold start with the lock on: come up locked, so the first paint after the splash is
-  // the lock screen and not a flash of the user's balances.
-  //
-  // Waits for BOTH halves of boot, which is the bug this used to have. Keyed on
-  // `hydrated` alone, it fired the moment settings came back from AsyncStorage — a local
-  // read that always beats `/auth/me` over the network — so `status` was still "loading",
-  // the condition failed, and nothing ever re-ran it. App Lock worked on every return
-  // from the background and never once on a cold start.
-  //
-  // The naive fix of adding `status` to the deps locks the app again immediately after a
-  // fresh login, since that is also a transition into "authed". `armedAtBoot` is what
-  // separates the two: by the time someone reaches the login screen, boot has already
-  // resolved to "guest" and the decision is spent. It also preserves the original
-  // intent — switching the toggle on from Settings must not lock the screen the user is
-  // standing on — even though `appLock` is now in the deps.
   useEffect(() => {
     if (armedAtBoot.current) return;
     if (!hydrated || status === "loading") return;
@@ -103,8 +86,8 @@ const AppLockGate = ({ children }: Props) => {
         return;
       }
 
-      // Back in the foreground: lock if it was away at least as long as the
-      // chosen delay. `0` (Immediately) locks on any trip out of the app.
+      // Lock if it was away at least as long as the chosen delay; `0` locks on any trip
+      // out of the app.
       if (next === "active" && backgroundedAt.current !== null) {
         const away = (Date.now() - backgroundedAt.current) / 1000;
         backgroundedAt.current = null;
@@ -116,12 +99,12 @@ const AppLockGate = ({ children }: Props) => {
 
     const sub = AppState.addEventListener("change", onChange);
     return () => sub.remove();
-    // autoLockSeconds is read through getState() above, so the listener never
-    // needs rebinding — it is only in the deps to document the dependency.
+    // Read through getState() above, so the listener never needs rebinding — in the deps
+    // only to document the dependency.
   }, [autoLockSeconds]);
 
-  // Prompt as soon as the overlay goes up: the expected flow is "raise the phone,
-  // it unlocks", not "raise the phone, then tap Unlock".
+  // Prompt as soon as the overlay goes up — the expected flow is "raise the phone, it
+  // unlocks", not "raise the phone, then tap Unlock".
   useEffect(() => {
     if (locked && !failed) void unlock();
   }, [locked, failed, unlock]);
@@ -130,9 +113,8 @@ const AppLockGate = ({ children }: Props) => {
     <View style={styles.fill}>
       {children}
       {locked && (
-        // Deliberately not faded in, unlike every other appearing surface in the
-        // app: a fade is a few frames of the user's balances showing through a
-        // half-opaque overlay, which is the one thing this screen exists to prevent.
+        // Not faded in, unlike every other appearing surface: a fade is a few frames of
+        // the user's balances showing through a half-opaque overlay.
         <LinearGradient
           colors={["#151129", "#0C0A16"]}
           start={{ x: 0, y: 0 }}

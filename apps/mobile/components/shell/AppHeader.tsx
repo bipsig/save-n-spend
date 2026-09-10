@@ -23,10 +23,12 @@ const AppHeader = ({
   initials,
   onBellPress
 }: Props) => {
-  // The dot used to be painted unconditionally, which made it decoration. It now means
-  // one thing: there is something unread behind the bell.
+  // The dot means one thing: there is something unread behind the bell.
   const unread = useNotifications((s) => s.unread);
 
+  // Computed on every render rather than memoised, which is safe only because `greetingFor`
+  // is seeded on the date: the same day and hour always give the same string, so a re-render
+  // cannot make the greeting flicker.
   const label = greeting ?? greetingFor();
 
   // Derive up to two initials, tolerating an empty/whitespace name (e.g. the

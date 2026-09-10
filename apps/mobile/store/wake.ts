@@ -1,64 +1,44 @@
-// Is the API awake yet?
+// Is the API awake yet? Render's free tier suspends an idle instance and takes the better part
+// of a minute to return, and the first request pays that cost — if that request is `/auth/me`,
+// a cold start looks like "the app logged me out". So nothing else talks to the API until this
+// says the lights are on.
 //
-// The server runs on Render's free tier, which suspends an instance after a stretch of
-// no traffic and takes the better part of a minute to bring it back. The first request
-// after that pays the whole cost, and until this store existed that request was
-// `/auth/me` — so a cold start looked like "the app logged me out", which is the worst
-// possible reading of "the server was asleep".
-//
-// So nothing else talks to the API until this says the lights are on.
-//
-// A store rather than a hook because it has two consumers that must agree: the boot
-// sequence in app/_layout, which has to hold `/auth/me` until the probe clears, and
-// WakeGate, which paints the waiting screen. Kept free of any import from `lib/api`'s
-// request path — only the URL is borrowed — so it cannot join an import cycle with the
-// session store it exists to protect.
+// A store, not a hook, because two consumers must agree: the boot sequence in app/_layout and
+// WakeGate. Only the URL is borrowed from `lib/api`, never its request path, so this cannot
+// join an import cycle with the session store it exists to protect.
 import { create } from 'zustand';
 import { HEALTH_URL } from '@/lib/api';
 
 /**
- * `probing`  — first attempt in flight. Nothing is shown; the splash still covers this.
- *              Launch-only, and that is a rule the gate depends on: nothing paints during
- *              `probing`, so any later re-probe goes straight to `waking` instead. A
- *              second pass through this phase would be a black screen.
- * `waking`   — the first attempt did not answer, so we are almost certainly watching a
- *              cold start. This is the only phase with a screen of its own.
+ * `probing`  — first attempt in flight, behind the splash. LAUNCH-ONLY: nothing paints during
+ *              `probing`, so a second pass through it would be a black screen.
+ * `waking`   — no answer yet, almost certainly a cold start. The only phase with a screen.
  * `awake`    — the server answered. The app renders.
- * `unreachable` — the budget ran out. Could be a cold start that is taking unusually
- *              long, could be no signal; from here they are indistinguishable, so the
- *              screen says so and offers the two things that help.
+ * `unreachable` — budget ran out. A very slow cold start and no signal look the same from here.
  */
 export type WakePhase = 'probing' | 'waking' | 'awake' | 'unreachable';
 
-/** How long the FIRST attempt is given before we conclude the server is asleep.
- *
- *  Short on purpose. A warm server answers this in well under a second, and every
- *  millisecond over that is a spinner in front of someone who did not need one. If a
- *  healthy-but-slow network overshoots it the cost is a waking screen that appears and
- *  then vanishes — annoying, and much cheaper than the reverse. */
+/** How long the FIRST attempt gets before we conclude the server is asleep. Short: a warm
+ *  server answers well under a second, and overshooting only costs a screen that flashes. */
 const FIRST_ATTEMPT_MS = 2_500;
 
-/** Per-attempt ceiling once we know we are waiting for a boot. Generous, because at this
- *  point a slow answer is still an answer and giving up early just wastes the wait. */
+/** Per-attempt ceiling once we know we are waiting for a boot. Generous: a slow answer is
+ *  still an answer. */
 const RETRY_ATTEMPT_MS = 8_000;
 
-/** Total time the gate is allowed to hold the app. Render's free tier is documented at
- *  roughly 50 seconds worst case; past a minute, whatever is wrong is not a cold start. */
+/** Total time the gate may hold the app. Render documents ~50s worst case; past a minute,
+ *  whatever is wrong is not a cold start. */
 const BUDGET_MS = 60_000;
 
-/** Breather between attempts. Not zero — a tight loop against a booting server adds
- *  load to the thing we are waiting for. */
+/** Not zero — a tight loop adds load to the thing we are waiting for. */
 const GAP_MS = 1_200;
 
 interface WakeState {
     phase: WakePhase;
     /** 1-based, for the "still waking… (3)" line. Only meaningful while `waking`. */
     attempt: number;
-    /**
-     * Runs the probe. Safe to call from anywhere, any number of times: the first call
-     * owns the work and every later one awaits the same promise, so the boot sequence
-     * and the gate cannot start two races against each other.
-     */
+    /** Safe to call any number of times: the first call owns the work and later ones await the
+     *  same promise, so the boot sequence and the gate cannot race. */
     probe: () => Promise<void>;
     /** Start over after `unreachable`. */
     retry: () => Promise<void>;
@@ -66,11 +46,8 @@ interface WakeState {
     proceedAnyway: () => void;
 }
 
-/** One `GET /health`, with a hard timeout. `ok` only if the server actually answered.
- *
- *  Any status is good enough. We are asking "is a process listening", not "is it
- *  healthy" — a 500 from the API still means the instance is up, and the screens behind
- *  the gate have their own error states for everything else. */
+/** One `GET /health`, with a hard timeout. ANY status counts — the question is "is a process
+ *  listening", not "is it healthy". */
 const ping = async (timeoutMs: number): Promise<boolean> => {
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), timeoutMs);
@@ -80,7 +57,7 @@ const ping = async (timeoutMs: number): Promise<boolean> => {
         return true;
     }
     catch {
-        return false; // timed out, DNS failure, no route — all the same answer here
+        return false; // timed out, DNS failure, no route — the same answer here
     }
     finally {
         clearTimeout(timer);
@@ -89,8 +66,7 @@ const ping = async (timeoutMs: number): Promise<boolean> => {
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-// The in-flight run, so `probe()` is idempotent. Module-level rather than in the store
-// because it is machinery, not state anything renders.
+// Module-level: machinery, not state anything renders.
 let inFlight: Promise<void> | null = null;
 
 export const useWake = create<WakeState>((set, get) => {
@@ -136,17 +112,14 @@ export const useWake = create<WakeState>((set, get) => {
         attempt: 0,
 
         probe: () => {
-            // Already settled: nothing to wait for. Notably this makes the gate a
-            // once-per-launch cost — the instance stays up for as long as it is being
-            // used, so re-probing later would spend a request to learn what we know.
+            // A once-per-launch cost: the instance stays up while in use, so re-probing later
+            // spends a request to learn what we already know.
             if (get().phase === 'awake') return Promise.resolve();
             return start();
         },
 
-        // Straight to `waking`, never back to `probing`. By this point we already know
-        // the server was unresponsive, so there is no "maybe it is warm" case worth
-        // optimising for — and `probing` paints nothing, which would blank a screen the
-        // user is already looking at.
+        // Straight to `waking`, never back to `probing` — which paints nothing, and would
+        // blank a screen the user is already looking at.
         retry: () => {
             set({ phase: 'waking', attempt: 0 });
             return start();

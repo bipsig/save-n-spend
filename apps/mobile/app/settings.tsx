@@ -75,13 +75,10 @@ const SettingsScreen = () => {
   const logoutRef = useRef<BottomSheetModal>(null);
   const deleteRef = useRef<BottomSheetModal>(null);
 
-  // Every account-level write goes through here, so one place owns the failure
-  // message and no row has to repeat the try/catch.
-  //
-  // Success is deliberately silent: each of these rows prints the value it just
-  // saved, so a "Saved" banner would only restate what is already on screen. Only
-  // a failure needs saying — the row flips optimistically, so without this the
-  // screen would be showing a setting the server never took.
+  // Every account-level write goes through here, so one place owns the failure message.
+  // Success is silent: each row prints the value it just saved, so a "Saved" banner would
+  // restate what is already on screen. Only a failure needs saying — the row flips
+  // optimistically, so without this the screen shows a setting the server never took.
   const savePrefs = async (patch: Parameters<typeof updatePrefs>[0]) => {
     try {
       await updatePrefs(patch);
@@ -96,9 +93,8 @@ const SettingsScreen = () => {
     void savePrefs({ notifications: patch }).catch(() => {});
   };
 
-  // Turning the lock ON has to prove the device can actually do it, and that the
-  // user is who the lock will be checking — otherwise the switch would promise
-  // protection the hardware can't deliver.
+  // Turning the lock ON must prove the device can do it, and that the user is who the lock
+  // will be checking, or the switch promises protection the hardware can't deliver.
   const toggleAppLock = async (next: boolean) => {
     if (!next) {
       update({ appLock: false });
@@ -116,8 +112,7 @@ const SettingsScreen = () => {
       return;
     }
     update({ appLock: true });
-    // The one toggle whose result isn't visible on this screen: what changed is
-    // what happens the next time the app is opened.
+    // The one toggle whose result isn't visible here: it changes the next app launch.
     toast.success("App Lock is on");
   };
 
@@ -215,9 +210,8 @@ const SettingsScreen = () => {
           on={notifications.enabled}
           onToggle={(next) => {
             setNotification({ enabled: next });
-            // Turning it on is the moment to (re)claim a push token: someone whose OS
-            // permission was never granted, or who reinstalled, gets asked here rather
-            // than silently getting an in-app-only feed.
+            // The moment to (re)claim a push token, so someone who never granted the OS
+            // permission or reinstalled is asked rather than silently getting no pushes.
             if (next) void registerForPush();
           }}
         />
@@ -439,9 +433,8 @@ const SettingsScreen = () => {
         title="Log out?"
         body="Your data stays on the server. You'll need your password to sign back in."
         confirmLabel="Log out"
-        // detachPush first: it is an authenticated request, and a token left on the
-        // account would keep pushing this user's reminders to a phone somebody else
-        // is now signed in on.
+        // detachPush first, while the request is still authenticated: a token left on the
+        // account keeps pushing this user's reminders to whoever signs in next.
         onConfirm={async () => {
           await detachPush();
           await useSession.getState().signOut();
@@ -452,9 +445,8 @@ const SettingsScreen = () => {
         ref={deleteRef}
         icon="delete"
         title="Delete account?"
-        // Says the reversibility out loud rather than letting the user discover it. The
-        // hold is kept anyway: this still signs them out and silences every reminder, so
-        // it should not be reachable by a stray tap on the row above.
+        // Says the reversibility out loud. The hold is kept anyway: this signs them out and
+        // silences every reminder, so a stray tap on the row above must not reach it.
         body="You'll be signed out and we'll stop sending you reminders. Nothing is erased — sign in again with the same email and password and every transaction, budget, bill, goal, and account comes back as it was."
         confirmLabel="Delete my account"
         hold

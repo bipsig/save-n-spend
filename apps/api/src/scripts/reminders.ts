@@ -1,21 +1,17 @@
-// Dev driver for the reminder job — runs one pass at an instant you choose, and
-// prints every notification the pass wrote.
-//
-// The job itself is hourly and gated on each user's own 9/10/11am, so waiting for
-// it to prove a change is not a workflow. `runReminders` takes `now` as a parameter
-// for exactly this reason: nothing inside it reads the clock again.
+// Dev driver for the reminder job — one pass at an instant you choose, printing every
+// notification it wrote. The job itself is hourly and gated on each user's own 6/7/8pm, so
+// waiting for it to prove a change is not a workflow; `runReminders` takes `now` for this
+// reason and nothing inside it reads the clock.
 //
 // Run:  npm run reminders --workspace=apps/api
 //       npm run reminders --workspace=apps/api -- 2026-06-01T06:00:00Z
 //
-// The second form is the interesting one. 1 June 2026 at 06:00Z is 11:30am on a
-// Monday the 1st in Delhi, which is the only morning all three digests are due — the
-// case the hour-per-digest stagger exists for.
+// 1 June 2026 at 06:00Z is a Monday the 1st in Delhi, the one day all three digests are due —
+// the case the hour-per-digest stagger exists for.
 //
-// NOT destructive, but not harmless either: it writes real notifications and sends
-// real push. Claiming a dedupe key is also what suppresses the deployed instance's
-// own send for that occasion, so this is guarded against a production database the
-// same way the seed is.
+// NOT destructive, but not harmless: it writes real notifications and sends real push, and
+// claiming a dedupe key suppresses the deployed instance's own send for that occasion. Guarded
+// against a production database the same way the seed is.
 import "dotenv/config";
 import mongoose from "mongoose";
 import connectDB, { resolveDbName } from "../config/db";

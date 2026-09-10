@@ -4,30 +4,24 @@ import type { ColorToken } from "@/theme";
 import { useCategoryStore } from "@/store/categories";
 import { del, patch, post } from "@/lib/api";
 
-// Categories are DB entities (defaults + the user's own), fetched into the
-// categories store after login. These helpers read that store — reactive hooks
-// for render, a sync lookup for imperative code.
+// Categories are DB entities (defaults + the user's own), fetched into the categories
+// store after login. These helpers read that store — reactive hooks for render, a sync
+// lookup for imperative code.
 
-// The full list, reactive — re-renders the caller when categories load/change.
-// Use in screens and pickers (filter chips, the category picker).
+// The full list, reactive.
 export const useCategories = (): ICategory[] => useCategoryStore((s) => s.list);
 
-// One category by id, reactive — for rows that render a category's icon/name.
+// One category by id, reactive.
 export const useCategoryById = (id: string | null | undefined): ICategory | undefined =>
   useCategoryStore((s) => (id ? s.list.find((c) => c._id === id) : undefined));
 
-// One category by id, NON-reactive — for imperative code outside render
-// (form logic, submit handlers) that just needs the current value once.
+// NON-reactive form, for imperative code outside render.
 export const categoryById = (id: string | null): ICategory | undefined =>
   id ? useCategoryStore.getState().list.find((c) => c._id === id) : undefined;
 
-// ---- Hierarchy ---------------------------------------------------------------
-// Categories are two levels deep: a top-level category, and sub-categories filed
-// under it. Spend on a child rolls into its parent everywhere a total is shown, so
-// "Groceries" and "Food & Dining" are not siblings and must never be drawn as if
-// they were. These helpers are the single answer to "what is this, and what is it
-// under" — every surface that names a category goes through one of them, so the
-// picker, the rows, and the manage screen cannot drift apart on it.
+// Categories are two levels deep. Spend on a child rolls into its parent everywhere a
+// total is shown, so "Groceries" and "Food & Dining" are not siblings and must never be
+// drawn as if they were. Every surface that names a category goes through these helpers.
 
 export type CategoryGroup = {
   parent: ICategory;
@@ -35,13 +29,9 @@ export type CategoryGroup = {
 };
 
 /**
- * The list as a tree: each top-level category with its children beneath it, both
- * levels keeping the store's order.
- *
- * Children whose parent is missing from the list — archived out from under them, or
- * still loading — are promoted to top level rather than dropped. A category with
- * nowhere to sit is still a category the user filed things under, and silently
- * hiding it is how a picker loses rows.
+ * The list as a tree, both levels keeping the store's order. Children whose parent is
+ * missing — archived out from under them, or still loading — are promoted to top level
+ * rather than dropped, since hiding one is how a picker silently loses rows.
  */
 export const buildCategoryTree = (
   categories: ICategory[],
@@ -69,17 +59,13 @@ export const useCategoryTree = (kind?: CategoryKind): CategoryGroup[] => {
 };
 
 export type CategoryLabel = {
-  /** The category's own name — what the eye lands on. */
   name: string;
   /** Its parent's name, or undefined when it is itself top-level. */
   parentName?: string;
   /** True when this is a sub-category. */
   isChild: boolean;
-  /**
-   * How many sub-categories sit under it — 0 for a child, and for a parent that has
-   * none yet. Load-bearing on a budget row: a limit on a category with children
-   * governs their spending too, and the row has to say so.
-   */
+  /** Sub-categories under it; 0 for a child. Load-bearing on a budget row: a limit on a
+   *  category with children governs their spending too, and the row has to say so. */
   childCount: number;
   /** `"Food & Dining › Groceries"` for one-line contexts (exports, toasts). */
   path: string;
@@ -87,8 +73,8 @@ export type CategoryLabel = {
 
 const labelFrom = (list: ICategory[], id: string | null | undefined): CategoryLabel => {
   const category = id ? list.find((c) => c._id === id) : undefined;
-  // Kept as a real label rather than an empty string: a transaction whose category
-  // was hard-deleted still has to render as *something* in a row.
+  // A real label, not an empty string — a transaction whose category was hard-deleted
+  // still has to render as something.
   if (!category) return { name: "Uncategorised", isChild: false, childCount: 0, path: "Uncategorised" };
 
   const parent = category.parent ? list.find((c) => c._id === category.parent) : undefined;
@@ -96,18 +82,16 @@ const labelFrom = (list: ICategory[], id: string | null | undefined): CategoryLa
     name: category.name,
     parentName: parent?.name,
     isChild: parent !== undefined,
-    // Only a top-level category can have any — the tree is two deep, so this is
-    // always 0 for a child and the count never has to recurse.
+    // The tree is two deep, so this is always 0 for a child and never recurses.
     childCount: parent ? 0 : list.filter((c) => c.parent === category._id).length,
     path: parent ? `${parent.name} › ${category.name}` : category.name,
   };
 };
 
 /**
- * How to name one category, reactive. Any row showing a single category uses this
- * and shows `parentName` alongside `name` — without it, "Groceries" and
- * "Food & Dining" look like the same kind of thing, and a budget set on one means
- * something quite different from a budget set on the other.
+ * How to name one category, reactive. Rows show `parentName` alongside `name`: without
+ * it, "Groceries" and "Food & Dining" look like the same kind of thing, and a budget set
+ * on one means something quite different from a budget set on the other.
  */
 export const useCategoryLabel = (id: string | null | undefined): CategoryLabel => {
   const list = useCategories();
@@ -130,9 +114,8 @@ const SOFT_BG: Record<string, ColorToken> = {
 };
 export const categoryBg = (color?: string): ColorToken => SOFT_BG[color ?? ""] ?? "surface2";
 
-// ---- Mutations (Manage categories) ------------------------------------------
-// Refetch after each write so every screen reading the store sees the change on
-// its next focus, without each of them knowing a category was edited.
+// Each mutation refetches, so every screen reading the store sees the change on its next
+// focus without knowing a category was edited.
 
 export type CategoryDraft = {
   name: string;
@@ -145,16 +128,15 @@ export type CategoryDraft = {
 
 export const createCategory = async (draft: CategoryDraft): Promise<void> => {
   // `parent: null` is how the form says "top level", but the API's create schema is
-  // `.strict()` and only accepts a string — so the key is dropped rather than sent.
+  // `.strict()` and takes only a string — so drop the key rather than send null.
   const { parent, ...rest } = draft;
   await post<ICategory>("/categories", parent ? { ...rest, parent } : rest);
   await useCategoryStore.getState().load();
 };
 
-// Neither `kind` nor `parent`: flipping the kind would reclassify every transaction
-// already filed under it, turning spend into earnings retroactively — and re-parenting
-// would move that history between two totals, so a month someone already read would
-// quietly change. Both are decided once, at creation.
+// Neither `kind` nor `parent` is editable: flipping the kind would turn past spend into
+// earnings, and re-parenting would move that history between two totals, quietly changing
+// a month someone already read. Both are decided once, at creation.
 export const updateCategory = async (
   id: string,
   patchBody: { name?: string; icon?: string; color?: string }
@@ -163,9 +145,8 @@ export const updateCategory = async (
   await useCategoryStore.getState().load();
 };
 
-// Archived, not deleted — past transactions keep resolving to a real category.
-// Archiving a parent archives its children too (the server cascades); the count comes
-// back so the caller can say so rather than let sub-categories vanish unannounced.
+// Archived, not deleted, so past transactions keep resolving to a real category. The
+// server cascades to children; the count comes back so the caller can say so.
 export const archiveCategory = async (id: string): Promise<number> => {
   const result = await del<{ archivedChildren: number } | null>(`/categories/${id}`);
   await useCategoryStore.getState().load();

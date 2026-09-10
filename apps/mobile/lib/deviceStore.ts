@@ -1,10 +1,8 @@
 // Persistence for small, non-secret device state — the Settings that describe
 // this phone rather than the account (privacy mode, app lock, auto-lock timing).
 //
-// It goes through expo-secure-store, which is already a dependency for the JWT.
-// AsyncStorage would be the conventional home for non-secrets, but pulling in a
-// second native module for one tiny JSON blob buys nothing: React Native has no
-// localStorage, and the Keychain is happy to hold a few hundred bytes.
+// Through expo-secure-store, already a dependency for the JWT. AsyncStorage is the conventional
+// home for non-secrets, but a second native module for one tiny JSON blob buys nothing.
 import * as SecureStore from "expo-secure-store";
 
 // Read a JSON blob, returning null when it is absent or has been corrupted by an

@@ -8,8 +8,8 @@ import { get } from "@/lib/api";
 import { rangeBounds, rangeLabel, type RangeKey } from "@/lib/dateRange";
 import { categoryLabel } from "@/lib/categories";
 import { accountById } from "@/lib/accounts";
-// The exact formatter, never the privacy-masked default: an exported file is
-// one the user explicitly asked us to generate, so "₹ ••••" in it would be a bug.
+// The exact formatter, never the privacy-masked default — "₹ ••••" in a file the user
+// asked for would be a bug.
 import { formatMoneyExact as formatMoney } from "@/lib/money";
 import { appZone, dayKey, zonedParts } from "@/lib/zone";
 
@@ -23,8 +23,8 @@ interface Paginated<T> {
   hasNextPage: boolean;
 }
 
-// Export needs every transaction in the range, not a page. The list endpoint
-// caps limit at 100, so walk the pages until the server says there are no more.
+// Every transaction in the range, not a page: the list endpoint caps limit at 100, so walk
+// until the server says there are no more.
 const fetchAllInRange = async (bounds: { startDate?: string; endDate?: string }): Promise<ITransaction[]> => {
   const all: ITransaction[] = [];
   let page = 1;
@@ -45,10 +45,8 @@ const fetchAllInRange = async (bounds: { startDate?: string; endDate?: string })
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
-// Both stamps read the clock in the user's zone, not the device's. It matters for the
-// filename an export is saved under and for the "generated at" line inside it: a
-// statement covering the user's September should not be stamped 31 August because
-// their phone happened to be in another country when they tapped Export.
+// Both stamps read the user's zone, not the device's: a statement covering their September
+// should not be stamped 31 August because the phone was in another country.
 export const dayStamp = (d: Date) => dayKey(d, appZone());
 
 const clockStamp = (d: Date) => {
@@ -71,13 +69,9 @@ const signedPaise = (tx: ITransaction): number =>
 
 const accName = (id: string | undefined) => (id ? accountById(id)?.name ?? "" : "");
 
-// Categories go out as two fields, not one. A spreadsheet is exactly where someone
-// wants to pivot spend by heading, and a lone "Groceries" cell makes that impossible —
-// while "Food & Dining › Groceries" makes it a string-split. So the parent gets its own
-// column, and a top-level category's Sub-category cell is simply empty.
-//
-// For a top-level category the name lands in `Category` and `Sub-category` is blank,
-// which keeps a pivot on `Category` correct for both levels at once.
+// Two fields, not one: a spreadsheet is where someone pivots spend by heading, and a lone
+// "Groceries" cell makes that impossible. A top-level category's name lands in `Category`
+// with `Sub-category` blank, so a pivot on `Category` is correct for both levels at once.
 const catColumns = (id: string | null): [category: string, sub: string] => {
   if (!id) return ["", ""];
   const label = categoryLabel(id);
@@ -87,7 +81,7 @@ const catColumns = (id: string | null): [category: string, sub: string] => {
 /** The one-line form, for the PDF where there is no second column to give it. */
 const catPath = (id: string | null) => (id ? categoryLabel(id).path : "");
 
-// ---- CSV --------------------------------------------------------------------
+// CSV.
 
 const CSV_HEADERS = [
   "Date", "Time", "Type", "Title", "Category", "Sub-category", "Account",
@@ -119,7 +113,7 @@ const buildCsv = (txns: ITransaction[]): string => {
   return "﻿" + [CSV_HEADERS.join(","), ...lines].join("\r\n");
 };
 
-// ---- PDF (via printable HTML) -----------------------------------------------
+// PDF (via printable HTML).
 
 export const htmlEscape = (value: string): string =>
   value.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
@@ -192,11 +186,10 @@ const buildHtml = (txns: ITransaction[], range: RangeKey, offset: number): strin
   </body></html>`;
 };
 
-// ---- delivery (shared) ------------------------------------------------------
+// Delivery (shared).
 
-// Write the built content to a friendly-named file and hand it to the OS share
-// sheet. `content` is the CSV text for "csv", or the printable HTML for "pdf".
-// Shared by every exporter (transactions, insights, …).
+// Write the built content to a friendly-named file and hand it to the OS share sheet.
+// `content` is the CSV text for "csv", or the printable HTML for "pdf".
 export const deliver = async (format: ExportFormat, baseName: string, content: string): Promise<void> => {
   let uri: string;
   let mimeType: string;
@@ -209,8 +202,7 @@ export const deliver = async (format: ExportFormat, baseName: string, content: s
     uti = "public.comma-separated-values-text";
   } else {
     const printed = await Print.printToFileAsync({ html: content });
-    // Print names the file with a random uuid — copy it to a friendly name so the
-    // share sheet shows "save-n-spend-…", then hand over the renamed copy.
+    // Print names the file with a random uuid, so copy it to a friendly name first.
     uri = `${FileSystem.cacheDirectory}${baseName}.pdf`;
     await FileSystem.copyAsync({ from: printed.uri, to: uri });
     mimeType = "application/pdf";
@@ -223,11 +215,10 @@ export const deliver = async (format: ExportFormat, baseName: string, content: s
   await Sharing.shareAsync(uri, { mimeType, UTI: uti, dialogTitle: "Export" });
 };
 
-// ---- entry point ------------------------------------------------------------
+// Entry point.
 
-// Build the file for the chosen range/format and hand it to the OS share sheet.
-// Returns { shared: false } when the range has no transactions so the caller can
-// tell the user instead of sharing an empty file.
+// Build the file for the chosen range/format and hand it to the OS share sheet. Returns
+// { shared: false } on an empty range, so the caller can say so instead of sharing it.
 export const exportTransactions = async (
   format: ExportFormat,
   range: RangeKey,

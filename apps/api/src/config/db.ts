@@ -21,16 +21,14 @@ export const isConnected = (): boolean => mongoose.connection.readyState === 1;
 /**
  * Connect to Atlas.
  *
- * `retryForever` is for the long-running server, and the difference matters on Render's
- * free tier. The container is cold-started by an inbound request, and Atlas can take
- * longer to hand back a connection than the request is willing to wait. Exiting the
- * process on that first failure — which is what this used to do — is the worst available
- * answer: Render responds to the exit by restarting the container with backoff, so one
- * slow handshake turns into minutes during which nothing is listening and every request
- * gets a 503. Retrying leaves the already-bound port up and lets the next attempt win.
+ * `retryForever` is for the long-running server, and the difference matters on Render's free
+ * tier: the container is cold-started by an inbound request, and Atlas can take longer to hand
+ * back a connection than the request will wait. Exiting on that first failure is the worst
+ * answer — Render restarts the container with backoff, so one slow handshake becomes minutes of
+ * 503s. Retrying leaves the already-bound port up and lets the next attempt win.
  *
- * The scripts want the opposite. They are interactive and short-lived, so they take the
- * default and get a rejected promise they can fail loudly on.
+ * The scripts want the opposite: interactive and short-lived, they take the default and get a
+ * rejected promise they can fail loudly on.
  */
 const connectDB = async ({ retryForever = false }: { retryForever?: boolean } = {}): Promise<void> => {
   const dbName = resolveDbName();

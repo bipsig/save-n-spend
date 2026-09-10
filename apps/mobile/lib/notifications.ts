@@ -7,7 +7,7 @@ import { appZone, calendarDate, calendarDaysBetween, calendarToday } from "@/lib
 // the composed copy — and this file decides what it looks like and where it leads.
 //
 // The split matters because the copy has to be written where the figures are (a cron
-// tick at 9am, with no app running), while the icon, the tint and the route belong to
+// tick at 6pm, with no app running), while the icon, the tint and the route belong to
 // the client, which owns its own screens.
 
 type Look = { icon: IconName; tint: ChipTint };
@@ -32,9 +32,8 @@ export const LOOK: Record<NotificationType, Look> = {
 /**
  * Where tapping a notification goes.
  *
- * The stored link names a screen rather than a path, so the route table stays the
- * client's business — renaming a route here can never orphan a notification that was
- * written months ago.
+ * The stored link names a screen rather than a path, so renaming a route here cannot orphan a
+ * notification written months ago.
  */
 export const routeFor = (link?: NotificationLink): "/bills" | "/budget" | "/goals" | "/(tabs)/insights" | null => {
   switch (link?.screen) {
@@ -52,9 +51,8 @@ const HOUR = 60 * MINUTE;
 /**
  * "Just now" / "12m ago" / "3h ago" / "Yesterday" / "12 Sep".
  *
- * Elapsed time up to a day, then calendar days — because past that point what someone
- * wants is the day it happened, not how many hours ago that was. The day comparison is
- * made in the account's zone, like every other day the app names.
+ * Elapsed time up to a day, then calendar days: past that point what someone wants is the day
+ * it happened. The comparison is made in the account's zone, like every other day the app names.
  */
 export const notificationTime = (createdAt: string): string => {
   const instant = new Date(createdAt);

@@ -1,11 +1,9 @@
 // The one place the SERVER renders an amount.
 //
-// Money is integer paise everywhere else, and formatting normally belongs to the
-// client — but notification copy is composed here, because a cron tick at 9am has to
-// write "You've spent ₹8,400 of ₹8,000" with no app running to ask.
-//
-// Rounded to whole rupees on purpose: a nudge is glanceable, and "₹8,400" reads in the
-// time someone spends looking at a lock screen while "₹8,399.50" does not.
+// Money is integer paise everywhere else and formatting belongs to the client — but notification
+// copy is composed here, because a cron tick has to write "You've spent ₹8,400 of ₹8,000" with no
+// app running to ask. Rounded to whole rupees: "₹8,400" reads in the time someone spends looking
+// at a lock screen, "₹8,399.50" does not.
 
 const formatters = new Map<string, Intl.NumberFormat>();
 

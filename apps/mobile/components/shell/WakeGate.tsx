@@ -11,21 +11,18 @@ type Props = { children: React.ReactNode };
 
 // The cold-start gate. See store/wake for the probe itself.
 //
-// The server sleeps when nobody is using it, and the first request after that waits the
-// better part of a minute for it to boot. What the user saw before this screen existed
-// was the app's ordinary failure surface — a login that hung, then error states on every
-// tab — which reads as a broken app rather than a sleeping server. Those are very
-// different pieces of news and only one of them is true.
+// The server sleeps when nobody is using it, and the first request after that waits the better
+// part of a minute for it to boot. Without this screen the user gets the app's ordinary failure
+// surface — a login that hangs, then error states on every tab — which says "broken app" where
+// the truth is "sleeping server".
 //
-// Three deliberate choices about what this does NOT do:
+// Three things it deliberately does NOT do:
 //
-//   • It does not appear for a warm server. Nothing is rendered during the first probe;
-//     the splash screen is still up, and a server that answers in 300ms is never made to
-//     look slow by a spinner that flickers past.
-//   • It replaces, rather than overlays, the app. Unlike AppLockGate there is nothing
-//     underneath worth preserving — no route has loaded yet.
-//   • It can always be escaped. A gate with no way out is a worse bug than the cold
-//     start it was hiding, so a long wait offers a way past it and a failed one insists.
+//   • Appear for a warm server. Nothing renders during the first probe, so a server that
+//     answers in 300ms is never made to look slow by a spinner that flickers past.
+//   • Overlay the app. Unlike AppLockGate there is nothing underneath worth preserving.
+//   • Trap the user. A gate with no way out is worse than the cold start it hides, so a long
+//     wait offers a way past it and a failed one insists.
 const WakeGate = ({ children }: Props) => {
   const phase = useWake((s) => s.phase);
   const attempt = useWake((s) => s.attempt);

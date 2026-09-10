@@ -3,19 +3,11 @@ import Notification, { type NotificationType } from "../models/Notification";
 import User, { type INotificationPrefs } from "../models/User";
 import { sendPush } from "./pushService";
 
-// The one door every notification goes through, whatever raised it — a cron tick, a
-// transaction that crossed a budget, a goal contribution.
-//
-// It does three things in a fixed order, and the order is the design:
-//
-//   1. asks the user's preferences whether this kind is wanted at all,
-//   2. writes the in-app record, whose unique dedupe key is what makes "once" mean once,
-//   3. and only then pushes.
-//
-// Push last, and only if the write was the first one, is what stops a retried job or a
-// second instance from buzzing a phone twice. It also means the in-app feed is the
-// source of truth: a user who denied push permission still gets every notification,
-// they just have to open the app to see them.
+// The one door every notification goes through, whatever raised it. Three steps, and the
+// order is the design: check preferences, write the in-app record (whose unique dedupe key
+// makes "once" mean once), then push. Pushing last and only on a first write is what stops
+// a retried job from buzzing a phone twice, and it makes the in-app feed the source of
+// truth for anyone who denied push permission.
 
 export type NotifyInput = {
     type: NotificationType;
@@ -35,12 +27,11 @@ export type NotifiableUser = {
 };
 
 /**
- * Which switch in Settings governs which kind. Bill reminders have no switch of their
- * own — their setting is the lead time, and "never" isn't one of the choices — so they
- * answer to the master switch alone.
+ * Which switch in Settings governs which kind. Bill reminders have none of their own —
+ * their setting is the lead time — so they answer to the primary switch alone.
  *
- * Exported so a caller that would have to do real work to compose a notification can
- * ask first: `notify` checks this too, but by then the budgets have been aggregated.
+ * Exported so a caller can ask before doing the work of composing one: `notify` checks
+ * this too, but by then the budgets have been aggregated.
  */
 export const wantsNotification = (prefs: Partial<INotificationPrefs> | undefined, type: NotificationType): boolean => {
     if (prefs?.enabled === false) return false;
@@ -52,15 +43,13 @@ export const wantsNotification = (prefs: Partial<INotificationPrefs> | undefined
         case "goalMilestone":
         case "goalDeadline":
             return prefs?.goalMilestones !== false;
-        // The two opt-in kinds. A digest nobody asked for is the notification people
-        // uninstall an app over, and the daily one would arrive 365 times a year.
+        // Opt-in: the daily one would arrive 365 times a year.
         case "dailySummary":
             return prefs?.dailySummary === true;
         case "weeklySummary":
             return prefs?.weeklySummary === true;
         case "monthlySummary":
-            // On by default, unlike its siblings: twelve a year, on the one morning the
-            // month just ended, is a reasonable thing for a money app to assume is wanted.
+            // On by default, unlike its siblings — twelve a year is a fair assumption.
             return prefs?.monthlySummary !== false;
         case "billReminder":
         case "billOverdue":
@@ -73,12 +62,9 @@ export const wantsNotification = (prefs: Partial<INotificationPrefs> | undefined
 const DUPLICATE_KEY = 11000;
 
 /**
- * Delivers one notification to one user.
- *
- * Returns true only when this call is the one that created it — false means the
- * preferences said no, or the same occasion had already been notified. Never throws:
- * callers include a POST that has already committed money, and a failed nudge must not
- * turn a successful write into a 500.
+ * Delivers one notification to one user. True only when this call is the one that created
+ * it; false means preferences said no, or the occasion was already notified. Never throws
+ * — callers include a POST that has already committed money.
  */
 export const notify = async (user: NotifiableUser, input: NotifyInput): Promise<boolean> => {
     try {
@@ -116,19 +102,15 @@ export const notify = async (user: NotifiableUser, input: NotifyInput): Promise<
         return true;
     }
     catch (err) {
-        // A duplicate key is the expected, healthy outcome of evaluating the same
-        // occasion twice — not something to log.
+        // A duplicate key is the healthy outcome of evaluating the same occasion twice.
         if ((err as { code?: number }).code === DUPLICATE_KEY) return false;
         console.error(`[notify] ${input.type} failed for user ${String(user._id)}`, err);
         return false;
     }
 };
 
-/**
- * The same, for callers that hold only an id — the request handlers. One projected
- * lookup, because the alternative is every controller learning which fields the
- * notifier needs.
- */
+/** The same, for callers holding only an id. One projected lookup, so no controller has
+ *  to learn which fields the notifier needs. */
 export const notifyUserId = async (
     userId: string | mongoose.Types.ObjectId,
     input: NotifyInput,

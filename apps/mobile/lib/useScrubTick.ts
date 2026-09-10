@@ -1,15 +1,13 @@
 import { useCallback, useRef } from "react";
 import { haptics } from "./haptics";
 
-// The charts report a scrub index from `onResponderMove`, which for a drag across a
-// month is dozens of calls a second. A tick per call would be one continuous buzz,
-// so this fires only when the index actually changes — the feel of a native picker
-// rolling from one row to the next, which is exactly what a scrub is.
+// The charts report a scrub index from `onResponderMove` — dozens of calls a second across a
+// month, so a tick per call would be one continuous buzz. This fires only when the index
+// changes, giving the feel of a native picker rolling from one row to the next.
 //
-// `active` is the index currently on screen, and it's what a report is compared
-// against rather than a private "last seen" value. That means two touch moves
-// landing in the same slot can't double-tick, and a tooltip the screen has since
-// cleared can be re-opened on the same slot and still tick.
+// A report is compared against `active`, the index currently on screen, rather than a private
+// "last seen" value: two moves landing in the same slot can't double-tick, and a slot whose
+// tooltip the screen has cleared can be re-opened and still tick.
 export const useScrubTick = (
   active: number | null,
   onScrub?: (i: number | null) => void

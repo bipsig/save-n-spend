@@ -17,16 +17,13 @@ import { colors, radius, spacing } from "@/theme";
 
 // Shown once, immediately after registration and before the first sign-in.
 //
-// That placement is deliberate. Registration does not open a session — it routes to
-// Login — so there is no "first authed launch" to hang a tour off without storing a
-// flag, and a stored flag would either miss a reinstall or fire for existing users
-// after an update. Coming straight off the Create-account button it needs no state at
-// all: the event happens exactly once per account, in the one moment the user is most
-// willing to read three sentences about what they just signed up for.
+// Registration does not open a session — it routes to Login — so there is no "first authed
+// launch" to hang a tour off without a stored flag, which would either miss a reinstall or fire
+// for existing users after an update. Coming straight off the Create-account button needs no
+// state at all: the event happens exactly once per account.
 //
-// It also does a job the old success toast was doing badly. Login looks identical to
-// the form the user just submitted, so replacing one with the other read as if the tap
-// had failed. This confirms the account exists before asking them to sign in.
+// It also confirms the account exists before asking for a sign-in. Login looks identical to the
+// form just submitted, so landing there directly reads as if the tap had failed.
 
 type Slide = {
   key: string

@@ -34,9 +34,8 @@ export const register = async (req: Request, res: Response): Promise<void> => {
         email,
         password: hashedPassword,
         authProvider: "local",
-        // Left to the schema default when the client didn't say, rather than
-        // written as undefined — Mongoose treats an explicit undefined as "no
-        // default" for nested paths.
+        // Left to the schema default rather than written as undefined — Mongoose
+        // treats an explicit undefined as "no default" for nested paths.
         ...(timeZone ? { prefs: { timeZone } } : {})
       }], { session });
 
@@ -53,13 +52,9 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
       // Transaction 3: Categories Seeding
       //
-      // Parent first, then its children — a child needs its parent's `_id`, which only
-      // exists once the parent is written. Sequential rather than a bulk insert for the
-      // same reason; the set is small and this runs once per user, ever.
-      //
-      // Children inherit their parent's `kind`, never carry their own: an income child
-      // under an expense parent would fold earnings into a spending total everywhere
-      // the rollup runs.
+      // Parent first: a child needs its parent's `_id`, which is why this is sequential
+      // rather than a bulk insert. Children inherit their parent's `kind` — an income
+      // child under an expense parent would fold earnings into a spending total.
       for (const category of defaultCategories) {
         const [parent] = await Category.create([{
           userId: newUser._id,
@@ -115,13 +110,10 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     throw AppError.unauthorized("Invalid credentials!");
   }
 
-  // Signing in IS the undo for a deleted account (see userController.deleteMe). Correct
-  // credentials are proof enough that the person coming back is the person who left, so
-  // there is nothing else to confirm — and asking would mean showing a "your account is
-  // deactivated" screen to someone who may not remember deactivating it.
-  //
-  // Cleared before the token is issued, so the account is live by the time the app makes
-  // its first authenticated call.
+  // Signing in IS the undo for a deleted account (see userController.deleteMe): correct
+  // credentials are proof enough that the person coming back is the person who left.
+  // Cleared before the token is issued, so the account is live by the app's first
+  // authenticated call.
   if (user.deactivatedAt) {
     user.deactivatedAt = null;
     await user.save();
@@ -147,14 +139,13 @@ export const me = async (req: Request, res: Response): Promise<void> => {
   }
 
   // The one place a deactivated account is turned away. `protect` only verifies the
-  // signature — it never reads the database, and giving every request a user lookup to
-  // catch this would tax thousands of calls to guard one. This endpoint is what the app
-  // asks on launch to decide whether to show the tabs at all, so a 401 here is enough to
-  // put a deactivated account back at the login screen, which is exactly where the
-  // reactivation path starts. A still-valid token from before the deactivation can
-  // therefore reach other endpoints until it expires; that token belongs to the person
-  // who deactivated the account moments earlier on that same device, so the only thing
-  // it can reach is their own untouched data.
+  // signature and never reads the database, and a user lookup on every request would tax
+  // thousands of calls to guard one. This endpoint is what the app asks on launch, so a 401
+  // here is enough to land a deactivated account back at login, where reactivation starts.
+  //
+  // A token issued before the deactivation therefore still reaches other endpoints until it
+  // expires — it belongs to the person who deactivated the account moments earlier on that
+  // same device, so all it can reach is their own untouched data.
   if (user.deactivatedAt) {
     throw AppError.unauthorized("Account is deactivated");
   }
@@ -188,8 +179,8 @@ export const changePassword = async (req: Request, res: Response): Promise<void>
   const saltRounds: number = Number(process.env.SALT_ROUNDS) || 12;
   user.password = await bcrypt.hash(newPassword, saltRounds);
 
-  // Existing tokens stay valid: they are stateless JWTs with no server-side
-  // record to revoke. Sessions on other devices therefore survive the change.
+  // Existing tokens stay valid — stateless JWTs with no server-side record to revoke — so
+  // sessions on other devices survive the change.
   await user.save();
 
   reply.ok(res, null, "Password changed successfully");

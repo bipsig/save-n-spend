@@ -38,23 +38,20 @@ const HomeScreen = () => {
 
   const { data: dashboardSummary, loading: summaryLoading, error: summaryError, refetch: summaryRefetch } = useDashboardSummary();
 
-  // The three previews (action queue / motivation / recency). Composed client-side
-  // from the live list endpoints — same shapes the eventual GET /dashboard returns,
-  // so this stays contract-honest.
+  // The three previews (action queue / motivation / recency), composed client-side from the
+  // live list endpoints — the same shapes an eventual GET /dashboard would return.
   const { items: bills, loading: billsLoading, refetch: billsRefetch } = useBills();
   const { items: goals, loading: goalsLoading, refetch: goalsRefetch } = useGoals();
   const { items: transactions, loading: transactionsLoading, refetch: transactionsRefetch } = useTransactions();
 
-  // Budgets are here only for the Get started checklist — the dashboard itself has no
-  // budget section. Cheap enough to be worth it: without it the checklist would have to
-  // guess at a step it can just as easily know.
+  // Budgets are here only for the Get started checklist; the dashboard has no budget
+  // section. Without it the checklist would have to guess at a step it can know.
   const { items: budgets, loading: budgetsLoading, refetch: budgetsRefetch } = useBudgets();
   const accounts = useAccountStore((s) => s.list);
   const accountsLoaded = useAccountStore((s) => s.loaded);
 
-  // Its own request rather than a field on the summary: the summary describes a named
-  // month, the score describes the trailing 90 days as of now. One response carrying
-  // both would have two fields measured over two different spans.
+  // Its own request, not a field on the summary: the summary describes a named month and the
+  // score the trailing 90 days as of now, so one response would span two windows.
   const { data: health, refetch: healthRefetch } = useHealthScore();
 
   useFocusEffect(useCallback(() => {
@@ -64,24 +61,19 @@ const HomeScreen = () => {
     goalsRefetch();
     transactionsRefetch();
     budgetsRefetch();
-    // Accounts are NOT refetched here. Every mutation in `lib/accounts` reloads the
-    // store itself, so the checklist's account row already ticks the moment one is
-    // added — a focus reload would be a second request per visit for a list that is
-    // already correct.
+    // Accounts are NOT refetched: every mutation in `lib/accounts` reloads the store
+    // itself, so a focus reload would be a second request for an already-correct list.
   }, [summaryRefetch, healthRefetch, billsRefetch, goalsRefetch, transactionsRefetch, budgetsRefetch]));
 
-  // ---- Get started checklist ------------------------------------------------
   const dismissedBy = useSettings((s) => s.getStartedDismissed);
   const settingsHydrated = useSettings((s) => s.hydrated);
   const updateSettings = useSettings((s) => s.update);
 
   const progress = progressOf(buildSteps({ transactions, accounts, budgets, bills, goals }));
 
-  // Every list hook starts at `loading: true` with an empty array, which for one frame
-  // is indistinguishable from a brand-new account — so an established user would see the
-  // checklist flash before their data landed. Latched into state rather than read from
-  // `loading` directly: `useFocusEffect` re-enters loading on every focus, and gating on
-  // it would blink the card off and back on each time the tab was revisited.
+  // Every list hook starts at `loading: true` with an empty array, which for one frame looks
+  // like a brand-new account, so an established user would see the checklist flash. Latched
+  // rather than read from `loading`, which `useFocusEffect` re-enters on every focus.
   const listsSettled =
     !transactionsLoading && !budgetsLoading && !billsLoading && !goalsLoading && accountsLoaded;
   const [listsReady, setListsReady] = useState(false);
@@ -100,9 +92,8 @@ const HomeScreen = () => {
     updateSettings({ getStartedDismissed: [...dismissedBy, userId] });
   };
 
-  // A step routes to the screen that owns it, and each of those screens already opens
-  // on its own empty state with the matching CTA — so the tap lands somewhere that
-  // explains itself, rather than needing the checklist to drive a sheet from here.
+  // A step routes to the screen that owns it, each of which already opens on its own empty
+  // state with the matching CTA — so the checklist never has to drive a sheet from here.
   const openStep = (step: OnboardingStep) => router.push(step.route);
 
   // Action queue — overdue first, then the nearest upcoming, capped at 3.
@@ -117,8 +108,7 @@ const HomeScreen = () => {
     .sort((a, b) => new Date(b.occurredAt as string).getTime() - new Date(a.occurredAt as string).getTime())
     .slice(0, 3);
 
-  // The one caption we can state truthfully today: savings rate (values-in-hand).
-  // Income/Expenses/Net-Worth deltas need last-month data — deferred with captions.
+  // Savings rate is the only delta stated from values in hand; the rest need last month.
   const savingsCaption = dashboardSummary && dashboardSummary.income > 0
     ? `${Math.round((dashboardSummary.savings / dashboardSummary.income) * 100)}% saved`
     : undefined;

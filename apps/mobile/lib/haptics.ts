@@ -1,14 +1,12 @@
 import * as Haptics from "expo-haptics";
 
-// The haptic vocabulary, named by MEANING rather than by intensity. A call site
-// says what just happened — `haptics.confirm()`, `haptics.error()` — and this file
-// is the only place that decides how hard that feels. So the whole app stays in
-// tune: every destructive confirm lands with the same weight, and re-tuning one
-// gesture is one line here, not a search for `ImpactFeedbackStyle.Heavy`.
+// The haptic vocabulary, named by MEANING rather than intensity. A call site says what just
+// happened — `haptics.confirm()`, `haptics.error()` — and this file is the only place deciding
+// how hard that feels, so re-tuning one gesture is one line here.
 //
-// Every call is fire-and-forget and swallows its own failure. A device with the
-// Taptic Engine off, an Android build without VIBRATE, or the simulator all reject
-// these promises — and a missing buzz must never break the action it accompanies.
+// Every call is fire-and-forget and swallows its own failure: a device with the Taptic Engine
+// off, an Android build without VIBRATE, or the simulator all reject these promises, and a
+// missing buzz must never break the action it accompanies.
 const fire = (run: () => Promise<void>) => {
   void run().catch(() => {});
 };

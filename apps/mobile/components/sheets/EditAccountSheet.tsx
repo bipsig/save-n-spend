@@ -38,9 +38,8 @@ const TYPES: { key: AccountType; label: string; icon: IconName }[] = [
 const iconForType = (type: AccountType): IconName =>
   TYPES.find((t) => t.key === type)?.icon ?? "wallet";
 
-// Only these two can legitimately hold less than nothing — an overdraft and a card
-// balance owed. Cash and a wallet cannot, so offering them a sign would just be a
-// switch that makes the figure wrong.
+// Only these two can hold less than nothing — an overdraft and a card balance owed.
+// Offering cash or a wallet a sign would be a switch that makes the figure wrong.
 const CAN_GO_NEGATIVE: AccountType[] = ["bank", "credit_card"];
 
 const SIGN_LABELS: Partial<Record<AccountType, { positive: string; negative: string }>> = {
@@ -57,10 +56,9 @@ const toPaise = (rupees: string): number | null => {
   return Math.round(value * 100);
 };
 
-// Spec §08 — New / Edit account (Tier-2). One sheet for both; `account === null` is the
-// only branch. Creating sets an opening balance, which can never be edited again;
-// editing instead offers a reconciliation against the bank, which is a different write
-// through a different endpoint.
+// Spec §08 — New / Edit account (Tier-2). One sheet for both; `account === null` is the only
+// branch. Creating sets an opening balance, which can never be edited again; editing offers
+// a reconciliation against the bank instead, through a different endpoint.
 const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, onSaved }, ref) => {
   const innerRef = useRef<BottomSheetModal>(null);
   useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
@@ -77,11 +75,10 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, onSaved
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // The balance correction, when editing. Deliberately NOT prefilled with the current
-  // balance: a prefill would print a real figure into a text field, which privacy mode
-  // could not mask, and it would make "I didn't touch this" indistinguishable from
-  // "set it to what it already was". Blank means leave the balance alone. The magnitude
-  // and the sign are separate because `decimal-pad` has no minus key.
+  // The balance correction, when editing. NOT prefilled: a prefill prints a real figure
+  // into a text field privacy mode cannot mask, and makes "I didn't touch this"
+  // indistinguishable from "set it to what it already was". Blank leaves the balance alone.
+  // Magnitude and sign are separate because `decimal-pad` has no minus key.
   const [actual, setActual] = useState("");
   const [negative, setNegative] = useState(false);
   const [note, setNote] = useState("");
@@ -94,15 +91,14 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, onSaved
     setColor((account?.color as ColorToken) ?? "info");
     setActual("");
     setNote("");
-    // Seeded from where the balance already sits, so a card that is normally owed
-    // opens on "Owed" and the common correction needs one tap fewer.
+    // Seeded from where the balance sits, so a card normally owed opens on "Owed".
     setNegative((account?.balance ?? 0) < 0);
     setError(null);
   }, [account]);
 
-  // The correction the sheet is about to make, or `null` when there is nothing to do.
-  // `undefined` marks an unparseable figure, so the save path can refuse it rather
-  // than quietly treating a typo as "no change".
+  // The correction about to be made, or `null` when there is nothing to do. `undefined`
+  // marks an unparseable figure, so the save path refuses it rather than reading a typo as
+  // "no change".
   const target = (() => {
     if (!editing || actual.trim() === "") return null;
     const magnitude = toPaise(actual);
@@ -141,9 +137,9 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, onSaved
     try {
       if (editing) {
         await updateAccount(account._id, { name: trimmed, type, icon, color });
-        // Second call on purpose, and skipped entirely when the field was left blank —
-        // so renaming an account never sends anything that could move money. The server
-        // records the difference as an adjustment; see `syncAccountBalance`.
+        // A second call, skipped when the field was blank, so renaming an account never
+        // sends anything that could move money. The server records the difference as an
+        // adjustment; see `syncAccountBalance`.
         if (target !== null) {
           await syncAccountBalance(account._id, target, note.trim() || undefined);
         }
@@ -151,8 +147,8 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, onSaved
       else await createAccount({ name: trimmed, type, startingBalance, icon, color });
       onSaved?.();
       dismiss();
-      // Names the correction when there was one: the balance changing is the bigger of
-      // the two things that just happened, and a bare "updated" would hide it.
+      // Names the correction when there was one — the bigger of the two things that just
+      // happened, which a bare "updated" would hide.
       if (editing && delta !== 0) toast.success(`${trimmed} balance updated`);
       else toast.success(editing ? `${trimmed} updated` : `${trimmed} added`);
     }

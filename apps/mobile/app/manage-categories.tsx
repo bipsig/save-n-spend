@@ -36,9 +36,8 @@ const ManageCategoriesScreen = () => {
   // The category the sheets are currently about. One state, two sheets: `editing`
   // is what the editor shows, `pendingDelete` is what the confirm names.
   const [editing, setEditing] = useState<ICategory | null>(null);
-  // The parent a *new* category should be filed under, set only by the "Sub-category"
-  // row inside a group. Separate from `editing` because both describe the sheet at
-  // once: creating a child means no category to edit and a parent to inherit.
+  // The parent a *new* category is filed under, set only by the "Sub-category" row inside
+  // a group. Separate from `editing`, since both describe the sheet at once.
   const [newParent, setNewParent] = useState<ICategory | null>(null);
   const [pendingDelete, setPendingDelete] = useState<ICategory | null>(null);
   // null while the count is still being fetched, so the confirm can say so rather
@@ -48,8 +47,8 @@ const ManageCategoriesScreen = () => {
   const editRef = useRef<BottomSheetModal>(null);
   const deleteRef = useRef<BottomSheetModal>(null);
 
-  // The list is a store other screens also write to (a new category from the Add
-  // Transaction flow, say), so refresh on focus like every other data screen.
+  // Other screens write to this store too (Add Transaction can create one), so refresh on
+  // focus like every other data screen.
   useFocusEffect(
     useCallback(() => {
       void useCategoryStore.getState().load();
@@ -78,20 +77,16 @@ const ManageCategoriesScreen = () => {
     setPendingDelete(category);
     setUsageCount(null);
     deleteRef.current?.present();
-    // Fetched alongside the sheet's own animation rather than before it, so the
-    // tap gets an immediate response and the number fills in a beat later.
+    // Fetched alongside the sheet's animation, so the tap responds immediately and the
+    // number fills in a beat later.
     void countTransactionsIn(category._id)
       .then(setUsageCount)
       .catch(() => setUsageCount(null));
   };
 
-  // One card per top-level category, rather than one card per kind. The card boundary
-  // IS the grouping: it says "these belong together and their spend adds up here",
-  // which is exactly what the rollup does. A single long card with indented rows left
-  // the reader counting hairlines to find where one group stopped.
-  //
-  // `layout` on each card: archiving a row shrinks its own group, and neighbours slide
-  // up rather than jumping a row-height in a frame.
+  // One card per top-level category, not per kind: the card boundary IS the grouping, which
+  // is what the rollup does. `layout` on each card so archiving a row shrinks its own group
+  // and neighbours slide up rather than jumping a row-height in a frame.
   const renderGroup = ({ parent, children }: CategoryGroup) => (
     <Animated.View key={parent._id} layout={LinearTransition.duration(220)}>
       <Card padded={false} style={styles.group}>
@@ -100,10 +95,9 @@ const ManageCategoriesScreen = () => {
           icon={(parent.icon ?? "wallet") as IconName}
           color={(parent.color ?? "accent") as ColorToken}
           label={parent.name}
-          // Named as spending that rolls up, not as a bare count: the number alone
-          // doesn't tell you the children's totals land in this category's budget.
-          // Kept short because the row is narrowed by two action buttons — the longer
-          // phrasing truncated to "spending adds…", losing the half that mattered.
+          // Named as spending that rolls up, not a bare count — the number alone doesn't
+          // say the children's totals land in this category's budget. Short, because two
+          // action buttons narrow the row and longer phrasing truncates.
           sub={
             children.length === 0
               ? undefined
@@ -143,12 +137,11 @@ const ManageCategoriesScreen = () => {
     </Animated.View>
   );
 
-  // Spelled out because "delete" here does not mean "erase": the category is
-  // archived so the transactions filed under it still resolve to a real name.
+  // Spelled out because "delete" does not mean "erase": the category is archived, so
+  // transactions filed under it still resolve to a real name.
   const deleteBody = (() => {
-    // A parent takes its children with it (the server cascades), and that has to be
-    // said before the tap, not reported after — it is the one case where the row you
-    // aimed at is not the only row that disappears.
+    // A parent takes its children with it, which has to be said before the tap — the one
+    // case where the row you aimed at is not the only one that disappears.
     const childCount = pendingDelete && pendingDelete.parent === null
       ? (expenses.concat(income).find((g) => g.parent._id === pendingDelete._id)?.children.length ?? 0)
       : 0;
@@ -209,9 +202,8 @@ const ManageCategoriesScreen = () => {
         onConfirm={async () => {
           if (!pendingDelete) return;
           const archivedChildren = await archiveCategory(pendingDelete._id);
-          // "Archived", not "deleted" — the word has to match what actually
-          // happened, or the confirm's careful wording is undone by its own receipt.
-          // The children are counted in, because they went too.
+          // "Archived", not "deleted", or the confirm's wording is undone by its own
+          // receipt. Children counted in, because they went too.
           toast.success(
             archivedChildren === 0
               ? `${pendingDelete.name} archived`
@@ -241,8 +233,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     marginBottom: spacing.sm,
   },
-  // Aligned with the nested rows' rail so it reads as the last item in the group
-  // rather than as a footer for the whole card.
+  // Aligned with the nested rows' rail, so it reads as the last item in the group.
   addChild: {
     flexDirection: "row",
     alignItems: "center",

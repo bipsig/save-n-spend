@@ -1,18 +1,11 @@
 import { formatAmount } from "../utils/money";
 
-// The highlight rules — the deterministic half of the "assistant" (see
-// docs/insights-engine.md for why there is no model in the other half).
+// The highlight rules — the deterministic half of the "assistant". See docs/insights-engine.md.
 //
-// Every rule is a pure function from a Snapshot to a Highlight or null. No I/O, no
-// clock, no mongoose: everything a rule needs — including "how many days are left in
-// the month" — arrives precomputed on the snapshot. That is what makes this file
-// testable with a fixture and a date pinned in it, and it is a hard rule: a rule that
-// reads `new Date()` gives a different answer at 11pm than the test saw at noon.
-//
-// Rules must also be total. Missing budgets, a month with no income, a goal with
-// nothing saved — every rule returns null for the cases it has nothing honest to say
-// about, and the runner catches anything that throws so one bad rule costs one
-// highlight rather than the endpoint.
+// Two contracts. Every rule is PURE: no I/O, no clock, no mongoose — everything arrives
+// precomputed on the snapshot, calendar arithmetic included, because a rule that reads
+// `new Date()` answers differently at 11pm than the test saw at noon. And every rule is TOTAL:
+// null wherever it has nothing honest to say.
 
 export type HighlightSeverity = "urgent" | "warning" | "notice" | "win";
 
@@ -21,8 +14,8 @@ export type HighlightScreen = "budgets" | "bills" | "goals" | "health" | "activi
 
 export type Highlight = {
     ruleId: string;
-    /** Stable per subject-and-month, so the client can dismiss one without hiding the
-     *  same rule's verdict about a different budget — or about this one next month. */
+    /** Stable per subject-and-month, so dismissing one doesn't hide the same rule's verdict
+     *  about a different budget — or about this one next month. */
     key: string;
     severity: HighlightSeverity;
     /** One line, number included — the part someone reads while scrolling past. */
@@ -34,10 +27,8 @@ export type Highlight = {
     screen?: HighlightScreen;
 };
 
-// --- What the snapshot carries -------------------------------------------------
-// Plain facts, already scoped to one user and already cut in their zone. Calendar
-// arithmetic (days elapsed, months until a deadline) happens in the snapshot service,
-// where the zone lives — never here.
+// Plain facts, scoped to one user and cut in their zone. Calendar arithmetic happens in the
+// snapshot service, where the zone lives.
 
 export type AccountFact = {
     accountId: string;
@@ -52,8 +43,8 @@ export type BudgetFact = {
     categoryId: string;
     categoryName: string;
     limit: number;
-    /** Paise spent against it this month, children rolled in (budgetService's number,
-     *  so a highlight can never disagree with the budgets screen). */
+    /** Paise spent this month, children rolled in. budgetService's number, so a highlight
+     *  cannot disagree with the budgets screen. */
     spent: number;
 };
 
@@ -70,8 +61,8 @@ export type GoalFact = {
     name: string;
     target: number;
     saved: number;
-    /** Whole zone-local months since the goal was created — the denominator of its
-     *  saving rate, same convention as the health score's goals pillar. */
+    /** Whole zone-local months since creation — the denominator of its saving rate, same
+     *  convention as the health score's goals pillar. */
     monthsSinceCreated: number;
     /** Whole months from now to the deadline, or null when none is set. */
     monthsUntilDeadline: number | null;
@@ -102,12 +93,12 @@ export type Snapshot = {
     prevBudgets: BudgetFact[];
     bills: BillFact[];
     goals: GoalFact[];
-    /** healthScore()'s own pick of the weakest pillar, hint and all. Passed through
-     *  verbatim — re-deriving it here would give the app two answers to one question. */
+    /** healthScore()'s own pick of the weakest pillar, verbatim — re-deriving it would give
+     *  the app two answers to one question. */
     healthFocus: { label: string; hint: string } | null;
     thisMonth: { income: number; expense: number; byCategory: CategoryTotal[] };
-    /** Complete previous months (up to 3), oldest first. Partial months never appear:
-     *  comparing a finished month to a running one flatters whichever is shorter. */
+    /** Complete previous months (up to 3), oldest first. Never partial: comparing a finished
+     *  month to a running one flatters whichever is shorter. */
     months: MonthTotals[];
     /** Average paise per complete month, per parent category. */
     categoryAverages: CategoryTotal[];
@@ -118,15 +109,13 @@ type Rule = {
     run: (snap: Snapshot) => Highlight | null;
 };
 
-// --- Thresholds ------------------------------------------------------------------
-// Every ratio is paired with an absolute rupee floor. A category that went from ₹60
-// to ₹180 is up 200% and is not news — the floor is what keeps percentages honest.
-// All in paise.
+// Every ratio is paired with an absolute rupee floor: a category that went from ₹60 to ₹180
+// is up 200% and is not news. All in paise.
 
 /** A projected budget overrun below this isn't worth a card. ₹200. */
 const PACE_FLOOR = 20_000;
-/** Days of the month that must have passed before any pace projection is trusted —
- *  two big days out of three make a terrifying and meaningless daily rate. */
+/** Days that must have passed before a pace projection is trusted — two big days out of
+ *  three make a terrifying and meaningless daily rate. */
 const MIN_PACE_DAYS = 7;
 /** Finishing under this fraction of the limit counts as comfortably under. */
 const COMFORT_RATIO = 0.85;
@@ -151,8 +140,6 @@ const CATCH_ALL_NAMES = new Set(["others", "other", "misc", "miscellaneous", "un
 
 const MAX_HIGHLIGHTS = 4;
 
-// --- Shared arithmetic -------------------------------------------------------------
-
 /** Month-to-date spend carried forward at its current daily rate. */
 const projectToMonthEnd = (spent: number, snap: Snapshot): number =>
     Math.round((spent / snap.daysElapsed) * snap.daysInMonth);
@@ -171,20 +158,14 @@ const duePhrase = (daysUntilDue: number): string => {
 
 const pct = (ratio: number): string => `${Math.round(ratio * 100)}%`;
 
-// --- The rules --------------------------------------------------------------------
-
-/**
- * A budget on pace to finish over. This is deliberately allowed to fire before the
- * 80% push notification would — the push says a threshold was crossed, this says
- * where the month is heading, and the projection is the whole reason the rule exists.
- */
+/** A budget on pace to finish over. Allowed to fire before the 80% push would: the push says
+ *  a threshold was crossed, this says where the month is heading. */
 const budgetPace: Rule = {
     id: "budget_pace",
     run: (snap) => {
         if (snap.daysElapsed < MIN_PACE_DAYS) return null;
 
-        // One card, worst offender — four budgets all pacing over is one problem
-        // (this month is heavy), not four cards.
+        // One card, worst offender — four budgets pacing over is one problem, not four cards.
         let worst: { fact: BudgetFact; overrun: number } | null = null;
         for (const fact of snap.budgets) {
             if (fact.spent <= 0 || fact.limit <= 0) continue;
@@ -207,11 +188,8 @@ const budgetPace: Rule = {
     },
 };
 
-/**
- * The recovery story: a budget that was breached last month, now pacing comfortably
- * under. Fires only with last month's failure on record — "under budget" alone is
- * the normal state and not news.
- */
+/** A budget breached last month, now pacing comfortably under. Needs last month's failure on
+ *  record — "under budget" alone is the normal state. */
 const budgetComfortable: Rule = {
     id: "budget_comfortable",
     run: (snap) => {
@@ -248,10 +226,9 @@ const budgetComfortable: Rule = {
 };
 
 /**
- * The only rule that predicts a payment actually failing, which is why it is the
- * only urgent one. Checked against ONE account — the bill's own if it names one,
- * otherwise the largest spendable balance — never the sum of all of them, because
- * money in a savings account is not going to pay a card bill on Thursday.
+ * The only rule that predicts a payment actually failing, hence the only urgent one. Checked
+ * against ONE account — the bill's own, else the largest spendable balance — never the sum,
+ * because money in savings is not going to pay a card bill on Thursday.
  */
 const billVsBalance: Rule = {
     id: "bill_vs_balance",
@@ -290,8 +267,7 @@ const billCluster: Rule = {
         if (upcoming.length < 2) return null;
 
         const total = upcoming.reduce((sum, b) => sum + b.amount, 0);
-        // Usual monthly income, from completed months only. Zero when unknown, which
-        // simply disables the income branch rather than dividing by it.
+        // Completed months only. Zero when unknown, which disables the income branch below.
         const monthsWithIncome = snap.months.filter((m) => m.income > 0);
         const usualIncome = monthsWithIncome.length > 0
             ? monthsWithIncome.reduce((sum, m) => sum + m.income, 0) / monthsWithIncome.length
@@ -319,8 +295,7 @@ const billCluster: Rule = {
     },
 };
 
-/** Shared body of the spike/drop pair: this month's pace against the category's own
- *  recent months. One rule per direction so severity, floors and copy can diverge. */
+/** Shared body of the spike/drop pair. One rule per direction so severity and copy diverge. */
 const biggestCategoryMove = (
     snap: Snapshot,
     direction: "up" | "down",
@@ -380,11 +355,8 @@ const categoryDrop: Rule = {
     },
 };
 
-/**
- * Savings rate, last complete month against the one before. Complete months only —
- * a running month's rate swings with every entry and would have this card flapping.
- * Fires once per month by construction, since the key carries the month compared.
- */
+/** Savings rate, last complete month against the one before. Complete only — a running
+ *  month's rate swings with every entry and would have the card flapping. */
 const savingsRateMove: Rule = {
     id: "savings_rate_move",
     run: (snap) => {
@@ -412,11 +384,8 @@ const savingsRateMove: Rule = {
     },
 };
 
-/**
- * A goal saving too slowly for its own deadline. The rate is saved-per-month-since-
- * created — the same convention the health score's goals pillar uses, so the two
- * never disagree about whether a goal is behind.
- */
+/** A goal saving too slowly for its deadline. Rate is saved-per-month-since-created, matching
+ *  the health score's goals pillar so the two never disagree. */
 const goalPace: Rule = {
     id: "goal_pace",
     run: (snap) => {
@@ -428,8 +397,7 @@ const goalPace: Rule = {
 
             const rate = goal.saved / goal.monthsSinceCreated;
             const monthsNeeded = rate > 0 ? Math.ceil(remaining / rate) : Infinity;
-            // Missing by a whole month or more — a near-miss projection isn't worth
-            // the alarm, and the arithmetic here is an estimate, not a schedule.
+            // A whole month or more: an estimate, not a schedule, so a near miss is no alarm.
             if (monthsNeeded < goal.monthsUntilDeadline + 1) continue;
             if (remaining > (worst ? worst.goal.target - worst.goal.saved : 0)) worst = { goal, monthsNeeded };
         }
@@ -452,11 +420,8 @@ const goalPace: Rule = {
     },
 };
 
-/**
- * The health score's own focus pillar, passed through verbatim. No materiality: it
- * carries no rupee figure, so it ranks last and surfaces when the money rules are
- * quiet — which is exactly when a structural nudge is worth the slot.
- */
+/** The health score's focus pillar, verbatim. Zero materiality, so it ranks last and only
+ *  surfaces when the money rules are quiet. */
 const healthFocus: Rule = {
     id: "health_focus",
     run: (snap) => {
@@ -514,15 +479,8 @@ const RULES: Rule[] = [
 /** For the materiality tiebreak: what to lead with when the rupees are equal. */
 const SEVERITY_RANK: Record<HighlightSeverity, number> = { urgent: 0, warning: 1, win: 2, notice: 3 };
 
-/**
- * Every rule over one snapshot, ranked and capped.
- *
- * Ranked by rupees at stake rather than by rule order — a ₹4,200 bill that will
- * bounce should outrank a ₹300 category wobble without anyone hand-ordering the
- * list. Capped because beyond four this is a report, not a highlight. And an empty
- * result is a valid good answer: padding it with weak observations is how a feature
- * like this teaches users to stop reading it.
- */
+/** Every rule over one snapshot, ranked by rupees at stake rather than rule order, and capped —
+ *  beyond four this is a report, not a highlight. An empty result is a valid answer. */
 export const runHighlightRules = (snap: Snapshot): Highlight[] =>
     RULES
         .map((rule) => {

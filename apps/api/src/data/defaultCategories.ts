@@ -5,12 +5,9 @@
 // insights breakdown), so the parents are the handful of headings someone budgets
 // against and the children are the detail they actually file a purchase under.
 //
-// This used to be eight flat entries, which made the hierarchy real in the schema and
-// invisible to every user — nobody discovers sub-categories by being handed a flat
-// list. Seeding the tree is what makes the feature findable.
-//
-// Deliberately shallow per parent. A default set is a starting point someone edits,
-// and thirty rows to prune is worse than eight to extend.
+// Seeding the tree is what makes sub-categories findable: nobody discovers them from a flat
+// list. Shallow per parent, though — a default set is a starting point someone edits, and
+// thirty rows to prune is worse than eight to extend.
 
 type DefaultCategory = {
     name: string;

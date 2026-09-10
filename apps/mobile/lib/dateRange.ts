@@ -4,15 +4,13 @@ import { appZone, calendarToday } from "@/lib/zone";
 // history. `offset` slides the window back whole periods (0 = current, -1 =
 // previous, …).
 //
-// Every window is anchored on TODAY IN THE USER'S ZONE and then computed as plain
-// calendar arithmetic, which is why the `Date.UTC` calls below are exact: after the
-// anchor, none of these values is an instant — they are bare year/month/day triples
-// on their way to becoming `YYYY-MM-DD` query strings, which the API turns back into
-// the user's own midnights (see the API's utils/timezone).
+// Every window is anchored on TODAY IN THE USER'S ZONE and then computed as plain calendar
+// arithmetic, which is why the `Date.UTC` calls below are exact: after the anchor, none of
+// these values is an instant — they are bare year/month/day triples on their way to becoming
+// `YYYY-MM-DD` query strings, which the API turns back into the user's own midnights.
 //
-// It was the anchor that used to be wrong: `new Date().getUTCDate()` is tomorrow
-// after 6:30pm in India, so for five and a half hours every night "Today" listed a
-// day that hadn't started.
+// The anchor is the load-bearing part: `new Date().getUTCDate()` is tomorrow after 6:30pm in
+// India, so for five and a half hours every night "Today" would list a day that hadn't started.
 export type RangeKey = "day" | "week" | "month" | "year" | "all";
 
 export type RangeBounds = { startDate?: string; endDate?: string };

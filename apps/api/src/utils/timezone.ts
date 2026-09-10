@@ -1,28 +1,15 @@
-// Every "which day / week / month / year does this instant belong to" decision on
-// the server goes through this file, and every one of them takes the user's IANA
-// zone as an argument.
+// Every "which day / week / month does this instant belong to" decision on the server goes
+// through this file, and every one takes the user's IANA zone as an argument.
 //
-// Why a zone at all: `occurredAt` is an absolute instant, but a budget month, an
-// overdue bill, and a daily average are all statements about a WALL CLOCK. Bucket
-// them in UTC and a 1:30am purchase in Delhi lands in yesterday — and, once a
-// month, in last month, which silently moves money between two budgets. The app
-// used to do exactly that, in five different places.
+// `occurredAt` is an absolute instant, but a budget month and a daily average are statements
+// about a WALL CLOCK. Bucket them in UTC and a 1:30am purchase in Delhi lands in yesterday —
+// and once a month, in last month, silently moving money between two budgets.
 //
-// Why IANA names rather than a stored numeric offset: an offset is only true until
-// the next DST change, and a reminder job that has to fire at 9am local needs to
-// know which offset applies on the day it runs, not on the day the user signed up.
-//
-// Implemented on `Intl` + `Date.UTC` rather than a dependency: both are exact,
-// both consult the zone database instead of the process's own TZ, and neither can
-// be broken by the server being deployed somewhere that isn't UTC.
+// IANA names rather than a stored offset, since an offset is only true until the next DST
+// change. Built on `Intl` + `Date.UTC`, so the server's own TZ cannot affect anything here.
 
-/**
- * The zone assumed when a user has never had one recorded — which is only the
- * documents written before `prefs.timeZone` existed. The app's audience is Indian
- * and this is the zone every one of those documents was bucketed as anyway (IST
- * has no DST, so UTC+5:30 is the whole story), which makes it the one default that
- * doesn't retroactively reshuffle anybody's history.
- */
+/** The zone assumed when a user has none recorded — only documents predating `prefs.timeZone`,
+ *  which were all bucketed as IST anyway, so this default reshuffles nobody's history. */
 export const DEFAULT_ZONE = "Asia/Kolkata";
 
 export type ZonedParts = {
@@ -37,9 +24,8 @@ export type ZonedParts = {
   weekday: number;
 };
 
-// Formatters are the expensive part of `Intl`, not formatting — and a request that
-// buckets six units re-reads the same zone six times. Keyed by zone, unbounded on
-// purpose: the key space is the zone database, so it cannot grow without bound.
+// Formatters are the expensive part of `Intl`, not formatting. Unbounded is safe: the key
+// space is the zone database.
 const formatters = new Map<string, Intl.DateTimeFormat>();
 
 const formatterFor = (zone: string): Intl.DateTimeFormat => {
@@ -48,8 +34,7 @@ const formatterFor = (zone: string): Intl.DateTimeFormat => {
 
   const formatter = new Intl.DateTimeFormat("en-US", {
     timeZone: zone,
-    // Without this, midnight formats as hour 24 in some locales and 0 in others,
-    // and the arithmetic below would be a day out once a day.
+    // Without this, midnight formats as hour 24 in some locales and 0 in others.
     hourCycle: "h23",
     year: "numeric",
     month: "2-digit",
@@ -69,16 +54,12 @@ export const isValidZone = (zone: string): boolean => {
     return true;
   }
   catch {
-    // RangeError — the only way `Intl` rejects a zone.
     return false;
   }
 };
 
-/**
- * A zone name that is safe to hand to `Intl`. Anything missing or unrecognised
- * falls back rather than throwing: a bad zone on a user document must degrade to
- * slightly-wrong buckets, never to a 500 on every screen the user opens.
- */
+/** A zone name safe to hand to `Intl`. Anything unrecognised falls back rather than throwing:
+ *  a bad zone on a user document must degrade to slightly-wrong buckets, not a 500. */
 export const normalizeZone = (zone?: string | null): string =>
   zone && isValidZone(zone) ? zone : DEFAULT_ZONE;
 
@@ -92,9 +73,7 @@ export const partsInZone = (instant: Date, zone: string): ZonedParts => {
   const month = read("month");
   const day = read("day");
 
-  // Derived from the calendar date rather than asked of `Intl`: a weekday NAME
-  // would have to be mapped back through a locale, while the day-of-week of a
-  // given Y-M-D is the same everywhere.
+  // Derived from the calendar date, not asked of `Intl`, which returns a locale-dependent NAME.
   const dayOfWeek = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 
   return {
@@ -108,28 +87,24 @@ export const partsInZone = (instant: Date, zone: string): ZonedParts => {
   };
 };
 
-// How far ahead of UTC the zone is at this instant, in ms. Positive east of
-// Greenwich. Derived by reading the wall clock and pretending it were UTC — the
-// gap between that and the real instant IS the offset.
+// How far ahead of UTC the zone is at this instant, in ms; positive east of Greenwich. Read
+// the wall clock and pretend it were UTC — the gap from the real instant IS the offset.
 const offsetAt = (instant: Date, zone: string): number => {
   const parts = partsInZone(instant, zone);
   const asIfUtc = Date.UTC(
     parts.year, parts.month - 1, parts.day,
     parts.hour, parts.minute, parts.second,
   );
-  // Floored to the second because the formatter has no finer field, so the
-  // milliseconds would otherwise show up as a bogus fraction of the offset.
+  // Floored to the second: the formatter has no finer field, and the milliseconds would
+  // otherwise show up as a bogus fraction of the offset.
   return asIfUtc - Math.floor(instant.getTime() / 1000) * 1000;
 };
 
 /**
- * The instant at which a clock in `zone` reads exactly these fields.
- *
- * Two passes, and that isn't paranoia: the offset has to be looked up AT an
- * instant, but the instant is what we're solving for. The first pass guesses with
- * the offset that applies to the same wall clock read as UTC, the second corrects
- * it using the offset that actually applies where the guess landed. That second
- * pass is what makes the hour after a DST change come out right.
+ * The instant at which a clock in `zone` reads exactly these fields. Two passes, because the
+ * offset must be looked up AT an instant and the instant is what we are solving for: the
+ * second pass corrects the guess with the offset that applies where it landed, which is what
+ * makes the hour after a DST change come out right.
  */
 export const instantInZone = (
   zone: string,
@@ -169,36 +144,27 @@ export const startOfYearInZone = (instant: Date, zone: string): Date => {
   return instantInZone(zone, year, 1, 1);
 };
 
-/**
- * Midnight on the Monday of the week containing `instant`, in `zone`. Monday
- * because that is what the insights week has always been, and what MongoDB's
- * `$dateTrunc` is told below.
- */
+/** Midnight on the Monday of the week containing `instant` — Monday to match insights. */
 export const startOfWeekInZone = (instant: Date, zone: string): Date => {
   const { year, month, day, weekday } = partsInZone(instant, zone);
   return instantInZone(zone, year, month, day - (weekday - 1));
 };
 
-/**
- * Shift by whole zone-local days. Not `+ n * 86_400_000`: across a DST change a
- * local day is 23 or 25 hours long, and a "7 days later" computed in milliseconds
- * would land an hour into the wrong day.
- */
+/** Shift by whole zone-local days. Not `+ n * 86_400_000`: across a DST change a local day is
+ *  23 or 25 hours, and a millisecond "7 days later" lands an hour into the wrong day. */
 export const addDaysInZone = (instant: Date, zone: string, days: number): Date => {
   const p = partsInZone(instant, zone);
   return instantInZone(zone, p.year, p.month, p.day + days, p.hour, p.minute, p.second);
 };
 
-// Last day of a zone-agnostic calendar month — day 0 of the next month is the
-// previous month's last day, the standard `Date` trick.
+// Day 0 of the next month is the previous month's last day.
 const daysInMonth = (year: number, month: number): number =>
   new Date(Date.UTC(year, month, 0)).getUTCDate();
 
 /**
- * Shift by whole calendar months, clamping the day so the result is always real:
- * 31 January plus one month is 28 February, not 3 March. This is the rule bills
- * roll on, and the un-clamped version would walk a month-end bill forward through
- * the calendar a few days a year.
+ * Shift by whole calendar months, clamping the day so the result is always real: 31 January
+ * plus one month is 28 February, not 3 March. The rule bills roll on — unclamped, a month-end
+ * bill walks forward through the calendar a few days a year.
  */
 export const addMonthsInZone = (instant: Date, zone: string, months: number): Date => {
   const p = partsInZone(instant, zone);
@@ -229,13 +195,11 @@ export const dayKeyInZone = (instant: Date, zone: string): string => {
 };
 
 /**
- * A `YYYY-MM-DD` key back to the instants that bound that day in `zone`. `end` is
- * the last millisecond, so it pairs with a `$lte`.
+ * A `YYYY-MM-DD` key back to the instants bounding that day in `zone`. `end` is the last
+ * millisecond, so it pairs with a `$lte`.
  *
- * Deliberately NOT `new Date("2026-09-01")` followed by a zone read: that string
- * parses as UTC midnight, which in any zone west of Greenwich belongs to the
- * PREVIOUS day — so the range would start and end a day early for half the world.
- * A calendar day has to be rebuilt from its fields, never from an instant.
+ * NOT `new Date("2026-09-01")` plus a zone read: that parses as UTC midnight, which west of
+ * Greenwich belongs to the PREVIOUS day. A calendar day is rebuilt from its fields.
  */
 export const dayBoundsFromKeyInZone = (
   key: string,
@@ -248,11 +212,8 @@ export const dayBoundsFromKeyInZone = (
   };
 };
 
-/**
- * A `YYYY-MM` label back to the pair of instants that bound it in `zone`. The
- * inverse of `monthLabelInZone`, and the only place a client-supplied month string
- * becomes a query bound.
- */
+/** The inverse of `monthLabelInZone`, and the only place a client-supplied month string
+ *  becomes a query bound. */
 export const monthBoundsInZone = (
   label: string,
   zone: string,

@@ -12,7 +12,7 @@ export const gradients = {
 
 export type GradientToken = keyof typeof gradients
 
-// ---- Category / icon chip gradients (spec .g-blue … .g-red) -----------------
+// Category / icon chip gradients (spec .g-blue … .g-red).
 // A chip is a vivid 150° gradient with a DEEP ink glyph and a glow shadow in
 // the chip's own hue. Keyed by tint name; `chipTintFor` maps the semantic
 // color tokens the data layer already uses (category.color / goal.color).

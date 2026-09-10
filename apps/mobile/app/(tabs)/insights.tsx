@@ -53,11 +53,10 @@ const seriesLabel = (key: string, period: InsightsPeriod) => {
 const unitsWord = (period: InsightsPeriod) =>
   period === "year" ? "YEARS" : period === "week" ? "WEEKS" : "MONTHS";
 
-// The three label helpers below all anchor on today WHERE THE USER IS, then do plain
-// `Date.UTC` arithmetic on that calendar date (see lib/zone). Anchoring on `new Date()`
-// and reading `getUTC*` off it — which is what these used to do — names the wrong
-// window for a third of every Indian day: past 5:30am IST the UTC date is still
-// yesterday, so on the 1st of a month "This Month" would have labelled the previous one.
+// The three label helpers below anchor on today WHERE THE USER IS, then do plain `Date.UTC`
+// arithmetic on that calendar date (see lib/zone). Anchoring on `new Date()` and reading
+// `getUTC*` off it names the wrong window for a third of every Indian day: past 5:30am IST
+// the UTC date is still yesterday, so on the 1st "This Month" would label the previous one.
 const anchor = (): Date => calendarToday(appZone());
 
 // Monday-start of the week that is `offset` weeks from the current one.
@@ -186,21 +185,17 @@ const InsightsScreen = () => {
     setTip(null);
   };
 
-  // Export the window in view as a PDF of the graphs — the data's already in
-  // hand, so build and hand off to the share sheet straight away.
+  // The window in view as a PDF. The data is already in hand, so build and share at once.
   const onExport = async () => {
     if (!data || exporting) return;
     setExporting(true);
     const label = windowLabel(period, offset);
     try {
       await exportInsights(data, period, label);
-      // Names the window, because the export is of what's on screen and the user may
-      // have navigated periods several times before pressing it.
+      // Names the window: the export is of what's on screen, which may not be this month.
       toast.success(`Insights for ${label} exported`);
     } catch (err) {
-      // A toast rather than the OS Alert this used to raise: it's the same failure the
-      // rest of the app reports, and it shouldn't be the one place that blocks the
-      // screen with a modal to say so.
+      // A toast, not an OS Alert: the same failure the rest of the app reports inline.
       toast.fromError(err, "Couldn't export your insights. Try again.");
     } finally {
       setExporting(false);

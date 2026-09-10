@@ -21,7 +21,7 @@ export const useDefaultAccount = () : IAccount | undefined => {
   return useAccountById (defaultAccountId);
 }
 
-// ---- Mutations (Manage accounts) --------------------------------------------
+// Mutations (Manage accounts).
 // Each one refetches the list rather than patching it locally: the server owns
 // `balance`, so a locally-spliced account could show a stale one.
 

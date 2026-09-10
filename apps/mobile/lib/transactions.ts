@@ -110,14 +110,12 @@ export const useTransactionFeed = (params: FeedParams) => {
     if (status === "authed") load(1, true);
   }, [status, load]);
 
-  // Drop the rows when the RANGE changes, so the list falls back to its skeleton rather
-  // than showing last week's transactions beneath a card labelled "This Week". The
-  // summary card above is computed server-side for the new range and arrives separately,
-  // so without this the two disagreed for as long as the request took.
+  // Drop the rows when the RANGE changes, so the list falls back to its skeleton rather than
+  // showing last week's transactions under a card labelled "This Week" — the summary above is
+  // computed server-side for the new range and arrives separately.
   //
-  // Only the range, not `key`: category and search are refinements the user can see they
-  // just made from the chips and the field, and clearing on every debounced keystroke
-  // would strobe the whole list while they typed.
+  // Only the range, not `key`: category and search are refinements the user can see they just
+  // made, and clearing on every debounced keystroke would strobe the list while they typed.
   const rangeKey = `${params.startDate ?? ""}|${params.endDate ?? ""}`;
   useEffect(() => {
     setItems([]);

@@ -7,24 +7,21 @@ import {
   startOfCalendarDay,
 } from "@/lib/zone";
 
-// Every label in this file names a DAY, and a day only exists inside a zone. They
-// all therefore read the account's zone rather than the device's (see lib/zone) —
-// so "Today" here means the same day the server counted the amount under.
+// Every label here names a DAY, and a day only exists inside a zone — so they all read the
+// account's zone, not the device's (see lib/zone), and "Today" means the day the server
+// counted the amount under.
 //
-// The zone is read imperatively rather than passed in: these are called from row
-// renderers and template strings all over the app, and threading an argument
-// through every one of them would buy nothing, since a zone change re-renders the
-// screen anyway (screens subscribe with `useAppZone()`).
+// The zone is read imperatively rather than passed in: these are called from row renderers
+// and template strings everywhere, and a zone change re-renders the screen anyway.
 
-// Format an ISO `occurredAt` into a short display string for rows.
-// Client-side derivation — the API sends only the ISO timestamp.
+// An ISO `occurredAt` into a short display string for rows.
 export const formatTxnDate = (iso: string): string => {
   const zone = appZone();
   const instant = new Date(iso);
   const time = instant.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", timeZone: zone });
 
-  // Compared as calendar dates, not with `toDateString()`: that reads the DEVICE's
-  // day, so a phone left on airport time would disagree with the totals above.
+  // Calendar dates, not `toDateString()`: that reads the DEVICE's day, so a phone left on
+  // airport time would disagree with the totals above.
   const day = calendarDate(instant, zone);
   const today = calendarToday(zone);
   const distance = calendarDaysBetween(day, today);
@@ -41,8 +38,7 @@ export const formatDueLabel = (dueDate: string, status: BillStatus, paidAt?: str
   }
 
   const zone = appZone();
-  // Whole calendar days apart, which is what the sentence claims — and the same
-  // count the server used to decide this bill was overdue in the first place.
+  // Whole calendar days — the same count the server calls this bill overdue by.
   const diffDays = calendarDaysBetween(calendarToday(zone), calendarDate(new Date(dueDate), zone));
 
   if (diffDays < 0) {
@@ -54,9 +50,8 @@ export const formatDueLabel = (dueDate: string, status: BillStatus, paidAt?: str
   return `Due in ${diffDays} days`;
 };
 
-// Roll a recurring bill's due date forward one cycle — the client's rehearsal of
-// what the server will do when the bill is paid (Mark paid effects preview), so the
-// day is clamped the same way the server clamps it: 31 Jan + 1 month is 28 Feb.
+// Roll a recurring bill's due date forward one cycle — the client's rehearsal of what the
+// server does on payment, so the day is clamped the same way: 31 Jan + 1 month is 28 Feb.
 export const rollDueDate = (dueDate: string, frequency: BillFrequency): string => {
   const zone = appZone();
   const day = calendarDate(new Date(dueDate), zone);
@@ -80,12 +75,10 @@ export const formatFullDate = (iso: string): string =>
   });
 
 /**
- * A day chosen in a picker → the instant that day starts in the user's zone.
- *
- * The picker hands back a device-local `Date`; only its calendar fields are meant,
- * so they are re-anchored in the account's zone. This used to pin UTC midnight,
- * which reads as the previous day anywhere west of Greenwich — a bill due on the
- * 1st would have arrived already overdue.
+ * A day chosen in a picker → the instant that day starts in the user's zone. The picker
+ * hands back a device-local `Date` and only its calendar fields are meant, so they are
+ * re-anchored: pinning UTC midnight reads as the previous day west of Greenwich, and a bill
+ * due on the 1st would arrive already overdue.
  */
 export const toZonedDayISO = (picked: Date): string => {
   const zone = appZone();
@@ -93,8 +86,8 @@ export const toZonedDayISO = (picked: Date): string => {
   return startOfCalendarDay(calendar, zone).toISOString();
 };
 
-// The floor for "today or future" date pickers. Device-local on purpose: a picker
-// is a device control and compares against the wheels the user is spinning.
+// The floor for "today or future" pickers. Device-local on purpose — a picker compares
+// against the wheels the user is spinning.
 export const startOfToday = (): Date => {
   const d = new Date();
   d.setHours(0, 0, 0, 0);

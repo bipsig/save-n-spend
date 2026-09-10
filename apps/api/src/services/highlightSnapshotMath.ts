@@ -11,15 +11,9 @@ import type { CategoryTotal, MonthTotals } from "./highlightRules";
 // highlightSnapshotService so it can be tested without a database.
 //
 // Everything here is a pure function of its arguments — a zone, an instant, and rows
-// that have already been read. The service keeps the queries; this file keeps the two
-// things that were actually going wrong unobserved: which months count as "behind
-// this one", and where a transaction's amount lands once children roll into parents.
-//
-// The seam is drawn at rows-in, facts-out rather than at the Mongo boundary because
-// the aggregation's shape is the easy part to get right and the calendar is not. A
-// month label crossing a year, a divisor over months the account didn't exist for, a
-// backdated transaction landing in a month that has already closed: all of those are
-// decided below, on plain values, and are now pinned by highlightSnapshotMath.test.ts.
+// already read. The service keeps the queries; this file decides which months count as
+// "behind this one" and where an amount lands once children roll into parents. Pinned by
+// highlightSnapshotMath.test.ts.
 
 const MS_PER_DAY = 86_400_000;
 
@@ -42,12 +36,10 @@ export const monthOrdinal = (instant: Date, zone: string): number => {
 };
 
 /**
- * Every date-shaped decision a snapshot rests on, made once.
- *
- * `start`/`next` bound the current month; `windowStart` reaches back far enough to
- * cover the comparison months in the same query. `completeLabels` is oldest-first and
- * excludes the current month, because a month still being lived in is not a fair
- * thing to average against. `monthsAveraged` is the honest divisor — see below.
+ * Every date-shaped decision a snapshot rests on, made once. `start`/`next` bound the
+ * current month; `windowStart` reaches back to cover the comparison months in the same
+ * query. `completeLabels` is oldest-first and excludes the current month, which is still
+ * being lived in and so is not fair to average against.
  */
 export type SnapshotWindow = {
     start: Date;
@@ -61,30 +53,24 @@ export type SnapshotWindow = {
     monthsAveraged: number;
 };
 
-/**
- * `now` is injected rather than read, so a request served just past a zone-local
- * midnight is never split across two ideas of "this month" — and so a test can state
- * the date it means. `firstTxnAt` bounds how much history the averages can claim.
- */
+/** `now` is injected so one request can't straddle two ideas of "this month" across a
+ *  zone-local midnight. `firstTxnAt` bounds how much history the averages can claim. */
 export const snapshotWindow = (zone: string, now: Date, firstTxnAt: Date): SnapshotWindow => {
     const { start, next, label } = monthRange(zone, monthLabelInZone(now, zone));
 
-    // `+ 1` because the 1st is one day elapsed, not zero — a pace computed on day one
-    // would otherwise divide by nothing. Floored at 1 for the same reason.
+    // `+ 1` because the 1st is one day elapsed, not zero, or a pace on day one divides by 0.
     const daysElapsed = Math.max(1, wholeDays(start, now, zone) + 1);
     const daysInMonth = wholeDays(start, next, zone);
     const prevLabel = monthLabelInZone(addMonthsInZone(start, zone, -1), zone);
 
-    // The complete months behind this one, oldest first — the comparison base. Built
-    // by stepping the zone-local month rather than by string arithmetic, so January
-    // reaches back into the previous year without a special case.
+    // The complete months behind this one, oldest first. Stepped through the zone-local
+    // month rather than by string arithmetic, so January reaches into the previous year.
     const completeLabels = Array.from({ length: AVERAGE_MONTHS }, (_, i) =>
         monthLabelInZone(addMonthsInZone(start, zone, i - AVERAGE_MONTHS), zone));
     const windowStart = addMonthsInZone(start, zone, -AVERAGE_MONTHS);
 
-    // An average over months the account didn't exist for would read as a collapse in
-    // spending, so the divisor is the months there is actually history for. Floored at
-    // 1: a brand-new account divides by one month, never by zero.
+    // The divisor is the months there is actually history for — averaging over months the
+    // account didn't exist for would read as a collapse in spending. Floored at 1.
     const monthsAveraged = Math.min(
         AVERAGE_MONTHS,
         Math.max(1, monthOrdinal(now, zone) - monthOrdinal(firstTxnAt, zone)),
@@ -103,8 +89,7 @@ export const snapshotWindow = (zone: string, now: Date, firstTxnAt: Date): Snaps
     };
 };
 
-/** A category as the rollup needs it — ids already stringified by the caller, so
- *  nothing here has to know about ObjectIds. */
+/** A category as the rollup needs it — ids already stringified by the caller. */
 export type CategoryShape = { _id: string; name: string; parent?: string | null };
 
 /** One `$group` row of month totals by type. */
@@ -115,11 +100,9 @@ export type FlowRow = { month: string; type: "income" | "expense"; total: number
 export type SpendRow = { month: string; categoryId: string | null; total: number };
 
 /**
- * Maps a category to the slice it should be counted under.
- *
- * The same rollup insights' breakdown uses, so a highlight about "Food & Dining"
- * means the same slice the chart draws. Only one level is collapsed, matching the
- * data model: categories have a parent or they are one.
+ * Maps a category to the slice it is counted under — the same rollup insights' breakdown
+ * uses, so a highlight about "Food & Dining" means the slice the chart draws. One level
+ * only, matching the data model: categories have a parent or they are one.
  */
 export const categoryRoller = (categories: CategoryShape[]) => {
     const parentOf = new Map(categories.map((c) => [String(c._id), c.parent ? String(c.parent) : null]));
@@ -131,9 +114,8 @@ export const categoryRoller = (categories: CategoryShape[]) => {
         return parentOf.get(categoryId) ?? categoryId;
     };
 
-    // Falls back to "Uncategorised" rather than the raw id for a category that has
-    // been deleted since the transaction was recorded. A hex string in a sentence
-    // meant for a person is worse than admitting the label is gone.
+    // "Uncategorised" rather than the raw id for a category deleted since — a hex string
+    // in a sentence meant for a person is worse than admitting the label is gone.
     const rollName = (key: string): string =>
         key === UNCATEGORISED.id ? UNCATEGORISED.name : nameOf.get(key) ?? UNCATEGORISED.name;
 
@@ -148,12 +130,10 @@ export type SnapshotFlows = {
 };
 
 /**
- * Turns raw month/category rows into the four flow-shaped fields of a Snapshot.
- *
- * Rows for months outside the window are dropped rather than counted somewhere
- * approximate: the aggregation bounds `occurredAt`, but a backdated transaction can
- * legitimately land in a month that has already closed, and a row belongs either to
- * the month being lived in or to one of the complete months behind it — never to both.
+ * Turns raw month/category rows into the four flow-shaped fields of a Snapshot. Rows for
+ * months outside the window are dropped, not counted approximately: a backdated
+ * transaction can land in a month that has already closed, and a row belongs to the
+ * current month or to one of the complete ones behind it, never to both.
  */
 export const rollUpFlows = (
     window: SnapshotWindow,
@@ -170,9 +150,8 @@ export const rollUpFlows = (
     }
 
     const months: MonthTotals[] = completeLabels
-        // Months before the account existed are absent, not zero — a zero month would
-        // hand the savings-rate rule a fake collapse to announce. `completeLabels` is
-        // oldest-first, so trimming from the front drops exactly those.
+        // Months before the account existed are absent, not zero — a zero month hands the
+        // savings-rate rule a fake collapse. Oldest-first, so trim from the front.
         .slice(AVERAGE_MONTHS - monthsAveraged)
         .map((monthLabel) => ({ label: monthLabel, ...(totalsByMonth.get(monthLabel) ?? { income: 0, expense: 0 }) }));
     const current = totalsByMonth.get(label) ?? { income: 0, expense: 0 };

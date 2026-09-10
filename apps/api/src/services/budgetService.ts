@@ -19,10 +19,9 @@ export type BudgetProgress = {
 /**
  * Every budget for one zone-local month, with its spend.
  *
- * Children roll into their parent because that is how the app presents categories: a
- * limit on "Food" is understood to cover "Groceries" and "Dining out" beneath it. A
- * budget set directly on a child is still counted on its own — the rollup adds the
- * children's spend to the parent's, it doesn't move it.
+ * Children roll into their parent, because a limit on "Food" is understood to cover "Groceries"
+ * and "Dining out" beneath it. A budget set directly on a child is still counted on its own:
+ * the rollup adds the children's spend to the parent's, it doesn't move it.
  */
 export const budgetProgress = async (
     userId: string | mongoose.Types.ObjectId,

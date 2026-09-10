@@ -21,19 +21,16 @@ import type {
     Snapshot,
 } from "./highlightRules";
 
-// Assembles the one Snapshot the highlight rules run over — the I/O half of the
-// split. Everything zone- or clock-shaped is resolved here or in
-// highlightSnapshotMath, so the rules stay pure: they get "11 days left", never a
-// Date to interpret.
+// Assembles the one Snapshot the highlight rules run over — the I/O half of the split.
+// Everything zone- or clock-shaped is resolved here or in highlightSnapshotMath, so the rules
+// stay pure: they get "11 days left", never a Date to interpret.
 //
-// Wherever a number is already computed somewhere trusted, it is reused rather than
-// re-derived: budget spend comes from budgetService (the budgets screen's number),
-// the health focus from healthService (the health screen's number). A highlight that
-// disagrees with the screen it links to would be worse than no highlight.
+// Numbers already computed somewhere trusted are reused, not re-derived: budget spend from
+// budgetService, the health focus from healthService. A highlight that disagrees with the screen
+// it links to would be worse than no highlight.
 //
-// What stays here is only what needs the database. The calendar window and the
-// category rollup moved to highlightSnapshotMath, which is covered by fixtures —
-// this file's job is to fetch rows and hand them over.
+// Only what needs the database stays here; the calendar window and the category rollup live in
+// highlightSnapshotMath, where fixtures cover them.
 
 type SpendGroup = { _id: { month: string; category: mongoose.Types.ObjectId | null }; total: number };
 type TotalsGroup = { _id: { month: string; type: "income" | "expense" }; total: number };
@@ -106,7 +103,7 @@ export const buildSnapshot = async (
         })),
     });
 
-    // --- Facts, calendar arithmetic done here so the rules never touch a Date -------
+    // Facts, calendar arithmetic done here so the rules never touch a Date.
     const accountFacts: AccountFact[] = accounts.map((a) => ({
         accountId: String(a._id),
         name: a.name,

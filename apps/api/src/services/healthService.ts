@@ -9,35 +9,16 @@ import { budgetProgress } from "./budgetService";
 import { formatAmount } from "../utils/money";
 import { partsInZone, startOfDayInZone, startOfMonthInZone, addMonthsInZone, addDaysInZone } from "../utils/timezone";
 
-// The financial health score.
+// The financial health score: a weighted sum of five pillars, each reporting its own
+// measurement and verdict so every point is attributable.
 //
-// One number on the dashboard, and the only thing on that screen that claims to be a
-// JUDGEMENT rather than a fact. That raises the bar for it: a total the user cannot
-// account for is worse than no total, because the first time it moves for a reason they
-// can't see, they stop believing the rest of the screen too.
-//
-// So the whole thing is built on four rules:
-//
-//   1. Every point is attributable. The score is a weighted sum of five pillars, each
-//      of which reports its own measurement and its own verdict. "62" is never the
-//      answer — "62, because your buffer is thin" is.
-//   2. A pillar that does not apply is not scored. Nobody loses points for not having
-//      set up budgets yet; the remaining pillars share the weight instead.
-//   3. It refuses to guess. Under a month of history and there is no score at all —
-//      an invented 85 is a lie the user will discover.
-//   4. It is measured over 90 days, not this month. See WINDOW_DAYS.
+// Two rules worth knowing before changing anything here: a pillar that does not apply is
+// not scored (the rest share its weight, see the renormalisation below), and under
+// MIN_HISTORY_DAYS of history there is no score at all rather than an invented one.
 
-/** Trailing days the money figures are measured over.
- *
- *  One calendar month is what the dashboard shows and the wrong window for a verdict:
- *  a salary landing on the 1st instead of the 31st, an annual insurance premium, or one
- *  laptop is enough to swing a monthly savings rate by tens of points, and a score that
- *  jumps 30 points for a reason the user considers normal is a score they learn to
- *  ignore. A year is the other failure — it is so slow to move that someone who fixes
- *  their spending sees no reward for months and concludes the number is fake.
- *
- *  90 days absorbs one irregular month while still responding to a real change in
- *  habits within a few weeks. */
+/** Trailing days the money figures are measured over. Long enough to absorb one irregular
+ *  month — a salary landing early, an annual premium — while still responding to a real
+ *  change in habits within a few weeks. */
 const WINDOW_DAYS = 90;
 
 /** Days of recorded history required before a score is shown at all. */
@@ -47,8 +28,7 @@ const MS_PER_DAY = 86_400_000;
 
 type PillarKey = "savings" | "buffer" | "bills" | "budgets" | "goals";
 
-// Only what each pillar actually reads, so the callers below can pass `.lean()` results
-// without pretending they are hydrated documents.
+// Only what each pillar actually reads, so callers can pass `.lean()` results.
 type BillFacts = Pick<IBill, "name" | "dueDate" | "lastPaidAt" | "frequency">;
 type GoalFacts = Pick<IGoal, "name" | "target" | "saved" | "deadline" | "createdAt">;
 type BudgetFacts = { budget: { limit: number; category: mongoose.Types.ObjectId }; spent: number };
@@ -73,24 +53,9 @@ export type HealthScore = {
     reason?: string;
 };
 
-/**
- * Why these five, and why these weights.
- *
- * They are the measures this app has honest data for, ordered by how much they predict
- * about someone's finances a year from now:
- *
- *   savings 30 — the single most predictive number in personal finance. What you keep
- *                out of what you earn determines everything downstream.
- *   buffer  25 — the difference between a bad month being an inconvenience and a
- *                crisis. High weight because it is what makes the other four survivable.
- *   bills   20 — punctuality is the cheapest financial health there is; being late costs
- *                money for no return, so it is the most fixable thing on the list.
- *   budgets 15 — intent versus behaviour. Lower than the three above because a budget
- *                is a self-set target: missing one you set ambitiously is not the same
- *                failure as spending more than you earn.
- *   goals   10 — forward motion. Lowest because it is the most discretionary; someone
- *                with no goals and a 30% savings rate is not unhealthy.
- */
+// Ordered by how much each predicts about someone's finances a year out. Budgets and goals
+// sit lower because both are self-set targets — missing one is not the same failure as
+// spending more than you earn.
 const WEIGHTS: Record<PillarKey, number> = {
     savings: 30,
     buffer: 25,
@@ -107,18 +72,9 @@ const BANDS = [
     { min: 0, band: "risk", rating: "At risk" },
 ] as const;
 
-/**
- * A score from a table of (measurement, points) anchors, linear between them.
- *
- * Written as a table rather than nested ternaries so the shape of every pillar is
- * readable at a glance and arguable on its merits — which matters, because these
- * anchors are judgement calls and somebody will want to change one.
- *
- * Each pillar's anchors get steeper at the bottom and flatter at the top. That is
- * deliberate: going from saving nothing to saving 5% is a real change in someone's life,
- * and going from 30% to 35% is a rounding error. A straight line would rate them the
- * same and reward the wrong behaviour.
- */
+/** A score from a table of (measurement, points) anchors, linear between them. Every
+ *  pillar's anchors are steeper at the bottom: saving 0% to 5% is a real change, 30% to 35%
+ *  is a rounding error, and a straight line would rate them the same. */
 const curve = (value: number, anchors: readonly (readonly [number, number])[]): number => {
     const first = anchors[0];
     const last = anchors[anchors.length - 1];
@@ -145,43 +101,25 @@ const PAR = 65;
 /** A pillar this low is not a soft spot, it is a failing grade. */
 const CRITICAL = 25;
 
-/** The highest total allowed while any pillar is failing — the top of "Good".
- *
- *  Without this, the weighted average lets a strong savings rate and a fat buffer carry
- *  the headline to "Excellent" while five bills sit a month overdue. The average is
- *  arithmetically right and the word is wrong, and the word is what the user reads. A
- *  score is only worth having if its headline never contradicts its own contents. */
+/** The highest total allowed while any pillar is failing. Without it, strong savings and a
+ *  fat buffer carry the headline to "Excellent" while five bills sit a month overdue — the
+ *  average is right and the word is wrong, and the word is what the user reads. */
 const CRITICAL_CEILING = BANDS[0].min - 1;
 
 const wholeDaysBetween = (from: Date, to: Date, zone: string): number =>
     Math.round((startOfDayInZone(to, zone).getTime() - startOfDayInZone(from, zone).getTime()) / MS_PER_DAY);
 
-// "Mar 2027" — enough to place a deadline without pretending the day matters.
 const monthYearLabel = (instant: Date, zone: string): string =>
     new Intl.DateTimeFormat("en-IN", { timeZone: zone, month: "short", year: "numeric" }).format(instant);
 
 const pct = (ratio: number): string => `${Math.round(ratio * 100)}%`;
 
-// ---------------------------------------------------------------------------
-// Pillar 1 — savings rate
-// ---------------------------------------------------------------------------
-
-/**
- * What share of income survived the window.
- *
- * Anchors: 20% is the savings rate the 50/30/20 rule targets and the figure most
- * personal-finance guidance converges on, so it earns 80 — a strong pass with headroom
- * left, rather than a perfect score that leaves nothing to aim at. Full marks at 30%,
- * and no more credit above it: past that point the marginal health gain is small and the
- * score would start rewarding austerity rather than health.
- *
- * A negative rate scores 0 flat, with no partial credit. Spending more than you earn is
- * the one state where the score should be unambiguous.
- */
+/** What share of income survived the window. 20% is the 50/30/20 target, so it earns 80
+ *  rather than full marks; nothing above 30% scores more, or the pillar would reward
+ *  austerity. A negative rate is 0 flat. */
 const savingsPillar = (income: number, expenses: number): Pillar | null => {
-    // No recorded income means there is no denominator — not a 0% savings rate. Someone
-    // living off savings between jobs would otherwise be told they are failing at a
-    // thing they are not currently doing.
+    // No income means no denominator, not a 0% rate — someone living off savings between
+    // jobs would otherwise be failing at a thing they aren't doing.
     if (income <= 0) return null;
 
     const rate = (income - expenses) / income;
@@ -205,26 +143,12 @@ const savingsPillar = (income: number, expenses: number): Pillar | null => {
     };
 };
 
-// ---------------------------------------------------------------------------
-// Pillar 2 — buffer
-// ---------------------------------------------------------------------------
-
 /**
- * How many months of your own spending you could cover from what you hold.
- *
- * Measured against YOUR average expense rather than an absolute figure, because ₹2 lakh
- * is a year of runway for one person and six weeks for another, and only the second one
- * is in trouble.
- *
- * Anchors: 1 month earns 40 because the first month is the one that does the most work —
- * it is what turns a broken phone from a debt into an errand. 3 months is the commonly
- * cited floor for an emergency fund, 6 the comfortable target, and nothing above 6
- * scores more: this pillar is about resilience, not wealth, and letting it run away
- * would let a large balance paper over a bad savings rate.
- *
- * Credit card debt is subtracted rather than ignored. ₹50,000 in the bank against
- * ₹45,000 owed on a card is not five months of runway, and a score that said so would
- * be actively misleading at the exact moment it matters.
+ * How many months of your own spending you could cover from what you hold. Measured against
+ * the user's own expense rate: ₹2 lakh is a year of runway for one person and six weeks for
+ * another. 3 months is the usual emergency-fund floor, 6 the target, and nothing above 6
+ * scores more — this is resilience, not wealth. Card debt is subtracted, since ₹50k in the
+ * bank against ₹45k owed is not runway.
  */
 const bufferPillar = (
     liquid: number,
@@ -233,8 +157,7 @@ const bufferPillar = (
 ): Pillar | null => {
     const monthlyExpense = expenses / (WINDOW_DAYS / 30);
 
-    // No recorded spending: there is no runway to be short of, and dividing by it would
-    // report Infinity months for anyone with a rupee to their name.
+    // No spending, so no runway to be short of — and dividing by it reports Infinity months.
     if (monthlyExpense <= 0) return null;
 
     const net = Math.max(0, liquid - cardDebt);
@@ -258,23 +181,14 @@ const bufferPillar = (
     };
 };
 
-// ---------------------------------------------------------------------------
-// Pillar 3 — bills
-// ---------------------------------------------------------------------------
-
 /**
- * Whether the obligations you have written down are being met on time.
+ * Whether written-down obligations are being met on time. The PRESENT only, and that is a
+ * data limitation: a recurring bill is never marked paid — its due date rolls forward — so
+ * there is no record of whether last month's was late.
  *
- * This pillar measures the PRESENT, not the past, and that is a data limitation rather
- * than a choice: a recurring bill is never marked paid — its due date rolls forward —
- * so once this month's electricity is settled there is no record of whether it was
- * settled late. Only what is overdue right now can be scored.
- *
- * Two terms, because "one bill is late" and "one bill has been late for three weeks" are
- * different situations: the share of bills that are overdue, then a penalty for how
- * overdue the worst one is, capped at a month. Amount is deliberately NOT weighted in —
- * lateness is a habit signal, and the money consequence of a large bill already shows up
- * in the buffer pillar. Counting it twice would double-punish one event.
+ * Two terms, since "one bill is late" and "late three weeks" differ: the share overdue, then
+ * a penalty for the worst one, capped at a month. Amount is not weighted in — the money
+ * consequence already shows up in the buffer.
  */
 const billsPillar = (bills: BillFacts[], now: Date, zone: string): Pillar | null => {
     if (bills.length === 0) return null;
@@ -305,25 +219,12 @@ const billsPillar = (bills: BillFacts[], now: Date, zone: string): Pillar | null
     };
 };
 
-// ---------------------------------------------------------------------------
-// Pillar 4 — budget adherence
-// ---------------------------------------------------------------------------
-
 /**
- * Are you living inside the limits you set for yourself.
- *
- * Scored against PACE, not the whole month's limit. On the 5th everybody is under
- * budget, so an unadjusted version would read 100 for the first fortnight and then
- * collapse — a score that is wrong in a predictable cycle. Comparing spend against
- * `limit × (days elapsed / days in month)` is what makes the pillar mean something
- * on the 5th.
- *
- * Weighted by limit, because blowing a ₹20,000 grocery budget is not the same event as
- * blowing a ₹500 one, and an unweighted average would call them equal.
- *
- * Zero at 1.5× pace rather than at 1.0. A hard cliff the moment you cross a limit would
- * make the pillar binary and jittery — and being a little over a target you invented is
- * not a failure worth 15 points.
+ * Are you living inside the limits you set for yourself. Scored against PACE, not the whole
+ * month's limit — on the 5th everybody is under budget, so an unadjusted version reads 100
+ * for a fortnight and then collapses. Weighted by limit, because blowing ₹20,000 of
+ * groceries is not the same event as blowing ₹500. Zero at 1.5× pace, not 1.0, or the pillar
+ * would be binary and jittery.
  */
 const budgetsPillar = (
     items: BudgetFacts[],
@@ -337,9 +238,8 @@ const budgetsPillar = (
     const monthStart = startOfMonthInZone(now, zone);
     const daysInMonth = wholeDaysBetween(monthStart, addMonthsInZone(monthStart, zone, 1), zone);
 
-    // Floored at a week's worth. Without the floor, day 1 judges a whole month's spending
-    // against a single day's allowance, and one weekly grocery run reads as a 30× overrun
-    // for reasons that have nothing to do with the user's habits.
+    // Floored at a week's worth, or day 1 judges a month's spending against one day's
+    // allowance and a weekly grocery run reads as a 30× overrun.
     const elapsed = Math.max(7, partsInZone(now, zone).day) / daysInMonth;
 
     let weighted = 0;
@@ -378,24 +278,13 @@ const budgetsPillar = (
     };
 };
 
-// ---------------------------------------------------------------------------
-// Pillar 5 — goals
-// ---------------------------------------------------------------------------
-
 /**
- * Are the things you said you were saving for actually going to happen.
+ * Are the things you said you were saving for actually going to happen. Only goals WITH A
+ * DEADLINE are scored — one with no date has no rate to measure against.
  *
- * Only goals WITH A DEADLINE are scored, and that is the whole idea. A goal with no date
- * is an aspiration, and there is no rate it can be measured against — so scoring it
- * would mean punishing someone for writing down something they want, which is the
- * opposite of what the app should do. Attaching a date is what turns it into a
- * commitment, and only commitments are graded.
- *
- * The measure is a RATE ratio, not a completion percentage: what you have been putting
- * away per month since you created the goal, against what you now need per month to
- * land it on time. A goal created yesterday at 0% is not failing; a goal that needed
- * ₹8,000 a month and has been getting ₹3,000 is, and no completion percentage would
- * tell you that.
+ * The measure is a RATE ratio, not completion: what has gone in per month since the goal was
+ * created, against what is now needed to land on time. A goal created yesterday at 0% is not
+ * failing; one that needed ₹8,000 a month and got ₹3,000 is.
  */
 const goalsPillar = (goals: GoalFacts[], now: Date, zone: string): Pillar | null => {
     const committed = goals.filter((goal) => goal.deadline && goal.target > 0);
@@ -415,9 +304,8 @@ const goalsPillar = (goals: GoalFacts[], now: Date, zone: string): Pillar | null
         }
         else {
             const daysLeft = wholeDaysBetween(now, goal.deadline as Date, zone);
-            // Floored at half a month so a deadline days away produces a very high
-            // required rate and therefore a low score — which is the honest answer. An
-            // unfunded goal due on Friday is not on track.
+            // Floored at half a month, so a deadline days away yields a high required rate
+            // and a low score — the honest answer for an unfunded goal due Friday.
             const monthsLeft = Math.max(0.5, daysLeft / 30);
             const monthsRunning = Math.max(1, wholeDaysBetween(goal.createdAt, now, zone) / 30);
 
@@ -446,17 +334,13 @@ const goalsPillar = (goals: GoalFacts[], now: Date, zone: string): Pillar | null
         label: "Goals",
         score,
         weight: WEIGHTS.goals,
-        // Pace, not funding. "29% funded" alongside a score of 100 reads as a
-        // contradiction — the reader has no way to know one is a rate and the other a
-        // total. Since the score IS the pace ratio, saying so keeps the two consistent,
-        // and the funded percentage is already on every goal card where it belongs.
+        // Pace, not funding: the score IS the pace ratio, and the funded percentage is on
+        // every goal card already.
         value: score >= 99 ? "On pace" : `${pct(score / 100)} of pace`,
         verdict: verdictFor(score),
         hint: score >= PAR || !worstHint ? undefined : worstHint,
     };
 };
-
-// ---------------------------------------------------------------------------
 
 const notEnoughData = (reason: string, windowDays = WINDOW_DAYS): HealthScore => ({
     score: null,
@@ -467,14 +351,8 @@ const notEnoughData = (reason: string, windowDays = WINDOW_DAYS): HealthScore =>
     reason,
 });
 
-/**
- * The user's financial health score, as of now.
- *
- * Always "now", never a named month — which is why this does not live inside
- * GET /dashboard/summary. The summary answers "what happened in August"; this answers
- * "how are you doing", and folding them together would produce one response whose
- * fields were measured over two different spans.
- */
+/** The user's financial health score, as of now — never a named month, which is why it is
+ *  not part of GET /dashboard/summary: that response's fields would span two windows. */
 export const healthScore = async (
     userId: string | mongoose.Types.ObjectId,
     zone: string,
@@ -482,10 +360,8 @@ export const healthScore = async (
 ): Promise<HealthScore> => {
     const oid = new mongoose.Types.ObjectId(String(userId));
 
-    // The gate, before any of the work. A brand-new account has a 0% savings rate, no
-    // buffer and no bills, which would compute to a devastating score that says nothing
-    // about the user — so it is refused outright rather than shown with a caveat nobody
-    // reads.
+    // The gate, before any of the work: a brand-new account computes to a devastating score
+    // that says nothing about the user.
     const first = await Transaction.findOne({ userId: oid })
         .sort({ occurredAt: 1 })
         .select("occurredAt")
@@ -506,12 +382,9 @@ export const healthScore = async (
     const windowStart = addDaysInZone(startOfDayInZone(now, zone), zone, -WINDOW_DAYS);
 
     const [flows, balances, bills, goals, budgets, categories] = await Promise.all([
-        // `transfer`, `positiveAdjustment` and `negativeAdjustment` are excluded by this
-        // filter, and that asymmetry is intentional: moving money between your own
-        // accounts is not income or spending, and a balance correction is bookkeeping —
-        // counting either would let a user raise their savings rate without earning or
-        // saving anything. Both still move `Account.balance`, so they do reach the
-        // buffer pillar, which is where they belong.
+        // `transfer` and the adjustments are excluded: moving money between your own
+        // accounts is not income or spending, and a correction is bookkeeping. Both still
+        // move `Account.balance`, so they reach the buffer pillar.
         Transaction.aggregate<{ _id: string; total: number }>([
             {
                 $match: {
@@ -529,8 +402,7 @@ export const healthScore = async (
         Bill.find({ userId: oid }, { name: 1, dueDate: 1, lastPaidAt: 1, frequency: 1 }).lean(),
         Goal.find({ userId: oid }, { name: 1, target: 1, saved: 1, deadline: 1, createdAt: 1 }).lean(),
         budgetProgress(oid, zone),
-        // Only so the budgets hint can name the category it is about. Named categories
-        // make the difference between "a budget is over" and "Dining out is over".
+        // Only so the budgets hint can name the category it is about.
         Category.find({ userId: oid }, { name: 1 }).lean(),
     ]);
 
@@ -547,8 +419,8 @@ export const healthScore = async (
         categories.map((row) => [String(row._id), row.name]),
     );
 
-    // Fixed order, heaviest first, so a pillar never changes position on the card. The
-    // dashboard shows the first three that apply; the full list is on the detail screen.
+    // Heaviest first, so a pillar never changes position. The dashboard shows the first
+    // three that apply; the full list is on the detail screen.
     const pillars = [
         savingsPillar(income, expenses),
         bufferPillar(liquid, cardDebt, expenses),
@@ -562,32 +434,23 @@ export const healthScore = async (
         return notEnoughData("There isn't enough activity yet to score.");
     }
 
-    // Renormalised over the pillars that apply, rather than scoring an absent pillar as
-    // zero. A user who has never opened the budgets screen is not unhealthy, and docking
-    // them 15 points for it would make the score a measure of feature adoption.
-    //
-    // The trade-off, stated plainly: deleting a budget you are overspending removes its
-    // penalty. That is accepted. Nobody games their own mirror, and the two pillars that
-    // carry 55% between them — savings rate and buffer — cannot be dodged by deleting
-    // anything, because they are computed from money that has already moved.
+    // Renormalised over the pillars that apply, rather than scoring an absent one zero and
+    // making this a measure of feature adoption. The accepted trade-off is that deleting a
+    // budget you are overspending removes its penalty; savings and buffer carry 55% between
+    // them and cannot be dodged, both being computed from money that has already moved.
     const totalWeight = scored.reduce((sum, pillar) => sum + pillar.weight, 0);
     const average = Math.round(
         scored.reduce((sum, pillar) => sum + (pillar.score as number) * pillar.weight, 0) / totalWeight,
     );
 
-    // See CRITICAL_CEILING. One failing pillar keeps the headline out of the top band, so
-    // the word next to the number cannot disagree with the pillars underneath it.
+    // See CRITICAL_CEILING.
     const failing = scored.some((pillar) => (pillar.score as number) < CRITICAL);
     const score = failing ? Math.min(average, CRITICAL_CEILING) : average;
 
     const band = BANDS.find((entry) => score >= entry.min) ?? BANDS[BANDS.length - 1];
 
-    // The weakest pillar that has something to say. Surfaced on its own because this is
-    // what makes the number useful: a score with no "so do this" is decoration.
-    //
-    // Ties break toward the heavier pillar — when the buffer and the goals are both at
-    // 40, fixing the buffer is worth 25 points and the goals 10, so that is the one to
-    // name.
+    // The weakest pillar that has something to say. Ties break toward the heavier one,
+    // since fixing it is worth more.
     const focus = scored
         .filter((pillar) => pillar.hint)
         .sort((a, b) =>

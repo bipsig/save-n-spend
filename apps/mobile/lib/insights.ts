@@ -48,7 +48,7 @@ export const useInsights = (period: InsightsPeriod, offset: number) => {
   return { data, loading, error, refetch };
 };
 
-// ---- client-side derivations (values-in-hand) -------------------------------
+// Client-side derivations (values-in-hand).
 
 export type Slice = { id: string; name: string; total: number; pct: number; color: string };
 
@@ -104,11 +104,9 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 // Everything the area chart needs from one pass over the server's buckets: the
 // amounts, the sampled x-axis labels, and the full tooltip labels.
 //
-// The client used to rebuild the bucket list itself from `periodStart`/`periodEnd`
-// and zero-fill against it — which only worked while both sides agreed that a day
-// was a UTC day. Now the server sends the buckets dense, in order, and keyed by the
-// calendar date it cut them on, so this is a plain map and there is nothing left for
-// the two halves to disagree about.
+// The server sends the buckets dense, in order, and keyed by the calendar date it cut them on,
+// so this is a plain map — the client never rebuilds the bucket list and the two halves have
+// nothing to disagree about.
 export const buildTrend = (points: InsightsTrendPoint[], period: InsightsPeriod) => {
   const days = points.map((p) => calendarFromKey(p.date));
 

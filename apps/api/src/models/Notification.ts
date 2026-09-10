@@ -18,14 +18,12 @@ export interface INotificationDoc extends Document {
     body: string;
     link?: { screen: string; id?: string };
     /**
-     * What makes a notification fire exactly once. Composed by the caller out of the
-     * thing it is about and the occasion — "bill:<id>:due:2026-09-12",
-     * "budget:<id>:2026-09:over" — so the same occasion produces the same key however
-     * many times it is evaluated.
+     * What makes a notification fire exactly once. Composed by the caller out of the thing it
+     * is about and the occasion — "bill:<id>:due:2026-09-12", "budget:<id>:2026-09:over" — so
+     * the same occasion produces the same key however often it is evaluated.
      *
-     * The uniqueness is a DB index rather than a read-then-write check because the
-     * reminder job may overlap itself (a slow tick, a restart, two instances), and a
-     * check-then-write loses that race. Here the second writer gets a duplicate-key
+     * A DB index rather than a read-then-write check, because the reminder job may overlap
+     * itself and check-then-write loses that race. The second writer gets a duplicate-key
      * error, which the service reads as "already sent".
      */
     dedupeKey: string;

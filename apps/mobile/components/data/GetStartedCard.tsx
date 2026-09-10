@@ -78,14 +78,13 @@ const StepRow = ({
 /**
  * The dashboard's first-run card.
  *
- * It does two jobs at once, which is why it is a checklist and not a tour: it fills
- * the hole where a new account's dashboard has nothing to show, and it teaches the
- * five things worth setting up by having the user actually do them. Ticks are derived
- * from real data (see `lib/onboarding`), so this cannot congratulate the user for
- * something they have not done — or keep nagging about something they have.
+ * A checklist and not a tour, because it does two jobs: it fills the hole where a new account's
+ * dashboard has nothing to show, and it teaches the five things worth setting up by having the
+ * user do them. Ticks are derived from real data (see `lib/onboarding`), so it cannot
+ * congratulate the user for something they have not done, or nag about something they have.
  *
- * Rendered with the same violet gradient as the Highlights hero on More, because it
- * is the same kind of thing: the one row on the screen asking to be tapped.
+ * Same violet gradient as the Highlights hero on More, being the same kind of thing: the one
+ * row on the screen asking to be tapped.
  */
 const GetStartedCard = ({ progress, onStepPress, onDismiss }: Props) => {
   return (

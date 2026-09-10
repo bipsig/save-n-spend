@@ -73,9 +73,8 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
   const account = useAccountById(transaction?.account);
   const category = useCategoryById(transaction?.category); // icon + colour
   const categoryLabel = useCategoryLabel(transaction?.category); // name + parent
-  // Subscribes this sheet to the mask so the delete-confirm's inline amount
-  // reveals along with everything else. `<Money>` handles its own; a `formatMoney`
-  // inside a template string can't.
+  // Subscribes this sheet to the mask so the delete-confirm's inline amount reveals with
+  // everything else. `<Money>` handles its own; a `formatMoney` in a template string can't.
   usePrivacyMask();
 
   const [confirmView, setConfirmView] = useState(false);
@@ -106,15 +105,13 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
       await del(`/transactions/${transaction?._id}`);
       onDeleted?.();
       dismiss();
-      // Names the row that's gone and says the balance moved with it: a delete
-      // silently rewrites an account total, and the sheet that explained that has
-      // just closed. Without this the only evidence is a row that isn't there.
+      // Names the row and says the balance moved with it: a delete silently rewrites an
+      // account total, and the sheet that explained that has just closed.
       toast.success(`${transaction.title} deleted — ${account?.name ?? "your account"} updated`);
     }
     catch (err) {
-      // The one failure that must not be missed: the user just confirmed something
-      // destructive, so if it didn't happen they need to know before walking away
-      // believing it did.
+      // The one failure that must not be missed: they just confirmed something destructive
+      // and would otherwise walk away believing it happened.
       haptics.error();
       setDeleteError(err instanceof Error ? err.message : "Error deleting the transaction");
     }
@@ -127,10 +124,8 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
     <AppSheet ref={innerRef} onDismiss={() => { setConfirmView(false); setDeleteError (null); }}>
       {transaction && (
         !confirmView ? (
-          // Fades in rather than hard-cutting when you back out of the confirm.
-          // Entering only, deliberately: an exiting animation would keep both views
-          // mounted, and the sheet sizes itself to its content — so it would stretch
-          // to fit the pair and then snap back.
+          // Entering only: an exiting animation keeps both views mounted, and the sheet
+          // sizes to its content — so it would stretch to fit the pair, then snap back.
           <Animated.View entering={FadeIn.duration(160)} style={styles.view}>
             {/* Spec §08 .centerid — chip · title · spaced-sign amount · tinted badge */}
             <View style={styles.identity}>
@@ -250,8 +245,7 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
 TransactionDetailSheet.displayName = "TransactionDetailSheet";
 
 const styles = StyleSheet.create({
-  // Each view used to be a fragment, so its blocks got the sheet's own gap
-  // directly. Now they sit inside a fading wrapper that has to carry it.
+  // The fading wrapper carries the gap, since its children no longer get the sheet's.
   view: {
     gap: spacing.lg,
   },

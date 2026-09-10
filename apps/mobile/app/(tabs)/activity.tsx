@@ -63,12 +63,9 @@ const SummaryCard = ({
   income: number;
   expense: number;
   savings: number;
-  /**
-   * The totals for THIS label haven't arrived yet. Renders a dash rather than a figure:
-   * the label changes the instant the user picks a new range, and printing the previous
-   * range's money beside it was a claim the card could not support. A dash says "not yet"
-   * in the space the number will occupy, so nothing reflows when it lands.
-   */
+  /** The totals for THIS label haven't arrived yet. A dash rather than the previous
+   *  range's money, which the label no longer describes — and it holds the space the
+   *  number will occupy, so nothing reflows when it lands. */
   pending?: boolean;
 }) => {
   const money = (paise: number) => (pending ? "—" : formatMoney(paise));
@@ -124,10 +121,8 @@ const ActivityScreen = () => {
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("all");
 
-  // Two-tier category filter: a row of top-level parents, and — once one is
-  // active — a contextual child row that belongs to it. The open parent is
-  // derived from the selection: pick a parent to see its children, pick a child
-  // and its parent stays highlighted as the trail.
+  // Two-tier category filter: top-level parents, plus a child row once one is active. The
+  // open parent is derived from the selection, so picking a child keeps its parent lit.
   const categories = useCategories();
   const parents = useMemo(() => categories.filter((c) => !c.parent), [categories]);
   const childrenByParent = useMemo(() => {
@@ -173,8 +168,8 @@ const ActivityScreen = () => {
   const exportRef = useRef<BottomSheetModal>(null);
   const [activeTransaction, setActiveTransaction] = useState<ITransaction | null>(null);
 
-  // Refresh on focus (e.g. returning from Add Transaction) without re-firing on
-  // every filter change — the hooks already reload themselves when filters change.
+  // Refresh on focus (e.g. returning from Add Transaction). The hooks already reload
+  // themselves when filters change.
   const refresh = useRef<() => void>(() => {});
   refresh.current = () => {
     feed.refetch();
@@ -189,19 +184,16 @@ const ActivityScreen = () => {
     detailRef.current?.present();
   };
 
-  // Group the flat, paginated feed into day sections, injecting a month break
-  // when the month rolls over. Month breaks only show for ranges that can span
-  // months (Week/Year/All) — they'd be redundant inside a single-month view.
+  // Day sections, with a month break when the month rolls over. Only for ranges that can
+  // span months (Week/Year/All) — redundant inside a single-month view.
   const showMonths = range !== "day" && range !== "month";
   const listData = useMemo<ListRow[]>(() => {
     const rows: ListRow[] = [];
     let lastDay: string | null = null;
     let lastMonth: string | null = null;
     for (const tx of feed.items) {
-      // Cut in the user's zone, which is also what the labels below print and what
-      // the server counted the day in. Keyed off the DEVICE's day — which is what
-      // this did — a 1am purchase abroad would open a second "Today" section, or two
-      // rows of the same local day would land under different headings.
+      // Cut in the user's zone — what the labels print and what the server counted the
+      // day in. Keyed off the DEVICE's day, a 1am purchase abroad opens a second "Today".
       const instant = new Date(tx.occurredAt as string);
       const month = monthKeyOf(instant, zone);
       const day = dayKey(instant, zone);
@@ -341,9 +333,8 @@ const ActivityScreen = () => {
                     ? "Try a different search, category, or range."
                     : "Record what you spend and earn, and this becomes your full history."
                 }
-                // Only the never-recorded-anything case gets a button. Offering "Add
-                // transaction" to someone whose SEARCH came back empty answers a question
-                // they did not ask — the fix there is a different query, not a new entry.
+                // Only the never-recorded-anything case gets a button — the fix for an
+                // empty search is a different query, not a new entry.
                 {...(!debouncedQuery && activeCategory === "all" && {
                   actionLabel: "Add transaction",
                   onAction: () => router.push("/add-transaction"),
@@ -400,8 +391,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingRight: spacing.md, // let the last chip hint at more when it scrolls
   },
-  // The child row sits inset behind a short violet rail, tying it to the
-  // highlighted parent chip above it.
+  // Inset behind a short violet rail, tying it to the highlighted parent chip above.
   childWrap: {
     flexDirection: "row",
     alignItems: "stretch",

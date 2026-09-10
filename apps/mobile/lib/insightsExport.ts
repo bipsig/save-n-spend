@@ -34,7 +34,7 @@ const currentTotals = (data: InsightsSummary) => {
   return { income: cur.income, expense: cur.expense, net, savings: pct(net, cur.income) };
 };
 
-// ---- PDF: the graphs, redrawn as vector SVG ---------------------------------
+// PDF: the graphs, redrawn as vector SVG.
 
 const AXIS = "#9995ad";
 const GRID = "#eeecf6";
@@ -195,7 +195,7 @@ const buildHtml = (data: InsightsSummary, period: InsightsPeriod, label: string)
   </body></html>`;
 };
 
-// ---- entry point ------------------------------------------------------------
+// Entry point.
 
 // Insights export is PDF-only — the value is the graphs, which a spreadsheet
 // can't hold.

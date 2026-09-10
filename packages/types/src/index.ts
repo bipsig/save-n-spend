@@ -6,42 +6,34 @@ export type CategoryKind = 'expense' | 'income'
 export type BillStatus = 'pending' | 'paid' | 'overdue'
 export type BillFrequency = 'monthly' | 'yearly'
 
-// How many days before a bill's due date its reminder fires. A fixed set rather
-// than a free number, so the Settings sheet is three chips and the reminder job
-// has three cases to schedule.
+// Days before a bill's due date that its reminder fires. A fixed set, so Settings is
+// three chips and the reminder job has three cases.
 export type BillReminderLead = 1 | 3 | 7
 
 export interface INotificationPrefs {
-  enabled: boolean;          // master switch — off silences every kind below
+  enabled: boolean;          // primary switch — off silences every kind below
   billReminderLead: BillReminderLead;
   budgetAlerts: boolean;     // at 80% of a limit, and again when a category goes over
   goalMilestones: boolean;   // at 25 / 50 / 75 / 100% saved
   /**
    * The three digests, each covering the period that just closed. Separate switches
-   * rather than one "summaries" setting because they differ by two orders of magnitude
-   * in how often they arrive — 365 a year against 12 — and someone who wants the
-   * monthly wrap-up has said nothing about wanting a push every morning.
-   *
-   * Their default reflects the same thing: daily and weekly are off until asked for,
-   * monthly is on. See `wantsNotification` in the API.
+   * because they differ by two orders of magnitude in how often they arrive — 365 a
+   * year against 12. Daily and weekly default off, monthly on; see `wantsNotification`.
    */
-  dailySummary: boolean;     // yesterday, at 9am local
-  weeklySummary: boolean;    // the week that ended, Monday 10am local
-  monthlySummary: boolean;   // the month that ended, on the 1st at 11am local
+  dailySummary: boolean;
+  weeklySummary: boolean;
+  monthlySummary: boolean;
 }
 
-// Account-level preferences: they follow the user across devices, so they live
-// on the User document and change through PATCH /users/me.
-// Device-local settings (privacy mode, app lock) deliberately are NOT here —
-// they describe one phone, not one account, and never reach the server.
+// Account-level preferences: they follow the user across devices, so they live on the
+// User document and change through PATCH /users/me. Device-local settings (privacy mode,
+// app lock) deliberately are NOT here — they never reach the server.
 export interface IUserPrefs {
   defaultAccount?: string | null;  // preselected in Add Transaction and Mark paid
   /**
-   * IANA zone name ("Asia/Kolkata"), and the answer to every "which day is this
-   * in" question the app asks — day groups, budget months, overdue bills, daily
-   * averages, and the hour a reminder fires. Stored per account rather than read
-   * off the device so a month means one thing on every screen, on every device,
-   * and in the server's own scheduled jobs.
+   * IANA zone name ("Asia/Kolkata") — the answer to every "which day is this in"
+   * question the app asks. Stored per account rather than read off the device, so a
+   * month means one thing on every screen and in the server's scheduled jobs.
    */
   timeZone: string;
   notifications: INotificationPrefs;
@@ -68,8 +60,7 @@ export interface IAccount {
   icon?: string
   color?: string
   isArchived: boolean
-  // ISO string. When the user last reconciled this account against their bank.
-  // Absent on accounts that have never been synced.
+  // ISO. When the user last reconciled against their bank; absent if never.
   lastSyncedAt?: string | null
 }
 
@@ -134,11 +125,8 @@ export interface IGoal {
   deadline?: string      // ISO date string
 }
 
-// ---- Notifications ---------------------------------------------------------
-
-// What happened, not what it looks like. The copy is composed on the server (it has
-// the amounts and the zone), and the type is what the client uses to pick an icon and
-// a tint, and what the preference switches gate on.
+// What happened, not what it looks like: copy is composed on the server, and the type is
+// what the client picks an icon and tint from, and what the preference switches gate on.
 export type NotificationType =
   | 'billReminder'      // due within the user's chosen lead time
   | 'billOverdue'       // the due date has passed unpaid
@@ -150,11 +138,8 @@ export type NotificationType =
   | 'weeklySummary'     // the week that just ended
   | 'monthlySummary'    // the month that just ended, sent on the 1st
 
-/**
- * Where tapping the notification lands. A screen name plus the id of the thing it is
- * about, rather than a URL — the client owns its own routes, and a stored path would
- * be a route that has to keep working forever.
- */
+/** Where tapping lands. A screen name, not a URL — a stored path would be a route that
+ *  has to keep working forever. */
 export interface NotificationLink {
   screen: 'bills' | 'budget' | 'goals' | 'insights'
   id?: string
@@ -172,8 +157,8 @@ export interface INotification {
   createdAt: string
 }
 
-// One request answers both questions the bell asks: what is in the list, and how many
-// dots to show. Splitting them would mean the badge and the list could disagree.
+// One request answers both questions the bell asks — list and badge count — so the two
+// cannot disagree.
 export interface NotificationFeed {
   items: INotification[]
   unread: number
@@ -189,10 +174,8 @@ export interface DashboardSummary {
   netWorth: number
 }
 
-// The five things the health score is made of. Returned individually rather than
-// rolled into the total on the server's side of the wire, because a single number
-// tells a user they are a 62 and nothing about what to do next — the pillars are
-// the actionable part, and the total is just their weighted sum.
+// The five things the health score is made of. Sent individually, not just as the total:
+// a single number says nothing about what to fix. The total is their weighted sum.
 export type HealthPillarKey = "savings" | "buffer" | "bills" | "budgets" | "goals"
 
 export type HealthBand = "excellent" | "good" | "fair" | "attention" | "risk"
@@ -229,10 +212,9 @@ export interface HealthScore {
 
 export type InsightsPeriod = "week" | "month" | "year"
 
-// Bucket keys are zone-local CALENDAR keys, not instants: "2026-08-12" for a day
-// bucket, "2026-08" for a month one. An instant would have to be re-interpreted in
-// the user's zone by every reader to know which day it named — and the client and
-// the server disagreeing about that is the whole bug this format exists to close.
+// Bucket keys are zone-local CALENDAR keys, not instants: "2026-08-12" for a day bucket,
+// "2026-08" for a month one. An instant would need re-interpreting in the user's zone by
+// every reader to know which day it named.
 export interface InsightsTrendPoint {
   date: string          // 'YYYY-MM-DD' (week/month) or 'YYYY-MM' (year)
   amount: number        // paise, expenses
@@ -256,19 +238,15 @@ export interface InsightsAccountSlice {
   total: number         // paise, expenses
 }
 
-// One /insights call; all figures exclude transfers. Rollups + KPIs are
-// server-computed so the client renders with minimal processing. incomeVsExpense
-// is 6 units oldest -> newest (last two = current & previous, for savings-rate delta).
+// One /insights call; all figures exclude transfers. incomeVsExpense is 6 units
+// oldest -> newest (last two = current & previous, for the savings-rate delta).
 export interface InsightsSummary {
   period: InsightsPeriod
   timeZone: string                 // the zone every bucket below was cut in
   periodStart: string              // ISO — start of the shown window
   periodEnd: string                // ISO — end of the shown window (exclusive)
-  /**
-   * Dense and ordered: one entry per bucket in the window, zeros included, and a
-   * running window stops at today rather than trailing into the future. Filled in
-   * by the server because only the server knows the zone the buckets were cut in.
-   */
+  /** Dense and ordered: one entry per bucket, zeros included, and a running window
+   *  stops at today rather than trailing into the future. */
   trend: InsightsTrendPoint[]
   incomeVsExpense: InsightsSeriesPoint[]
   byCategory: InsightsCategorySlice[]
@@ -279,10 +257,8 @@ export interface InsightsSummary {
   txnCount: number                 // non-transfer count, current window
 }
 
-// --- Highlights (the deterministic assistant — docs/insights-engine.md) -----------
-// Ranked, plain-language observations computed by rules on the server. Read-only by
-// construction: nothing on this path can write, so the copy arrives fully composed
-// and the client's whole job is to render and route it.
+// Highlights: ranked, plain-language observations computed by rules on the server, arriving
+// fully composed. See docs/insights-engine.md.
 
 export type HighlightSeverity = 'urgent' | 'warning' | 'notice' | 'win'
 

@@ -75,11 +75,10 @@ export const updateMe = async (req: Request, res: Response): Promise<void> => {
 
 // Deactivate the account. Nothing is erased.
 //
-// This used to wipe seven collections in one transaction, which was honest about the
-// wording but wrong about the intent: the overwhelmingly common reason to tap this is
-// "I'm done with this app for now", and years of a person's spending history is not
-// recoverable from anywhere else. So the row and everything it owns stay put, and
-// signing in again clears `deactivatedAt` and hands it all back (see authController).
+// The common reason to tap this is "I'm done with this app for now", and years of a person's
+// spending history is not recoverable from anywhere else. So the row and everything it owns
+// stay put, and signing in again clears `deactivatedAt` and hands it all back (see
+// authController).
 //
 // What does happen immediately:
 //   - `deactivatedAt` is stamped, which locks the account out of `/auth/me` and so out
@@ -87,8 +86,7 @@ export const updateMe = async (req: Request, res: Response): Promise<void> => {
 //   - `pushToken` is unset, because a deactivated account must not keep sending
 //     notifications to a phone whose owner believes they left.
 //
-// Per-resource DELETEs already archive rather than erase, so this is now consistent with
-// the rest of the API rather than the one endpoint that behaved differently.
+// Per-resource DELETEs archive rather than erase, so this matches the rest of the API.
 export const deleteMe = async (req: Request, res: Response): Promise<void> => {
   const userId = req.user?.userId;
 

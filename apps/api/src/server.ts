@@ -39,16 +39,13 @@ app.use(errorHandler);
 
 const PORT = Number(process.env.PORT) || 3000;
 
-// Listen FIRST, then connect. The order used to be the other way round, and on Render's
-// free tier that was the whole reason a cold morning ping got a 503: the platform has
-// nothing to route to until the port is bound, so putting the Atlas handshake in front of
-// `listen` meant the service was unreachable for as long as the handshake took — and if
-// it failed, `connectDB` exited, Render restarted the container, and the 503s stretched
-// across the backoff.
+// Listen FIRST, then connect. Render has nothing to route to until the port is bound, so an
+// Atlas handshake in front of `listen` makes the service unreachable for as long as it takes —
+// and if it fails, the container restarts and the 503s stretch across the backoff.
 //
-// Binding first costs nothing. Mongoose buffers commands issued before the connection is
-// ready, so a request that arrives in the gap waits for the database rather than being
-// told the service does not exist.
+// Binding first costs nothing: mongoose buffers commands issued before the connection is
+// ready, so a request arriving in the gap waits for the database rather than being told the
+// service does not exist.
 const start = (): void => {
   app.listen (PORT, '0.0.0.0', () => {
     console.log (`Server has started on port ${PORT}`);

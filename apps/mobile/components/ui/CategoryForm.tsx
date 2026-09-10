@@ -26,19 +26,12 @@ type Props = {
   onChange: (patch: Partial<CategoryFormValue>) => void;
   /** Editing an existing category rather than creating one. Locks type. */
   editing?: boolean;
-  /**
-   * The heading this category goes under, for the breadcrumb, or `null` for top-level.
-   *
-   * The form never asks — both callers settle it before opening, from which "New under
-   * …" row was tapped. An in-form selector was tried and removed: it made the user
-   * re-read a list of headings they had just scrolled past, and grew by a row every time
-   * they added a category.
-   */
+  /** The heading this category goes under, for the breadcrumb, or `null` for top-level.
+   *  The form never asks — both callers settle it from which "New under …" row was
+   *  tapped. */
   parent?: ICategory | null;
-  /**
-   * Why type isn't editable, when the caller — not this form — is what fixed it.
-   * Nesting and editing supply their own reasons and take precedence.
-   */
+  /** Why type isn't editable, when the caller fixed it. Nesting and editing supply their
+   *  own reasons and take precedence. */
   kindNote?: string;
   error?: string | null;
 };
@@ -48,14 +41,10 @@ const KINDS: { key: CategoryKind; label: string }[] = [
   { key: "income", label: "Income" },
 ];
 
-// The one category form. Both places that create a category render this: the Manage
-// Categories sheet and the picker that opens over Add Transaction.
-//
-// It exists because those two used to be different forms. The picker's had no preview,
-// no field labels, and a "Create category" button that kept saying "category" after you
-// had chosen a parent — so the one question a two-level system has to answer, *am I
-// making a heading or filing under one*, was the question it left open. Sharing the form
-// means the answer can't be right in one place and missing in the other.
+// The one category form, rendered by both places that create a category: the Manage
+// Categories sheet and the picker that opens over Add Transaction. Sharing it is what keeps
+// the question a two-level system has to answer — am I making a heading or filing under
+// one — from being answered in one place and left open in the other.
 const CategoryForm = ({
   value,
   onChange,
@@ -105,12 +94,10 @@ const CategoryForm = ({
           TYPE
         </AppText>
         {editing || nesting || kindNote ? (
-          // Locked, for one of three reasons. Editing: every transaction already filed
-          // here counts as this kind, so flipping it would restate history rather than
-          // edit a label. Nesting: a child's spend is added to its parent's, so an income
-          // child under an expense parent would fold earnings into a spending total — the
-          // server rejects it, and the form shouldn't offer it. Otherwise the caller
-          // fixed it, and says why.
+          // Locked for one of three reasons. Editing: every transaction filed here counts
+          // as this kind, so flipping it restates history. Nesting: an income child under
+          // an expense parent would fold earnings into a spending total, and the server
+          // rejects it. Otherwise the caller fixed it, and says why.
           <View style={styles.lockedKind}>
             <Badge
               label={value.kind === "income" ? "Income" : "Expense"}

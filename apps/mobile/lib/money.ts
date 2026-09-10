@@ -52,14 +52,13 @@ const isMasked = (privacyMode: boolean, peeking: boolean) => privacyMode && !pee
 /**
  * Subscribe a component to the mask.
  *
- * `formatMoney` reads the store imperatively, which means a component that calls
- * it does NOT re-render when the mask changes. Any component that renders an
- * amount must therefore call this hook — the returned boolean is usually ignored;
- * the point is the subscription. Without it a peek would reveal only the handful
- * of amounts that happened to re-render for some other reason.
+ * `formatMoney` reads the store imperatively, so a component that calls it does NOT re-render
+ * when the mask changes. Any component rendering an amount must call this hook — the returned
+ * boolean is usually ignored, the point is the subscription. Without it a peek reveals only the
+ * amounts that happened to re-render for some other reason.
  *
- * One line per component beats converting sixty-nine `formatMoney(...)` call
- * sites, half of which are inside template literals and so can't be components.
+ * One line per component beats converting every `formatMoney(...)` call site, half of which are
+ * inside template literals and so can't be components.
  */
 export const usePrivacyMask = (): boolean =>
   useSettings((s) => isMasked(s.privacyMode, s.peeking));

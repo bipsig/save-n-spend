@@ -1,10 +1,9 @@
-// Device-local settings — the half of Settings that describes THIS phone and is
-// never sent to the server (spec §10: `security.*` and privacy mode are
-// device-local only). Account-level preferences live on the User document and
-// change through `lib/profile.ts`.
+// Device-local settings — the half of Settings that describes THIS phone and is never sent
+// to the server (spec §10). Account-level preferences live on the User document and change
+// through `lib/profile.ts`.
 //
-// Kept free of any `api` import, like `store/session`, so nothing here can
-// participate in an import cycle: `lib/money` reads this store to mask amounts.
+// Kept free of any `api` import, so nothing here can join an import cycle — `lib/money`
+// reads this store to mask amounts.
 import { create } from 'zustand';
 import { readJson, writeJson } from '@/lib/deviceStore';
 
@@ -25,14 +24,9 @@ export interface DeviceSettings {
   appLock: boolean;
   autoLockSeconds: AutoLockSeconds;
   /**
-   * Ids of the users who have waved away the Get started checklist on THIS phone.
-   *
-   * A list rather than a boolean because the flag is device-local but the checklist
-   * is per-account: two people signing in on the same phone must not inherit each
-   * other's dismissal, and the one who loses out would be the new user who needs it.
-   * Every other completion signal is derived from server data — this is the only bit
-   * of onboarding state worth storing, because "I don't want budgets" is a preference
-   * and nothing on the server records it.
+   * Ids of the users who waved away the Get started checklist on THIS phone. A list, not a
+   * boolean, because the flag is device-local but the checklist is per-account: two people
+   * on one phone must not inherit each other's dismissal.
    */
   getStartedDismissed: string[];
 }
@@ -44,21 +38,15 @@ const DEFAULTS: DeviceSettings = {
   getStartedDismissed: [],
 };
 
-/**
- * How long a peek lasts. Long enough to read a screenful and do the arithmetic
- * you opened it for, short enough that putting the phone down re-hides it for you
- * — the whole point of privacy mode is not having to remember.
- */
+/** How long a peek lasts — long enough to read a screenful, short enough that putting the
+ *  phone down re-hides it without being asked. */
 export const PEEK_MS = 10_000;
 
 interface SettingsState extends DeviceSettings {
   /** False until the stored blob has been read, so the lock gate doesn't decide early. */
   hydrated: boolean;
-  /**
-   * Amounts are temporarily readable. Deliberately NOT persisted and not part of
-   * `DeviceSettings`: a peek is a moment, and it must never survive the app being
-   * reopened — otherwise privacy mode would silently be off.
-   */
+  /** Amounts temporarily readable. Deliberately NOT persisted and not part of
+   *  `DeviceSettings`: surviving a relaunch would leave privacy mode silently off. */
   peeking: boolean;
   hydrate: () => Promise<void>;
   update: (patch: Partial<DeviceSettings>) => void;
@@ -68,8 +56,8 @@ interface SettingsState extends DeviceSettings {
   hide: () => void;
 }
 
-// Module-level, like the toast timer: one peek at a time, and a restart has to be
-// able to clear the previous countdown rather than race it.
+// Module-level: one peek at a time, and a restart must clear the previous countdown
+// rather than race it.
 let peekTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const useSettings = create<SettingsState>((set, get) => ({
@@ -77,22 +65,20 @@ export const useSettings = create<SettingsState>((set, get) => ({
   hydrated: false,
   peeking: false,
 
-  // On app start: pull the saved blob over the defaults. Unknown or missing keys
-  // keep their default, so adding a setting later doesn't invalidate what's stored.
+  // Saved blob over the defaults, so adding a setting later doesn't invalidate what's
+  // already stored.
   hydrate: async () => {
     const stored = await readJson<Partial<DeviceSettings>>(STORAGE_KEY);
     set({ ...DEFAULTS, ...stored, hydrated: true });
   },
 
-  // Optimistic: state moves first so a toggle flips under the finger, then the
-  // whole blob is written. Persisting the blob rather than the one changed key
-  // keeps the stored shape identical to the state's.
+  // Optimistic: state moves first so a toggle flips under the finger. The whole blob is
+  // written, keeping the stored shape identical to the state's.
   update: (patch) => {
     set(patch);
     const { privacyMode, appLock, autoLockSeconds, getStartedDismissed } = get();
     void writeJson(STORAGE_KEY, { privacyMode, appLock, autoLockSeconds, getStartedDismissed });
-    // Switching privacy mode off makes a standing peek meaningless, and switching it
-    // ON must not leave one running — that would mask nothing and look broken.
+    // Switching privacy mode ON must not leave a peek running — it would mask nothing.
     if (patch.privacyMode !== undefined) get().hide();
   },
 

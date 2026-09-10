@@ -1,21 +1,15 @@
 import { deviceZone, zoneOffsetMinutes } from "@/lib/zone";
 
-// The zone list behind the Settings picker.
+// The zone list behind the Settings picker. There are ~450 IANA zones, so the picker has two
+// modes: before the user types, the device's zone plus a curated shortlist; once they type,
+// the FULL set the runtime knows about, so someone in Tegucigalpa isn't stuck with a
+// shortlist that forgot them.
 //
-// There are ~450 IANA zones and almost nobody wants to scroll them. So the picker
-// works in two modes and this file feeds both:
-//
-//   • before the user types — the device's own zone plus a curated shortlist of the
-//     ones an actual person is likely to pick. Short enough to read.
-//   • once they type — the FULL set the runtime knows about, so someone in
-//     Tegucigalpa isn't stuck with a shortlist that forgot them.
-//
-// The full set is asked of the engine rather than hard-coded, because a hard-coded
-// list of zone names goes stale every time a country redraws one, and the engine's
-// list is the same one that has to resolve the name anyway.
+// The full set is asked of the engine rather than hard-coded, since a hard-coded list goes
+// stale every time a country redraws a zone.
 
-// Hermes may not implement Intl Enumeration, and the type only exists in lib.es2022.
-// Read defensively: absent just means the shortlist is all we can offer.
+// Hermes may not implement Intl Enumeration, and the type only exists in lib.es2022. Absent
+// just means the shortlist is all we can offer.
 const enumerated = (): string[] => {
   const supportedValuesOf = (Intl as { supportedValuesOf?: (key: string) => string[] })
     .supportedValuesOf;
@@ -28,8 +22,7 @@ const enumerated = (): string[] => {
   }
 };
 
-// One per real offset the world uses, weighted towards where this app's users are.
-// India first — it is the default and the overwhelmingly likely answer.
+// One per real offset the world uses. India first — it is the default.
 const SHORTLIST = [
   "Asia/Kolkata",
   "Asia/Dubai",
@@ -99,9 +92,8 @@ export type ZoneOption = {
 // "GMT+5:30" / "GMT−4" / "GMT" — minutes only when a zone actually has them, and a
 // real minus sign, because a hyphen at this size reads as a dash between two labels.
 const offsetText = (zone: string, at: Date): string => {
-  // A name the engine can't resolve throws inside Intl. The server validates the
-  // zone it stores, so this is only reachable for a name an older engine has never
-  // heard of — in which case the row still names the place, just without an offset.
+  // A name the engine can't resolve throws inside Intl. The server validates what it
+  // stores, so this is only reachable on an older engine — the row still names the place.
   let minutes: number;
   try {
     minutes = zoneOffsetMinutes(at, zone);
@@ -125,9 +117,8 @@ const describe = (zone: string, at: Date): ZoneOption => {
   return { zone, city, region, offset: offsetText(zone, at) };
 };
 
-// Built once per app run. Offsets are read at build time, which is exact for every
-// purpose this list serves — the label is a hint for picking a zone, not the arithmetic
-// (that always re-reads the offset at the instant in question; see lib/zone).
+// Built once per app run. The offsets here are labels for picking a zone, not arithmetic —
+// that always re-reads the offset at the instant in question (see lib/zone).
 let cache: { shortlist: ZoneOption[]; all: ZoneOption[] } | null = null;
 
 const build = () => {
@@ -135,8 +126,7 @@ const build = () => {
   const at = new Date();
   const device = deviceZone();
 
-  // The device's zone is always offered, even when it isn't one of the curated
-  // names — it's the single likeliest pick and it must never be missing.
+  // Always offered, even when it isn't one of the curated names — the likeliest pick.
   const shortNames = SHORTLIST.includes(device) ? SHORTLIST : [device, ...SHORTLIST];
 
   const everything = enumerated();
@@ -154,11 +144,8 @@ const build = () => {
 /** What the picker lists before the user types. */
 export const shortlistZones = (): ZoneOption[] => build().shortlist;
 
-/**
- * Zones matching a typed term, capped so the sheet can't be handed 400 rows to lay
- * out. Matches the city, the region, the raw name, and the offset — "530", "gmt+5",
- * and "kolkata" all find India.
- */
+/** Zones matching a typed term, capped so the sheet is never handed 400 rows. Matches city,
+ *  region, raw name and offset — "530", "gmt+5" and "kolkata" all find India. */
 export const searchZones = (term: string, limit = 40): ZoneOption[] => {
   const needle = term.trim().toLowerCase();
   if (needle === "") return shortlistZones();

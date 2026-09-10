@@ -12,11 +12,10 @@ const MILESTONES = [25, 50, 75, 100];
 /**
  * Notifies about the highest milestone this contribution crossed.
  *
- * Highest, not each: someone who saves half their target in one go has crossed 25% and
- * 50%, and two buzzes for one action reads as a bug. `savedBefore` is what makes this
- * "crossed" rather than "is above" — without it, every later contribution would re-fire
- * every milestone below it (the dedupe key would catch that, but only until the 90-day
- * TTL rolled it off).
+ * Highest, not each: someone who saves half their target in one go has crossed 25% and 50%, and
+ * two buzzes for one action reads as a bug. `savedBefore` is what makes this "crossed" rather
+ * than "is above" — without it every later contribution re-fires every milestone below it, which
+ * the dedupe key only catches until its 90-day TTL rolls off.
  */
 export const checkGoalMilestone = async (
     goal: { _id: mongoose.Types.ObjectId | string; userId: mongoose.Types.ObjectId | string; name: string; target: number; saved: number },

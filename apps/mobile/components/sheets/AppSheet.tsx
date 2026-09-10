@@ -24,26 +24,20 @@ type Props = {
   /** Long content (e.g. a full category grid) — scroll inside the sheet once it
    * hits its max height, so nothing at the bottom gets clipped. */
   scrollable?: boolean;
-  /** Fixed heights (e.g. ["78%"]). Caps the sheet so it reads as nested over
-   * whatever opened it and opens at a stable position instead of dynamically
-   * growing to near-full-height. When set, dynamic sizing is off. */
+  /** Fixed heights (e.g. ["78%"]), so the sheet reads as nested over whatever opened it
+   * instead of growing to near-full-height. When set, dynamic sizing is off. */
   snapPoints?: Array<string | number>;
   /** Pinned to the bottom, above the scroll and the keyboard — for CTAs that
    * must stay reachable while the body scrolls. */
   footer?: React.ReactNode;
-  /**
-   * Change this to send the body back to the top. Only needed by sheets that swap
-   * their content in place — a picker that turns into a create form, say — since the
-   * scroll offset belongs to the ScrollView and survives a change of children.
-   *
-   * Reopening a sheet is already handled and needs nothing from the caller.
-   */
+  /** Change this to send the body back to the top. Only needed by sheets that swap content
+   * in place, since the scroll offset survives a change of children. Reopening is already
+   * handled. */
   scrollResetKey?: string | number;
 };
 
-// Elevated violet surface (deliberately NOT white glass — a form needs legibility).
-// gorhom fills this component with the sheet's rounded container; we paint the
-// gradient + the 1px lit top edge into it.
+// Elevated violet surface (NOT white glass — a form needs legibility). gorhom fills this
+// with the sheet's rounded container; we paint the gradient and lit top edge into it.
 const SheetBackground = ({ style }: BottomSheetBackgroundProps) => (
   <View style={[style, styles.bgClip]}>
     <LinearGradient
@@ -56,12 +50,11 @@ const SheetBackground = ({ style }: BottomSheetBackgroundProps) => (
   </View>
 );
 
-// A sheet mounts on the next frame and then springs in, so for a moment after the
-// tap nothing on screen acknowledges it. Taps land again — and gorhom drops a
-// re-`present()` of a sheet its queue already holds, leaving that sheet registered
-// at a stale position it can surface from later, over whatever is on top by then.
-// So presenting is idempotent here: ignored while this sheet is up, and for the
-// length of its close animation afterwards.
+// A sheet mounts on the next frame and then springs in, so for a moment after the tap
+// nothing acknowledges it and taps land again — and gorhom drops a re-`present()` of a
+// sheet its queue already holds, leaving it registered at a stale position it can surface
+// from later. So presenting is idempotent: ignored while this sheet is up, and for the
+// length of its close animation.
 const REPRESENT_GUARD_MS = 400;
 
 const AppSheet = forwardRef<BottomSheetModal, Props>(({ children, onDismiss, scrollable, snapPoints, footer, scrollResetKey }, ref) => {
@@ -73,9 +66,8 @@ const AppSheet = forwardRef<BottomSheetModal, Props>(({ children, onDismiss, scr
   const presented = useRef(false);
   const closedAt = useRef(0);
 
-  // Never animated: every caller is a moment where the content just changed or is
-  // off-screen, so an animated scroll would either race the new layout or be a slide
-  // nobody is watching.
+  // Never animated: the content has just changed or is off-screen, so a smooth scroll
+  // would either race the new layout or be a slide nobody is watching.
   const resetScroll = useCallback(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   }, []);
@@ -89,21 +81,19 @@ const AppSheet = forwardRef<BottomSheetModal, Props>(({ children, onDismiss, scr
     modalRef.current?.present(data);
   }, []);
 
-  // gorhom funnels every dismissal — swipe, backdrop tap, programmatic — through
-  // this callback, so it is the one place the gate can be lifted.
+  // gorhom funnels every dismissal through this callback, so it is the one place the gate
+  // can be lifted.
   const handleDismiss = useCallback(() => {
     presented.current = false;
     closedAt.current = Date.now();
-    // A dismissed sheet stays mounted in gorhom's queue, so its ScrollView keeps the
-    // offset it was left at — reopen a sheet someone had scrolled and it comes back
-    // part-way down, showing the middle of a form. Reset here rather than on present:
-    // this fires after the close animation, where the jump can't be seen.
+    // A dismissed sheet stays mounted in gorhom's queue, so its ScrollView keeps the offset
+    // it was left at and reopens part-way down. Reset here rather than on present, since
+    // this fires after the close animation where the jump can't be seen.
     resetScroll();
     onDismiss?.();
   }, [onDismiss, resetScroll]);
 
-  // Owners get this handle rather than gorhom's: `present` is the gated one above,
-  // everything else passes straight through.
+  // Owners get this handle, not gorhom's — `present` is the gated one above.
   useImperativeHandle(ref, () => ({
     present,
     dismiss: (config) => modalRef.current?.dismiss(config),
@@ -128,8 +118,8 @@ const AppSheet = forwardRef<BottomSheetModal, Props>(({ children, onDismiss, scr
     []
   );
 
-  // Sticky footer sits on its own opaque bar so scrolled content passes cleanly
-  // behind it; the scroll body pads itself by the footer's measured height.
+  // Its own opaque bar, so scrolled content passes cleanly behind it; the scroll body pads
+  // itself by the measured height.
   const renderFooter = useCallback(
     (props: BottomSheetFooterProps) => (
       <BottomSheetFooter {...props}>

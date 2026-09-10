@@ -51,7 +51,7 @@ export const SCREEN_ROUTE: Record<HighlightScreen, string> = {
   activity: "/activity",
 };
 
-// --- Dismissals -------------------------------------------------------------------
+// Dismissals.
 // Device-local, like privacy mode and the app lock: which cards THIS phone has waved
 // away is not an account fact, and keeping it off the server keeps the whole feature
 // read-only there. A dismissal expires after a week — a card that still fires then

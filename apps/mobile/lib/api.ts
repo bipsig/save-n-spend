@@ -30,10 +30,9 @@ type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
  * A failed request, with the status the server answered with — or `0` when it never
  * answered at all: a timeout, no signal, an instance still booting.
  *
- * That distinction is load-bearing rather than cosmetic. A token is only ever wrong
- * because a server *said* so, so "rejected" and "unanswered" must not be the same value
- * to a caller. Conflating them is what used to end a session every time the API was
- * merely asleep — see the boot flow in app/_layout.
+ * Load-bearing, not cosmetic: a token is only ever wrong because a server *said* so, so
+ * "rejected" and "unanswered" must not reach a caller as the same value — conflating them ends
+ * a session every time the API is merely asleep. See the boot flow in app/_layout.
  */
 export class ApiError extends Error {
   readonly status: number;

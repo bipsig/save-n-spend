@@ -24,7 +24,7 @@ import Bill from "../models/Bill";
 import Goal from "../models/Goal";
 import { defaultCategories } from "../data/defaultCategories";
 
-// --- deterministic RNG (mulberry32) so re-seeding gives the same data ---------
+// Deterministic RNG (mulberry32), so re-seeding gives the same data.
 let rngState = 20260808;
 const rng = (): number => {
     rngState |= 0;
@@ -45,7 +45,7 @@ const money = (minR: number, maxR: number): number => randInt(minR, maxR) * 100;
 const saltRounds = Number(process.env.SALT_ROUNDS) || 12;
 const now = new Date();
 
-// --- date helpers (UTC, to match the range math the controllers use) ----------
+// Date helpers, in UTC to match the range math the controllers use.
 const daysAgo = (n: number): Date => {
     const d = new Date(now);
     d.setUTCDate(d.getUTCDate() - n);
@@ -56,8 +56,8 @@ const monthsFrom = (offset: number, day: number): Date =>
     new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, day));
 const monthLabel = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
 
-// --- category set (defaults + custom 2-level) ---------------------------------
-// Parents must precede their children; income children hang off "Income".
+// The category set: defaults plus custom two-level. Parents must precede their children,
+// and income children hang off "Income".
 const customCategories: {
     name: string;
     kind: "expense" | "income";
@@ -79,7 +79,7 @@ const customCategories: {
     { name: "Spotify", kind: "expense", icon: "entertainment", color: "success", parentName: "Subscriptions" },
 ];
 
-// --- title pools --------------------------------------------------------------
+// Title pools.
 const groceryTitles = ["BigBasket order", "Weekly groceries", "Reliance Fresh", "Vegetables & fruits", "Milk & eggs run"];
 const restaurantTitles = ["Dinner at Barbeque Nation", "Lunch with friends", "Swiggy order", "Zomato dinner", "Cafe brunch", "Street food"];
 const cabTitles = ["Uber ride", "Ola to office", "Auto fare", "Rapido bike", "Uber to airport"];
@@ -99,8 +99,8 @@ type Gen = {
 
 type Roles = { primary: string; cash: string; savings?: string; wallet?: string };
 
-// A month-by-month activity generator. Routes each series to a role account so
-// it adapts to users with fewer accounts (no wallet → subs move to primary).
+// A month-by-month activity generator. Each series routes to a role account, so it adapts to
+// users with fewer accounts: no wallet means subscriptions move to the primary one.
 const generateTransactions = (roles: Roles, fromMonthsAgo: number, density: number): Gen[] => {
     const out: Gen[] = [];
     const { primary, cash, savings, wallet } = roles;
@@ -150,9 +150,8 @@ const generateTransactions = (roles: Roles, fromMonthsAgo: number, density: numb
         if (chance(0.8)) add(randInt(2, 6), "expense", R(799), subsAcct, "Mobile recharge", "Bills & Utilities");
         if (chance(0.6)) add(randInt(1, 5), "expense", R(1200), primary, "Gym membership", "Healthcare");
 
-        // Everyday variable spend. Days are picked within the elapsed part of the
-        // month (maxDay), so the current month is realistically populated rather
-        // than sparse at the start.
+        // Everyday variable spend. Days are picked within the elapsed part of the month
+        // (maxDay), so the current month is populated rather than sparse.
         for (let i = 0; i < many(randInt(3, 5)); i++)
             add(randInt(1, maxDay), "expense", money(500, 2800), pick([cash, primary]), pick(groceryTitles), "Groceries");
         for (let i = 0; i < many(randInt(2, 5)); i++)
@@ -183,7 +182,7 @@ const generateTransactions = (roles: Roles, fromMonthsAgo: number, density: numb
     return out;
 };
 
-// --- per-user builders --------------------------------------------------------
+// Per-user builders.
 const seedCategories = async (
     userId: mongoose.Types.ObjectId
 ): Promise<Map<string, InstanceType<typeof Category>>> => {
@@ -359,7 +358,7 @@ const seedUser = async (spec: {
     );
 };
 
-// --- the two users ------------------------------------------------------------
+// The two users.
 const seedSagnik = (): Promise<void> =>
     seedUser({
         name: "Sagnik Das",

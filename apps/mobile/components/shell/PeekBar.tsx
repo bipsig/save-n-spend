@@ -18,13 +18,12 @@ import { radius, spacing } from "@/theme";
 
 // The receipt for a peek, and its escape hatch.
 //
-// Revealing every amount at once is only safe if the user can see that it happened
-// and how long it lasts — otherwise they'd have no way to know the app is currently
-// showing their balances to the room. The draining line is the honest version of
-// that: it says "ten seconds" without printing a number that ticks.
+// Revealing every amount at once is only safe if the user can see that it happened and how long
+// it lasts, or they have no way to know the app is showing their balances to the room. The
+// draining line says "ten seconds" without printing a number that ticks.
 //
-// Bottom of the screen, unlike Toast: this is a standing state rather than a
-// message, and the top belongs to whatever the user is actually reading.
+// Bottom of the screen, unlike Toast: a standing state rather than a message, and the top
+// belongs to whatever the user is reading.
 const PeekBar = () => {
   const peeking = useSettings((s) => s.peeking);
   const hide = useSettings((s) => s.hide);

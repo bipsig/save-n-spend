@@ -12,10 +12,8 @@ export const getDashboardSummary = async (req: Request, res: Response): Promise<
 
   const { month } = dashboardSummaryQuerySchema.parse(req.query);
 
-  // Shared with GET /budgets rather than cut here: the dashboard's "this month" and
-  // a budget's month are the same month by definition, and they used to be computed
-  // by two different pieces of code that disagreed about both the zone and — via a
-  // `getFullYear()` where a `getUTCFullYear()` was meant — the year.
+  // Shared with GET /budgets rather than cut here: the dashboard's "this month" and a
+  // budget's month are the same month by definition, and two implementations drift.
   const { start, next, label } = monthRange(await resolveZone(req), month);
 
   const monthlySums = await Transaction.aggregate([

@@ -6,21 +6,16 @@ import { notify, wantsNotification, type NotifiableUser } from "./notificationSe
 import { formatAmount } from "../utils/money";
 import { monthLabelInZone, normalizeZone } from "../utils/timezone";
 
-// Budget alerts are event-driven, not scheduled: the moment worth telling someone about
-// is the one where the expense they just entered took them over, and a nudge that
-// arrives the next morning has missed it.
-//
-// Run after the transaction has committed, so an alert can never be the reason a saved
-// expense fails, and never for a transaction that was rolled back.
+// Event-driven, not scheduled: the moment worth telling someone about is the one where the
+// expense they just entered took them over. Run after the transaction has committed, so an
+// alert can never fail a saved expense, nor fire for one that rolled back.
 
 const WARN_RATIO = 0.8;
 
 /**
- * Notifies if the expense just written pushed its budget past 80% or past the limit.
- *
- * Two separate dedupe keys per budget-month, so someone who crosses 80% mid-month and
- * the limit a week later hears about both — and hears about each exactly once, however
- * many more expenses land in the same category afterwards.
+ * Notifies if the expense just written pushed its budget past 80% or past the limit. Two
+ * dedupe keys per budget-month, so crossing 80% mid-month and the limit a week later is two
+ * notifications — and each is sent exactly once however many more expenses land.
  */
 export const checkBudgetAlerts = async (
     userId: string | mongoose.Types.ObjectId,
@@ -36,14 +31,13 @@ export const checkBudgetAlerts = async (
             .lean();
         if (!user) return;
 
-        // Asked before the aggregation below, not after: a user with budget alerts off
-        // shouldn't pay for this on every expense they enter.
+        // Before the aggregation, not after: alerts off shouldn't cost a query per expense.
         if (!wantsNotification(user.prefs?.notifications, "budgetWarning")) return;
 
         const zone = normalizeZone(user.prefs?.timeZone);
 
-        // The month the SPEND belongs to, which for a backdated entry is not the month
-        // we are in — a receipt typed up on the 2nd still counts against September.
+        // The month the SPEND belongs to — a receipt typed up on the 2nd still counts
+        // against September.
         const month = monthLabelInZone(occurredAt, zone);
 
         const { items } = await budgetProgress(userId, zone, month);
@@ -53,8 +47,8 @@ export const checkBudgetAlerts = async (
             .select("name parent")
             .lean();
 
-        // A limit set on the parent governs its children's spending too, which is the
-        // same rollup the budgets screen shows.
+        // A limit on the parent governs its children too — the same rollup the budgets
+        // screen shows.
         const governing = [String(categoryId), category?.parent ? String(category.parent) : ""];
         const match = items.find((item) => governing.includes(String(item.budget.category)));
 
@@ -67,9 +61,8 @@ export const checkBudgetAlerts = async (
 
         const exceeded = ratio >= 1;
 
-        // Named after the category that holds the LIMIT — telling someone "Groceries is
-        // over budget" when the limit is on Food would send them looking for a budget
-        // that doesn't exist.
+        // Named after the category holding the LIMIT: "Groceries is over budget" when the
+        // limit is on Food sends them looking for a budget that doesn't exist.
         const name = String(budget.category) === String(categoryId)
             ? category?.name
             : (await Category.findById(budget.category).select("name").lean())?.name;
@@ -77,9 +70,8 @@ export const checkBudgetAlerts = async (
 
         const limitText = formatAmount(budget.limit, user.currency);
 
-        // When the limit sits on the parent, the expense that tripped it was filed
-        // somewhere else by name. Without this the notification looks like it is about a
-        // category the user never touched today, so say which sub-category fed it.
+        // With the limit on the parent, the expense that tripped it was filed under
+        // another name — so say which sub-category fed it.
         const rollUp = String(budget.category) !== String(categoryId) && category?.name
             ? ` Includes ${category.name}.`
             : "";
@@ -97,8 +89,8 @@ export const checkBudgetAlerts = async (
         });
     }
     catch (err) {
-        // Same contract as notify itself: the transaction is already saved, and the user
-        // would rather have their expense recorded than a 500 explaining a missing nudge.
+        // Same contract as notify itself — the transaction is already saved, and a missing
+        // nudge is not worth a 500.
         console.error(`[alerts] budget check failed for user ${String(userId)}`, err);
     }
 }

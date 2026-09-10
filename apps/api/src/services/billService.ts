@@ -1,14 +1,12 @@
 import { addMonthsInZone, addYearsInZone, partsInZone, startOfDayInZone } from "../utils/timezone";
 import type { IBill } from "../models/Bill";
 
-// A bill's whole life is described in calendar terms — due on the 12th, monthly,
-// overdue since yesterday — so every comparison here is made in the user's zone. In UTC,
-// a bill due on the 1st reads as overdue for the first five and a half hours of the day
-// in India, which is precisely when someone would be looking at it.
+// A bill's whole life is described in calendar terms — due on the 12th, monthly, overdue since
+// yesterday — so every comparison here is made in the user's zone. In UTC, a bill due on the 1st
+// reads as overdue for the first five and a half hours of the day in India.
 //
-// Shared by the bills screen and the reminder job. They must agree: a bill the list
-// draws as "due in 2 days" and the job treats as overdue would be a bug the user can
-// see on one screen and feel on their lock screen.
+// Shared by the bills screen and the reminder job, which must agree: "due in 2 days" on the list
+// and overdue on the lock screen is a bug the user can see from both sides.
 
 type Frequency = "monthly" | "yearly" | undefined;
 
