@@ -25,8 +25,8 @@
 - [X] privacy mode tap should be applicable to income/expense cards on dashboard as well — `components/ui/Money.tsx` existed but was imported nowhere, so the tap-to-peek promise in Settings was unkept
 - [X] no eye buttons in tabs other than dashboard — extracted `components/shell/PeekButton.tsx` and put it in `ScreenScaffold`, so every screen has it
 - [X] app lock works fine when taken to background but not on a cold start — the effect was keyed on `hydrated` alone, which always won the race against `/auth/me`
-- [X] just like monday a notification for last week similar notification for every day for the previous day and notification for 1st day of the month. Handled the collision with a time slot each — daily 9am, weekly 10am, monthly 11am, all zone-local, because the 1st can be a Monday (see docs/architecture.md § Digest notifications). Daily and weekly are opt-in, monthly is on by default; an empty period sends nothing
-- [ ] Greeting is always Good Evening => Make that something crwative, where we consider not only time of day, somedays the day of the week, some days the payday some festivals, etc, etc.
+- [X] just like monday a notification for last week similar notification for every day for the previous day and notification for 1st day of the month. Handled the collision with a time slot each — daily 6pm, weekly 7pm, monthly 8pm, all zone-local, because the 1st can be a Monday (see docs/architecture.md § Digest notifications). Moved from the morning to the evening later, so the free-tier instance is reliably awake by the time they fire. Daily and weekly are opt-in, monthly is on by default; an empty period sends nothing
+- [X] Greeting is always Good Evening => Make that something crwative, where we consider not only time of day, somedays the day of the week, some days the payday some festivals, etc, etc. It was a hardcoded default prop nothing ever overrode. Now `lib/greeting.ts`: festivals win outright, otherwise the time of day, the day of the week, the 1st and the month's last three days go in one pool picked from by a seed derived from the date — so it is stable all day (no flicker on re-render) and different tomorrow. Calendar-derived only, never money. 21 marked days a year; the lunar table covers 2026 and 2027 and needs a line-per-festival top-up after that, and the solar entries in `FIXED_DAYS` are the common-year dates, so Lohri, Makar Sankranti and Poila Boishakh each want a 2028 override when that leap year comes round
 
 ## 2.0.0 — Shortcuts, Back Tap and the Action Button
 
@@ -38,6 +38,7 @@ native work, and phases 0-2 need no Swift at all.
 - [ ] Phase 1 — cold-launch dismiss fallback for deep-linked modal routes. `add-transaction` closes by going back, and a launch that *starts* at the modal has nothing beneath it, so back lands on a blank screen
 - [ ] Phase 2 — `lib/pendingLink.ts` plus two branches in the gate, so a link arriving while signed out survives the redirect to login instead of dropping the user on the dashboard. In memory only, never persisted; also the fallback if WakeGate's late mount eats the initial URL
 - [ ] Phase 3 — App Intent for "Add Transaction" via expo-apple-targets, so it shows up in Shortcuts and Siri without the user assembling one. Opens the app, never writes: a background write would need Keychain sharing (paid tier) and a second copy of the paise handling in Swift
+- [ ] Local storage or soemthing so that the app is usable in offline mdoe as well
 
 Decided against: **widgets**. Data widgets need App Groups or Keychain sharing,
 both paid-tier, and a balance on the home screen renders outside AppLockGate,
