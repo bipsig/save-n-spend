@@ -463,30 +463,45 @@ twice is what the dedupe keys prevent.
 ### Digest notifications
 
 Three digests, each covering the period that just **closed** — never a rolling
-window. A push headed "31 May in review" that includes this morning's coffee is
-one the reader can prove wrong.
+window. A push headed "31 May in review" that includes today's lunch is one the
+reader can prove wrong.
 
 | Digest | Period | Hour | Default |
 |---|---|---|---|
-| Daily | Yesterday, zone-local midnight to midnight | 9am | off |
-| Weekly | Monday to Sunday, closed by this Monday's midnight | 10am | off |
-| Monthly | The previous calendar month | 11am | **on** |
+| Daily | Yesterday, zone-local midnight to midnight | 6pm | off |
+| Weekly | Monday to Sunday, closed by this Monday's midnight | 7pm | off |
+| Monthly | The previous calendar month | 8pm | **on** |
 
-**The hours are the point.** The 1st of a month can be a Monday, and on that
-morning all three periods have just closed at once. Sent together they arrive as
+**Why the evening, and not the morning.** This is a hosting constraint wearing
+the costume of a product decision. The API runs on Render's free tier, which
+spins the instance down after ~15 minutes idle and then needs 50 seconds or more
+to come back. No free uptime pinger will hold a request open that long, so a
+pinger can *keep* the service awake but cannot *wake* it — which makes the first
+hour of the day the least reliable moment to promise anything, because the day's
+first tick only happens once something patient has woken the instance. By 6pm
+the service has been up for hours and a tick is as close to certain as this tier
+gets. The uptime window runs 7am–11pm local, so 8pm still leaves the monthly
+digest three hours of slack to catch up in.
+
+If the API ever moves to a plan without spin-down, the four constants at the top
+of `reminderJob.ts` are the only thing to change.
+
+**The stagger is the point.** The 1st of a month can be a Monday, and on that
+evening all three periods have just closed at once. Sent together they arrive as
 a stack of three pushes that looks like a bug; an hour apart they read as what
 they are — yesterday, then the week, then the month. The hours are floors, not
-exact times, so a server that was down all morning still delivers all three on
+exact times, so a server that was down all day still delivers all three on
 the first tick it manages: bunched on the recovery path, which is the right
 trade against silence.
 
-Bills and goal deadlines share 9am with the daily digest, because they are about
+Bills and goal deadlines share 6pm with the daily digest, because they are about
 what is *coming* rather than what happened and so don't compete for the same
-attention.
+attention. An evening bill reminder is arguably better placed than a morning
+one, landing when someone is home and able to actually pay it.
 
 **Defaults follow frequency.** Daily and weekly are opt-in; monthly is on. 365
 pushes a year is the kind of thing people uninstall an app over and has to be
-asked for. Twelve a year, on the morning the month just ended, is a reasonable
+asked for. Twelve a year, the day the month just ended, is a reasonable
 thing for a money app to assume is wanted. This is `wantsNotification` in
 `notificationService.ts` — `=== true` for the opt-in kinds, `!== false` for
 monthly.

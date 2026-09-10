@@ -81,9 +81,9 @@ Updates the caller's own profile and preferences. All fields optional.
 | `prefs.notifications.billReminderLead` | 1 \| 3 \| 7 | Days of lead time before a bill is due. |
 | `prefs.notifications.budgetAlerts` | boolean | |
 | `prefs.notifications.goalMilestones` | boolean | |
-| `prefs.notifications.dailySummary` | boolean | Yesterday's totals, 9am local. Defaults to **off**. |
-| `prefs.notifications.weeklySummary` | boolean | The week that ended, Monday 10am local. Defaults to **off**. |
-| `prefs.notifications.monthlySummary` | boolean | The month that ended, the 1st at 11am local, with the biggest spending category. Defaults to **on**. |
+| `prefs.notifications.dailySummary` | boolean | Yesterday's totals, 6pm local. Defaults to **off**. |
+| `prefs.notifications.weeklySummary` | boolean | The week that ended, Monday 7pm local. Defaults to **off**. |
+| `prefs.notifications.monthlySummary` | boolean | The month that ended, the 1st at 8pm local, with the biggest spending category. Defaults to **on**. |
 
 The three digests have separate switches and separate hours. See
 [Digest notifications](architecture.md#digest-notifications).
