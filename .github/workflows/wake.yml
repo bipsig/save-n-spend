@@ -8,43 +8,54 @@
 # onwards got a 503 until someone opened the app, whose splash-screen poll
 # (`apps/mobile/store/wake.ts`) is patient enough to sit through the whole cold start.
 #
-# GitHub Actions has no such time limit, so it can do the one thing the pinger can't:
-# absorb the first slow request. It runs once, just before the pinger's window opens, and
-# hands over a warm instance.
+# GitHub Actions has no such per-request time limit, so it can do the one thing the pinger
+# can't: absorb the first slow request and hand over a warm instance.
 #
 # The service still sleeps overnight, which is the point — the free tier's 750 instance
 # hours a month are what the whole app's "free forever" promise rests on.
 name: Wake the API
 
 on:
-  # 01:15 UTC = 06:45 IST, fifteen minutes ahead of the cron-job.org window (7:00–23:00
-  # IST) so the instance is already warm when the first ping lands. GitHub's cron is
-  # UTC-only and has no timezone field, hence the offset arithmetic; India has no DST, so
-  # this needs no seasonal adjustment.
+  # Three triggers, not one, and a job that holds the instance up rather than pinging once.
   #
-  # Scheduled runs are queued, not guaranteed on the minute — GitHub is explicit that they
-  # can be delayed during periods of high load. That's survivable rather than fatal: a run
-  # that lands at 7:05 costs the 7:00 ping, and the 7:05 one succeeds. If it turns out to
-  # drift further than that, move this earlier rather than making the loop longer.
+  # The first version of this file had a single `15 1 * * *` and GitHub silently declined to
+  # run it — the workflow was active, the file was on the default branch, the expression was
+  # correct, and four hours after it was due the API reported one run ever: a manual click.
+  # That is documented rather than broken. GitHub says the schedule event "can be delayed
+  # during periods of high load", and on a low-traffic repo a run gets dropped outright, not
+  # merely postponed. A once-a-day trigger therefore has a single point of failure whose
+  # failure mode is a dead morning.
+  #
+  # So: three chances, spread either side of the pinger's 07:00 IST window opening. Any one
+  # landing is sufficient, because the job below keeps the service awake until the pinger
+  # takes over. Minutes are deliberately off the hour and off the quarter — GitHub names the
+  # top of the hour as its worst load spike, and :00/:15/:30 are where everyone else queues.
+  #
+  # Cron here is UTC-only with no timezone field, hence the offset arithmetic; India has no
+  # DST, so none of this needs a seasonal adjustment.
   schedule:
-    - cron: '15 1 * * *'
+    - cron: '55 0 * * *'   # 06:25 IST — early, and sustains through the handover
+    - cron: '17 1 * * *'   # 06:47 IST — the intended wake
+    - cron: '39 1 * * *'   # 07:09 IST — a late catch, if the pinger is already failing
 
-  # Kept so this can be triggered by hand from the Actions tab — both to test the workflow
-  # without waiting for tomorrow, and to recover an afternoon the instance dropped out of.
+  # Kept so this can be triggered by hand from the Actions tab — both to test without
+  # waiting for tomorrow, and to recover an afternoon the instance dropped out of. A manual
+  # run outside the morning window skips the sustain phase and just wakes the service.
   workflow_dispatch:
 
 jobs:
   wake:
     runs-on: ubuntu-latest
-    # Generous on purpose: the loop below can legitimately run for ~14 minutes on a very
-    # bad morning, and a job killed mid-cold-start would leave exactly the state this
-    # workflow exists to prevent.
-    timeout-minutes: 20
+    # The sustain phase can legitimately hold this job for ~40 minutes on the earliest
+    # trigger, and a job killed mid-cold-start would leave exactly the state this workflow
+    # exists to prevent. The repo is public, so runner minutes are free and the only real
+    # cost of being generous is a job row that sits green for a while.
+    timeout-minutes: 60
 
     steps:
       # No checkout step: nothing in the repo is needed, and skipping it takes several
       # seconds off a job whose whole purpose is to be early.
-      - name: Ping /health until it answers
+      - name: Wake the service, then hold it until the pinger takes over
         env:
           # `/health` and not `/api/v1/...` — it's unauthenticated, and it answers as soon
           # as the port is bound rather than waiting on the Atlas handshake, so a 200 here
@@ -53,36 +64,72 @@ jobs:
         run: |
           set -uo pipefail
 
-          # --max-time 90 is the number that matters. Render's own warning says a cold
-          # start "can delay requests by 50 seconds or more", so anything under a minute
-          # risks hanging up on a wake that was about to succeed.
-          ATTEMPTS=8
+          # --max-time 90 is the number that matters. Render's own warning says a cold start
+          # "can delay requests by 50 seconds or more", so anything under a minute risks
+          # hanging up on a wake that was about to succeed. There is reason to think an
+          # early hang-up is worse than merely useless: the pinger's 5-minute retries never
+          # succeeded on their own either, which fits Render abandoning a spin-up when the
+          # client that triggered it disconnects.
           MAX_TIME=90
+          ATTEMPTS=8
           BACKOFF=15
 
-          for attempt in $(seq 1 "$ATTEMPTS"); do
-            # A 5xx from Render's edge is a normal part of a cold start, not an error to
-            # abort on, so the exit code is captured rather than allowed to fail the step.
+          # 01:35 UTC = 07:05 IST, expressed as minutes past midnight UTC. Whichever trigger
+          # fires, the job keeps the service awake until this moment and no longer: by then
+          # cron-job.org's 07:00 window is open and its own pings are enough to hold it.
+          HANDOVER=95
+
+          # Portable minutes-past-midnight. `10#` forces base ten — without it `08` and `09`
+          # are read as invalid octal and the arithmetic dies, which would be a fault that
+          # only ever showed up between 08:00 and 09:59 UTC.
+          utc_minutes() { echo $(( 10#$(date -u +%H) * 60 + 10#$(date -u +%M) )); }
+
+          # Echoes one log line and returns 0 only on a 200. A 5xx from Render's edge is a
+          # normal part of a cold start rather than an error to abort on, so curl's exit
+          # code is swallowed and the HTTP status is what decides.
+          ping() {
+            local response status seconds body
             response=$(curl -sS -w '\n%{http_code} %{time_total}' --max-time "$MAX_TIME" "$HEALTH_URL" 2>&1) || true
             status=$(printf '%s' "$response" | tail -n 1 | cut -d' ' -f1)
             seconds=$(printf '%s' "$response" | tail -n 1 | cut -d' ' -f2)
             body=$(printf '%s' "$response" | sed '$d')
+            echo "  $(date -u +%H:%M:%SZ) — HTTP ${status:-none} in ${seconds:-?}s — ${body}"
+            [ "$status" = "200" ]
+          }
 
-            echo "attempt $attempt/$ATTEMPTS — HTTP ${status:-none} in ${seconds:-?}s — ${body}"
-
-            if [ "$status" = "200" ]; then
-              # The body carries `db`, so a warm container still waiting on Atlas is
-              # visible in the log rather than being reported as a clean wake.
-              echo "$body" | grep -q '"db":"connected"' \
-                && echo "::notice::awake in ${seconds}s, database connected" \
-                || echo "::warning::awake in ${seconds}s but the database is still connecting"
-              exit 0
+          echo "Wake phase (up to $ATTEMPTS attempts, ${MAX_TIME}s each):"
+          awake=false
+          for attempt in $(seq 1 "$ATTEMPTS"); do
+            if ping; then
+              awake=true
+              break
             fi
-
             [ "$attempt" -lt "$ATTEMPTS" ] && sleep "$BACKOFF"
           done
 
-          # Failing loudly is deliberate — a silent pass would mean the first sign of
-          # trouble is a user opening the app to a splash screen that never lifts.
-          echo "::error::the API did not return 200 after $ATTEMPTS attempts; check the Render dashboard"
-          exit 1
+          if [ "$awake" = false ]; then
+            # Failing loudly is deliberate — a silent pass would mean the first sign of
+            # trouble is a user opening the app to a splash screen that never lifts.
+            echo "::error::the API did not return 200 after $ATTEMPTS attempts; check the Render dashboard"
+            exit 1
+          fi
+
+          # Holding the instance up is what makes a single surviving trigger sufficient. The
+          # instance idles out ~15 minutes after its last request, so an early wake that
+          # just exited would be asleep again before the pinger's window opened — the 06:25
+          # trigger would wake it and it would be gone by 06:40. Four minutes between pings
+          # keeps a comfortable margin under that idle timeout.
+          if [ "$(utc_minutes)" -ge "$HANDOVER" ]; then
+            echo "Past the 07:05 IST handover — the pinger has it from here."
+            exit 0
+          fi
+
+          echo "Sustain phase (holding until 01:35Z / 07:05 IST):"
+          while [ "$(utc_minutes)" -lt "$HANDOVER" ]; do
+            sleep 240
+            # Non-fatal: the wake already succeeded, so a blip here is worth a warning
+            # rather than a red run that would mask a genuinely failed wake tomorrow.
+            ping || echo "::warning::lost the instance mid-sustain; the next ping may re-wake it"
+          done
+
+          echo "::notice::handed over to the uptime pinger"
