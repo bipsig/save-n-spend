@@ -255,7 +255,7 @@ const SettingsScreen = () => {
         {/* The three digests, listed shortest period first so the frequency reads down
             the group. Each `sub` names the period it covers and how often it lands —
             never a clock time. The server staggers them an hour apart, but that is a
-            scheduling detail: no one turns a switch on wanting to know it fires at 10am,
+            scheduling detail: no one turns a switch on wanting to know it fires at 7pm,
             and an exact hour would be a promise the hourly job can't keep anyway. Help
             answers it for anyone who does wonder. */}
         <SettingsRow
@@ -263,7 +263,7 @@ const SettingsScreen = () => {
           icon="summary"
           tint="teal"
           label="Daily summary"
-          sub="Yesterday's spending, each morning"
+          sub="Yesterday's spending, each evening"
           dimmed={!notifications.enabled}
           on={notifications.dailySummary}
           onToggle={(next) => setNotification({ dailySummary: next })}
