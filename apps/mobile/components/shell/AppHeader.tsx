@@ -5,10 +5,13 @@ import Icon from "../ui/Icon"
 import PressableScale from "../ui/PressableScale"
 import PeekButton from "./PeekButton"
 import { useNotifications } from "@/store/notifications"
+import greetingFor from "@/lib/greeting"
 import { colors, spacing } from "@/theme"
 
 type Props = {
   name: string,
+  /** Overrides the derived greeting. Nothing passes it — it exists so a screen with a
+   *  reason to say something specific can, without reaching into `lib/greeting`. */
   greeting?: string
   initials?: string
   onBellPress?: () => void
@@ -16,13 +19,15 @@ type Props = {
 
 const AppHeader = ({
   name,
-  greeting = "Good Evening",
+  greeting,
   initials,
   onBellPress
 }: Props) => {
   // The dot used to be painted unconditionally, which made it decoration. It now means
   // one thing: there is something unread behind the bell.
   const unread = useNotifications((s) => s.unread);
+
+  const label = greeting ?? greetingFor();
 
   // Derive up to two initials, tolerating an empty/whitespace name (e.g. the
   // brief frame during logout before the gate swaps to Login).
@@ -44,7 +49,7 @@ const AppHeader = ({
         <Avatar initials={displayInitials} size="md" gradient />
         <View>
           <AppText size="xs" color="inkDim">
-            {greeting}
+            {label}
           </AppText>
           <AppText weight="bold" size="sm">
             {name}
