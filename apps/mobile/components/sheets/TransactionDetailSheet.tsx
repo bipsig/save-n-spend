@@ -71,8 +71,15 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
   const router = useRouter();
 
   const account = useAccountById(transaction?.account);
+  const toAccount = useAccountById(transaction?.toAccount);
   const category = useCategoryById(transaction?.category); // icon + colour
   const categoryLabel = useCategoryLabel(transaction?.category); // name + parent
+
+  // A transfer has no title and no category, so everything below that reads one of those
+  // has to be told: otherwise the sheet opens on a blank heading, an "Uncategorised" badge
+  // and a green "+ ₹1,000" for money that only moved between the user's own accounts.
+  const isTransfer = transaction?.type === "transfer";
+  const title = isTransfer ? "Transfer" : transaction?.title ?? "Transaction";
   // Subscribes this sheet to the mask so the delete-confirm's inline amount reveals with
   // everything else. `<Money>` handles its own; a `formatMoney` in a template string can't.
   usePrivacyMask();
@@ -107,7 +114,9 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
       dismiss();
       // Names the row and says the balance moved with it: a delete silently rewrites an
       // account total, and the sheet that explained that has just closed.
-      toast.success(`${transaction.title} deleted — ${account?.name ?? "your account"} updated`);
+      toast.success(isTransfer
+        ? "Transfer deleted — both balances restored"
+        : `${title} deleted — ${account?.name ?? "your account"} updated`);
     }
     catch (err) {
       // The one failure that must not be missed: they just confirmed something destructive
@@ -130,52 +139,68 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
             {/* Spec §08 .centerid — chip · title · spaced-sign amount · tinted badge */}
             <View style={styles.identity}>
               <Icon
-                name={(category?.icon ?? "activity") as IconName}
+                name={isTransfer ? "transfer" : ((category?.icon ?? "activity") as IconName)}
                 size={30}
                 containerSize={64}
                 containerRadius={21}
                 container="square"
-                gradient={(category?.color ?? "accent") as ColorToken}
+                gradient={isTransfer ? "teal" : ((category?.color ?? "accent") as ColorToken)}
               />
               <AppText size="md" weight="black">
-                {transaction.title}
+                {title}
               </AppText>
               {/* The one amount with nothing to compete with, so it is the most
                   natural peek target in the app — this is the sheet a user opens
-                  precisely because they want to see the figure. */}
+                  precisely because they want to see the figure. A transfer gets no
+                  sign and no colour: it neither earned nor spent anything. */}
               <Money
                 value={Math.abs(amount)}
-                prefix={amount < 0 ? "− " : "+ "}
+                prefix={isTransfer ? "" : amount < 0 ? "− " : "+ "}
                 size="xl"
                 weight="black"
-                color={amount < 0 ? "danger" : "success"}
+                color={isTransfer ? "ink" : amount < 0 ? "danger" : "success"}
               />
-              <View
-                style={[styles.badge, { backgroundColor: colors[categoryBg(category?.color)] }]}
-              >
-                <AppText
-                  weight="black"
-                  color={(category?.color ?? "accent") as ColorToken}
-                  style={styles.badgeText}
-                >
-                  {categoryLabel.name.toUpperCase()}
-                </AppText>
-              </View>
-              {/* Under the badge rather than inside it: the badge is tinted with the
-                  category's own colour and sized to one word, and stuffing a parent
-                  name in would break both. This is the sheet someone opens to check
-                  where a purchase was filed, so the heading it rolls up into belongs
-                  on it — just not shouting. */}
-              {categoryLabel.isChild && (
+              {isTransfer ? (
                 <AppText size="xs" color="inkDim">
-                  {`in ${categoryLabel.parentName}`}
+                  Moved between your accounts — not income or spending
                 </AppText>
+              ) : (
+                <>
+                  <View
+                    style={[styles.badge, { backgroundColor: colors[categoryBg(category?.color)] }]}
+                  >
+                    <AppText
+                      weight="black"
+                      color={(category?.color ?? "accent") as ColorToken}
+                      style={styles.badgeText}
+                    >
+                      {categoryLabel.name.toUpperCase()}
+                    </AppText>
+                  </View>
+                  {/* Under the badge rather than inside it: the badge is tinted with the
+                      category's own colour and sized to one word, and stuffing a parent
+                      name in would break both. This is the sheet someone opens to check
+                      where a purchase was filed, so the heading it rolls up into belongs
+                      on it — just not shouting. */}
+                  {categoryLabel.isChild && (
+                    <AppText size="xs" color="inkDim">
+                      {`in ${categoryLabel.parentName}`}
+                    </AppText>
+                  )}
+                </>
               )}
             </View>
 
             {/* Spec .selrow stack — optional fields simply don't render when absent */}
             <View style={styles.rows}>
-              <SelRow icon="wallet" label="ACCOUNT" value={account?.name ?? "—"} />
+              {isTransfer ? (
+                <>
+                  <SelRow icon="wallet" label="FROM" value={account?.name ?? "—"} />
+                  <SelRow icon="transfer" label="TO" value={toAccount?.name ?? "—"} />
+                </>
+              ) : (
+                <SelRow icon="wallet" label="ACCOUNT" value={account?.name ?? "—"} />
+              )}
               <SelRow icon="date" label="DATE" value={formatFullDate(transaction.occurredAt)} />
               {!!transaction.location && (
                 <SelRow icon="location" label="LOCATION" value={transaction.location} />
@@ -215,10 +240,12 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
                 gradient="danger"
               />
               <AppText size="md" weight="black">
-                Delete this transaction?
+                {isTransfer ? "Delete this transfer?" : "Delete this transaction?"}
               </AppText>
               <AppText size="sm" color="inkDim" style={styles.confirmCopy}>
-                {`${formatMoney(Math.abs(amount))} · ${transaction.title} will be removed. Budgets and insights update immediately. This can't be undone.`}
+                {isTransfer
+                  ? `${formatMoney(Math.abs(amount))} goes back to ${account?.name ?? "the source account"}, and off ${toAccount?.name ?? "the destination"}. This can't be undone.`
+                  : `${formatMoney(Math.abs(amount))} · ${title} will be removed. Budgets and insights update immediately. This can't be undone.`}
               </AppText>
               {deleteError && (
                 <AppText size="xs" color="danger" style={styles.confirmCopy}>

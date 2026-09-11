@@ -37,6 +37,7 @@ export const iconMap = {
   entertainment: 'movie',
   health: 'favorite',
   income: 'trending-up',        // up-trend (was a $ glyph — clashed with ₹)
+  transfer: 'compare-arrows',   // money moved between the user's own accounts
   savings: 'savings',           // piggy — goals
   wallet: 'account-balance-wallet', // savings summary tile
   expenses: 'trending-down',
