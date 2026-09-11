@@ -1,6 +1,6 @@
 import { ActivityIndicator, FlatList, ScrollView, StyleSheet, View } from "react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { ICategory, ITransaction } from "@save-n-spend/types";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
@@ -21,8 +21,8 @@ import SkeletonState from "@/components/states/SkeletonState";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { useCategories } from "@/lib/categories";
 import type { IconName } from "@/lib/icons";
-import { useTransactionFeed, useTransactionSummary } from "@/lib/transactions";
-import { RANGES, rangeBounds, rangeLabel, rangeNavLabel, type RangeKey } from "@/lib/dateRange";
+import { useTransactionFeed, useTransactionSummary, type FeedType } from "@/lib/transactions";
+import { RANGES, rangeBounds, rangeLabel, rangeNavLabel, isRangeKey, type RangeKey } from "@/lib/dateRange";
 import { dayGroupLabel, monthGroupLabel } from "@/lib/date";
 import { dayKey, monthKeyOf, useAppZone } from "@/lib/zone";
 import { colors, radius, spacing } from "@/theme";
@@ -110,6 +110,19 @@ const SummaryCard = ({
   );
 };
 
+// What kind of movement is being read, on its own line above the categories. Money in and
+// money out were only ever told apart by the colour of an amount, and the category chips
+// mixed both kinds in one row — so "Salary" and "Groceries" sat side by side as if they
+// were the same sort of filter.
+type TypeKey = "all" | FeedType;
+
+const TYPES: { key: TypeKey; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "expense", label: "Expense" },
+  { key: "income", label: "Income" },
+  { key: "transfer", label: "Transfers" },
+];
+
 const ActivityScreen = () => {
   usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
   const zone = useAppZone(); // subscribe: the zone decides which day each row sits under
@@ -119,12 +132,20 @@ const ActivityScreen = () => {
   const [offset, setOffset] = useState(0);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [activeType, setActiveType] = useState<TypeKey>("all");
   const [activeCategory, setActiveCategory] = useState<string>("all");
 
   // Two-tier category filter: top-level parents, plus a child row once one is active. The
   // open parent is derived from the selection, so picking a child keeps its parent lit.
+  //
+  // Scoped to the kind being read, since a category only ever belongs to one of them:
+  // filtering Income by "Groceries" can only ever return nothing. Transfers have no
+  // category at all, so the rows go away entirely (see below).
   const categories = useCategories();
-  const parents = useMemo(() => categories.filter((c) => !c.parent), [categories]);
+  const parents = useMemo(
+    () => categories.filter((c) => !c.parent && (activeType === "all" || c.kind === activeType)),
+    [categories, activeType]
+  );
   const childrenByParent = useMemo(() => {
     const map = new Map<string, ICategory[]>();
     for (const c of categories) {
@@ -156,10 +177,33 @@ const ActivityScreen = () => {
   const goPrev = () => setOffset((o) => o - 1);
   const goNext = () => setOffset((o) => Math.min(0, o + 1));
 
+  // The category goes back to "all" with it: the rows below are about to be a different
+  // set, and a selection that has left the row it was made in cannot be unmade.
+  const changeType = (t: TypeKey) => {
+    setActiveType(t);
+    setActiveCategory("all");
+  };
+
+  // Opened from a dashboard tile ("Income" / "Expenses"), which names the kind and the month
+  // its figure was summed over. `focus` is a nonce: without it, tapping the same tile after
+  // changing the filter here by hand would arrive with identical params and change nothing.
+  const params = useLocalSearchParams<{ type?: string; range?: string; focus?: string }>();
+  useEffect(() => {
+    if (params.type && TYPES.some((t) => t.key === params.type)) {
+      setActiveType(params.type as TypeKey);
+      setActiveCategory("all");
+    }
+    if (isRangeKey(params.range)) {
+      setRange(params.range);
+      setOffset(0);
+    }
+  }, [params.type, params.range, params.focus]);
+
   const feed = useTransactionFeed({
     startDate: bounds.startDate,
     endDate: bounds.endDate,
     category: activeCategory === "all" ? undefined : activeCategory,
+    type: activeType === "all" ? undefined : activeType,
     search: debouncedQuery || undefined,
   });
   const summary = useTransactionSummary({ startDate: bounds.startDate, endDate: bounds.endDate });
@@ -183,6 +227,9 @@ const ActivityScreen = () => {
     setActiveTransaction(transaction);
     detailRef.current?.present();
   };
+
+  // Whether an empty list means "nothing here" or "nothing matching what you asked for".
+  const narrowed = !!debouncedQuery || activeCategory !== "all" || activeType !== "all";
 
   // Day sections, with a month break when the month rolls over. Only for ranges that can
   // span months (Week/Year/All) — redundant inside a single-month view.
@@ -239,49 +286,61 @@ const ActivityScreen = () => {
 
       <Search value={query} onChangeText={setQuery} placeholder="Search transactions" />
 
-      {/* Two-tier category filter, inline. Parents scroll on one row; selecting
-          one drops in a child row beneath it (rail + "All <Parent>") so the
-          child → parent link reads without a long flat list. */}
+      {/* Three lines, coarsest first: kind, then category, then sub-category. The kind is a
+          track like the range above it — one of four, mutually exclusive — while the two
+          rows under it are chips, which is what narrowing looks like everywhere else in the
+          app. That difference is the boundary; a chip row holding both was the confusion. */}
       <View style={styles.filterCol}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-          <Chip label="All" selected={activeCategory === "all"} onPress={() => setActiveCategory("all")} />
-          {parents.map((parent) => (
-            <Chip
-              key={parent._id}
-              label={parent.name}
-              icon={parent.icon as IconName | undefined}
-              selected={activeCategory === parent._id}
-              active={openParentId === parent._id && activeCategory !== parent._id}
-              onPress={() => setActiveCategory(parent._id)}
-            />
-          ))}
-        </ScrollView>
+        <SegmentedControl segments={TYPES} value={activeType} onChange={changeType} />
 
-        {openParent && childRow.length > 0 && (
-          <View style={styles.childWrap}>
-            <View style={styles.childRail} />
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.childScroll}
-              contentContainerStyle={styles.filterRow}
-            >
+        {/* A transfer has no category, so there is nothing here to narrow. */}
+        {activeType !== "transfer" && (
+          <>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
               <Chip
-                label={`All ${openParent.name}`}
-                selected={activeCategory === openParent._id}
-                onPress={() => setActiveCategory(openParent._id)}
+                label="All categories"
+                selected={activeCategory === "all"}
+                onPress={() => setActiveCategory("all")}
               />
-              {childRow.map((child) => (
+              {parents.map((parent) => (
                 <Chip
-                  key={child._id}
-                  label={child.name}
-                  icon={child.icon as IconName | undefined}
-                  selected={activeCategory === child._id}
-                  onPress={() => setActiveCategory(child._id)}
+                  key={parent._id}
+                  label={parent.name}
+                  icon={parent.icon as IconName | undefined}
+                  selected={activeCategory === parent._id}
+                  active={openParentId === parent._id && activeCategory !== parent._id}
+                  onPress={() => setActiveCategory(parent._id)}
                 />
               ))}
             </ScrollView>
-          </View>
+
+            {openParent && childRow.length > 0 && (
+              <View style={styles.childWrap}>
+                <View style={styles.childRail} />
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.childScroll}
+                  contentContainerStyle={styles.filterRow}
+                >
+                  <Chip
+                    label={`All ${openParent.name}`}
+                    selected={activeCategory === openParent._id}
+                    onPress={() => setActiveCategory(openParent._id)}
+                  />
+                  {childRow.map((child) => (
+                    <Chip
+                      key={child._id}
+                      label={child.name}
+                      icon={child.icon as IconName | undefined}
+                      selected={activeCategory === child._id}
+                      onPress={() => setActiveCategory(child._id)}
+                    />
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+          </>
         )}
       </View>
 
@@ -327,15 +386,15 @@ const ActivityScreen = () => {
               </View>
             ) : (
               <EmptyState
-                title={debouncedQuery || activeCategory !== "all" ? "No matching transactions" : "No transactions yet"}
+                title={narrowed ? "No matching transactions" : "No transactions yet"}
                 subtitle={
-                  debouncedQuery || activeCategory !== "all"
-                    ? "Try a different search, category, or range."
+                  narrowed
+                    ? "Try a different search, filter, or range."
                     : "Record what you spend and earn, and this becomes your full history."
                 }
                 // Only the never-recorded-anything case gets a button — the fix for an
                 // empty search is a different query, not a new entry.
-                {...(!debouncedQuery && activeCategory === "all" && {
+                {...(!narrowed && {
                   actionLabel: "Add transaction",
                   onAction: () => router.push("/add-transaction"),
                 })}

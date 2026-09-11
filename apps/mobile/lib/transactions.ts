@@ -51,10 +51,15 @@ export const useTransactions = () => {
   return { items, loading, error, refetch };
 }
 
+/** The three kinds a reader can ask for. Balance corrections are never one of them —
+ *  the server leaves them out of Activity entirely (see `filterTransactions`). */
+export type FeedType = "income" | "expense" | "transfer";
+
 export type FeedParams = {
   startDate?: string;
   endDate?: string;
   category?: string;
+  type?: FeedType;
   search?: string;
 };
 
@@ -73,7 +78,7 @@ export const useTransactionFeed = (params: FeedParams) => {
   // A monotonic id so a slow response from a stale filter can't clobber a newer one.
   const reqId = useRef(0);
   // Serialize the filter so the load callback is stable while values are unchanged.
-  const key = `${params.startDate ?? ""}|${params.endDate ?? ""}|${params.category ?? ""}|${params.search ?? ""}`;
+  const key = `${params.startDate ?? ""}|${params.endDate ?? ""}|${params.category ?? ""}|${params.type ?? ""}|${params.search ?? ""}`;
 
   const load = useCallback(async (targetPage: number, replace: boolean) => {
     if (useSession.getState().status !== "authed") return;
@@ -87,6 +92,7 @@ export const useTransactionFeed = (params: FeedParams) => {
         startDate: params.startDate,
         endDate: params.endDate,
         category: params.category,
+        type: params.type,
         search: params.search,
       });
       const res = await get<Paginated<ITransaction>>(`/transactions${query}`);

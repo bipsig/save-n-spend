@@ -23,6 +23,10 @@ export const RANGES: { key: RangeKey; label: string }[] = [
   { key: "all", label: "All" },
 ];
 
+/** For a range arriving as a navigation param, where anything could be in the string. */
+export const isRangeKey = (value: unknown): value is RangeKey =>
+  typeof value === "string" && RANGES.some((r) => r.key === value);
+
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const MON_FULL = [
   "January", "February", "March", "April", "May", "June",
