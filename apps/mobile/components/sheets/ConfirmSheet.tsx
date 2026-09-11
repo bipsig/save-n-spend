@@ -67,31 +67,9 @@ const ConfirmSheet = forwardRef<BottomSheetModal, Props>((
   };
 
   return (
-    <AppSheet
-      ref={innerRef}
-      onDismiss={reset}
-      footer={
-        <View style={styles.actions}>
-          {hold ? (
-            <HoldButton
-              label={confirmLabel}
-              holdingLabel="Keep holding to delete…"
-              icon="delete"
-              loading={busy}
-              onComplete={run}
-            />
-          ) : (
-            <Button
-              label={confirmLabel}
-              variant={tone}
-              loading={busy}
-              onPress={run}
-            />
-          )}
-          <Button label={cancelLabel} variant="ghost" disabled={busy} onPress={dismiss} />
-        </View>
-      }
-    >
+    // No pinned footer, unlike the form sheets: nothing here scrolls, so a bar of its own
+    // would only add a divider and a band of dead space under two buttons.
+    <AppSheet ref={innerRef} onDismiss={reset}>
       <View style={styles.identity}>
         <Icon
           name={icon}
@@ -121,6 +99,21 @@ const ConfirmSheet = forwardRef<BottomSheetModal, Props>((
           {error}
         </AppText>
       )}
+
+      <View style={styles.actions}>
+        {hold ? (
+          <HoldButton
+            label={confirmLabel}
+            holdingLabel="Keep holding to delete…"
+            icon="delete"
+            loading={busy}
+            onComplete={run}
+          />
+        ) : (
+          <Button label={confirmLabel} variant={tone} loading={busy} onPress={run} />
+        )}
+        <Button label={cancelLabel} variant="ghost" disabled={busy} onPress={dismiss} />
+      </View>
     </AppSheet>
   );
 });

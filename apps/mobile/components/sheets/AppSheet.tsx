@@ -146,7 +146,11 @@ const AppSheet = forwardRef<BottomSheetModal, Props>(({ children, onDismiss, scr
     [footer, bottom]
   );
 
-  const bodyPad = footer ? { paddingBottom: footerHeight + spacing.lg } : null;
+  // With a footer the body has to clear the bar; without one it clears the home indicator,
+  // since a dynamically sized sheet ends at the bottom of the screen.
+  const bodyPad = footer
+    ? { paddingBottom: footerHeight + spacing.lg }
+    : { paddingBottom: Math.max(bottom, spacing["2xl"]) };
 
   return (
     <BottomSheetModal
