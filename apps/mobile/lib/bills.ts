@@ -1,6 +1,6 @@
 import type { IBill, BillFrequency } from "@save-n-spend/types";
 import { useCallback, useEffect, useState } from "react";
-import { get } from "@/lib/api";
+import { del, get, patch } from "@/lib/api";
 import { appZone, calendarDate, calendarToday } from "@/lib/zone";
 import { useSession } from "@/store/session";
 
@@ -54,6 +54,24 @@ export const useBills = () => {
 
   return { items, loading, error, refetch };
 };
+
+/** The fields a bill's own sheet can change. `frequency` is absent for a one-off. */
+export type BillPatch = {
+  name: string;
+  amount: number;
+  category: string;
+  dueDate: string;
+  recurring: boolean;
+  frequency?: BillFrequency;
+  /** 0 = no advance nudge. The due-day and overdue notices aren't a lead time. */
+  reminderDays: number;
+};
+
+export const updateBill = (id: string, body: BillPatch) => patch<IBill>(`/bills/${id}`, body);
+
+// Unlike a category or an account, a bill really is erased: nothing is filed under it,
+// and paying one writes a transaction that stands on its own.
+export const deleteBill = (id: string) => del<null>(`/bills/${id}`);
 
 export type BillGroups = {
   overdue: IBill[];

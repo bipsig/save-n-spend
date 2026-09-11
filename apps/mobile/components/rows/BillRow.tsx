@@ -5,6 +5,7 @@ import { AppText } from "../ui/AppText";
 import Icon from "../ui/Icon";
 import Badge from "../ui/Badge";
 import PressableScale from "../ui/PressableScale";
+import RowActions from "./RowActions";
 import { useCategoryById } from "@/lib/categories";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
@@ -16,9 +17,12 @@ import Money from "../ui/Money";
 type Props = {
   bill: IBill
   onPress?: () => void
+  /** Both or neither — the trailing pair only appears on the Bills screen itself. */
+  onEdit?: () => void
+  onDelete?: () => void
 };
 
-const BillRow = ({ bill, onPress }: Props) => {
+const BillRow = ({ bill, onPress, onEdit, onDelete }: Props) => {
   const category = useCategoryById(bill.category);
 
   // A pending bill already pushed into a future period (paid/skipped this cycle,
@@ -48,11 +52,13 @@ const BillRow = ({ bill, onPress }: Props) => {
         gradient={(category?.color ?? "accent") as ColorToken}
       />
 
+      {/* Capped to a line each: the trailing actions take width off this column, and a
+          long bill name wrapping would grow the row past its neighbours'. */}
       <View style={styles.info}>
-        <AppText size="md" weight="bold">
+        <AppText size="md" weight="bold" numberOfLines={1}>
           {bill.name}
         </AppText>
-        <AppText size="sm" weight="semibold" color={dueColor}>
+        <AppText size="sm" weight="semibold" color={dueColor} numberOfLines={1}>
           {meta}
         </AppText>
       </View>
@@ -73,6 +79,8 @@ const BillRow = ({ bill, onPress }: Props) => {
           <Badge label={bill.status} status={bill.status} size="sm" />
         )}
       </View>
+
+      {onEdit && onDelete && <RowActions label={bill.name} onEdit={onEdit} onDelete={onDelete} />}
       </Card>
     </PressableScale>
   );
