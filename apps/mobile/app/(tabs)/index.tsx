@@ -99,6 +99,12 @@ const HomeScreen = () => {
   // state with the matching CTA — so the checklist never has to drive a sheet from here.
   const openStep = (step: OnboardingStep) => router.push(step.route);
 
+  // Activity, already narrowed to the tile that was tapped: the same month the figure was
+  // summed over, and only that half of it. `focus` is a nonce, so a second tap re-applies
+  // the filter even if it was changed by hand in between (see the Activity screen).
+  const openActivity = (type: "income" | "expense") =>
+    router.push({ pathname: "/activity", params: { type, range: "month", focus: String(Date.now()) } });
+
   // Action queue — overdue first, then the nearest upcoming, capped at 3.
   const billGroups = groupBills(bills);
   const billQueue = [...billGroups.overdue, ...billGroups.upcoming].slice(0, 3);
@@ -164,19 +170,6 @@ const HomeScreen = () => {
         />
       )}
 
-      {/* Above the score and the tiles, because it is the only thing on this screen that
-          answers "did that go in?" — the question the app is usually opened to check.
-          Everything below is a reading of a whole month, which doesn't change between two
-          glances the way the last three rows do. */}
-      {recentTransactions.length > 0 && (
-        <View style={styles.section}>
-          <SectionHeader label="RECENT TRANSACTIONS" actionLabel="See all" onAction={() => router.push("/activity")} />
-          {recentTransactions.map((transaction) => (
-            <TransactionRow key={transaction._id} transaction={transaction} onPress={() => router.push("/activity")} />
-          ))}
-        </View>
-      )}
-
       {/* Absent until it has loaded rather than rendered as a placeholder: a score is a
           judgement, and a skeleton in the shape of one invites the user to read a number
           that isn't there yet. */}
@@ -184,6 +177,9 @@ const HomeScreen = () => {
         <HealthScoreCard health={health} onPress={() => router.push("/health")} />
       )}
 
+      {/* The month, under the verdict that reads it. Every tile leads to where its figure
+          comes from — the two halves to their own transactions, savings to the trend that
+          explains the gap, net worth to the accounts it sums. */}
       <View style={styles.grid}>
         <View style={styles.gridRow}>
           <SummaryCard
@@ -192,6 +188,7 @@ const HomeScreen = () => {
             iconBg="successSoft"
             label="Income"
             amount={dashboardSummary.income}
+            onPress={() => openActivity("income")}
           />
           <SummaryCard
             icon="expenses"
@@ -199,10 +196,14 @@ const HomeScreen = () => {
             iconBg="dangerSoft"
             label="Expenses"
             amount={dashboardSummary.expenses}
+            onPress={() => openActivity("expense")}
           />
         </View>
 
         <View style={styles.gridRow}>
+          {/* Insights rather than Goals: this is income minus expenses for the month, and
+              the screen that breaks it down is the one with the trend and the savings rate.
+              Goals are what savings are FOR, and they have their own section below. */}
           <SummaryCard
             icon="wallet"
             iconColor="info"
@@ -211,20 +212,30 @@ const HomeScreen = () => {
             amount={dashboardSummary.savings}
             caption={savingsCaption}
             captionColor="info"
+            onPress={() => router.push("/insights")}
           />
-          {/* The one tile with something behind it: the figure is the sum of every
-              account's balance, and the sheet is that sum shown as its terms. */}
           <SummaryCard
             icon="investments"
             iconColor="primary"
             iconBg="accentSoft"
             label="Net Worth"
             amount={dashboardSummary.netWorth}
-            caption={accounts.length > 0 ? "Tap for a breakdown" : undefined}
             onPress={accounts.length > 0 ? () => netWorthRef.current?.present() : undefined}
           />
         </View>
       </View>
+
+      {/* Under the month's figures: those are a reading of thirty days, which doesn't change
+          between two glances, while these three rows answer "did that go in?" — the question
+          the app is usually opened to check. */}
+      {recentTransactions.length > 0 && (
+        <View style={styles.section}>
+          <SectionHeader label="RECENT TRANSACTIONS" actionLabel="See all" onAction={() => router.push("/activity")} />
+          {recentTransactions.map((transaction) => (
+            <TransactionRow key={transaction._id} transaction={transaction} onPress={() => router.push("/activity")} />
+          ))}
+        </View>
+      )}
 
       {billQueue.length > 0 && (
         <View style={styles.section}>
