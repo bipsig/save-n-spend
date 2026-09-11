@@ -2,6 +2,7 @@ import type { IGoal } from "@save-n-spend/types";
 import { StyleSheet, View } from "react-native";
 import ProgressBar from "../data/ProgressBar";
 import PressableScale from "../ui/PressableScale";
+import RowActions from "./RowActions";
 import type { ColorToken } from "@/theme";
 import { spacing } from "@/theme";
 import Card from "../data/Card";
@@ -14,6 +15,9 @@ import { appZone } from "@/lib/zone";
 type Props = {
   goal: IGoal
   onPress?: () => void
+  /** Both or neither — the trailing pair only appears on the Goals screen itself. */
+  onEdit?: () => void
+  onDelete?: () => void
 };
 
 // Deadline → "Dec 2026" pace label (client-derived; absent → "No deadline").
@@ -32,7 +36,7 @@ const deadlineLabel = (iso?: string): string =>
 
 // Spec GoalCard: gradient icon chip (goal color, glowing) · name 15/700 ·
 // "saved / target" sub · % colored per goal · pace line · tinted gradient bar.
-const GoalCard = ({ goal, onPress }: Props) => {
+const GoalCard = ({ goal, onPress, onEdit, onDelete }: Props) => {
   usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
   const color = (goal.color ?? "accent") as ColorToken;
   const percent = Math.min(Math.round((goal.saved / goal.target) * 100), 100);
@@ -50,7 +54,7 @@ const GoalCard = ({ goal, onPress }: Props) => {
             gradient={color}
           />
           <View style={styles.info}>
-            <AppText size="md" weight="bold">
+            <AppText size="md" weight="bold" numberOfLines={1}>
               {goal.name}
             </AppText>
             <AppText size="sm" color="inkDim">
@@ -71,6 +75,8 @@ const GoalCard = ({ goal, onPress }: Props) => {
               </AppText>
             )}
           </View>
+
+          {onEdit && onDelete && <RowActions label={goal.name} onEdit={onEdit} onDelete={onDelete} />}
         </View>
 
         <ProgressBar value={percent} color={achieved ? "success" : color} />

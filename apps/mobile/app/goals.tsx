@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
+import Animated, { LinearTransition } from "react-native-reanimated";
 import { useFocusEffect, useRouter } from "expo-router";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { IGoal } from "@save-n-spend/types";
@@ -13,8 +14,10 @@ import EmptyState from "@/components/states/EmptyState";
 import ErrorState from "@/components/states/ErrorState";
 import SkeletonState from "@/components/states/SkeletonState";
 import ContributeSheet from "@/components/sheets/ContributeSheet";
+import ConfirmSheet from "@/components/sheets/ConfirmSheet";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
-import { useGoals, goalsSummary, sortGoals } from "@/lib/goals";
+import { useGoals, goalsSummary, sortGoals, deleteGoal } from "@/lib/goals";
+import { toast } from "@/store/toast";
 import { radius, spacing } from "@/theme";
 
 const GoalsScreen = () => {
@@ -23,7 +26,9 @@ const GoalsScreen = () => {
   const { items, loading, error, refetch } = useGoals();
 
   const contributeRef = useRef<BottomSheetModal>(null);
+  const deleteRef = useRef<BottomSheetModal>(null);
   const [active, setActive] = useState<IGoal | null>(null);
+  const [removing, setRemoving] = useState<IGoal | null>(null);
 
   useFocusEffect(useCallback(() => {
     refetch();
@@ -34,9 +39,18 @@ const GoalsScreen = () => {
     contributeRef.current?.present();
   };
 
+  const onDelete = (goal: IGoal) => {
+    setRemoving(goal);
+    deleteRef.current?.present();
+  };
+
   // Creating a goal is a full modal route, not a sheet — it needs the numpad and
   // the icon/colour grids at full height. Focus-refetch picks up the new goal.
   const openCreate = () => router.push("/add-goal");
+
+  // The same route, which loads the goal from its id — so editing gets the numpad and
+  // the grids too, rather than a cut-down sheet that can only rename.
+  const openEdit = (goal: IGoal) => router.push({ pathname: "/add-goal", params: { id: goal._id } });
 
   const headerRight = (
     <Button label="+ New Goal" pill size="sm" onPress={openCreate} />
@@ -96,12 +110,42 @@ const GoalsScreen = () => {
           </GradientCard>
 
           {sorted.map((goal) => (
-            <GoalCard key={goal._id} goal={goal} onPress={() => onPick(goal)} />
+            // Tweens the gap a deleted card leaves, so the ones below slide up rather
+            // than jump into its place.
+            <Animated.View key={goal._id} layout={LinearTransition.duration(220)}>
+              <GoalCard
+                goal={goal}
+                onPress={() => onPick(goal)}
+                onEdit={() => openEdit(goal)}
+                onDelete={() => onDelete(goal)}
+              />
+            </Animated.View>
           ))}
         </>
       )}
 
       <ContributeSheet ref={contributeRef} goal={active} onChanged={refetch} />
+
+      <ConfirmSheet
+        ref={deleteRef}
+        icon="delete"
+        title={`Delete ${removing?.name ?? "goal"}?`}
+        // Names the figure, because "saved" reads like money held inside the goal. It
+        // isn't: contributions were recorded against an account, and only the target
+        // and the progress bar built on it go away.
+        body={
+          removing && removing.saved > 0
+            ? `The target goes, and so does the ${formatMoney(removing.saved)} of progress against it. The contributions themselves stay in your transactions — no balance changes.`
+            : "The target goes and the card leaves this list. Nothing else changes."
+        }
+        confirmLabel="Delete goal"
+        onConfirm={async () => {
+          if (!removing) return;
+          await deleteGoal(removing._id);
+          refetch();
+          toast.success(`${removing.name} deleted`);
+        }}
+      />
     </ScreenScaffold>
   );
 };

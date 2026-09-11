@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { z } from "zod/v4";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -15,13 +15,16 @@ import Toggle from "@/components/ui/Toggle";
 import IconPicker from "@/components/ui/IconPicker";
 import ColorPicker from "@/components/ui/ColorPicker";
 import DateField from "@/components/ui/DateField";
+import ErrorState from "@/components/states/ErrorState";
+import SkeletonState from "@/components/states/SkeletonState";
 import formatMoney, { parseMoney, usePrivacyMask } from "@/lib/money";
 import { formatFullDate, startOfToday, toZonedDayISO } from "@/lib/date";
 import { haptics } from "@/lib/haptics";
+import { fetchGoal, updateGoal } from "@/lib/goals";
 import { post } from "@/lib/api";
 import { toast } from "@/store/toast";
 import type { IconName } from "@/lib/icons";
-import { spacing } from "@/theme";
+import { radius, spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
 
 const schema = z.object({
@@ -74,11 +77,19 @@ const formatAmountDisplay = (raw: string): string => {
 // Same numpad as Add Transaction — digits stream straight into the hero figure.
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "back"] as const;
 
+// Same route for both: an `id` means edit. The form needs the numpad and the icon and
+// colour grids at full height, so a sheet would have to be a cut-down copy of this.
 const AddGoal = () => {
   usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
   const router = useRouter();
+  const { id } = useLocalSearchParams<{ id?: string }>();
+  const editing = Boolean(id);
 
   const [deadline, setDeadline] = useState<Date | null>(null);
+  const [saved, setSaved] = useState(0);
+  // Only ever true while editing; a new goal has nothing to wait for.
+  const [loading, setLoading] = useState(editing);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -87,12 +98,46 @@ const AddGoal = () => {
     handleSubmit,
     watch,
     setValue,
+    reset,
     formState: { errors, isValid },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     mode: "onChange",
     defaultValues: { name: "", amount: "", icon: "savings", color: "accent" },
   });
+
+  // Loaded rather than passed through params, so the route also works from a deep link
+  // or after the list behind it has gone. Nothing is rendered until it lands, so there
+  // is no window in which typing could be clobbered by the reset.
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const goal = await fetchGoal(id);
+        if (cancelled) return;
+        if (!goal) {
+          setLoadError("That goal no longer exists.");
+          return;
+        }
+        reset({
+          name: goal.name,
+          amount: (goal.target / 100).toFixed(2).replace(/\.00$/, ""),
+          icon: goal.icon ?? "savings",
+          color: goal.color ?? "accent",
+        });
+        setSaved(goal.saved);
+        setDeadline(goal.deadline ? new Date(goal.deadline) : null);
+      }
+      catch (err) {
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : "Couldn't load the goal");
+      }
+      finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [id, reset]);
 
   const amountRaw = watch("amount");
   const name = watch("name");
@@ -124,39 +169,56 @@ const AddGoal = () => {
     setAmount(cur === "0" ? key : cur + key); // a lone leading zero is replaced, not appended
   };
 
-  // What the target costs per month. Only meaningful with both a target and a deadline.
+  // What's still to find, per month. Money already contributed doesn't need saving
+  // again, so an edited goal paces the remainder — never the whole target.
+  const remaining = Math.max(target - saved, 0);
   const months = deadline ? monthsUntil(deadline) : 0;
+  const perMonth = months > 0 ? Math.ceil(remaining / months) : remaining;
   const paceLine =
     target > 0 && deadline
-      ? `${formatMoney(Math.ceil(target / months))} a month for ${months} ${months === 1 ? "month" : "months"}`
+      ? remaining === 0
+        ? "Already there — the target is covered."
+        : `${formatMoney(perMonth)} a month for ${months} ${months === 1 ? "month" : "months"}`
       : target > 0
         ? "Set a target date to see what it costs per month"
         : null;
 
   const onSubmit = async (data: FormValues) => {
+    const name = data.name.trim();
+    const fields = {
+      name,
+      target: parseMoney(data.amount),
+      icon: data.icon,
+      color: data.color,
+    };
+    const iso = deadline ? toZonedDayISO(deadline) : null;
+
     setSubmitting(true);
     setSubmitError(null);
     try {
-      await post("/goals", {
-        name: data.name.trim(),
-        target: parseMoney(data.amount),
-        icon: data.icon,
-        color: data.color,
-        ...(deadline ? { deadline: toZonedDayISO(deadline) } : {}),
-      });
+      // Explicitly null on a PATCH, so switching the deadline off clears the one stored —
+      // a PATCH ignores what it isn't sent. Create has nothing to clear and rejects null.
+      if (id) await updateGoal(id, { ...fields, deadline: iso });
+      else await post("/goals", { ...fields, ...(iso ? { deadline: iso } : {}) });
       router.back();
       // The receipt repeats the pace: the screen that worked it out is gone by now.
       toast.success(
-        deadline
-          ? `${data.name.trim()} started — ${formatMoney(Math.ceil(parseMoney(data.amount) / months))} a month`
-          : `${data.name.trim()} started — ${formatMoney(parseMoney(data.amount))} to go`
+        editing
+          ? deadline
+            ? `${name} updated — ${formatMoney(perMonth)} a month`
+            : `${name} updated`
+          : deadline
+            ? `${name} started — ${formatMoney(perMonth)} a month`
+            : `${name} started — ${formatMoney(remaining)} to go`
       );
     }
     catch (err) {
       // Kept on the screen, beside the name, target, icon and colour just chosen. The buzz
       // is what makes small red text at the bottom of a long form noticeable.
       haptics.error();
-      setSubmitError(err instanceof Error ? err.message : "Couldn't create the goal");
+      setSubmitError(
+        err instanceof Error ? err.message : `Couldn't ${editing ? "save" : "create"} the goal`
+      );
     }
     finally {
       setSubmitting(false);
@@ -170,11 +232,32 @@ const AddGoal = () => {
           route, instead of this screen's own hand-rolled copy of it. */}
       <BackButton variant="close" />
       <AppText weight="black" size="lg">
-        New Goal
+        {editing ? "Edit Goal" : "New Goal"}
       </AppText>
       <View style={styles.headerSpacer} />
     </View>
   );
+
+  if (loadError) {
+    return (
+      <ScreenScaffold header={header}>
+        <ErrorState message={loadError} onRetry={() => router.back()} />
+      </ScreenScaffold>
+    );
+  }
+
+  // Nothing is drawn until the goal lands: rendering the form empty and filling it in
+  // afterwards would overwrite anything typed in between.
+  if (loading) {
+    return (
+      <ScreenScaffold header={header}>
+        <SkeletonState height={96} borderRadius={radius.lg} />
+        <SkeletonState height={56} borderRadius={radius.lg} />
+        <SkeletonState height={120} borderRadius={radius.lg} />
+        <SkeletonState height={200} borderRadius={radius.lg} />
+      </ScreenScaffold>
+    );
+  }
 
   return (
     <ScreenScaffold header={header} scroll={false}>
@@ -208,6 +291,15 @@ const AddGoal = () => {
             </AppText>
             <View style={styles.caret} />
           </View>
+          {/* What's already in, so a target being lowered is judged against it rather
+              than in the abstract. Only ever shown while editing — a new goal has none. */}
+          {saved > 0 && (
+            <AppText size="xs" color="inkDim">
+              {target > 0 && target < saved
+                ? `${formatMoney(saved)} already saved — below the new target`
+                : `${formatMoney(saved)} already saved`}
+            </AppText>
+          )}
           {paceLine && (
             <AppText size="xs" color="inkDim">
               {paceLine}
@@ -288,11 +380,13 @@ const AddGoal = () => {
                 the switch reads as one thing replacing another rather than a jump. */}
             {deadline ? (
               <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)}>
+                {/* No floor while editing: a goal's deadline may already have passed,
+                    and a picker that refuses to show it can't be moved. */}
                 <DateField
                   label="DEADLINE"
                   value={deadline}
                   onChange={setDeadline}
-                  minimumDate={startOfToday()}
+                  minimumDate={editing ? undefined : startOfToday()}
                 />
               </Animated.View>
             ) : (
@@ -337,11 +431,10 @@ const AddGoal = () => {
 
         <Button
           label={
-            target > 0
-              ? deadline
-                ? `Create · ${formatMoney(target)} by ${formatFullDate(deadline.toISOString())}`
-                : `Create · ${formatMoney(target)}`
-              : "Create Goal"
+            target === 0
+              ? editing ? "Save Goal" : "Create Goal"
+              : `${editing ? "Save" : "Create"} · ${formatMoney(target)}`
+                + (deadline ? ` by ${formatFullDate(deadline.toISOString())}` : "")
           }
           onPress={handleSubmit(onSubmit)}
           loading={submitting}
