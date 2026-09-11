@@ -9,7 +9,8 @@ import Fab from "@/components/ui/Fab";
 import BillRow from "@/components/rows/BillRow";
 import GoalCard from "@/components/rows/GoalCard";
 import TransactionRow from "@/components/rows/TransactionRow";
-import formatMoney, { usePrivacyMask } from "@/lib/money";
+import NetWorthSheet from "@/components/sheets/NetWorthSheet";
+import { usePrivacyMask } from "@/lib/money";
 import { radius, spacing } from "@/theme";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useDashboardSummary } from "@/lib/dashboard";
@@ -26,12 +27,14 @@ import { useAccountStore } from "@/store/accounts";
 import EmptyState from "@/components/states/EmptyState";
 import ErrorState from "@/components/states/ErrorState";
 import SkeletonState from "@/components/states/SkeletonState";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 
 const HomeScreen = () => {
   usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
 
   const router = useRouter();
+  const netWorthRef = useRef<BottomSheetModal>(null);
 
   const userName = useSession((s) => s.user?.name);
   const userId = useSession((s) => s.user?._id);
@@ -161,6 +164,19 @@ const HomeScreen = () => {
         />
       )}
 
+      {/* Above the score and the tiles, because it is the only thing on this screen that
+          answers "did that go in?" — the question the app is usually opened to check.
+          Everything below is a reading of a whole month, which doesn't change between two
+          glances the way the last three rows do. */}
+      {recentTransactions.length > 0 && (
+        <View style={styles.section}>
+          <SectionHeader label="RECENT TRANSACTIONS" actionLabel="See all" onAction={() => router.push("/activity")} />
+          {recentTransactions.map((transaction) => (
+            <TransactionRow key={transaction._id} transaction={transaction} onPress={() => router.push("/activity")} />
+          ))}
+        </View>
+      )}
+
       {/* Absent until it has loaded rather than rendered as a placeholder: a score is a
           judgement, and a skeleton in the shape of one invites the user to read a number
           that isn't there yet. */}
@@ -196,12 +212,16 @@ const HomeScreen = () => {
             caption={savingsCaption}
             captionColor="info"
           />
+          {/* The one tile with something behind it: the figure is the sum of every
+              account's balance, and the sheet is that sum shown as its terms. */}
           <SummaryCard
             icon="investments"
             iconColor="primary"
             iconBg="accentSoft"
             label="Net Worth"
             amount={dashboardSummary.netWorth}
+            caption={accounts.length > 0 ? "Tap for a breakdown" : undefined}
+            onPress={accounts.length > 0 ? () => netWorthRef.current?.present() : undefined}
           />
         </View>
       </View>
@@ -224,15 +244,6 @@ const HomeScreen = () => {
         </View>
       )}
 
-      {recentTransactions.length > 0 && (
-        <View style={styles.section}>
-          <SectionHeader label="RECENT TRANSACTIONS" actionLabel="See all" onAction={() => router.push("/activity")} />
-          {recentTransactions.map((transaction) => (
-            <TransactionRow key={transaction._id} transaction={transaction} onPress={() => router.push("/activity")} />
-          ))}
-        </View>
-      )}
-
       {/* The floor of the screen when there is genuinely nothing to list. Reachable two
           ways — a fresh account that dismissed the checklist, and one whose transactions
           have all been deleted — and in both the dashboard would otherwise end in four
@@ -247,6 +258,7 @@ const HomeScreen = () => {
         />
       )}
 
+      <NetWorthSheet ref={netWorthRef} netWorth={dashboardSummary.netWorth} />
     </ScreenScaffold>
   );
 };
