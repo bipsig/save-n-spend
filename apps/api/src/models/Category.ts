@@ -7,8 +7,14 @@ export interface ICategory extends Document {
     kind: "expense" | "income"
     icon?: string,
     color?: string,
-    isArchived: boolean
-
+    isArchived: boolean,
+    /**
+     * Where this sits among its SIBLINGS — top-level within a kind, or children under one
+     * parent. Only ever compared inside such a set, so two categories in different sets
+     * sharing a number means nothing. 0 for everything until the user reorders, which is
+     * why the list endpoint breaks ties on `createdAt`.
+     */
+    order: number
 }
 
 const CategorySchema = new Schema<ICategory>({
@@ -18,7 +24,8 @@ const CategorySchema = new Schema<ICategory>({
     kind: { type: String, enum: ["expense", "income" ], required: true },
     icon: { type: String },
     color: { type: String },
-    isArchived: { type: Boolean, default: false }
+    isArchived: { type: Boolean, default: false },
+    order: { type: Number, default: 0 }
 }, {
     timestamps: true
 });

@@ -16,6 +16,11 @@ export interface IAccount extends Document {
      * one. Absent on accounts that have never been synced.
      */
     lastSyncedAt?: Date | null
+    /**
+     * Where this sits in the user's own list. 0 for everything until they reorder, which
+     * is why the list endpoint breaks ties on `createdAt`.
+     */
+    order: number
 }
 
 const AccountSchema = new Schema<IAccount>({
@@ -27,7 +32,8 @@ const AccountSchema = new Schema<IAccount>({
     icon: { type: String },
     color: { type: String },
     isArchived: { type: Boolean, default: false },
-    lastSyncedAt: { type: Schema.Types.Date, default: null }
+    lastSyncedAt: { type: Schema.Types.Date, default: null },
+    order: { type: Number, default: 0 }
 }, { timestamps: true })
 
 AccountSchema.index({ userId: 1, isArchived: 1 });

@@ -5,19 +5,28 @@ import Account from "../models/Account";
 import Transaction from "../models/Transaction";
 import { applyEffects } from "../services/transactionService";
 import * as reply from "../utils/response";
-import { createAccountSchema, syncAccountBalanceSchema, updateAccountSchema } from "../schemas/accountSchema";
+import { createAccountSchema, reorderSchema, syncAccountBalanceSchema, updateAccountSchema } from "../schemas/accountSchema";
 
 export const listAccounts = async (req: Request, res: Response): Promise<void> => {
+    // createdAt breaks the ties every account starts on, keeping a list nobody has reordered
+    // in the order it was built.
     const accounts = await Account.find({
         userId: req.user?.userId,
         isArchived: false
-    });
+    }).sort({ order: 1, createdAt: 1 });
 
     reply.ok(res, accounts, "Accounts fetched successfully");
 }
 
 export const createAccount = async (req: Request, res: Response): Promise<void> => {
     const reqBody = createAccountSchema.parse(req.body);
+
+    // Lands last rather than at 0, which on a list the user has already ordered would put
+    // their newest account at the top.
+    const existing = await Account.countDocuments({
+        userId: req.user?.userId,
+        isArchived: false
+    });
 
     const savedAccount = await Account.create({
         userId: req.user?.userId,
@@ -26,10 +35,44 @@ export const createAccount = async (req: Request, res: Response): Promise<void> 
         balance: reqBody.startingBalance,
         startingBalance: reqBody.startingBalance,
         icon: reqBody.icon ?? "wallet",
-        color: reqBody.color ?? "success"
+        color: reqBody.color ?? "success",
+        order: existing
     });
 
     reply.created(res, savedAccount, "Account created successfully");
+}
+
+/**
+ * Writes the user's whole account list in the order given. The request must carry every live
+ * account: a partial list would leave the ones it omits on numbers that collide with the ones
+ * it sets, and the result would fall to the createdAt tiebreak rather than to what the user
+ * just did.
+ */
+export const reorderAccounts = async (req: Request, res: Response): Promise<void> => {
+    const { ids } = reorderSchema.parse(req.body);
+
+    if (new Set(ids).size !== ids.length) {
+        throw AppError.badRequest("The same account was listed twice");
+    }
+
+    const owned = await Account.countDocuments({
+        _id: { $in: ids },
+        userId: req.user?.userId,
+        isArchived: false
+    });
+
+    if (owned !== ids.length) {
+        throw AppError.badRequest("Some of those accounts no longer exist");
+    }
+
+    await Account.bulkWrite(ids.map((id, index) => ({
+        updateOne: {
+            filter: { _id: id, userId: req.user?.userId },
+            update: { $set: { order: index } }
+        }
+    })));
+
+    reply.ok(res, { reordered: ids.length }, "Accounts reordered");
 }
 
 export const getAccount = async (req: Request, res: Response): Promise<void> => {

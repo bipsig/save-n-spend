@@ -1,11 +1,13 @@
 import { Router } from "express";
 import { protect } from "../../middleware/authMiddleware";
-import { archiveAccount, createAccount, getAccount, listAccounts, syncAccountBalance, updateAccount } from "../../controllers/accountController";
+import { archiveAccount, createAccount, getAccount, listAccounts, reorderAccounts, syncAccountBalance, updateAccount } from "../../controllers/accountController";
 
 const router = Router();
 
 router.get('/', protect,  listAccounts);
 router.post('/', protect, createAccount);
+// Above PATCH /:id, which would otherwise match "reorder" as an id.
+router.patch('/reorder', protect, reorderAccounts);
 router.get ('/:id', protect, getAccount);
 router.patch ('/:id', protect, updateAccount);
 // Its own path rather than a field on PATCH /:id, because this is the only account

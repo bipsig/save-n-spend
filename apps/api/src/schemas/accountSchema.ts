@@ -15,6 +15,14 @@ export const updateAccountSchema = z.object({
     color: z.string().optional()
 }).strict();
 
+// The user's list in the order they just left it in, front to back. Not a single
+// `{ id, order }`: moving one row shifts everything after it, so a whole-list write is
+// both fewer requests and the only version that can't end up with two rows claiming the
+// same slot.
+export const reorderSchema = z.object({
+    ids: z.array(z.string()).min(1)
+}).strict();
+
 // Reconciling an account against what the bank actually says it holds.
 //
 // The field is the TARGET balance, not a delta, because that is the number the user reads off
