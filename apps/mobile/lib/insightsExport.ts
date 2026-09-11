@@ -123,12 +123,25 @@ const buildHtml = (data: InsightsSummary, period: InsightsPeriod, label: string)
 
   const kpi = (k: string, v: string, cls = "") => `<div class="card"><div class="k">${k}</div><div class="v ${cls}">${v}</div></div>`;
 
+  // Each category, then its sub-categories indented beneath it. The children are already
+  // counted in the parent's figure, so they carry no bar and no share — a second set of
+  // percentages summing past 100 is the one thing that would make this table unreadable.
   const catRows = cats
-    .map((c) => `<tr>
+    .map((c) => {
+      const kids = (c.children ?? [])
+        .map((k) => `<tr class="sub">
+      <td class="desc">${htmlEscape(k.name)}</td>
+      <td class="barcell"></td>
+      <td class="amt">${htmlEscape(formatMoney(k.total))}</td>
+      <td class="sh"></td></tr>`)
+        .join("");
+
+      return `<tr>
       <td class="desc">${htmlEscape(c.name)}</td>
       <td class="barcell"><div class="bar"><span style="width:${Math.max(Math.round(c.pct), 1)}%;background:${c.color}"></span></div></td>
       <td class="amt">${htmlEscape(formatMoney(c.total))}</td>
-      <td class="sh">${Math.round(c.pct)}%</td></tr>`)
+      <td class="sh">${Math.round(c.pct)}%</td></tr>${kids}`;
+    })
     .join("");
 
   const stack = accts.map((a) => `<span style="flex:${Math.max(a.pct, 0.5)};background:${a.color}"></span>`).join("");
@@ -161,6 +174,9 @@ const buildHtml = (data: InsightsSummary, period: InsightsPeriod, label: string)
     .bar { width: 100%; height: 8px; border-radius: 4px; background: #eeecf6; overflow: hidden; }
     .bar span { display: block; height: 100%; }
     td.sh { text-align: right; color: #6b6880; width: 46px; }
+    tr.sub td { border-bottom: none; padding-top: 2px; padding-bottom: 2px; color: #6b6880; font-size: 11px; }
+    tr.sub .desc { font-weight: 400; padding-left: 22px; }
+    tr.sub td.amt { font-weight: 600; }
     .foot { margin-top: 24px; font-size: 10px; color: #9995ad; text-align: center; }
   </style></head><body>
     <div class="head">
