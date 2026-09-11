@@ -17,6 +17,7 @@ import {
     startOfYearInZone,
 } from "../utils/timezone";
 import { resolveZone } from "../utils/userZone";
+import { AppError } from "../utils/AppError";
 
 // GET /insights?period=week|month|year
 //
@@ -32,8 +33,13 @@ export const getInsights = async (req: Request, res: Response): Promise<void> =>
     const { currentStartDate, currentEndDate, previousStartDate, previousEndDate } = parsePeriod(period, offset, zone);
 
     const trend = await getTrend(currentStartDate, currentEndDate, period, zone, req);
+    // Not stopped early — that period is over. The client compares the two by bucket index,
+    // which is what makes a 28-day February line up against a 31-day January.
+    const previousTrend = await getTrend(previousStartDate, previousEndDate, period, zone, req);
     const incomeVsExpense = await getIncomeVsExpense(currentStartDate, currentEndDate, period, zone, req);
     const byCategory = await getCategoryBreakDown(currentStartDate, currentEndDate, req);
+    const previousByCategory = await getCategoryBreakDown(previousStartDate, previousEndDate, req);
+    const categoryCompare = buildCategoryCompare(byCategory, previousByCategory);
     const byAccount = await getAccountBreakDown(currentStartDate, currentEndDate, req);
     const avgDailySpendCurrent = await getAverageSpend(currentStartDate, currentEndDate, zone, req);
     const avgDailySpendPrevious = await getAverageSpend(previousStartDate, previousEndDate, zone, req);
@@ -44,7 +50,109 @@ export const getInsights = async (req: Request, res: Response): Promise<void> =>
         occurredAt: { $gte: currentStartDate, $lt: currentEndDate }
     })
 
-    reply.ok(res, { period, timeZone: zone, periodStart: currentStartDate, periodEnd: currentEndDate, trend, incomeVsExpense, byCategory, byAccount, avgDailySpendCurrent, avgDailySpendPrevious, topCategory, txnCount }, "Insights fetched successfully");
+    reply.ok(res, { period, timeZone: zone, periodStart: currentStartDate, periodEnd: currentEndDate, trend, previousTrend, incomeVsExpense, byCategory, categoryCompare, byAccount, avgDailySpendCurrent, avgDailySpendPrevious, topCategory, txnCount }, "Insights fetched successfully");
+}
+
+/**
+ * GET /insights/category/:id?period=&offset=
+ *
+ * One category over the same window the breakdown was showing. Every figure is ROLLED UP —
+ * the category plus its children — so the total here is the number on the row that led to it.
+ * `children` is the split behind it.
+ */
+export const getCategoryInsights = async (req: Request, res: Response): Promise<void> => {
+    const { id: categoryId } = req.params;
+    const { period, offset } = insightsQuerySchema.parse(req.query);
+    const zone = await resolveZone(req);
+
+    const { currentStartDate, currentEndDate, previousStartDate, previousEndDate } = parsePeriod(period, offset, zone);
+
+    // Archived is allowed through: a window in the past can be all spend on a category the
+    // user has since retired, and the row in the breakdown that led here still exists.
+    const category = await Category.findOne({
+        _id: categoryId,
+        userId: req.user?.userId
+    }).select("_id name parent").lean();
+
+    if (!category) {
+        throw AppError.notFound("Category not found");
+    }
+
+    const children = category.parent
+        ? []
+        : await Category.find({ userId: req.user?.userId, parent: category._id }).select("_id name").lean();
+
+    // A sub-category's own detail rolls up nothing, since the tree is only two deep.
+    const scope = [category._id, ...children.map((c) => c._id)];
+    const childNames = new Map(children.map((c) => [c._id.toString(), c.name]));
+
+    const spendByCategory = async (startTime: Date, endTime: Date) => Transaction.aggregate([
+        {
+            $match: {
+                userId: new mongoose.Types.ObjectId(req.user!.userId),
+                type: "expense",
+                category: { $in: scope },
+                occurredAt: { $gte: startTime, $lt: endTime }
+            }
+        },
+        {
+            $group: {
+                _id: "$category",
+                total: { $sum: "$amount" },
+                count: { $sum: 1 }
+            }
+        }
+    ]);
+
+    const currentRows = await spendByCategory(currentStartDate, currentEndDate);
+    const previousRows = await spendByCategory(previousStartDate, previousEndDate);
+
+    const total = currentRows.reduce((sum, row) => sum + row.total, 0);
+    const previousTotal = previousRows.reduce((sum, row) => sum + row.total, 0);
+    const txnCount = currentRows.reduce((sum, row) => sum + row.count, 0);
+
+    const childSlices = currentRows
+        .filter((row) => row._id && row._id.toString() !== category._id.toString())
+        .map((row) => ({
+            categoryId: row._id.toString(),
+            name: childNames.get(row._id.toString()) ?? "Uncategorised",
+            total: row.total
+        }))
+        .sort((a, b) => b.total - a.total);
+
+    const allSpend = await Transaction.aggregate([
+        {
+            $match: {
+                userId: new mongoose.Types.ObjectId(req.user!.userId),
+                type: "expense",
+                occurredAt: { $gte: currentStartDate, $lt: currentEndDate }
+            }
+        },
+        { $group: { _id: null, total: { $sum: "$amount" } } }
+    ]);
+
+    const windowSpend = allSpend[0]?.total ?? 0;
+    const trend = await getTrend(currentStartDate, currentEndDate, period, zone, req, scope);
+
+    const parent = category.parent
+        ? await Category.findById(category.parent).select("name").lean()
+        : null;
+
+    reply.ok(res, {
+        categoryId: category._id.toString(),
+        name: category.name,
+        ...(parent?.name ? { parentName: parent.name } : {}),
+        period,
+        timeZone: zone,
+        periodStart: currentStartDate,
+        periodEnd: currentEndDate,
+        total,
+        previousTotal,
+        shareOfSpend: windowSpend > 0 ? (total / windowSpend) * 100 : 0,
+        txnCount,
+        trend,
+        children: childSlices
+    }, "Category insights fetched successfully");
 }
 
 type periodType = {
@@ -95,13 +203,33 @@ const parsePeriod = (period: string, offset: number, zone: string): periodType =
     }
 }
 
-const getCategoryBreakDown = async (startTime: Date, endTime: Date, req: Request) => {
+type CategorySlice = {
+    categoryId: string,
+    name: string,
+    total: number,
+    children?: CategorySlice[]
+}
+
+/**
+ * Spend per top-level category, with the sub-categories behind each total kept alongside it
+ * rather than dissolved into it.
+ *
+ * `total` is still the rolled-up figure — that is what a budget on the category governs, and
+ * what the donut has to add up to — but `children` carries the split, so the breakdown can be
+ * drilled into without a second request and without the client guessing at the tree.
+ *
+ * Archived categories are included in the name lookup on purpose: spend filed under one before
+ * it was archived still needs something to be called.
+ */
+const getCategoryBreakDown = async (startTime: Date, endTime: Date, req: Request): Promise<CategorySlice[]> => {
     const categories = await Category.find({
         userId: req.user?.userId
     })
         .select("_id name parent")
         .lean();
 
+    const byId = new Map(categories.map((c) => [c._id.toString(), c]));
+    const nameOf = (id: string) => byId.get(id)?.name ?? "Uncategorised";
 
     const categorySpend = await Transaction.aggregate([
         {
@@ -118,31 +246,71 @@ const getCategoryBreakDown = async (startTime: Date, endTime: Date, req: Request
             }
         }
     ]);
-    const hash = new Map<string, number>();
 
-    for (const category of categorySpend) {
-        if (!category._id) continue;
+    // Keyed by the top-level id in both: `rolled` is the figure the row shows, `split` is
+    // what it is made of. The tree is two deep (enforced at create), so no recursion.
+    const rolled = new Map<string, number>();
+    const split = new Map<string, Map<string, number>>();
 
-        const parent = categories.find((c) => c._id.toString() === category._id.toString())?.parent;
+    for (const row of categorySpend) {
+        if (!row._id) continue;
 
-        const key = parent ? parent.toString() : category._id.toString();
+        const id = row._id.toString();
+        const parent = byId.get(id)?.parent;
+        const rootId = parent ? parent.toString() : id;
 
-        hash.set(key, (hash.get(key) ?? 0) + category.total);
+        rolled.set(rootId, (rolled.get(rootId) ?? 0) + row.total);
+
+        if (parent) {
+            const kids = split.get(rootId) ?? new Map<string, number>();
+            kids.set(id, (kids.get(id) ?? 0) + row.total);
+            split.set(rootId, kids);
+        }
     }
 
-    const result = [];
-    for (const [id, val] of hash) {
-        const name = categories.find((c) => c._id.toString() === id)?.name;
-        result.push({
-            categoryId: id,
-            name,
-            total: val
-        });
+    const result: CategorySlice[] = [];
+    for (const [id, total] of rolled) {
+        const kids = split.get(id);
+        const children = kids
+            ? [...kids]
+                .map(([childId, childTotal]) => ({ categoryId: childId, name: nameOf(childId), total: childTotal }))
+                .sort((a, b) => b.total - a.total)
+            : undefined;
+
+        result.push({ categoryId: id, name: nameOf(id), total, ...(children?.length ? { children } : {}) });
     }
 
     result.sort((a, b) => b.total - a.total);
 
     return result;
+}
+
+/**
+ * The same categories in both windows, ordered by how much the figure MOVED — not by size.
+ * A category that is always the largest says nothing; one that doubled is the reason to look.
+ *
+ * Categories with spend last period and none now are carried in at 0, because that drop is
+ * exactly the kind of change the card exists to show.
+ */
+const buildCategoryCompare = (current: CategorySlice[], previous: CategorySlice[]) => {
+    const previousTotals = new Map(previous.map((s) => [s.categoryId, s.total]));
+
+    const rows = current.map((s) => ({
+        categoryId: s.categoryId,
+        name: s.name,
+        current: s.total,
+        previous: previousTotals.get(s.categoryId) ?? 0
+    }));
+
+    const seen = new Set(current.map((s) => s.categoryId));
+    for (const s of previous) {
+        if (seen.has(s.categoryId)) continue;
+        rows.push({ categoryId: s.categoryId, name: s.name, current: 0, previous: s.total });
+    }
+
+    rows.sort((a, b) => Math.abs(b.current - b.previous) - Math.abs(a.current - a.previous));
+
+    return rows;
 }
 
 const getAccountBreakDown = async (startTime: Date, endTime: Date, req: Request) => {
@@ -292,8 +460,18 @@ const getIncomeVsExpense = async (startTime: Date, endTime: Date, period: string
  * The expense trend: one bucket per day (week/month) or per month (year), dense and in
  * order, zeros included. Zero-filled here because only the server knows which zone the
  * buckets were cut in, leaving the client a plain map over an array it can trust.
+ *
+ * `categoryIds` narrows it to one category and its children — the same series, for the
+ * detail screen.
  */
-const getTrend = async (startTime: Date, endTime: Date, period: string, zone: string, req: Request) => {
+const getTrend = async (
+    startTime: Date,
+    endTime: Date,
+    period: string,
+    zone: string,
+    req: Request,
+    categoryIds?: mongoose.Types.ObjectId[]
+) => {
     const monthly = period === "year";
 
     const rows = await Transaction.aggregate([
@@ -301,6 +479,7 @@ const getTrend = async (startTime: Date, endTime: Date, period: string, zone: st
             $match: {
                 userId: new mongoose.Types.ObjectId(req.user!.userId),
                 type: "expense",
+                ...(categoryIds ? { category: { $in: categoryIds } } : {}),
                 occurredAt: { $gte: startTime, $lt: endTime }
             }
         },
