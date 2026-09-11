@@ -1,0 +1,48 @@
+<!--
+  Variant B — a rupee coin, struck. One object.
+
+  This replaces four attempts at "a coin going into a container", every one of which read as
+  something else at icon size: a stroked arc became a head and shoulders, a tapered pot became
+  a laundry basket, and sinking the coin into a dome became a cloche. The lesson is that two
+  shapes stacked vertically will always be read as a figure, so this uses one.
+
+  Where C is the bare mark, this is the mark on a thing — warmer, and it keeps a silhouette of
+  its own instead of relying on the letterform alone.
+
+  The ₹ is a <text> element, so rendering needs Arial or Helvetica present. Build-time only;
+  the PNG it produces carries no such dependency.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9C8BFF"/>
+      <stop offset="0.5" stop-color="#7150EE"/>
+      <stop offset="1" stop-color="#4B35C4"/>
+    </linearGradient>
+
+    <radialGradient id="sheen" cx="0.28" cy="0.14" r="0.85">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.28"/>
+      <stop offset="0.62" stop-color="#FFFFFF" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Cooler along the bottom, so the coin reads as a struck disc catching light from above
+         rather than as a flat white hole. -->
+    <linearGradient id="face" x1="0.2" y1="0" x2="0.5" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#DCD3FF"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" fill="url(#ground)"/>
+  <rect width="1024" height="1024" fill="url(#sheen)"/>
+
+  <circle cx="512" cy="512" r="352" fill="url(#face)"/>
+  <!-- The milled edge, inset. One ring is what separates a coin from a dot. -->
+  <circle cx="512" cy="512" r="296" fill="none" stroke="#8067F5" stroke-width="26"/>
+
+  <!-- Optically centred, not arithmetically: the ₹ carries its weight high, so its box has to
+       sit low of the middle for the glyph to look centred in the disc. -->
+  <text x="512" y="700" font-family="Arial, Helvetica, sans-serif" font-weight="bold"
+        font-size="440" fill="#5B45D6" text-anchor="middle">&#8377;</text>
+</svg>

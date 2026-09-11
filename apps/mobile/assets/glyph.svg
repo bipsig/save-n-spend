@@ -1,41 +1,67 @@
 <!--
   The piggy on its own, no background — the transparent companion to icon.svg.
-  Feeds the Android adaptive foreground and the splash logo, both of which
+  Feeds the Android adaptive foreground, the splash logo and the web favicon, all of which
   composite over a colour supplied by app.json rather than baking one in.
 
-  Same artwork as icon.svg, scaled to 85% and re-centred. That is not decoration:
-  an Android launcher can crop everything outside the central 66% of an adaptive
-  icon, and the full-bleed composition would lose the coin and the piggy's feet to
-  the mask. The wrapping transform is the only difference between the two files —
-  if you edit the artwork, edit it in both.
+  Same artwork as icon.svg with three differences. If you edit the artwork, edit it in both.
+   • No ground and no sheen, obviously — and no contact shadow either. A shadow needs a
+     surface to fall on; over a supplied background it is just a smudge.
+   • Scaled to 85% and re-centred. An Android launcher can crop everything outside the central
+     66% of an adaptive icon, and the full-bleed composition would lose the feet and the ear.
+   • The eye, nostril and slot are filled in app.json's OWN background (#0C0A16) rather than
+     in the ground's violet, because that is what they have to look like holes against here.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <defs>
-    <linearGradient id="pig" x1="0" y1="0" x2="0.3" y2="1">
-      <stop offset="0" stop-color="#BDB1FF"/>
-      <stop offset="1" stop-color="#7C66FF"/>
+    <linearGradient id="body" x1="0.1" y1="0" x2="0.55" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.55" stop-color="#F4F0FF"/>
+      <stop offset="1" stop-color="#CFC2FF"/>
     </linearGradient>
+
+    <linearGradient id="behind" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0" stop-color="#EFEAFF"/>
+      <stop offset="1" stop-color="#C9BAFF"/>
+    </linearGradient>
+
+    <radialGradient id="hilite" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+
+    <radialGradient id="shade" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#6B54E8" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#6B54E8" stop-opacity="0"/>
+    </radialGradient>
+
+    <clipPath id="bodyClip">
+      <ellipse cx="512" cy="574" rx="300" ry="238"/>
+    </clipPath>
   </defs>
 
-  <!-- Artwork spans y 126–906 and is centred on (514, 516); pull it to the canvas
+  <!-- Artwork spans x 168–884 and y 283–866, centred on (526, 574); pull that to the canvas
        centre, then shrink it into the safe zone. -->
-  <g transform="translate(512,512) scale(0.85) translate(-514,-516)">
-    <circle cx="502" cy="212" r="86" fill="#CFC6FF"/>
-    <text x="502" y="272" font-family="Arial, Helvetica, sans-serif" font-weight="bold"
-          font-size="118" fill="#5B48E0" text-anchor="middle">&#8377;</text>
+  <g transform="translate(512,512) scale(0.85) translate(-526,-574)">
+    <path d="M 572 362 L 670 298 L 682 404 Z" fill="url(#behind)" stroke="#D8CEFF"
+          stroke-width="30" stroke-linejoin="round"/>
+    <path d="M 220 478 q -66 -30 -28 -90" fill="none" stroke="#E2DAFF"
+          stroke-width="34" stroke-linecap="round"/>
+    <rect x="336" y="762" width="102" height="104" rx="38" fill="url(#behind)"/>
+    <rect x="598" y="762" width="102" height="104" rx="38" fill="url(#behind)"/>
 
-    <g transform="translate(0,58)">
-      <path d="M 560 358 L 652 296 L 664 396 Z" fill="#7C66FF" stroke="#7C66FF"
-            stroke-width="28" stroke-linejoin="round"/>
-      <rect x="332" y="752" width="96" height="96" rx="34" fill="#7C66FF"/>
-      <rect x="588" y="752" width="96" height="96" rx="34" fill="#7C66FF"/>
-      <ellipse cx="500" cy="548" rx="286" ry="226" fill="url(#pig)"/>
-      <ellipse cx="784" cy="580" rx="74" ry="58" fill="#CFC6FF"/>
-      <circle cx="784" cy="580" r="17" fill="#0F0B1F"/>
-      <circle cx="654" cy="498" r="27" fill="#0F0B1F"/>
-      <rect x="418" y="354" width="168" height="36" rx="18" fill="#0F0B1F" opacity="0.55"/>
-      <path d="M 222 470 q -62 -28 -26 -84" fill="none" stroke="#7C66FF"
-            stroke-width="30" stroke-linecap="round"/>
+    <ellipse cx="512" cy="574" rx="300" ry="238" fill="url(#body)"/>
+
+    <g clip-path="url(#bodyClip)">
+      <ellipse cx="410" cy="450" rx="248" ry="168" fill="url(#hilite)" opacity="0.5"/>
+      <ellipse cx="596" cy="786" rx="290" ry="164" fill="url(#shade)"/>
     </g>
+
+    <ellipse cx="806" cy="610" rx="78" ry="60" fill="#FFFFFF"/>
+    <ellipse cx="806" cy="626" rx="78" ry="44" fill="url(#shade)"/>
+
+    <circle cx="806" cy="610" r="18" fill="#0C0A16"/>
+    <circle cx="668" cy="520" r="28" fill="#0C0A16"/>
+
+    <rect x="416" y="368" width="184" height="40" rx="20" fill="#0C0A16"/>
   </g>
 </svg>

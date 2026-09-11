@@ -1,0 +1,33 @@
+<!--
+  Variant C — the rupee mark alone, the way a first-party finance app would do it.
+
+  Nothing to interpret: it is the currency, so it says "money app" before the name is read.
+  The trade is character — this could be any Indian finance app, where the piggy could only be
+  this one.
+
+  The ₹ is a <text> element, so rendering needs Arial or Helvetica present. Build-time only;
+  the PNG it produces carries no such dependency. (Same trade the current icon already makes.)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="ground" x1="0" y1="0" x2="0.15" y2="1">
+      <stop offset="0" stop-color="#B0A2FF"/>
+      <stop offset="0.48" stop-color="#8067F5"/>
+      <stop offset="1" stop-color="#4B35C4"/>
+    </linearGradient>
+
+    <radialGradient id="sheen" cx="0.3" cy="0.12" r="0.8">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.32"/>
+      <stop offset="0.58" stop-color="#FFFFFF" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1024" height="1024" fill="url(#ground)"/>
+  <rect width="1024" height="1024" fill="url(#sheen)"/>
+
+  <!-- Optically centred, not arithmetically: the ₹ hangs its weight high, so the box it
+       occupies has to sit low of the middle for the glyph to look centred. -->
+  <text x="512" y="742" font-family="Arial, Helvetica, sans-serif" font-weight="bold"
+        font-size="660" fill="#FFFFFF" text-anchor="middle">&#8377;</text>
+</svg>
