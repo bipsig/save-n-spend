@@ -1,3 +1,6 @@
+import { useEffect, useState } from "react";
+import { AppState } from "react-native";
+
 // The line above the name in the header. Derived from the calendar only, never from balances
 // or spending, so it can't be a stale judgement about someone's money. The variant is picked
 // by a date-derived seed, not `Math.random()`: the dashboard re-renders on peek, and a random
@@ -37,7 +40,7 @@ const FIXED_DAYS: Record<string, string> = {
   "10-31": "Happy Halloween",
   "11-14": "Children's Day",
   "12-25": "Merry Christmas",
-  "12-31": "Last day of the year",
+  "12-31": "Year's last day",
 };
 
 /**
@@ -91,27 +94,30 @@ const daySeed = (date: Date): number =>
 const pick = (options: string[], seed: number): string =>
   options[seed % options.length] ?? options[0]!;
 
-// Kept short: this renders at `size="xs"`, and much past twenty characters starts to wrap.
+// Every line is a whole phrase. A bare "Morning" or "Midday" reads as a truncated label
+// rather than something said to the reader, and one of them is what comes up on any given
+// day. Kept under about seventeen characters: the header renders this at 18/800 beside the
+// avatar and the two buttons, and past that it ellipsises on a narrow phone.
 const TIME_LINES: Record<GreetingSlot, string[]> = {
-  morning: ["Good morning", "Morning", "A fresh day"],
-  afternoon: ["Good afternoon", "Afternoon", "Midday"],
-  evening: ["Good evening", "Evening", "Winding down"],
+  morning: ["Good morning", "Rise and shine", "A fresh day"],
+  afternoon: ["Good afternoon", "Halfway through", "Midday already"],
+  evening: ["Good evening", "Winding down", "How was the day?"],
   // No "Good night" — the app is open, so they are not going to bed.
-  night: ["Still up?", "Late one", "Quiet hours"],
+  night: ["Still up?", "Burning the oil", "Quiet hours"],
 };
 
 // Only the days with a character worth naming; there is nothing true and interesting to say
 // about a Wednesday.
 const WEEKDAY_LINES: Record<number, string[]> = {
-  0: ["Sunday slow", "Weekend still"],
-  1: ["New week", "Monday reset"],
-  5: ["Friday at last", "Nearly the weekend"],
-  6: ["Weekend", "Saturday"],
+  0: ["Happy Sunday", "Slow Sunday"],
+  1: ["A new week", "Monday reset"],
+  5: ["Friday at last", "Weekend's close"],
+  6: ["Happy Saturday", "Weekend's here"],
 };
 
 // The 1st, treated as payday. The app has no idea whether this user is salaried, so the lines
 // stay on the certainly-true part — a new month — not money that may not have arrived.
-const PAYDAY_LINES = ["New month", "Fresh budgets", "Month one"];
+const PAYDAY_LINES = ["A new month", "Fresh budgets", "Day one"];
 
 /** The last three days, when the month's numbers are nearly final. */
 const MONTH_END_LINES = ["Month's nearly up", "Closing the month"];
@@ -142,6 +148,50 @@ export const greetingFor = (now: Date = new Date()): string => {
   if (now.getDate() > daysInMonth - 3) candidates.push(...MONTH_END_LINES);
 
   return pick(candidates, seed);
+};
+
+// Midnight is in here as well as the four slot starts: the seed changes with the date, so a
+// phone left open past twelve is on yesterday's pick until this fires.
+const SLOT_STARTS = [5, 12, 17, 21];
+
+/** Until the greeting could next say something different. */
+export const msUntilNextSlot = (now: Date = new Date()): number => {
+  const next = new Date(now);
+  next.setHours(SLOT_STARTS.find((h) => h > now.getHours()) ?? 24, 0, 0, 0);
+  return next.getTime() - now.getTime();
+};
+
+/**
+ * The greeting, kept current. Deriving it once at mount was enough to make it wrong: nothing
+ * on the dashboard re-renders because an hour passed, so a phone opened in the morning and
+ * picked up at night still said good morning. Re-derived when the slot ends and whenever the
+ * app comes back to the foreground, since a backgrounded timer is not to be relied on.
+ */
+export const useGreeting = (): string => {
+  const [line, setLine] = useState(greetingFor);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+
+    const refresh = () => {
+      setLine(greetingFor());
+      timer = setTimeout(refresh, msUntilNextSlot());
+    };
+    timer = setTimeout(refresh, msUntilNextSlot());
+
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state !== "active") return;
+      clearTimeout(timer);
+      refresh();
+    });
+
+    return () => {
+      clearTimeout(timer);
+      sub.remove();
+    };
+  }, []);
+
+  return line;
 };
 
 export default greetingFor;

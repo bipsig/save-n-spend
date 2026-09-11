@@ -5,7 +5,7 @@ import Icon from "../ui/Icon"
 import PressableScale from "../ui/PressableScale"
 import PeekButton from "./PeekButton"
 import { useNotifications } from "@/store/notifications"
-import greetingFor from "@/lib/greeting"
+import { useGreeting } from "@/lib/greeting"
 import { colors, spacing } from "@/theme"
 
 type Props = {
@@ -26,10 +26,10 @@ const AppHeader = ({
   // The dot means one thing: there is something unread behind the bell.
   const unread = useNotifications((s) => s.unread);
 
-  // Computed on every render rather than memoised, which is safe only because `greetingFor`
-  // is seeded on the date: the same day and hour always give the same string, so a re-render
-  // cannot make the greeting flicker.
-  const label = greeting ?? greetingFor();
+  // The hook, not a bare `greetingFor()`: it re-derives when the time of day rolls over and
+  // when the app is reopened, which a value computed at mount never does.
+  const derived = useGreeting();
+  const label = greeting ?? derived;
 
   // Derive up to two initials, tolerating an empty/whitespace name (e.g. the
   // brief frame during logout before the gate swaps to Login).
@@ -43,17 +43,20 @@ const AppHeader = ({
       .join("") ||
     "?";
 
-  // Spec .topbar — gradient avatar, 10.5 dim greeting over 14/700 name,
-  // 36px glass bell circle with a glowing red alert dot.
+  // Spec .topbar, but a size up on all three, and the greeting promoted over the name. At the
+  // spec's 10.5 dim over 14/700 the row read as a caption above the dashboard rather than the
+  // dashboard's own title — every other screen opens on 30/800. The greeting is the line worth
+  // reading (it changes; the name does not), so it takes the title slot with the name under it.
+  // Both are one line, ellipsised, so a long name can't push the bell around.
   return (
     <View style={styles.container}>
       <View style={styles.leftContainer}>
         <Avatar initials={displayInitials} size="md" gradient />
-        <View>
-          <AppText size="xs" color="inkDim">
+        <View style={styles.who}>
+          <AppText weight="black" size="md" numberOfLines={1}>
             {label}
           </AppText>
-          <AppText weight="bold" size="sm">
+          <AppText size="sm" weight="semibold" color="inkDim" numberOfLines={1}>
             {name}
           </AppText>
         </View>
@@ -93,9 +96,15 @@ const styles = StyleSheet.create({
     justifyContent: "space-between"
   },
   leftContainer: {
+    flex: 1, // takes the row's slack, so the two lines ellipsise instead of shoving the actions
     flexDirection: "row",
     alignItems: "center",
     gap: 12 // spec .who gap × device scale
+  },
+  who: {
+    flex: 1,
+    minWidth: 0, // a flex item is never squeezed under its own text without this
+    gap: 1,
   },
   actions: {
     flexDirection: "row",
