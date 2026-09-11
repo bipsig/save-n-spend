@@ -27,6 +27,16 @@
 - [X] app lock works fine when taken to background but not on a cold start — the effect was keyed on `hydrated` alone, which always won the race against `/auth/me`
 - [X] just like monday a notification for last week similar notification for every day for the previous day and notification for 1st day of the month. Handled the collision with a time slot each — daily 6pm, weekly 7pm, monthly 8pm, all zone-local, because the 1st can be a Monday (see docs/architecture.md § Digest notifications). Moved from the morning to the evening later, so the free-tier instance is reliably awake by the time they fire. Daily and weekly are opt-in, monthly is on by default; an empty period sends nothing
 - [X] Greeting is always Good Evening => Make that something crwative, where we consider not only time of day, somedays the day of the week, some days the payday some festivals, etc, etc. It was a hardcoded default prop nothing ever overrode. Now `lib/greeting.ts`: festivals win outright, otherwise the time of day, the day of the week, the 1st and the month's last three days go in one pool picked from by a seed derived from the date — so it is stable all day (no flicker on re-render) and different tomorrow. Calendar-derived only, never money. 21 marked days a year; the lunar table covers 2026 and 2027 and needs a line-per-festival top-up after that, and the solar entries in `FIXED_DAYS` are the common-year dates, so Lohri, Makar Sankranti and Poila Boishakh each want a 2028 override when that leap year comes round
+- [X] Option to delete/edit bills — Edit and Delete on the row, mirroring `ManageRow`
+- [X] Option to delete and edit goals
+- [X] Make the app icon look mor elike ios — bright violet ground instead of near-black, one-colour white subject, a contact shadow and light/shade clipped inside the body. Alternatives kept in `assets/icon-variants/`. The Android adaptive background is still `#0C0A16`, so the icon reads dark there and violet on iOS
+- [X] Recent transactions on top of dashboard.
+- [X] Update insights tab with more insights like seeing more types of graphs or maybe more granulation to see sub category wise spends and all — four new cards in one scroll (cumulative pace vs the previous period, a donut with the tapped slice's sub-categories, a daily heatmap, biggest movers vs last period) plus a per-category detail screen behind each breakdown row. `byCategory` slices now carry `children`, and `GET /insights/category/:id` is the detail endpoint
+- [X] A good way of closing the ios keyboard when trying to enter title,etc. as swiping down closes the bottomsheet as well. need a subtle way.
+- [X] reorder categories/accounts in settings page — server-owned `order`, whole-set `PATCH /reorder`, and a header toggle that turns the rows into ↑/↓ movers
+- [X] Clicking on networth of dashhboard shall show you how much each account holds currently
+- [X] going to more sometimes launches a blank, then clicking on some othertab loads more screen for some time but goes back to the tabs elected. then going back to more screen loads it correctly (highly reproducing)
+- [X] Once category is chosen and then we try to upodate the category on add transaction, it needs to be clicked twice.
 
 ## 2.0.0 — Shortcuts, Back Tap and the Action Button
 
