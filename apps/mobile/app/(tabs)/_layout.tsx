@@ -1,4 +1,3 @@
-import { Easing } from "react-native";
 import { theme } from "@/theme";
 import { haptics } from "@/lib/haptics";
 import { iconMap } from "@/lib/icons";
@@ -14,13 +13,11 @@ const TabsLayout = () => {
       screenListeners={{ tabPress: () => haptics.select() }}
       screenOptions={{
         headerShown: false,
-        // Tab switches slide/fade instead of hard-cutting — so "See all" into the
-        // Activity tab feels like the stack pushes into Bills / Goals.
-        animation: "shift",
-        transitionSpec: {
-          animation: "timing",
-          config: { duration: 320, easing: Easing.out(Easing.cubic) },
-        },
+        // Fade, not "shift": shift translates each screen, and a tab mounting for the
+        // first time mid-translate could come up blank and then paint into the slot the
+        // next tab had already taken. Opacity alone has no such ordering to get wrong,
+        // and still avoids the hard cut that made "See all" feel unlike a stack push.
+        animation: "fade",
         tabBarActiveTintColor: "#A394FF", // spec .tabi.on — violet
         tabBarInactiveTintColor: theme.colors.inkDim,
         tabBarStyle: {
