@@ -89,7 +89,10 @@ const curve = (value: number, anchors: readonly (readonly [number, number])[]): 
     return last[1];
 };
 
-const clamp = (value: number): number => Math.max(0, Math.min(100, value));
+/** A pillar's points: whole, 0-100. Rounded HERE and not at the point of display, because the
+ *  raw curve output is a full float (84.17309968984512) that leaks into `value`, the verdict
+ *  thresholds and the total — so the figure on screen has to be the figure that was scored. */
+const points = (value: number): number => Math.max(0, Math.min(100, Math.round(value)));
 
 // One vocabulary for all five, so "Watch" means the same thing wherever it appears.
 const verdictFor = (score: number): string =>
@@ -123,7 +126,7 @@ const savingsPillar = (income: number, expenses: number): Pillar | null => {
     if (income <= 0) return null;
 
     const rate = (income - expenses) / income;
-    const score = clamp(curve(rate, [[0, 0], [0.05, 25], [0.2, 80], [0.3, 100]]));
+    const score = points(curve(rate, [[0, 0], [0.05, 25], [0.2, 80], [0.3, 100]]));
 
     const monthlyIncome = income / (WINDOW_DAYS / 30);
     const target = Math.round(monthlyIncome * 0.2);
@@ -162,7 +165,7 @@ const bufferPillar = (
 
     const net = Math.max(0, liquid - cardDebt);
     const months = net / monthlyExpense;
-    const score = clamp(curve(months, [[0, 0], [1, 40], [3, 75], [6, 100]]));
+    const score = points(curve(months, [[0, 0], [1, 40], [3, 75], [6, 100]]));
 
     const floor = Math.round(monthlyExpense * 3);
 
@@ -202,7 +205,7 @@ const billsPillar = (bills: BillFacts[], now: Date, zone: string): Pillar | null
 
     const punctuality = 100 * (1 - overdue.length / bills.length);
     const staleness = Math.min(30, worst);
-    const score = clamp(punctuality - staleness);
+    const score = points(punctuality - staleness);
 
     const worstBill = overdue[daysLate.indexOf(worst)];
 
@@ -263,7 +266,7 @@ const budgetsPillar = (
         }
     }
 
-    const score = clamp(weighted / weight);
+    const score = points(weighted / weight);
 
     return {
         key: "budgets",
@@ -312,7 +315,7 @@ const goalsPillar = (goals: GoalFacts[], now: Date, zone: string): Pillar | null
             const required = (goal.target - goal.saved) / monthsLeft;
             const achieved = goal.saved / monthsRunning;
 
-            score = daysLeft < 0 ? 0 : clamp((achieved / required) * 100);
+            score = daysLeft < 0 ? 0 : points((achieved / required) * 100);
             hint = daysLeft < 0
                 ? `${goal.name} passed its date at ${pct(goal.saved / goal.target)} funded. Move the deadline or lower the target — a goal you have already missed stops being a plan.`
                 : `${goal.name} needs about ${formatAmount(required)} a month to land by ${monthYearLabel(goal.deadline as Date, zone)}. You have been adding roughly ${formatAmount(achieved)}.`;
@@ -327,7 +330,7 @@ const goalsPillar = (goals: GoalFacts[], now: Date, zone: string): Pillar | null
         }
     }
 
-    const score = clamp(weighted / weight);
+    const score = points(weighted / weight);
 
     return {
         key: "goals",
