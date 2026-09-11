@@ -8,9 +8,15 @@ import Card from "@/components/data/Card";
 import ShareBar from "@/components/data/ShareBar";
 import AreaChart from "@/components/charts/AreaChart";
 import PairedColumns from "@/components/charts/PairedColumns";
+import DualLineChart from "@/components/charts/DualLineChart";
+import DonutChart from "@/components/charts/DonutChart";
+import SpendHeatmap from "@/components/charts/SpendHeatmap";
+import CompareBars from "@/components/charts/CompareBars";
 import SegmentedControl from "@/components/ui/SegmentedControl";
 import PeriodNav from "@/components/ui/PeriodNav";
 import Button from "@/components/ui/Button";
+import Icon from "@/components/ui/Icon";
+import PressableScale from "@/components/ui/PressableScale";
 import { AppText } from "@/components/ui/AppText";
 import EmptyState from "@/components/states/EmptyState";
 import ErrorState from "@/components/states/ErrorState";
@@ -23,6 +29,9 @@ import {
   seriesStats,
   pctChange,
   buildTrend,
+  cumulativePair,
+  buildHeatmap,
+  compareRows,
 } from "@/lib/insights";
 import { exportInsights } from "@/lib/insightsExport";
 import { appZone, calendarFromKey, calendarToday, useAppZone } from "@/lib/zone";
@@ -94,6 +103,8 @@ const prevLabel = (period: InsightsPeriod, offset: number): string => {
   return MONTHS[d.getUTCMonth()];
 };
 
+type Chart = "trend" | "cumulative" | "donut" | "income" | "account";
+
 const Caps = ({ children }: { children: React.ReactNode }) => (
   <AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>
     {children}
@@ -164,26 +175,34 @@ const InsightsScreen = () => {
   // 0 = current window, -1 = previous, … (never positive — no future).
   const [offset, setOffset] = useState(0);
   // The one open chart tooltip — screen-owned so a tap anywhere else clears it.
-  const [tip, setTip] = useState<{ chart: "trend" | "income" | "account"; i: number } | null>(null);
+  const [tip, setTip] = useState<{ chart: Chart; i: number } | null>(null);
+  // The heatmap's selection is a date, not an index, so it can't share `tip`.
+  const [heatDay, setHeatDay] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const { data, loading, error, refetch } = useInsights(period, offset);
 
   // Switching period type always re-anchors to the current week/month/year.
+  const clearTips = () => {
+    setTip(null);
+    setHeatDay(null);
+  };
+
   const changePeriod = (p: InsightsPeriod) => {
     setPeriod(p);
     setOffset(0);
-    setTip(null);
+    clearTips();
   };
 
   const goPrev = () => {
     setOffset((o) => o - 1);
-    setTip(null);
+    clearTips();
   };
 
   const goNext = () => {
     setOffset((o) => Math.min(0, o + 1));
-    setTip(null);
+    clearTips();
   };
+
 
   // The window in view as a PDF. The data is already in hand, so build and share at once.
   const onExport = async () => {
@@ -240,6 +259,17 @@ const InsightsScreen = () => {
     const top = cats[0];
 
     const vsLabel = prevLabel(period, offset);
+    const pace = cumulativePair(data.trend, data.previousTrend, period);
+    const paceDelta = pace.atCurrentEnd.current - pace.atCurrentEnd.previous;
+    const movers = compareRows(data.categoryCompare);
+    // A year's buckets are months, so a 12-cell "calendar" would just be the trend line
+    // again. Only day-bucketed windows get a grid.
+    const heatmap = period === "year" ? null : buildHeatmap(data.trend);
+    const donutSlices = cats.filter((c) => c.total > 0);
+    const spendTotal = cats.reduce((a, c) => a + c.total, 0);
+    // The tapped slice's own sub-categories, listed under the ring. "Others" is a fold of
+    // several categories, so it has none.
+    const openSlice = tip?.chart === "donut" ? donutSlices[tip.i] : undefined;
 
     return (
       <>
@@ -262,6 +292,38 @@ const InsightsScreen = () => {
           />
         </GradientCard>
 
+        {/* Pace — running total against the same point last period */}
+        <Card style={styles.stack}>
+          <Caps>{`PACE VS ${windowLabel(period, offset - 1).toUpperCase()}`}</Caps>
+          <View style={styles.heroRow}>
+            <AppText size="lg" weight="black">
+              {formatMoney(pace.atCurrentEnd.current)}
+            </AppText>
+            <AppText size="sm" weight="semibold" color={paceDelta <= 0 ? "success" : "danger"}>
+              {`${paceDelta > 0 ? "+" : "−"}${formatMoney(Math.abs(paceDelta))}`}
+            </AppText>
+          </View>
+          {/* Says what the figure above is measured against, because "so far" is the whole
+              point: the previous line runs to the end of its period, but the comparison is
+              taken at the same day, not at its finish. */}
+          <AppText size="xs" color="inkDim">
+            {paceDelta === 0
+              ? "Level with the same point last time"
+              : paceDelta > 0
+                ? "Ahead of where you were at this point"
+                : "Behind where you were at this point"}
+          </AppText>
+          <DualLineChart
+            current={pace.current}
+            previous={pace.previous}
+            labels={pace.labels}
+            currentLabel={windowLabel(period, offset)}
+            previousLabel={windowLabel(period, offset - 1)}
+            activeIndex={tip?.chart === "cumulative" ? tip.i : null}
+            onScrub={(i) => setTip(i === null ? null : { chart: "cumulative", i })}
+          />
+        </Card>
+
         {/* Income vs expense */}
         <Card style={styles.stack}>
           <Caps>{`INCOME VS EXPENSE · 6 ${unitsWord(period)}`}</Caps>
@@ -277,48 +339,112 @@ const InsightsScreen = () => {
           />
         </Card>
 
+        {/* Where it went — the ring, and the tapped slice's own breakdown */}
+        <Card style={styles.stack}>
+          <Caps>WHERE IT WENT</Caps>
+          <DonutChart
+            data={donutSlices}
+            centerLabel="TOTAL SPENT"
+            centerValue={spendTotal}
+            activeIndex={tip?.chart === "donut" ? tip.i : null}
+            onScrub={(i) => setTip(i === null ? null : { chart: "donut", i })}
+          />
+          {openSlice?.children?.length ? (
+            <View style={styles.subList}>
+              <Caps>{`INSIDE ${openSlice.name.toUpperCase()}`}</Caps>
+              {openSlice.children.map((child) => (
+                <View key={child.categoryId} style={styles.subRow}>
+                  <AppText size="sm" numberOfLines={1} style={styles.catName}>
+                    {child.name}
+                  </AppText>
+                  <AppText size="sm" weight="semibold">
+                    {formatMoney(child.total)}
+                  </AppText>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <AppText size="xs" color="inkDim" style={styles.centered}>
+              {openSlice ? "No sub-categories under this one" : "Tap a slice for its breakdown"}
+            </AppText>
+          )}
+        </Card>
+
         {/* By category */}
         <Card style={styles.stack}>
           <Caps>BY CATEGORY</Caps>
-          {/* Every row here is a top-level heading — the server folds a sub-category's
-              spend into its parent before this list is built. Said once, because
-              otherwise the figures look wrong to anyone who files by sub-category and
-              goes looking for "Groceries" in the breakdown. */}
-          <AppText size="xs" color="inkDim">
-            Sub-category spending is counted in its parent.
-          </AppText>
           <View style={styles.catList}>
-            {cats.map((c) => (
-              <View key={c.id} style={styles.catRow}>
-                <View style={styles.catTop}>
-                  <View style={styles.catNameRow}>
-                    <View style={[styles.catDot, { backgroundColor: c.color }]} />
-                    <AppText
-                      size="md"
-                      weight={c.id === "others" ? "semibold" : "bold"}
-                      color={c.id === "others" ? "inkDim" : "ink"}
-                      numberOfLines={1}
-                      style={styles.catName}
-                    >
-                      {c.name}
-                    </AppText>
+            {cats.map((c) => {
+              // "Others" is a fold of several categories, so there is no one category to open.
+              const openable = c.id !== "others";
+              const body = (
+                <>
+                  <View style={styles.catTop}>
+                    <View style={styles.catNameRow}>
+                      <View style={[styles.catDot, { backgroundColor: c.color }]} />
+                      <AppText
+                        size="md"
+                        weight={openable ? "bold" : "semibold"}
+                        color={openable ? "ink" : "inkDim"}
+                        numberOfLines={1}
+                        style={styles.catName}
+                      >
+                        {c.name}
+                      </AppText>
+                    </View>
+                    <View style={styles.catMeta}>
+                      <AppText size="sm" weight="bold" color={openable ? "ink" : "inkDim"}>
+                        {formatMoney(c.total)}
+                      </AppText>
+                      <AppText size="xs" color="inkDim" style={styles.catPct}>
+                        {`${Math.round(c.pct)}%`}
+                      </AppText>
+                      {openable && <Icon name="chevronRight" size={16} color="inkDim" />}
+                    </View>
                   </View>
-                  <View style={styles.catMeta}>
-                    <AppText size="sm" weight="bold" color={c.id === "others" ? "inkDim" : "ink"}>
-                      {formatMoney(c.total)}
-                    </AppText>
-                    <AppText size="xs" color="inkDim" style={styles.catPct}>
-                      {`${Math.round(c.pct)}%`}
-                    </AppText>
+                  <View style={styles.catTrack}>
+                    <View style={[styles.catFill, { width: `${Math.max(c.pct, 2)}%`, backgroundColor: c.color }]} />
                   </View>
-                </View>
-                <View style={styles.catTrack}>
-                  <View style={[styles.catFill, { width: `${Math.max(c.pct, 2)}%`, backgroundColor: c.color }]} />
-                </View>
-              </View>
-            ))}
+                </>
+              );
+
+              if (!openable) return <View key={c.id} style={styles.catRow}>{body}</View>;
+
+              return (
+                <PressableScale
+                  key={c.id}
+                  style={styles.catRow}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/category-insights",
+                      // The window travels with the tap: the detail screen opens on the same
+                      // month the user was looking at, not on the current one.
+                      params: { id: c.id, name: c.name, period, offset: `${offset}` },
+                    })
+                  }
+                >
+                  {body}
+                </PressableScale>
+              );
+            })}
           </View>
         </Card>
+
+        {/* Daily rhythm */}
+        {heatmap && (
+          <Card style={styles.stack}>
+            <Caps>DAILY RHYTHM</Caps>
+            <SpendHeatmap heatmap={heatmap} active={heatDay} onSelect={setHeatDay} />
+          </Card>
+        )}
+
+        {/* Biggest movers */}
+        {movers.length > 0 && (
+          <Card style={styles.stack}>
+            <Caps>{`BIGGEST CHANGES VS ${windowLabel(period, offset - 1).toUpperCase()}`}</Caps>
+            <CompareBars rows={movers} previousLabel={vsLabel} />
+          </Card>
+        )}
 
         {/* Where it left from */}
         <Card style={styles.stack}>
@@ -381,7 +507,7 @@ const InsightsScreen = () => {
       {/* Tapping anywhere that isn't a chart clears the open tooltip. Deliberately a
           plain Pressable, not PressableScale: this covers the whole page, so a squeeze
           or a tick here would fire on every stray tap and dip the entire screen. */}
-      <Pressable style={styles.body} onPress={() => setTip(null)}>
+      <Pressable style={styles.body} onPress={clearTips}>
         <SegmentedControl segments={SEGMENTS} value={period} onChange={changePeriod} />
         <PeriodNav
           label={windowLabel(period, offset)}
@@ -474,6 +600,21 @@ const styles = StyleSheet.create({
   catFill: {
     height: "100%",
     borderRadius: 6,
+  },
+  centered: {
+    textAlign: "center",
+  },
+  subList: {
+    gap: 10,
+    paddingTop: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.line,
+  },
+  subRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
   },
   acctLegend: {
     flexDirection: "row",
