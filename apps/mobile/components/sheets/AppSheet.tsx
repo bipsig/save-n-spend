@@ -55,7 +55,11 @@ const SheetBackground = ({ style }: BottomSheetBackgroundProps) => (
 // sheet its queue already holds, leaving it registered at a stale position it can surface
 // from later. So presenting is idempotent: ignored while this sheet is up, and for the
 // length of its close animation.
-const REPRESENT_GUARD_MS = 400;
+//
+// Timed from the moment the close STARTS, so it expires as the sheet finishes leaving.
+// Stamped at the end instead — which is where `onDismiss` lands — it would run on past a
+// sheet that is already gone, and the next tap on the row that opened it would do nothing.
+const CLOSING_GUARD_MS = 350;
 
 const AppSheet = forwardRef<BottomSheetModal, Props>(({ children, onDismiss, scrollable, snapPoints, footer, scrollResetKey }, ref) => {
   const { bottom } = useSafeAreaInsets();
@@ -76,16 +80,24 @@ const AppSheet = forwardRef<BottomSheetModal, Props>(({ children, onDismiss, scr
   useEffect(resetScroll, [scrollResetKey, resetScroll]);
 
   const present = useCallback<BottomSheetModal["present"]>((data) => {
-    if (presented.current || Date.now() - closedAt.current < REPRESENT_GUARD_MS) return;
+    if (presented.current || Date.now() - closedAt.current < CLOSING_GUARD_MS) return;
     presented.current = true;
     modalRef.current?.present(data);
   }, []);
 
-  // gorhom funnels every dismissal through this callback, so it is the one place the gate
-  // can be lifted.
-  const handleDismiss = useCallback(() => {
+  // Fires as an animation begins, so a close is known about at its start. This is what
+  // lifts the gate: `onDismiss` lands only once the sheet has finished leaving, and the
+  // force-close behind `dismiss()` can skip its completion callback altogether — either
+  // way the gate would outlive the sheet and eat the tap meant to reopen it.
+  const handleAnimate = useCallback((_from: number, to: number) => {
+    if (to !== -1) return;
     presented.current = false;
     closedAt.current = Date.now();
+  }, []);
+
+  // Every dismissal funnels through here, whatever closed it.
+  const handleDismiss = useCallback(() => {
+    presented.current = false;
     // A dismissed sheet stays mounted in gorhom's queue, so its ScrollView keeps the offset
     // it was left at and reopens part-way down. Reset here rather than on present, since
     // this fires after the close animation where the jump can't be seen.
@@ -140,6 +152,7 @@ const AppSheet = forwardRef<BottomSheetModal, Props>(({ children, onDismiss, scr
     <BottomSheetModal
       ref={modalRef}
       onDismiss={handleDismiss}
+      onAnimate={handleAnimate}
       stackBehavior="push"
       enableDynamicSizing={!snapPoints}
       snapPoints={snapPoints}
@@ -152,6 +165,11 @@ const AppSheet = forwardRef<BottomSheetModal, Props>(({ children, onDismiss, scr
       keyboardBehavior="interactive"
       keyboardBlurBehavior="restore"
       android_keyboardInputMode="adjustResize"
+      // A drag that starts with the keyboard up closes the keyboard and is measured from
+      // the un-lifted position, so a short swipe down puts the keyboard away and lets the
+      // sheet settle back where it was. Without it the same swipe travels the height of
+      // the keyboard and dismisses the whole form.
+      enableBlurKeyboardOnGesture
     >
       {scrollable ? (
         <BottomSheetScrollView

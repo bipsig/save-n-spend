@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { StyleSheet, TextInput, View } from 'react-native'
 import type { TextInputProps } from 'react-native'
 import { AppText } from './AppText'
+import { KEYBOARD_DONE_ID } from './KeyboardDoneBar'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
 type Size = "sm" | "md" | "lg"
@@ -23,7 +24,19 @@ const sizeStyles: Record<Size, { paddingVertical: number; fontSize: number }> = 
   lg: { paddingVertical: spacing.lg, fontSize: fontSize.lg },
 }
 
-const Input = ({ label, error, size = 'md', style, InputComponent = TextInput, rightSlot, ...rest }: Props) => {
+const Input = ({
+  label,
+  error,
+  size = 'md',
+  style,
+  InputComponent = TextInput,
+  rightSlot,
+  // Every field gets the keyboard's Done strip unless a caller opts out with `undefined`.
+  // A sheet reads a swipe down as a close, so without this the keyboard has no exit that
+  // leaves the form standing.
+  inputAccessoryViewID = KEYBOARD_DONE_ID,
+  ...rest
+}: Props) => {
   const [focused, setFocused] = useState(false)
   const s = sizeStyles[size]
 
@@ -40,6 +53,7 @@ const Input = ({ label, error, size = 'md', style, InputComponent = TextInput, r
       <View style={styles.field}>
         <InputComponent
           placeholderTextColor={colors.gray400}
+          inputAccessoryViewID={inputAccessoryViewID}
           {...rest}
           style={[
             styles.input,

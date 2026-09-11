@@ -13,6 +13,7 @@ import { registerForPush, useNotificationBridge } from "@/lib/push";
 import AppLockGate from "@/components/shell/AppLockGate";
 import PeekBar from "@/components/shell/PeekBar";
 import Toast from "@/components/shell/Toast";
+import KeyboardDoneBar from "@/components/ui/KeyboardDoneBar";
 import WakeGate from "@/components/shell/WakeGate";
 import { useWake } from "@/store/wake";
 import { useSession } from "@/store/session";
@@ -155,6 +156,10 @@ const RootLayout = () => {
           {/* Outside the sheet provider for the same reason as Toast — a peek started
               from an amount inside a sheet still has to show its clock. */}
           <PeekBar />
+          {/* Mounted once for the whole app: iOS resolves `inputAccessoryViewID` by id, so
+              one instance serves every field. It draws nothing until a field that asks for
+              it has focus. */}
+          <KeyboardDoneBar />
         </SafeAreaProvider>
       </QueryClientProvider>
     </GestureHandlerRootView>

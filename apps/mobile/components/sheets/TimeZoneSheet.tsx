@@ -4,6 +4,7 @@ import { BottomSheetModal, BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";
 import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
+import { KEYBOARD_DONE_ID } from "@/components/ui/KeyboardDoneBar";
 import PressableScale from "@/components/ui/PressableScale";
 import { haptics } from "@/lib/haptics";
 import { searchZones, shortlistZones } from "@/lib/timezones";
@@ -129,6 +130,8 @@ const TimeZoneSheet = forwardRef<BottomSheetModal, Props>(({ value, onPick }, re
           onChangeText={setSearch}
           autoCapitalize="none"
           autoCorrect={false}
+          returnKeyType="done"
+          inputAccessoryViewID={KEYBOARD_DONE_ID}
           style={styles.searchInput}
         />
       </View>
