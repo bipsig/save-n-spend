@@ -5,6 +5,7 @@ import type { CategoryKind, ICategory } from "@save-n-spend/types";
 import AppSheet from "./AppSheet";
 import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
+import { KEYBOARD_DONE_ID } from "@/components/ui/KeyboardDoneBar";
 import Button from "@/components/ui/Button";
 import CategoryForm, { categoryCtaLabel, type CategoryFormValue } from "@/components/ui/CategoryForm";
 import PressableScale from "@/components/ui/PressableScale";
@@ -266,6 +267,8 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
               placeholderTextColor={colors.gray400}
               value={search}
               onChangeText={setSearch}
+              returnKeyType="done"
+              inputAccessoryViewID={KEYBOARD_DONE_ID}
               style={styles.searchInput}
             />
           </View>
