@@ -34,7 +34,7 @@ const ReorderToggle = ({ active, onPress, disabled = false }: Props) => {
         name={active ? "check" : "reorder"}
         size={20}
         containerSize={44}
-        // Filled while the mode is on: the arrows on the rows say what changed, but only
+        // Filled while the mode is on: the grips on the rows say what can be moved, but only
         // this says the screen is still in a mode the user has to leave. `primaryInk` on
         // `primary` — the brand token is bright enough that white on it barely reads.
         color={active ? "primaryInk" : "ink"}

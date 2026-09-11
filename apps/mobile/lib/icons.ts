@@ -18,11 +18,9 @@ export const iconMap = {
   chevronLeft: 'chevron-left',
   chevronDown: 'expand-more',
   chevronUp: 'expand-less',
-  // Reorder controls. Arrows rather than chevrons: a chevron on a row already means
-  // "opens", and these move it.
-  arrowUp: 'arrow-upward',
-  arrowDown: 'arrow-downward',
+  // Reorder controls: the header toggle, and the grip that says a row can be picked up.
   reorder: 'swap-vert',
+  dragHandle: 'drag-indicator',
   settings: 'settings',
   eye: 'visibility',
   eyeOff: 'visibility-off',

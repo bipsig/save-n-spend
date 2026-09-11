@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useFocusEffect } from "expo-router";
+import { GestureDetector, type PanGesture } from "react-native-gesture-handler";
 import Animated, { LinearTransition } from "react-native-reanimated";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { ICategory } from "@save-n-spend/types";
@@ -13,6 +14,7 @@ import ConfirmSheet from "@/components/sheets/ConfirmSheet";
 import EditCategorySheet from "@/components/sheets/EditCategorySheet";
 import { AppText } from "@/components/ui/AppText";
 import Button from "@/components/ui/Button";
+import DragList from "@/components/ui/DragList";
 import EmptyState from "@/components/states/EmptyState";
 import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
@@ -45,6 +47,8 @@ const ManageCategoriesScreen = () => {
   // than claim zero.
   const [usageCount, setUsageCount] = useState<number | null>(null);
   const [reordering, setReordering] = useState(false);
+  // A held row and a scrolling screen are the same gesture, so the scroll gives way.
+  const [dragging, setDragging] = useState(false);
 
   const editRef = useRef<BottomSheetModal>(null);
   const deleteRef = useRef<BottomSheetModal>(null);
@@ -94,69 +98,74 @@ const ManageCategoriesScreen = () => {
   };
 
   /**
-   * Swaps two members of one sibling set and sends the whole set. `order` is only ever
-   * compared within a set, so a parent's arrows move it among the top-level categories of
-   * its own kind, and a child's move it among that one parent's children — the two never
+   * Sends one sibling set in the order it was left in. `order` is only ever compared within
+   * a set, so dragging a card moves it among the top-level categories of its own kind, and
+   * dragging a row inside a card moves it among that one parent's children — the two never
    * mix, and the request carries exactly one of them.
    */
-  const move = (siblings: { _id: string }[], index: number, delta: number) => {
-    const ids = siblings.map((s) => s._id);
-    const target = index + delta;
-    if (target < 0 || target >= ids.length) return;
-
-    [ids[index], ids[target]] = [ids[target], ids[index]];
+  const commitOrder = (ids: string[]) => {
     void reorderCategories(ids).catch((err) => toast.fromError(err, "Couldn't save that order"));
   };
 
   // One card per top-level category, not per kind: the card boundary IS the grouping, which
   // is what the rollup does. `layout` on each card so archiving a row shrinks its own group
-  // and neighbours slide up rather than jumping a row-height in a frame — and so reordering
-  // slides two groups past each other.
+  // and neighbours slide up rather than jumping a row-height in a frame.
   //
-  // Takes the whole kind's list because it is used as a `.map` callback: a parent's arrows
-  // reorder it among its siblings, which are the other cards.
-  const renderGroup = ({ parent, children }: CategoryGroup, index: number, groups: CategoryGroup[]) => (
-    <Animated.View key={parent._id} layout={LinearTransition.duration(220)}>
+  // The card is itself a draggable item, so the gesture that moves it goes on its first row
+  // only — the children have their own list, and a gesture covering the whole card would
+  // swallow theirs.
+  const renderGroup = (
+    { parent, children }: CategoryGroup,
+    { dragging: held, gesture }: { dragging: boolean; gesture: PanGesture }
+  ) => (
+    <Animated.View layout={reordering ? undefined : LinearTransition.duration(220)}>
       <Card padded={false} style={styles.group}>
-        <ManageRow
-          first
-          icon={(parent.icon ?? "wallet") as IconName}
-          color={(parent.color ?? "accent") as ColorToken}
-          label={parent.name}
-          // Named as spending that rolls up, not a bare count — the number alone doesn't
-          // say the children's totals land in this category's budget. Short, because two
-          // action buttons narrow the row and longer phrasing truncates.
-          sub={
-            children.length === 0
-              ? undefined
-              : `${children.length} sub-categor${children.length === 1 ? "y" : "ies"} · rolls up here`
-          }
-          onEdit={() => openEdit(parent)}
-          onDelete={() => openDelete(parent)}
-          reordering={reordering}
-          onMoveUp={index > 0 ? () => move(groups.map((g) => g.parent), index, -1) : undefined}
-          onMoveDown={
-            index < groups.length - 1 ? () => move(groups.map((g) => g.parent), index, 1) : undefined
-          }
-        />
-
-        {children.map((child, childIndex) => (
-          <Animated.View key={child._id} layout={LinearTransition.duration(200)}>
+        <GestureDetector gesture={gesture}>
+          <View>
             <ManageRow
-              nested
-              icon={(child.icon ?? "wallet") as IconName}
-              color={(child.color ?? "accent") as ColorToken}
-              label={child.name}
-              onEdit={() => openEdit(child)}
-              onDelete={() => openDelete(child)}
-              reordering={reordering}
-              onMoveUp={childIndex > 0 ? () => move(children, childIndex, -1) : undefined}
-              onMoveDown={
-                childIndex < children.length - 1 ? () => move(children, childIndex, 1) : undefined
+              first
+              icon={(parent.icon ?? "wallet") as IconName}
+              color={(parent.color ?? "accent") as ColorToken}
+              label={parent.name}
+              // Named as spending that rolls up, not a bare count — the number alone doesn't
+              // say the children's totals land in this category's budget. Short, because two
+              // action buttons narrow the row and longer phrasing truncates.
+              sub={
+                children.length === 0
+                  ? undefined
+                  : `${children.length} sub-categor${children.length === 1 ? "y" : "ies"} · rolls up here`
               }
+              onEdit={() => openEdit(parent)}
+              onDelete={() => openDelete(parent)}
+              reordering={reordering}
+              dragging={held}
             />
-          </Animated.View>
-        ))}
+          </View>
+        </GestureDetector>
+
+        <DragList
+          items={children}
+          keyOf={(child) => child._id}
+          enabled={reordering && children.length > 1}
+          onReorder={commitOrder}
+          onDragChange={setDragging}
+          render={(child, _i, { dragging: childHeld, gesture: childGesture }) => (
+            <GestureDetector gesture={childGesture}>
+              <View>
+                <ManageRow
+                  nested
+                  icon={(child.icon ?? "wallet") as IconName}
+                  color={(child.color ?? "accent") as ColorToken}
+                  label={child.name}
+                  onEdit={() => openEdit(child)}
+                  onDelete={() => openDelete(child)}
+                  reordering={reordering}
+                  dragging={childHeld}
+                />
+              </View>
+            </GestureDetector>
+          )}
+        />
 
         {/* Sits inside the rail with the children, because that is where the thing it
             creates will appear. A "New" button in the header can only ever make a
@@ -199,6 +208,7 @@ const ManageCategoriesScreen = () => {
 
   return (
     <ScreenScaffold
+      scrollEnabled={!dragging}
       header={
         <View style={styles.head}>
           <BackButton />
@@ -225,13 +235,29 @@ const ManageCategoriesScreen = () => {
           {expenses.length > 0 && (
             <>
               <GroupLabel>EXPENSE</GroupLabel>
-              {expenses.map(renderGroup)}
+              <DragList
+                items={expenses}
+                keyOf={(group) => group.parent._id}
+                enabled={reordering && expenses.length > 1}
+                onReorder={commitOrder}
+                onDragChange={setDragging}
+                gap={spacing.xl}
+                render={(group, _i, state) => renderGroup(group, state)}
+              />
             </>
           )}
           {income.length > 0 && (
             <>
               <GroupLabel>INCOME</GroupLabel>
-              {income.map(renderGroup)}
+              <DragList
+                items={income}
+                keyOf={(group) => group.parent._id}
+                enabled={reordering && income.length > 1}
+                onReorder={commitOrder}
+                onDragChange={setDragging}
+                gap={spacing.xl}
+                render={(group, _i, state) => renderGroup(group, state)}
+              />
             </>
           )}
         </>
@@ -277,7 +303,6 @@ const styles = StyleSheet.create({
   },
   group: {
     paddingVertical: 2,
-    marginBottom: spacing.sm,
   },
   // Aligned with the nested rows' rail, so it reads as the last item in the group.
   addChild: {

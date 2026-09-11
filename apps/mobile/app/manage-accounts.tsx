@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useFocusEffect } from "expo-router";
+import { GestureDetector } from "react-native-gesture-handler";
 import Animated, { LinearTransition } from "react-native-reanimated";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { AccountType, IAccount } from "@save-n-spend/types";
@@ -14,6 +15,7 @@ import ConfirmSheet from "@/components/sheets/ConfirmSheet";
 import EditAccountSheet from "@/components/sheets/EditAccountSheet";
 import { AppText } from "@/components/ui/AppText";
 import Button from "@/components/ui/Button";
+import DragList from "@/components/ui/DragList";
 import EmptyState from "@/components/states/EmptyState";
 import { archiveAccount, reorderAccounts, useAccounts } from "@/lib/accounts";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
@@ -40,6 +42,8 @@ const ManageAccountsScreen = () => {
   const [editing, setEditing] = useState<IAccount | null>(null);
   const [pendingDelete, setPendingDelete] = useState<IAccount | null>(null);
   const [reordering, setReordering] = useState(false);
+  // A held row and a scrolling screen are the same gesture, so the scroll gives way.
+  const [dragging, setDragging] = useState(false);
 
   const editRef = useRef<BottomSheetModal>(null);
   const deleteRef = useRef<BottomSheetModal>(null);
@@ -67,14 +71,9 @@ const ManageAccountsScreen = () => {
     deleteRef.current?.present();
   };
 
-  // Swaps a row with its neighbour and sends the whole list. The store moves first, so the
-  // row is already in its new place by the time the request goes out.
-  const move = (index: number, delta: number) => {
-    const ids = accounts.map((a) => a._id);
-    const target = index + delta;
-    if (target < 0 || target >= ids.length) return;
-
-    [ids[index], ids[target]] = [ids[target], ids[index]];
+  // Sends the whole list, since `order` is a position rather than a rank. The store moves
+  // first, so the row is already in its new place by the time the request goes out.
+  const commitOrder = (ids: string[]) => {
     void reorderAccounts(ids).catch((err) => toast.fromError(err, "Couldn't save that order"));
   };
 
@@ -84,6 +83,7 @@ const ManageAccountsScreen = () => {
 
   return (
     <ScreenScaffold
+      scrollEnabled={!dragging}
       header={
         <View style={styles.head}>
           <BackButton />
@@ -115,27 +115,33 @@ const ManageAccountsScreen = () => {
         // the list snapping up a row-height in one frame.
         <Animated.View layout={LinearTransition.duration(220)}>
           <Card padded={false} style={styles.group}>
-            {accounts.map((account, i) => (
-              // Keyed by id and laid out by reanimated, so a swap slides the two rows past
-              // each other instead of the labels changing places in one frame.
-              <Animated.View key={account._id} layout={LinearTransition.duration(200)}>
-                <ManageRow
-                  first={i === 0}
-                  icon={(account.icon ?? "wallet") as IconName}
-                  color={(account.color ?? "info") as ColorToken}
-                  label={account.name}
-                  sub={
-                    `${TYPE_LABELS[account.type]} · ${formatMoney(account.balance)}` +
-                    (account._id === defaultAccountId ? " · Default" : "")
-                  }
-                  onEdit={() => openEdit(account)}
-                  onDelete={() => openDelete(account)}
-                  reordering={reordering}
-                  onMoveUp={i > 0 ? () => move(i, -1) : undefined}
-                  onMoveDown={i < accounts.length - 1 ? () => move(i, 1) : undefined}
-                />
-              </Animated.View>
-            ))}
+            <DragList
+              items={accounts}
+              keyOf={(account) => account._id}
+              enabled={reordering}
+              onReorder={commitOrder}
+              onDragChange={setDragging}
+              render={(account, i, { dragging: held, gesture }) => (
+                <GestureDetector gesture={gesture}>
+                  <View>
+                    <ManageRow
+                      first={i === 0}
+                      icon={(account.icon ?? "wallet") as IconName}
+                      color={(account.color ?? "info") as ColorToken}
+                      label={account.name}
+                      sub={
+                        `${TYPE_LABELS[account.type]} · ${formatMoney(account.balance)}` +
+                        (account._id === defaultAccountId ? " · Default" : "")
+                      }
+                      onEdit={() => openEdit(account)}
+                      onDelete={() => openDelete(account)}
+                      reordering={reordering}
+                      dragging={held}
+                    />
+                  </View>
+                </GestureDetector>
+              )}
+            />
           </Card>
         </Animated.View>
       )}

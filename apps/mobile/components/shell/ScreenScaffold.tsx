@@ -12,6 +12,8 @@ type Props = {
   headerRight?: React.ReactNode;
   header?: React.ReactNode;
   scroll?: boolean;
+  /** Off while a row is being dragged, so the drag doesn't scroll the screen under it. */
+  scrollEnabled?: boolean;
   /** Rendered above the scroll content, pinned to the screen (e.g. the FAB). */
   floating?: React.ReactNode;
   children: React.ReactNode;
@@ -23,6 +25,7 @@ const ScreenScaffold = ({
   headerRight,
   header,
   scroll = true,
+  scrollEnabled = true,
   floating,
   children,
 }: Props) => {
@@ -68,6 +71,7 @@ const ScreenScaffold = ({
         {scroll ? (
           <ScrollView
             style={styles.scroll}
+            scrollEnabled={scrollEnabled}
             contentContainerStyle={styles.content}
             showsVerticalScrollIndicator={false}
             keyboardDismissMode="on-drag"

@@ -24,41 +24,14 @@ type Props = {
    */
   nested?: boolean;
   /**
-   * Swaps edit and delete for move controls. A mode rather than a third pair of buttons:
-   * arrows on every row all the time is four targets per row, and reordering is something
-   * the user does once and then never again for months.
+   * Swaps edit and delete for a drag grip. A mode rather than a grip on every row all the
+   * time: reordering is something the user does once and then never again for months, and
+   * a row that can be dragged is a row that can't be scrolled past.
    */
   reordering?: boolean;
-  /** Undefined disables the arrow — that's the first row's up, and the last row's down. */
-  onMoveUp?: () => void;
-  onMoveDown?: () => void;
+  /** This row is the one being held. Lifts it off the card so the gap it left is readable. */
+  dragging?: boolean;
 };
-
-const MoveButton = ({
-  direction,
-  label,
-  onPress,
-}: {
-  direction: "up" | "down";
-  label: string;
-  onPress?: () => void;
-}) => (
-  <PressableScale
-    onPress={onPress}
-    disabled={!onPress}
-    scaleTo={0.88}
-    accessibilityLabel={`Move ${label} ${direction}`}
-    style={styles.move}
-  >
-    {/* Dimmed rather than hidden at the ends of the list: a control that disappears takes
-        the row's other arrow with it to a new position mid-reorder. */}
-    <Icon
-      name={direction === "up" ? "arrowUp" : "arrowDown"}
-      size={19}
-      color={onPress ? "ink" : "gray500"}
-    />
-  </PressableScale>
-);
 
 // A row on Manage categories / Manage accounts. The whole row edits; delete is a
 // separate, smaller target at the end — so the destructive action can't be hit by
@@ -73,10 +46,16 @@ const ManageRow = ({
   first = false,
   nested = false,
   reordering = false,
-  onMoveUp,
-  onMoveDown,
+  dragging = false,
 }: Props) => (
-  <View style={[styles.row, !first && styles.divider, nested && styles.rowNested]}>
+  <View
+    style={[
+      styles.row,
+      !first && styles.divider,
+      nested && styles.rowNested,
+      dragging && styles.rowHeld,
+    ]}
+  >
     {/* Shallower than the default, like SettingsRow: a full-width row travels a long
         way at 0.97, and the gap it opens beside the card's edge reads as a glitch. */}
     <PressableScale
@@ -109,9 +88,9 @@ const ManageRow = ({
     </PressableScale>
 
     {reordering ? (
-      <View style={styles.moves}>
-        <MoveButton direction="up" label={label} onPress={onMoveUp} />
-        <MoveButton direction="down" label={label} onPress={onMoveDown} />
+      /* Not a button — the whole row is the target, and the grip is only there to say so. */
+      <View style={styles.grip}>
+        <Icon name="dragHandle" size={20} color={dragging ? "primary" : "gray500"} />
       </View>
     ) : (
       /* Deeper: a bare glyph has no surface to shrink, so it needs the extra travel to
@@ -165,15 +144,17 @@ const styles = StyleSheet.create({
     paddingLeft: spacing.lg,
     paddingVertical: 13,
   },
-  moves: {
-    flexDirection: "row",
-    paddingLeft: spacing.sm,
-  },
-  // Tall and narrow, so the pair sits in the width one delete button used and the row
-  // doesn't change height when the mode flips.
-  move: {
-    paddingHorizontal: spacing.sm,
+  // Same vertical padding as the delete button, so the row doesn't change height when the
+  // mode flips.
+  grip: {
+    paddingLeft: spacing.lg,
     paddingVertical: 13,
+  },
+  // Opaque, because the row is over its own neighbours while it is up.
+  rowHeld: {
+    backgroundColor: "#2A2350",
+    borderRadius: 14,
+    borderTopWidth: 0,
   },
 });
 
