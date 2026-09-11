@@ -62,6 +62,9 @@ export interface IAccount {
   isArchived: boolean
   // ISO. When the user last reconciled against their bank; absent if never.
   lastSyncedAt?: string | null
+  // The user's own position for this account. The list arrives sorted by it, so a client
+  // reads the order rather than recomputing it.
+  order?: number
 }
 
 export interface ICategory {
@@ -73,6 +76,9 @@ export interface ICategory {
   icon?: string
   color?: string
   isArchived: boolean
+  // Position among its siblings only — top-level within a kind, or children under one
+  // parent. The list arrives sorted by it.
+  order?: number
 }
 
 export interface ITransaction {
@@ -230,6 +236,24 @@ export interface InsightsCategorySlice {
   categoryId: string    // parent id (children rolled in)
   name: string
   total: number         // paise, expenses
+  /**
+   * The sub-categories behind `total`, biggest first, each with its OWN spend — they are
+   * already counted in `total`, so summing both levels double-counts. Absent on a slice
+   * that is itself a sub-category, and on one whose children had no spend this period.
+   *
+   * Present so the breakdown can be drilled into without a second request. `total` stays
+   * the rolled-up figure it always was, because that is what a budget on this category
+   * governs and what the donut has to add up to.
+   */
+  children?: InsightsCategorySlice[]
+}
+
+/** One category's spend this period against the one before — the period-over-period card. */
+export interface InsightsCategoryCompare {
+  categoryId: string
+  name: string
+  current: number       // paise, rolled up
+  previous: number      // paise, rolled up, same-length window immediately before
 }
 
 export interface InsightsAccountSlice {
@@ -248,13 +272,48 @@ export interface InsightsSummary {
   /** Dense and ordered: one entry per bucket, zeros included, and a running window
    *  stops at today rather than trailing into the future. */
   trend: InsightsTrendPoint[]
+  /**
+   * The same buckets over the period immediately before, and NOT stopped early — that one
+   * is finished. Bucket i of each is day i (or month i) of its own period, so the two are
+   * compared by index rather than by date: a 28-day February lines up against a 31-day
+   * January and simply runs out first.
+   */
+  previousTrend: InsightsTrendPoint[]
   incomeVsExpense: InsightsSeriesPoint[]
   byCategory: InsightsCategorySlice[]
+  /** Every category with spend in EITHER window, ordered by the size of the change. */
+  categoryCompare: InsightsCategoryCompare[]
   byAccount: InsightsAccountSlice[]
   avgDailySpendCurrent: number     // paise/day
   avgDailySpendPrevious: number    // paise/day, prior period — for the delta
   topCategory: string | null       // biggest category name this period
   txnCount: number                 // non-transfer count, current window
+}
+
+/**
+ * One category, one window — what the category detail screen is built from.
+ *
+ * Every figure is rolled up (the category plus its children), matching what its row in the
+ * breakdown said and what a budget on it governs. `children` is the split behind that.
+ */
+export interface InsightsCategoryDetail {
+  categoryId: string
+  name: string
+  /** Set when this category is itself a sub-category. */
+  parentName?: string
+  period: InsightsPeriod
+  timeZone: string
+  periodStart: string             // ISO
+  periodEnd: string               // ISO, exclusive
+  total: number                   // paise
+  previousTotal: number           // paise, the window immediately before
+  /** Share of all expenses this window, 0–100. */
+  shareOfSpend: number
+  txnCount: number
+  /** Dense and ordered, same bucketing and same early stop as `InsightsSummary.trend`. */
+  trend: InsightsTrendPoint[]
+  /** Sub-categories with spend this window, biggest first. Empty for a sub-category. */
+  children: InsightsCategorySlice[]
 }
 
 // Highlights: ranked, plain-language observations computed by rules on the server, arriving
