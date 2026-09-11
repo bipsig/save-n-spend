@@ -45,8 +45,11 @@ const PillarCard = ({ pillar }: { pillar: HealthPillar }) => {
             {applies ? `${pillar.verdict} · worth ${pillar.weight} points` : "Not counted yet"}
           </AppText>
         </View>
-        <AppText size="md" weight="black" color={pillarColor(pillar.score)}>
-          {applies ? pillar.score : "—"}
+        {/* Rounded on arrival as well as at the source: a deployed API from before that fix
+            still sends the raw curve output, and 84.17309968984512 in the corner of a card
+            pushes the title into three lines. */}
+        <AppText size="md" weight="black" color={pillarColor(pillar.score)} numberOfLines={1}>
+          {applies ? Math.round(pillar.score as number) : "—"}
         </AppText>
       </View>
 
