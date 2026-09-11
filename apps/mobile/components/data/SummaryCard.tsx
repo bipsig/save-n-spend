@@ -23,9 +23,9 @@ type Props = {
   caption?: string
   captionColor?: ColorToken
   /**
-   * Opens whatever breaks the figure down. Optional: most tiles are a reading with
-   * nothing behind them, and a tile that squeezes under the finger without leading
-   * anywhere promises a screen that doesn't exist.
+   * Opens whatever breaks the figure down. Optional, and left off deliberately when there
+   * is nothing behind it — a tile that squeezes under the finger without leading anywhere
+   * promises a screen that doesn't exist.
    */
   onPress?: () => void
 }
@@ -58,38 +58,64 @@ const SummaryCard = ({
           size="xs"
           weight="semibold"
           color="inkDim"
+          numberOfLines={1}
+          style={styles.label}
         >
           {label}
         </AppText>
       </View>
-      <Money value={amount} weight="black" size="lg" />
-      {caption && (
-        <AppText weight="semibold" size="xs" color={captionColor}>
-          {caption}
-        </AppText>
-      )}
+      {/* One line, ellipsised rather than wrapped. A flex item is never squeezed below the
+          width of its own content, so a long figure would push its tile wider than the one
+          beside it — which is how two tiles in a row stopped being the same size. */}
+      <Money value={amount} weight="black" size="lg" numberOfLines={1} />
+      {/* Exactly one line high whether or not there is a caption, hence the fixed height
+          and not a minimum: an empty Text has no line box, so a reserved minimum still came
+          out shorter than a captioned tile beside it. */}
+      <AppText
+        weight="semibold"
+        size="xs"
+        color={captionColor}
+        numberOfLines={1}
+        style={styles.caption}
+      >
+        {caption ?? ""}
+      </AppText>
     </Card>
   )
 
-  if (!onPress) return card
+  // Always wrapped, tappable or not, so both kinds of tile are laid out by exactly the same
+  // two boxes. The outer one takes the row sizing; the Card grows to whatever height the
+  // row settles on, without a zero basis of its own — inside a column that would report no
+  // content height at all, and a row of nothing but pressable tiles would collapse.
+  if (!onPress) return <View style={styles.tile}>{card}</View>
 
-  // `flex: 1` has to land on the touchable too, or the tile stops filling its half of
-  // the row — the Card's own flex would be measuring inside a box already sized to it.
   return (
-    <PressableScale onPress={onPress} scaleTo={0.98} style={styles.press}>
+    <PressableScale onPress={onPress} scaleTo={0.98} style={styles.tile}>
       {card}
     </PressableScale>
   )
 }
 
 const styles = StyleSheet.create({
+  // Half the row: an even split from the zero basis, and `minWidth: 0` so a long figure
+  // can't push its own tile wider than the one beside it.
+  tile: {
+    flexGrow: 1,
+    flexBasis: 0,
+    minWidth: 0,
+  },
   card: {
-    flex: 1,
+    flexGrow: 1, // fills the tile, which the row has stretched to its tallest
     gap: 8, // spec .sum gap × device scale
     padding: 15,
   },
-  press: {
-    flex: 1,
+  label: {
+    flex: 1, // shrinks and ellipsises instead of pushing the tile wider
+  },
+  // One line of xs (13pt), text or not.
+  caption: {
+    height: 17,
+    lineHeight: 17,
   },
   container: {
     flexDirection: "row",
