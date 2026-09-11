@@ -5,6 +5,7 @@ import Animated, { LinearTransition } from "react-native-reanimated";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { ICategory } from "@save-n-spend/types";
 import BackButton from "@/components/shell/BackButton";
+import ReorderToggle from "@/components/shell/ReorderToggle";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import Card from "@/components/data/Card";
 import ManageRow from "@/components/rows/ManageRow";
@@ -15,7 +16,7 @@ import Button from "@/components/ui/Button";
 import EmptyState from "@/components/states/EmptyState";
 import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
-import { archiveCategory, useCategoryTree, type CategoryGroup } from "@/lib/categories";
+import { archiveCategory, reorderCategories, useCategoryTree, type CategoryGroup } from "@/lib/categories";
 import { countTransactionsIn } from "@/lib/transactions";
 import { useCategoryStore } from "@/store/categories";
 import { toast } from "@/store/toast";
@@ -43,9 +44,17 @@ const ManageCategoriesScreen = () => {
   // null while the count is still being fetched, so the confirm can say so rather
   // than claim zero.
   const [usageCount, setUsageCount] = useState<number | null>(null);
+  const [reordering, setReordering] = useState(false);
 
   const editRef = useRef<BottomSheetModal>(null);
   const deleteRef = useRef<BottomSheetModal>(null);
+
+  // Counted per sibling set, since that is the only thing an order is compared within: one
+  // expense category and one income category are two rows with nowhere to move.
+  const canReorder =
+    expenses.length > 1 ||
+    income.length > 1 ||
+    expenses.concat(income).some((g) => g.children.length > 1);
 
   // Other screens write to this store too (Add Transaction can create one), so refresh on
   // focus like every other data screen.
@@ -84,10 +93,29 @@ const ManageCategoriesScreen = () => {
       .catch(() => setUsageCount(null));
   };
 
+  /**
+   * Swaps two members of one sibling set and sends the whole set. `order` is only ever
+   * compared within a set, so a parent's arrows move it among the top-level categories of
+   * its own kind, and a child's move it among that one parent's children — the two never
+   * mix, and the request carries exactly one of them.
+   */
+  const move = (siblings: { _id: string }[], index: number, delta: number) => {
+    const ids = siblings.map((s) => s._id);
+    const target = index + delta;
+    if (target < 0 || target >= ids.length) return;
+
+    [ids[index], ids[target]] = [ids[target], ids[index]];
+    void reorderCategories(ids).catch((err) => toast.fromError(err, "Couldn't save that order"));
+  };
+
   // One card per top-level category, not per kind: the card boundary IS the grouping, which
   // is what the rollup does. `layout` on each card so archiving a row shrinks its own group
-  // and neighbours slide up rather than jumping a row-height in a frame.
-  const renderGroup = ({ parent, children }: CategoryGroup) => (
+  // and neighbours slide up rather than jumping a row-height in a frame — and so reordering
+  // slides two groups past each other.
+  //
+  // Takes the whole kind's list because it is used as a `.map` callback: a parent's arrows
+  // reorder it among its siblings, which are the other cards.
+  const renderGroup = ({ parent, children }: CategoryGroup, index: number, groups: CategoryGroup[]) => (
     <Animated.View key={parent._id} layout={LinearTransition.duration(220)}>
       <Card padded={false} style={styles.group}>
         <ManageRow
@@ -105,34 +133,49 @@ const ManageCategoriesScreen = () => {
           }
           onEdit={() => openEdit(parent)}
           onDelete={() => openDelete(parent)}
+          reordering={reordering}
+          onMoveUp={index > 0 ? () => move(groups.map((g) => g.parent), index, -1) : undefined}
+          onMoveDown={
+            index < groups.length - 1 ? () => move(groups.map((g) => g.parent), index, 1) : undefined
+          }
         />
 
-        {children.map((child) => (
-          <ManageRow
-            key={child._id}
-            nested
-            icon={(child.icon ?? "wallet") as IconName}
-            color={(child.color ?? "accent") as ColorToken}
-            label={child.name}
-            onEdit={() => openEdit(child)}
-            onDelete={() => openDelete(child)}
-          />
+        {children.map((child, childIndex) => (
+          <Animated.View key={child._id} layout={LinearTransition.duration(200)}>
+            <ManageRow
+              nested
+              icon={(child.icon ?? "wallet") as IconName}
+              color={(child.color ?? "accent") as ColorToken}
+              label={child.name}
+              onEdit={() => openEdit(child)}
+              onDelete={() => openDelete(child)}
+              reordering={reordering}
+              onMoveUp={childIndex > 0 ? () => move(children, childIndex, -1) : undefined}
+              onMoveDown={
+                childIndex < children.length - 1 ? () => move(children, childIndex, 1) : undefined
+              }
+            />
+          </Animated.View>
         ))}
 
         {/* Sits inside the rail with the children, because that is where the thing it
             creates will appear. A "New" button in the header can only ever make a
             top-level category — this is the only affordance that says sub-categories
-            exist at all, so it is on every group whether or not it has any yet. */}
-        <PressableScale style={styles.addChild} onPress={() => openNewChild(parent)} scaleTo={0.98}>
-          <Icon name="add" size={15} color="primary" />
-          {/* Same words as the picker's equivalent row, and it names the heading in both.
-              Redundant here, where the parent is the first row of this very card — but a
-              user who learns the phrase in one place should not have to learn a second
-              one for the identical action somewhere else. */}
-          <AppText size="xs" weight="bold" color="primary" numberOfLines={1}>
-            {`New under ${parent.name}`}
-          </AppText>
-        </PressableScale>
+            exist at all, so it is on every group whether or not it has any yet.
+
+            Hidden while reordering: nothing in that mode creates anything. */}
+        {!reordering && (
+          <PressableScale style={styles.addChild} onPress={() => openNewChild(parent)} scaleTo={0.98}>
+            <Icon name="add" size={15} color="primary" />
+            {/* Same words as the picker's equivalent row, and it names the heading in both.
+                Redundant here, where the parent is the first row of this very card — but a
+                user who learns the phrase in one place should not have to learn a second
+                one for the identical action somewhere else. */}
+            <AppText size="xs" weight="bold" color="primary" numberOfLines={1}>
+              {`New under ${parent.name}`}
+            </AppText>
+          </PressableScale>
+        )}
       </Card>
     </Animated.View>
   );
@@ -162,7 +205,10 @@ const ManageCategoriesScreen = () => {
           <AppText size="xl" weight="black" style={styles.headTitle}>
             Categories
           </AppText>
-          <Button label="New" icon="add" pill onPress={openNew} />
+          <ReorderToggle active={reordering} onPress={() => setReordering((on) => !on)} disabled={!canReorder} />
+          {/* Gone while reordering: the mode has one job, and the header has no room for
+              a second action beside the tick that leaves it. */}
+          {!reordering && <Button label="New" icon="add" pill onPress={openNew} />}
         </View>
       }
     >

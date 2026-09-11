@@ -17,6 +17,12 @@ export const iconMap = {
   chevronRight: 'chevron-right',
   chevronLeft: 'chevron-left',
   chevronDown: 'expand-more',
+  chevronUp: 'expand-less',
+  // Reorder controls. Arrows rather than chevrons: a chevron on a row already means
+  // "opens", and these move it.
+  arrowUp: 'arrow-upward',
+  arrowDown: 'arrow-downward',
+  reorder: 'swap-vert',
   settings: 'settings',
   eye: 'visibility',
   eyeOff: 'visibility-off',

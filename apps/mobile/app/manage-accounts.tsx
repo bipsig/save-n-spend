@@ -6,6 +6,7 @@ import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { AccountType, IAccount } from "@save-n-spend/types";
 import BackButton from "@/components/shell/BackButton";
 import PeekButton from "@/components/shell/PeekButton";
+import ReorderToggle from "@/components/shell/ReorderToggle";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import Card from "@/components/data/Card";
 import ManageRow from "@/components/rows/ManageRow";
@@ -14,7 +15,7 @@ import EditAccountSheet from "@/components/sheets/EditAccountSheet";
 import { AppText } from "@/components/ui/AppText";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/states/EmptyState";
-import { archiveAccount, useAccounts } from "@/lib/accounts";
+import { archiveAccount, reorderAccounts, useAccounts } from "@/lib/accounts";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { updatePrefs } from "@/lib/profile";
 import { useAccountStore } from "@/store/accounts";
@@ -38,6 +39,7 @@ const ManageAccountsScreen = () => {
 
   const [editing, setEditing] = useState<IAccount | null>(null);
   const [pendingDelete, setPendingDelete] = useState<IAccount | null>(null);
+  const [reordering, setReordering] = useState(false);
 
   const editRef = useRef<BottomSheetModal>(null);
   const deleteRef = useRef<BottomSheetModal>(null);
@@ -65,6 +67,17 @@ const ManageAccountsScreen = () => {
     deleteRef.current?.present();
   };
 
+  // Swaps a row with its neighbour and sends the whole list. The store moves first, so the
+  // row is already in its new place by the time the request goes out.
+  const move = (index: number, delta: number) => {
+    const ids = accounts.map((a) => a._id);
+    const target = index + delta;
+    if (target < 0 || target >= ids.length) return;
+
+    [ids[index], ids[target]] = [ids[target], ids[index]];
+    void reorderAccounts(ids).catch((err) => toast.fromError(err, "Couldn't save that order"));
+  };
+
   const deleteBody = pendingDelete
     ? `It disappears from your pickers, and its ${formatMoney(pendingDelete.balance)} stops counting toward your totals. Transactions already recorded against it keep their history.`
     : "";
@@ -78,7 +91,14 @@ const ManageAccountsScreen = () => {
             Accounts
           </AppText>
           <PeekButton />
-          <Button label="New" icon="add" pill onPress={openNew} />
+          <ReorderToggle
+            active={reordering}
+            onPress={() => setReordering((on) => !on)}
+            disabled={accounts.length < 2}
+          />
+          {/* Gone while reordering: the mode has one job, and the header has no room for
+              a second action beside the tick that leaves it. */}
+          {!reordering && <Button label="New" icon="add" pill onPress={openNew} />}
         </View>
       }
     >
@@ -96,19 +116,25 @@ const ManageAccountsScreen = () => {
         <Animated.View layout={LinearTransition.duration(220)}>
           <Card padded={false} style={styles.group}>
             {accounts.map((account, i) => (
-              <ManageRow
-                key={account._id}
-                first={i === 0}
-                icon={(account.icon ?? "wallet") as IconName}
-                color={(account.color ?? "info") as ColorToken}
-                label={account.name}
-                sub={
-                  `${TYPE_LABELS[account.type]} · ${formatMoney(account.balance)}` +
-                  (account._id === defaultAccountId ? " · Default" : "")
-                }
-                onEdit={() => openEdit(account)}
-                onDelete={() => openDelete(account)}
-              />
+              // Keyed by id and laid out by reanimated, so a swap slides the two rows past
+              // each other instead of the labels changing places in one frame.
+              <Animated.View key={account._id} layout={LinearTransition.duration(200)}>
+                <ManageRow
+                  first={i === 0}
+                  icon={(account.icon ?? "wallet") as IconName}
+                  color={(account.color ?? "info") as ColorToken}
+                  label={account.name}
+                  sub={
+                    `${TYPE_LABELS[account.type]} · ${formatMoney(account.balance)}` +
+                    (account._id === defaultAccountId ? " · Default" : "")
+                  }
+                  onEdit={() => openEdit(account)}
+                  onDelete={() => openDelete(account)}
+                  reordering={reordering}
+                  onMoveUp={i > 0 ? () => move(i, -1) : undefined}
+                  onMoveDown={i < accounts.length - 1 ? () => move(i, 1) : undefined}
+                />
+              </Animated.View>
             ))}
           </Card>
         </Animated.View>

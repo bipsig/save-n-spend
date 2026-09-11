@@ -3,6 +3,7 @@ import type { CategoryKind, ICategory } from "@save-n-spend/types";
 import type { ColorToken } from "@/theme";
 import { useCategoryStore } from "@/store/categories";
 import { del, patch, post } from "@/lib/api";
+import { applyOrder, persistOrder } from "@/lib/reorder";
 
 // Categories are DB entities (defaults + the user's own), fetched into the categories
 // store after login. These helpers read that store — reactive hooks for render, a sync
@@ -143,6 +144,30 @@ export const updateCategory = async (
 ): Promise<void> => {
   await patch<ICategory>(`/categories/${id}`, patchBody);
   await useCategoryStore.getState().load();
+};
+
+/**
+ * Writes one sibling set's order — the top-level categories of a kind, or one parent's
+ * children — as `ids` reads front to back. Must be the whole set: the server ranks by
+ * position in the array, so a partial list leaves the rows it omits colliding with the ones
+ * it sets.
+ *
+ * The store moves first and does NOT refetch on success. A tap that has to wait out a round
+ * trip before the row moves does not read as dragging something, and the order is the client's
+ * own answer anyway — there is nothing to learn from asking for it back.
+ */
+export const reorderCategories = async (ids: string[]): Promise<void> => {
+  useCategoryStore.setState((s) => ({ list: applyOrder(s.list, ids) }));
+
+  try {
+    await persistOrder("/categories/reorder", ids);
+  } catch (error) {
+    // The list on screen is now a claim the server never accepted. Refetch rather than undo:
+    // more taps may have landed since, so the state to go back to is the server's, not the
+    // one this call started from.
+    await useCategoryStore.getState().load().catch(() => {});
+    throw error;
+  }
 };
 
 // Archived, not deleted, so past transactions keep resolving to a real category. The

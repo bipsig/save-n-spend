@@ -23,16 +23,68 @@ type Props = {
    * still leaves the reader hunting for which parent it belongs to.
    */
   nested?: boolean;
+  /**
+   * Swaps edit and delete for move controls. A mode rather than a third pair of buttons:
+   * arrows on every row all the time is four targets per row, and reordering is something
+   * the user does once and then never again for months.
+   */
+  reordering?: boolean;
+  /** Undefined disables the arrow — that's the first row's up, and the last row's down. */
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
 };
+
+const MoveButton = ({
+  direction,
+  label,
+  onPress,
+}: {
+  direction: "up" | "down";
+  label: string;
+  onPress?: () => void;
+}) => (
+  <PressableScale
+    onPress={onPress}
+    disabled={!onPress}
+    scaleTo={0.88}
+    accessibilityLabel={`Move ${label} ${direction}`}
+    style={styles.move}
+  >
+    {/* Dimmed rather than hidden at the ends of the list: a control that disappears takes
+        the row's other arrow with it to a new position mid-reorder. */}
+    <Icon
+      name={direction === "up" ? "arrowUp" : "arrowDown"}
+      size={19}
+      color={onPress ? "ink" : "gray500"}
+    />
+  </PressableScale>
+);
 
 // A row on Manage categories / Manage accounts. The whole row edits; delete is a
 // separate, smaller target at the end — so the destructive action can't be hit by
 // a tap aimed at opening the editor.
-const ManageRow = ({ icon, color, label, sub, onEdit, onDelete, first = false, nested = false }: Props) => (
+const ManageRow = ({
+  icon,
+  color,
+  label,
+  sub,
+  onEdit,
+  onDelete,
+  first = false,
+  nested = false,
+  reordering = false,
+  onMoveUp,
+  onMoveDown,
+}: Props) => (
   <View style={[styles.row, !first && styles.divider, nested && styles.rowNested]}>
     {/* Shallower than the default, like SettingsRow: a full-width row travels a long
         way at 0.97, and the gap it opens beside the card's edge reads as a glitch. */}
-    <PressableScale onPress={onEdit} scaleTo={0.985} style={styles.body}>
+    <PressableScale
+      onPress={reordering ? undefined : onEdit}
+      disabled={reordering}
+      scaleTo={0.985}
+      style={styles.body}
+    >
       <Icon
         name={icon}
         size={nested ? 15 : 17}
@@ -53,20 +105,27 @@ const ManageRow = ({ icon, color, label, sub, onEdit, onDelete, first = false, n
           </AppText>
         )}
       </View>
-      <Icon name="edit" size={17} color="inkDim" />
+      {!reordering && <Icon name="edit" size={17} color="inkDim" />}
     </PressableScale>
 
-    {/* Deeper: a bare glyph has no surface to shrink, so it needs the extra travel to
-        register as a press at all. */}
-    <PressableScale
-      onPress={onDelete}
-      scaleTo={0.88}
-      hitSlop={8}
-      accessibilityLabel={`Delete ${label}`}
-      style={styles.delete}
-    >
-      <Icon name="delete" size={18} color="danger" />
-    </PressableScale>
+    {reordering ? (
+      <View style={styles.moves}>
+        <MoveButton direction="up" label={label} onPress={onMoveUp} />
+        <MoveButton direction="down" label={label} onPress={onMoveDown} />
+      </View>
+    ) : (
+      /* Deeper: a bare glyph has no surface to shrink, so it needs the extra travel to
+         register as a press at all. */
+      <PressableScale
+        onPress={onDelete}
+        scaleTo={0.88}
+        hitSlop={8}
+        accessibilityLabel={`Delete ${label}`}
+        style={styles.delete}
+      >
+        <Icon name="delete" size={18} color="danger" />
+      </PressableScale>
+    )}
   </View>
 );
 
@@ -104,6 +163,16 @@ const styles = StyleSheet.create({
   },
   delete: {
     paddingLeft: spacing.lg,
+    paddingVertical: 13,
+  },
+  moves: {
+    flexDirection: "row",
+    paddingLeft: spacing.sm,
+  },
+  // Tall and narrow, so the pair sits in the width one delete button used and the row
+  // doesn't change height when the mode flips.
+  move: {
+    paddingHorizontal: spacing.sm,
     paddingVertical: 13,
   },
 });

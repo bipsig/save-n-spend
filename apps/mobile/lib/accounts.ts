@@ -1,6 +1,7 @@
 import { useAccountStore } from "@/store/accounts";
 import { useSession } from "@/store/session";
 import { del, patch, post } from "@/lib/api";
+import { applyOrder, persistOrder } from "@/lib/reorder";
 import type { AccountType, IAccount } from "@save-n-spend/types";
 
 export const useAccounts = () : IAccount[] => {
@@ -64,6 +65,28 @@ export const syncAccountBalance = async (
 ): Promise<void> => {
   await patch<IAccount>(`/accounts/${id}/balance`, note ? { balance, note } : { balance });
   await useAccountStore.getState().load();
+};
+
+/**
+ * Writes the user's account order as `ids` reads front to back. Must be every live account:
+ * the server ranks by position in the array, so a partial list leaves the ones it omits
+ * colliding with the ones it sets.
+ *
+ * The store moves first and does NOT refetch on success — a tap that waits out a round trip
+ * before the row moves doesn't read as moving anything, and the order is the client's own
+ * answer anyway.
+ */
+export const reorderAccounts = async (ids: string[]): Promise<void> => {
+  useAccountStore.setState((s) => ({ list: applyOrder(s.list, ids) }));
+
+  try {
+    await persistOrder("/accounts/reorder", ids);
+  } catch (error) {
+    // On screen is now a claim the server never accepted, and more taps may have landed
+    // since — so the state to return to is the server's, not this call's starting point.
+    await useAccountStore.getState().load().catch(() => {});
+    throw error;
+  }
 };
 
 // Archives rather than destroys — transactions keep pointing at a real account,
