@@ -20,6 +20,7 @@ import { del } from "@/lib/api";
 import { haptics } from "@/lib/haptics";
 import { toast } from "@/store/toast";
 import { useRouter } from "expo-router";
+import { useAccountStore } from "@/store/accounts";
 
 // Spec .selrow — boxed glass strip: leading icon · (caps label over bold value) · optional ›
 const SelRow = ({
@@ -110,6 +111,9 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
 
     try {
       await del(`/transactions/${transaction?._id}`);
+      // A delete reverts the balance move it made — the account list held elsewhere
+      // (Net Worth, the account picker) is stale until this reloads it.
+      await useAccountStore.getState().load();
       onDeleted?.();
       dismiss();
       // Names the row and says the balance moved with it: a delete silently rewrites an
