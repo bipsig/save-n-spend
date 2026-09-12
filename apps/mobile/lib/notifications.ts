@@ -35,12 +35,13 @@ export const LOOK: Record<NotificationType, Look> = {
  * The stored link names a screen rather than a path, so renaming a route here cannot orphan a
  * notification written months ago.
  */
-export const routeFor = (link?: NotificationLink): "/bills" | "/budget" | "/goals" | "/(tabs)/insights" | null => {
+export const routeFor = (link?: NotificationLink): "/bills" | "/budget" | "/goals" | "/(tabs)/insights" | "/manage-accounts" | null => {
   switch (link?.screen) {
     case "bills": return "/bills";
     case "budget": return "/budget";
     case "goals": return "/goals";
     case "insights": return "/(tabs)/insights";
+    case "accounts": return "/manage-accounts";
     default: return null;
   }
 };
