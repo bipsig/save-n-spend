@@ -101,6 +101,19 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
     });
   }
 
+  // Same transaction, landing on today instead of its own moment — a split's expense
+  // already stores only the user's own share as its amount, so repeating one naturally
+  // recreates a plain expense of that share with no split-awareness needed here.
+  const handleRepeat = () => {
+    dismiss();
+    router.push({
+      pathname: "/add-transaction",
+      params: {
+        repeatId: transaction?._id
+      }
+    });
+  }
+
   const handleDelete = async () => {
     if (!transaction) {
       return;
@@ -213,6 +226,16 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
                 <SelRow icon="receipt" label="RECEIPT" value="View receipt" valueColor="primary" chevron />
               )}
             </View>
+
+            {/* Full width and ahead of Edit/Delete — the one action worth repeating without
+                retyping (chai, metro, coffee) shouldn't compete for space with a
+                destructive one right next to it. */}
+            <Button
+              label="Log again today"
+              variant="secondary"
+              icon="repeat"
+              onPress={() => handleRepeat()}
+            />
 
             <View style={styles.actions}>
               {/* Transfers can't be edited (the form has no transfer mode yet) — delete + recreate */}

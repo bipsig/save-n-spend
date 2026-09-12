@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { BottomSheetModal, BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import { useRouter } from "expo-router";
 import type { AccountType, IAccount } from "@save-n-spend/types";
 import AppSheet from "./AppSheet";
 import { AppText } from "@/components/ui/AppText";
@@ -65,6 +66,7 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, onSaved
   const innerRef = useRef<BottomSheetModal>(null);
   useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
   const dismiss = () => innerRef.current?.dismiss();
+  const router = useRouter();
 
   const editing = account !== null;
   usePrivacyMask(); // subscribe: a peek has to reveal the balance printed below
@@ -114,6 +116,15 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, onSaved
   const pickType = (next: AccountType) => {
     setType(next);
     if (icon === iconForType(type)) setIcon(iconForType(next));
+  };
+
+  // Hands off to a prefilled transfer rather than composing one here — Add Transaction
+  // already owns every account picker and the amount pad, and duplicating that machinery
+  // in a sheet would be the one place it could drift from the real form.
+  const settleUp = () => {
+    if (!account) return;
+    dismiss();
+    router.push({ pathname: "/add-transaction", params: { settleAccount: account._id } });
   };
 
   const save = async () => {
@@ -191,6 +202,18 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, onSaved
           </AppText>
         </View>
       </View>
+
+      {/* The common case for a person account — settling is far more frequent than
+          correcting a typo, so it leads rather than sitting inside "UPDATE BALANCE"
+          below. Hidden once there's nothing left to settle. */}
+      {editing && type === "person" && account.balance !== 0 && (
+        <Button
+          label={account.balance > 0 ? `Settle up · owes you ${formatMoney(account.balance)}` : `Settle up · you owe ${formatMoney(-account.balance)}`}
+          variant="secondary"
+          icon="transfer"
+          onPress={settleUp}
+        />
+      )}
 
       <Input
         label="Name"

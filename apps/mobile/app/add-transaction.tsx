@@ -25,7 +25,7 @@ import CategoryPickerSheet from "@/components/sheets/CategoryPickerSheet";
 import type { IconName } from "@/lib/icons";
 import { spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
-import { useAccountById, useAccounts, useDefaultAccount } from "@/lib/accounts";
+import { accountById, useAccountById, useAccounts, useDefaultAccount } from "@/lib/accounts";
 import AccountPickerSheet from "@/components/sheets/AccountPickerSheet";
 import { get, patch, post } from "@/lib/api";
 import { useAccountStore } from "@/store/accounts";
@@ -90,7 +90,7 @@ const TYPE_SEGMENTS: { key: FormValues["type"]; label: string }[] = [
 const AddTransaction = () => {
   usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id?: string }>();
+  const { id, repeatId, settleAccount } = useLocalSearchParams<{ id?: string; repeatId?: string; settleAccount?: string }>();
   const isEdit = !!id;
 
   const categories = useCategories();
@@ -104,6 +104,24 @@ const AddTransaction = () => {
   const [occurredAt, setOccurredAt] = useState<Date>(new Date());
   const [extrasOpen, setExtrasOpen] = useState(false);
 
+  // Shared by editing a transaction and repeating one — everything is the same except
+  // which moment it lands on: the original's own timestamp for an edit, right now for a
+  // repeat. That's the one thing callers pass in.
+  const applyTransactionToForm = (transaction: ITransaction, landOn: Date) => {
+    reset({
+      title: transaction.title ?? "",
+      amount: paiseToInput(transaction.amount),
+      type: transaction.type as FormValues["type"],
+      category: transaction.category ?? "",
+      note: transaction.note ?? "",
+      location: transaction.location ?? "",
+    });
+    setOccurredAt(landOn);
+    setAccountId(transaction.account ?? null);
+    setToAccountId(transaction.toAccount ?? null);
+    if (transaction.note || transaction.location) setExtrasOpen(true);
+  };
+
   useEffect(() => {
     if (!id) {
       return;
@@ -112,18 +130,7 @@ const AddTransaction = () => {
     (async () => {
       try {
         const transaction = await get<ITransaction>(`/transactions/${id}`);
-        reset({
-          title: transaction.title ?? "",
-          amount: paiseToInput(transaction.amount),
-          type: transaction.type as FormValues["type"],
-          category: transaction.category ?? "",
-          note: transaction.note ?? "",
-          location: transaction.location ?? "",
-        });
-        setOccurredAt(transaction.occurredAt ? new Date(transaction.occurredAt) : new Date());
-        setAccountId(transaction.account ?? null);
-        setToAccountId(transaction.toAccount ?? null);
-        if (transaction.note || transaction.location) setExtrasOpen(true);
+        applyTransactionToForm(transaction, transaction.occurredAt ? new Date(transaction.occurredAt) : new Date());
       }
       catch (err) {
         // Buzzes even though nothing was pressed: the form is showing blank defaults for
@@ -133,6 +140,26 @@ const AddTransaction = () => {
       }
     })();
   }, [id, reset])
+
+  // "Log again today" from the detail sheet — the same load as editing, except it lands on
+  // now rather than the original's moment, and `isEdit` stays false (keyed to `id` alone) so
+  // the form opens fully editable rather than locked the way an edit is.
+  useEffect(() => {
+    if (!repeatId) {
+      return;
+    }
+
+    (async () => {
+      try {
+        const transaction = await get<ITransaction>(`/transactions/${repeatId}`);
+        applyTransactionToForm(transaction, new Date());
+      }
+      catch (err) {
+        haptics.error();
+        setSubmitError(err instanceof Error ? err.message : "Couldn't load that transaction");
+      }
+    })();
+  }, [repeatId, reset])
 
   // Spec: the CTA label is live — it names what you're saving.
   const type = watch("type");
@@ -155,6 +182,24 @@ const AddTransaction = () => {
   const toAccountRef = useRef<BottomSheetModal>(null);
   const [toAccountId, setToAccountId] = useState<string | null>(null);
   const toAccount = useAccountById(toAccountId);
+
+  // "Settle up" from a person account's sheet — a transfer prefilled in whichever direction
+  // clears the balance, amount included. Nothing is locked: the real repayment can differ
+  // slightly (rounding, a partial settlement), so every field stays editable.
+  useEffect(() => {
+    if (!settleAccount) {
+      return;
+    }
+    const person = accountById(settleAccount);
+    if (!person) {
+      return;
+    }
+    const owesYou = person.balance > 0;
+    setValue("type", "transfer");
+    setAccountId(owesYou ? person._id : (defaultAccount?._id ?? null));
+    setToAccountId(owesYou ? (defaultAccount?._id ?? null) : person._id);
+    setValue("amount", paiseToInput(Math.abs(person.balance)));
+  }, [settleAccount, setValue, defaultAccount])
 
   // For the split rows below: `useAccountById` is a hook and can't be called once per row
   // in a `.map`, so the whole list is subscribed once here and each row does a plain lookup.

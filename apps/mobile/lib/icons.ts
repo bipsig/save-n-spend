@@ -28,6 +28,7 @@ export const iconMap = {
   delete: 'delete',
   edit: 'edit',
   download: 'file-download',
+  repeat: 'replay', // "log again" on a past transaction
 
   // Spending categories
   food: 'restaurant',
