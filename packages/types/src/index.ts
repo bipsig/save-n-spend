@@ -67,6 +67,10 @@ export interface IAccount {
   // The user's own position for this account. The list arrives sorted by it, so a client
   // reads the order rather than recomputing it.
   order?: number
+  // ISO. Mongoose stamps this on every write, including a transaction's `$inc` to
+  // `balance` — so for a person account it doubles as "since when" the current amount
+  // owed has stood, with no separate tracking needed.
+  updatedAt?: string
 }
 
 export interface ICategory {
@@ -152,7 +156,9 @@ export type NotificationType =
 /** Where tapping lands. A screen name, not a URL — a stored path would be a route that
  *  has to keep working forever. */
 export interface NotificationLink {
-  screen: 'bills' | 'budget' | 'goals' | 'insights'
+  // 'accounts' is local-only — the on-device owed-money nudge is the sole source of it, so
+  // the server never writes this value; see rescheduleLocalNotifications.
+  screen: 'bills' | 'budget' | 'goals' | 'insights' | 'accounts'
   id?: string
 }
 
