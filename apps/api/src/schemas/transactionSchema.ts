@@ -9,11 +9,25 @@ const baseTransaction = z.object({
     occurredAt: z.string().optional(),
 });
 
-const spendTransaction = baseTransaction.extend({
-    type: z.enum(["expense", "income"]),
+const incomeTransaction = baseTransaction.extend({
+    type: z.literal("income"),
     account: z.string(),
     category: z.string(),
     title: z.string().min(1),
+}).strict();
+
+const expenseTransaction = baseTransaction.extend({
+    type: z.literal("expense"),
+    account: z.string(),
+    category: z.string(),
+    title: z.string().min(1),
+    // A split: `amount` above is the user's own share, and each row here becomes a
+    // transfer from `account` into a person account for what that person owes. Capped
+    // because each row is a write and a balance move — nobody splits dinner 11 ways here.
+    owedBy: z.array(z.object({
+        account: z.string(),
+        amount: z.number().int().positive(),
+    }).strict()).min(1).max(10).optional(),
 }).strict();
 
 const transferTransaction = baseTransaction.extend({
@@ -29,7 +43,8 @@ const adjustmentTransaction = baseTransaction.extend({
 }).strict();
 
 export const createTransactionSchema = z.discriminatedUnion("type", [
-    spendTransaction,
+    expenseTransaction,
+    incomeTransaction,
     transferTransaction,
     adjustmentTransaction,
 ]);

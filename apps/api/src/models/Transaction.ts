@@ -17,7 +17,8 @@ export interface ITransaction extends Document {
     paymentMode?: string | null;
     location?: string | null;
     receiptUrl?: string | null;
-    occurredAt: Date
+    occurredAt: Date;
+    splitGroupId?: mongoose.Types.ObjectId | null;
 };
 
 const TransactionSchema = new Schema<ITransaction>({
@@ -32,10 +33,14 @@ const TransactionSchema = new Schema<ITransaction>({
     location: { type: String },
     receiptUrl: { type: String },
     paymentMode: { type: String, enum: ["cash", "card", "upi", "transfer"] },
-    occurredAt: { type: Schema.Types.Date, required: true }
+    occurredAt: { type: Schema.Types.Date, required: true },
+    // Shared by every member of a split expense — the expense (the user's share) and one
+    // transfer per person owed. Deleting the expense deletes the group by this key.
+    splitGroupId: { type: Schema.Types.ObjectId, default: null }
 }, { timestamps: true });
 
 TransactionSchema.index({ userId: 1, occurredAt: -1 });
+TransactionSchema.index({ userId: 1, splitGroupId: 1 }, { sparse: true });
 TransactionSchema.plugin(mongoosePaginate);
 
 export default mongoose.model<ITransaction, PaginateModel<ITransaction>>(

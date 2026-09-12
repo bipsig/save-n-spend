@@ -17,12 +17,33 @@ const escapeRegex = (term: string): string => term.replace(/[.*+?^${}()|[\]\\]/g
 
 export const createTransaction = async (req: Request, res: Response): Promise<void> => {
     const reqBody = createTransactionSchema.parse(req.body);
+
+    // A split expense: `amount` is the user's own share, and each `owedBy` row becomes a
+    // transfer into that person's account for what they owe. `owedBy` comes off the body
+    // here because it is not a Transaction field — the transfers below are its storage.
+    let owedBy: { account: string; amount: number }[] | undefined;
+    let transactionBody: Record<string, unknown> = reqBody;
+    if (reqBody.type === "expense" && reqBody.owedBy) {
+        const { owedBy: split, ...rest } = reqBody;
+        owedBy = split;
+        transactionBody = rest;
+    }
+
     const accountIds = [reqBody.account];
     if (reqBody.type === "transfer") {
         if (reqBody.account === reqBody.toAccount) {
             throw AppError.badRequest("Cannot transfer to same account");
         }
         accountIds.push(reqBody.toAccount);
+    }
+    if (owedBy) {
+        const owedAccounts = owedBy.map((row) => row.account);
+        // The set also carries the source, so paying yourself back is caught with the
+        // duplicates. The count check below then covers existence for the whole list.
+        if (new Set([...owedAccounts, reqBody.account]).size !== owedAccounts.length + 1) {
+            throw AppError.badRequest("Each person can appear only once in a split");
+        }
+        accountIds.push(...owedAccounts);
     }
 
     const actualAccounts = await Account.find({
@@ -43,13 +64,33 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
     const session = await mongoose.startSession();
     try {
         await session.withTransaction(async () => {
+            const splitGroupId = owedBy ? new mongoose.Types.ObjectId() : null;
+
             const [transaction] = await Transaction.create([{
                 userId: req.user?.userId,
-                ...reqBody,
+                ...transactionBody,
                 occurredAt,
+                splitGroupId,
             }], { session });
 
             await applyEffects(transaction, "add", session);
+
+            // One transfer per person owed, in the same group and at the same instant, so
+            // the whole split stands or falls as one write and reads as one event.
+            for (const row of owedBy ?? []) {
+                const [transfer] = await Transaction.create([{
+                    userId: req.user?.userId,
+                    type: "transfer",
+                    amount: row.amount,
+                    account: reqBody.account,
+                    toAccount: row.account,
+                    note: reqBody.type === "expense" ? reqBody.title : undefined,
+                    occurredAt,
+                    splitGroupId,
+                }], { session });
+
+                await applyEffects(transfer, "add", session);
+            }
 
             createdTransaction = transaction
         })
@@ -256,6 +297,27 @@ export const deleteTransaction = async (req: Request, res: Response) : Promise<v
     const session = await mongoose.startSession();
     try {
         await session.withTransaction(async () => {
+            // Deleting a split's expense takes the whole group with it: transfers left
+            // behind would keep claiming the person owes money for a purchase that no
+            // longer exists. Deleting one of the transfers alone is still allowed — that
+            // is how a person is taken off a split after the fact.
+            if (transaction.type === "expense" && transaction.splitGroupId) {
+                const group = await Transaction.find({
+                    userId: req.user?.userId,
+                    splitGroupId: transaction.splitGroupId
+                }).session(session);
+
+                for (const member of group) {
+                    await applyEffects(member, "revert", session);
+                }
+
+                await Transaction.deleteMany({
+                    userId: req.user?.userId,
+                    splitGroupId: transaction.splitGroupId
+                }, { session });
+                return;
+            }
+
             await applyEffects(transaction, "revert", session);
 
             await Transaction.deleteOne({

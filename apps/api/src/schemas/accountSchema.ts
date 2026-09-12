@@ -2,7 +2,7 @@ import z from "zod";
 
 export const createAccountSchema = z.object({
     name: z.string().min(1).trim(),
-    type: z.enum(["bank", "credit_card", "cash", "wallet"]),
+    type: z.enum(["bank", "credit_card", "cash", "wallet", "person"]),
     startingBalance: z.number().int(),
     icon: z.string().optional(),
     color: z.string().optional()
@@ -10,7 +10,7 @@ export const createAccountSchema = z.object({
 
 export const updateAccountSchema = z.object({
     name: z.string().min(1).trim().optional(),
-    type: z.enum(["bank", "credit_card", "cash", "wallet"]).optional(),
+    type: z.enum(["bank", "credit_card", "cash", "wallet", "person"]).optional(),
     icon: z.string().optional(),
     color: z.string().optional()
 }).strict();

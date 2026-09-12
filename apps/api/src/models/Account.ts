@@ -26,7 +26,7 @@ export interface IAccount extends Document {
 const AccountSchema = new Schema<IAccount>({
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     name: { type: String, required: true, trim: true },
-    type: { type: String, enum: ["bank", "credit_card", "cash", "wallet" ], required: true },
+    type: { type: String, enum: ["bank", "credit_card", "cash", "wallet", "person" ], required: true },
     balance: { type: Number, required: true, default: 0 },
     startingBalance: { type: Number, required: true, default: 0 },
     icon: { type: String },
