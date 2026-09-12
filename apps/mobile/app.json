@@ -2,7 +2,7 @@
   "expo": {
     "name": "Save n Spend",
     "slug": "save-n-spend",
-    "version": "1.5.0",
+    "version": "1.6.1",
     "scheme": "savenspend",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.bipsig.savenspend",
-      "buildNumber": "6"
+      "buildNumber": "8"
     },
     "android": {
       "adaptiveIcon": {
