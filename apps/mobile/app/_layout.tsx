@@ -10,6 +10,8 @@ import type { IUser } from "@save-n-spend/types";
 import { queryClient } from "@/lib/queryClient";
 import { ApiError, get } from "@/lib/api";
 import { registerForPush, useNotificationBridge } from "@/lib/push";
+import { clearLocalNotifications, rescheduleLocalNotifications } from "@/lib/localNotifications";
+import { useAppZone } from "@/lib/zone";
 import AppLockGate from "@/components/shell/AppLockGate";
 import PeekBar from "@/components/shell/PeekBar";
 import Toast from "@/components/shell/Toast";
@@ -31,6 +33,10 @@ const RootLayout = () => {
   const signOut = useSession((s) => s.signOut);
   const segments = useSegments();
   const wakePhase = useWake((s) => s.phase);
+  // Subscribed rather than read imperatively: these two are what the evening banner is planned
+  // from, and both can arrive after this component first mounts.
+  const notificationPrefs = useSession((s) => s.user?.prefs?.notifications);
+  const zone = useAppZone();
 
   // Device-local settings, read once at boot. Outside the session effect because it gates
   // the lock overlay, which must decide before the first paint.
@@ -109,6 +115,16 @@ const RootLayout = () => {
       useNotifications.getState().reset();
     }
   }, [status]);
+
+  // The evening banner, re-planned whenever the inputs move: on reaching `authed`, when the
+  // user document lands with the real preferences, and again the moment a digest switch is
+  // flipped in Settings. `registerForPush` is what asks permission, and it runs in the effect
+  // above — so on a first launch this may find none granted yet and do nothing. The prefs
+  // arriving a moment later run it again, by which time there is an answer.
+  useEffect(() => {
+    if (status === "authed") void rescheduleLocalNotifications({ notificationPrefs, zone });
+    else if (status === "guest") void clearLocalNotifications();
+  }, [status, notificationPrefs, zone]);
 
   // Mounted for as long as the session lasts. Gated on `authed` because every route they
   // can open is behind the gate.
