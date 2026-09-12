@@ -66,6 +66,16 @@ wraps the `.app` in `Payload/`, zips it to
 so you can eyeball them before installing. Override the destination with
 `IPA_OUT=/some/dir`.
 
+### The Node version reaches further than the shell
+
+`expo prebuild` writes `ios/.xcode.env.local` from whatever `command -v node`
+resolved to at the time, and Xcode's script phases source that file. So an `ios/`
+generated from a shell on Node 18 keeps bundling with Node 18 no matter how the
+build is launched — `mise exec node@24.20.0 -- npm run ipa` does not fix it — and
+fails ten minutes in with `configs.toReversed is not a function`. `npm run ipa`
+now checks both the PATH Node and the baked one up front and stops. Either fix
+the one line in `ios/.xcode.env.local` or re-run prebuild with Node 24 active.
+
 Then, on the phone:
 
 1. **AirDrop** the `.ipa` from the Desktop to the iPhone → *Save to Files*.
