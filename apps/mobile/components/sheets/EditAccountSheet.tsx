@@ -33,18 +33,20 @@ const TYPES: { key: AccountType; label: string; icon: IconName }[] = [
   { key: "credit_card", label: "Credit card", icon: "card" },
   { key: "cash", label: "Cash", icon: "payments" },
   { key: "wallet", label: "Wallet", icon: "wallet" },
+  { key: "person", label: "Person", icon: "person" },
 ];
 
 const iconForType = (type: AccountType): IconName =>
   TYPES.find((t) => t.key === type)?.icon ?? "wallet";
 
-// Only these two can hold less than nothing — an overdraft and a card balance owed.
-// Offering cash or a wallet a sign would be a switch that makes the figure wrong.
-const CAN_GO_NEGATIVE: AccountType[] = ["bank", "credit_card"];
+// Only these can hold less than nothing — an overdraft, a card balance owed, and a person
+// the user owes. Offering cash or a wallet a sign would be a switch that makes the figure wrong.
+const CAN_GO_NEGATIVE: AccountType[] = ["bank", "credit_card", "person"];
 
 const SIGN_LABELS: Partial<Record<AccountType, { positive: string; negative: string }>> = {
   bank: { positive: "In account", negative: "Overdrawn" },
   credit_card: { positive: "In credit", negative: "Owed" },
+  person: { positive: "Owes you", negative: "You owe" },
 };
 
 // Rupees typed by a human → integer paise, the only unit the API accepts.

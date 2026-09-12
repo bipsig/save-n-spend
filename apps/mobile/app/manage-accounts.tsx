@@ -32,6 +32,7 @@ const TYPE_LABELS: Record<AccountType, string> = {
   credit_card: "Credit card",
   cash: "Cash",
   wallet: "Wallet",
+  person: "Person",
 };
 
 const ManageAccountsScreen = () => {

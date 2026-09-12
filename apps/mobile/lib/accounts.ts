@@ -35,9 +35,10 @@ export type AccountDraft = {
   color?: string;
 };
 
-export const createAccount = async (draft: AccountDraft): Promise<void> => {
-  await post<IAccount>("/accounts", draft);
+export const createAccount = async (draft: AccountDraft): Promise<IAccount> => {
+  const created = await post<IAccount>("/accounts", draft);
   await useAccountStore.getState().load();
+  return created;
 };
 
 // Deliberately no `startingBalance`: it is a term in the balance the server

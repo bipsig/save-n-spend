@@ -1,16 +1,26 @@
-import { forwardRef, useImperativeHandle, useRef } from "react";
+import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { BottomSheetModal } from "@gorhom/bottom-sheet";
+import { BottomSheetModal, BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";
 import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
-import { useAccounts } from "@/lib/accounts";
+import Button from "@/components/ui/Button";
+import { createAccount, useAccounts } from "@/lib/accounts";
 import { haptics } from "@/lib/haptics";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import type { IconName } from "@/lib/icons";
+import type { AccountType } from "@save-n-spend/types";
 import type { ColorToken } from "@/theme";
-import { spacing } from "@/theme";
+import { colors, spacing } from "@/theme";
+import { KEYBOARD_DONE_ID } from "@/components/ui/KeyboardDoneBar";
+
+// A person account's balance is a receivable, not spendable funds — "available" would
+// read backwards. Positive = they owe the user; negative = the user owes them.
+const owedLine = (balance: number): string => {
+  if (balance === 0) return "Settled up";
+  return balance > 0 ? `Owes you ${formatMoney(balance)}` : `You owe ${formatMoney(-balance)}`;
+};
 
 type Props = {
   selectedId?: string | null;
@@ -24,10 +34,19 @@ type Props = {
    * common case stays a plain `(id: string) => void`.
    */
   onClear?: () => void;
+  /** Restricts the list to one account type — the split rows only ever pick a person. */
+  filterType?: AccountType;
+  /**
+   * Offers a "+ New person" row that creates the account inline (name only, opening
+   * balance zero) and picks it — a split is usually the first time a flatmate's
+   * account is needed, and a detour through Manage accounts would lose the amount
+   * already typed on the form behind this sheet.
+   */
+  allowCreate?: boolean;
 };
 
 const AccountPickerSheet = forwardRef<BottomSheetModal, Props>((
-  { selectedId, title = "Pay from", onPick, onClear },
+  { selectedId, title = "Pay from", onPick, onClear, filterType, allowCreate },
   ref
 ) => {
   // Own handle, so `dismiss` closes *this* picker. `useBottomSheetModal().dismiss()`
@@ -37,14 +56,71 @@ const AccountPickerSheet = forwardRef<BottomSheetModal, Props>((
   useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
   const dismiss = () => innerRef.current?.dismiss();
 
-  const accounts = useAccounts();
+  const allAccounts = useAccounts();
+  const accounts = filterType ? allAccounts.filter((a) => a.type === filterType) : allAccounts;
   usePrivacyMask(); // subscribe: a peek has to re-render the balances listed below
 
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [creatingBusy, setCreatingBusy] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const reset = () => {
+    setCreating(false);
+    setNewName("");
+    setCreateError(null);
+  };
+
+  const onCreate = async () => {
+    const trimmed = newName.trim();
+    if (trimmed.length === 0) {
+      haptics.error();
+      setCreateError("Give them a name.");
+      return;
+    }
+    setCreatingBusy(true);
+    setCreateError(null);
+    try {
+      const created = await createAccount({ name: trimmed, type: "person", startingBalance: 0 });
+      haptics.select();
+      onPick(created._id);
+      dismiss();
+    }
+    catch (err) {
+      haptics.error();
+      setCreateError(err instanceof Error ? err.message : "Couldn't add them");
+    }
+    finally {
+      setCreatingBusy(false);
+    }
+  };
+
   return (
-    <AppSheet ref={innerRef}>
+    <AppSheet ref={innerRef} onDismiss={reset}>
       <AppText size="md" weight="black">
         {title}
       </AppText>
+      {allowCreate && creating && (
+        <View style={styles.createRow}>
+          <BottomSheetTextInput
+            placeholder="Their name"
+            placeholderTextColor={colors.gray400}
+            value={newName}
+            onChangeText={setNewName}
+            returnKeyType="done"
+            autoFocus
+            inputAccessoryViewID={KEYBOARD_DONE_ID}
+            style={styles.createInput}
+          />
+          {createError && (
+            <AppText size="xs" color="danger">{createError}</AppText>
+          )}
+          <View style={styles.createActions}>
+            <Button label="Add" onPress={onCreate} loading={creatingBusy} size="sm" />
+            <Button label="Cancel" variant="ghost" size="sm" onPress={() => setCreating(false)} />
+          </View>
+        </View>
+      )}
       <View style={styles.list}>
         {onClear && (
           // `select` throughout this sheet, not the default tap: every row here is one
@@ -104,13 +180,36 @@ const AccountPickerSheet = forwardRef<BottomSheetModal, Props>((
                   {account.name}
                 </AppText>
                 <AppText size="xs" color="inkDim">
-                  {formatMoney(account.balance)} available
+                  {account.type === "person" ? owedLine(account.balance) : `${formatMoney(account.balance)} available`}
                 </AppText>
               </View>
               {selected && <Icon name="budgetOk" size={20} color="success" />}
             </PressableScale>
           );
         })}
+        {allowCreate && !creating && (
+          <PressableScale
+            style={styles.row}
+            scaleTo={0.98}
+            haptic={false}
+            onPress={() => {
+              haptics.select();
+              setCreating(true);
+            }}
+          >
+            <Icon
+              name="add"
+              size={20}
+              containerSize={44}
+              container="square"
+              containerColor="surface2"
+              color="inkDim"
+            />
+            <AppText size="sm" weight="bold" style={styles.info}>
+              New person
+            </AppText>
+          </PressableScale>
+        )}
       </View>
     </AppSheet>
   );
@@ -140,6 +239,23 @@ const styles = StyleSheet.create({
   info: {
     flex: 1,
     gap: 2,
+  },
+  createRow: {
+    gap: spacing.sm,
+  },
+  createInput: {
+    borderWidth: 1,
+    borderRadius: 16,
+    borderColor: "rgba(255,255,255,0.13)",
+    backgroundColor: "rgba(255,255,255,0.07)",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    color: colors.ink,
+    fontWeight: "600",
+  },
+  createActions: {
+    flexDirection: "row",
+    gap: spacing.sm,
   },
 });
 
