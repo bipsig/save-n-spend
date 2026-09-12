@@ -15,10 +15,32 @@ VERSION=$(node -p "require('./app.json').expo.version")
 OUT="${IPA_OUT:-$HOME/Desktop}/savenspend-$VERSION.ipa"
 PRODUCT="build/Build/Products/Release-iphoneos/$APP"
 
+# Expo 54's Metro needs Node 20+ for `Array.prototype.toReversed`. Checked here rather
+# than left to fail, because it fails INSIDE Xcode's bundling phase — ten minutes and
+# twenty thousand log lines in — as "configs.toReversed is not a function".
+require_node_20 () {
+  local node_bin="$1" where="$2"
+  local major
+  major=$("$node_bin" -p "process.versions.node.split('.')[0]" 2>/dev/null) || major=0
+  [ "$major" -ge 20 ] && return 0
+  echo "Node $("$node_bin" -v 2>/dev/null || echo '?') is too old for Expo's bundler ($where)." >&2
+  echo "mise.toml pins 24.20.0. Retry with:  mise exec node@24.20.0 -- npm run ipa" >&2
+  exit 1
+}
+
+require_node_20 "$(command -v node)" "on PATH"
+
 # `ios/` is gitignored and regenerated, so it may not exist on a fresh clone.
 if [ ! -d ios ]; then
   echo "==> ios/ missing, running prebuild"
   npx expo prebuild --platform ios
+fi
+
+# Prebuild bakes `command -v node` into this file, and the script phases source it — so an
+# `ios/` generated from a shell on an older Node stays broken however this script is run.
+if [ -f ios/.xcode.env.local ]; then
+  BAKED=$(sed -n 's/^export NODE_BINARY=//p' ios/.xcode.env.local)
+  [ -n "$BAKED" ] && require_node_20 "$BAKED" "baked into ios/.xcode.env.local by prebuild"
 fi
 
 echo "==> Building Release for device (unsigned)"
