@@ -64,8 +64,10 @@ const HomeScreen = () => {
     goalsRefetch();
     transactionsRefetch();
     budgetsRefetch();
-    // Accounts are NOT refetched: every mutation in `lib/accounts` reloads the store
-    // itself, so a focus reload would be a second request for an already-correct list.
+    // Accounts are NOT refetched here: every write that can move a balance — the
+    // mutations in `lib/accounts`, and transaction create/edit/delete in
+    // add-transaction.tsx / TransactionDetailSheet — reloads the store itself, so a
+    // focus reload would be a second request for an already-correct list.
   }, [summaryRefetch, healthRefetch, billsRefetch, goalsRefetch, transactionsRefetch, budgetsRefetch]));
 
   const dismissedBy = useSettings((s) => s.getStartedDismissed);

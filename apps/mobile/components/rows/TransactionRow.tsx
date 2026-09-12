@@ -85,6 +85,11 @@ const TransactionRow = ({ transaction, onPress }: Props) => {
             {transaction.receiptUrl && (
               <MetaItem icon="receipt" label="Receipt" color="primary" />
             )}
+            {/* Set on both the expense (the user's share) and its sibling transfers, so
+                a split reads as one event wherever a piece of it shows up in Activity. */}
+            {transaction.splitGroupId && (
+              <MetaItem icon="person" label="Split" />
+            )}
           </View>
         </View>
 

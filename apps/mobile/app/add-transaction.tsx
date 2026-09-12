@@ -25,9 +25,10 @@ import CategoryPickerSheet from "@/components/sheets/CategoryPickerSheet";
 import type { IconName } from "@/lib/icons";
 import { spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
-import { useAccountById, useDefaultAccount } from "@/lib/accounts";
+import { useAccountById, useAccounts, useDefaultAccount } from "@/lib/accounts";
 import AccountPickerSheet from "@/components/sheets/AccountPickerSheet";
 import { get, patch, post } from "@/lib/api";
+import { useAccountStore } from "@/store/accounts";
 import type { ITransaction } from "@save-n-spend/types";
 
 const schema = z.object({
@@ -155,6 +156,57 @@ const AddTransaction = () => {
   const [toAccountId, setToAccountId] = useState<string | null>(null);
   const toAccount = useAccountById(toAccountId);
 
+  // For the split rows below: `useAccountById` is a hook and can't be called once per row
+  // in a `.map`, so the whole list is subscribed once here and each row does a plain lookup.
+  const allAccounts = useAccounts();
+
+  // Split — expense only, new entries only (an edit can't reconcile a group's transfers).
+  // Each row picks a person and what they owe; the rest of the total stays the user's own
+  // share. `key` is local-only, for React's list identity — it never reaches the server.
+  const [splitOpen, setSplitOpen] = useState(false);
+  const [splitRows, setSplitRows] = useState<{ key: string; accountId: string | null; amount: string }[]>([]);
+  const nextRowKey = useRef(0);
+  const [activeSplitKey, setActiveSplitKey] = useState<string | null>(null);
+  const splitAccountRef = useRef<BottomSheetModal>(null);
+
+  const addSplitRow = () => {
+    if (splitRows.length >= 10) return; // matches the API's per-split cap
+    setSplitRows((rows) => [...rows, { key: String(nextRowKey.current++), accountId: null, amount: "" }]);
+  };
+
+  const toggleSplit = () => {
+    setSplitOpen((open) => {
+      const next = !open;
+      if (next && splitRows.length === 0) addSplitRow();
+      return next;
+    });
+  };
+
+  const removeSplitRow = (key: string) => {
+    haptics.tap();
+    setSplitRows((rows) => rows.filter((r) => r.key !== key));
+  };
+
+  const setSplitAmount = (key: string, amount: string) =>
+    setSplitRows((rows) => rows.map((r) => (r.key === key ? { ...r, amount } : r)));
+
+  // Only rows with a person picked count — an empty row is a slot still being filled in.
+  const splitFilledRows = splitOpen ? splitRows.filter((r) => r.accountId) : [];
+  const owedTotal = splitFilledRows.reduce((sum, r) => {
+    const rowAmount = parseMoney(r.amount);
+    return sum + (Number.isFinite(rowAmount) && rowAmount > 0 ? rowAmount : 0);
+  }, 0);
+
+  const splitEqually = () => {
+    if (splitFilledRows.length === 0 || !(entered > 0)) return;
+    haptics.toggle();
+    // Rounds down; the remainder stays in the user's own share rather than vanishing —
+    // see the share computation in onSubmit, which is `entered` minus this same sum.
+    const perPerson = Math.floor(entered / (splitFilledRows.length + 1));
+    const perPersonInput = paiseToInput(perPerson);
+    setSplitRows((rows) => rows.map((r) => (r.accountId ? { ...r, amount: perPersonInput } : r)));
+  };
+
   const entered = parseMoney(amountRaw);
   const balanceLine = useMemo(() => {
     if (isEdit || !account) return null;
@@ -167,9 +219,13 @@ const AddTransaction = () => {
     if (!(entered > 0)) {
       return `From ${account.name} · ${formatMoney(account.balance)} available`;
     }
+    if (type === "expense" && owedTotal > 0) {
+      const share = Math.max(entered - owedTotal, 0);
+      return `From ${account.name} · your share ${formatMoney(share)} · ${formatMoney(owedTotal)} owed to you`;
+    }
     const after = type === "income" ? account.balance + entered : account.balance - entered;
     return `${type === "income" ? "To" : "From"} ${account.name} · ${formatMoney(after)} ${type === "income" ? "after this" : "left after this"}`;
-  }, [account, toAccount, entered, type, isEdit]);
+  }, [account, toAccount, entered, type, isEdit, owedTotal]);
 
   const setAmount = (next: string) =>
     setValue("amount", next, { shouldValidate: true });
@@ -183,6 +239,12 @@ const AddTransaction = () => {
     const selected = categories.find((c) => c._id === watch("category"));
     if (selected && selected.kind !== next) {
       setValue("category", "");
+    }
+    // A split belongs to the expense it was built for — carrying it to Income or
+    // Transfer would leave stale person rows behind a section that's no longer shown.
+    if (next !== "expense") {
+      setSplitOpen(false);
+      setSplitRows([]);
     }
   };
 
@@ -240,11 +302,40 @@ const AddTransaction = () => {
       ...(data.location.trim() ? { location: data.location.trim() } : {}),
     };
 
+    // A split: `owedBy` becomes one transfer per person, and the expense itself is
+    // pared down to the user's own share — see createTransaction on the API.
+    let owedBy: { account: string; amount: number }[] | undefined;
+    if (!isEdit && data.type === "expense" && splitFilledRows.length > 0) {
+      for (const row of splitFilledRows) {
+        const rowAmount = parseMoney(row.amount);
+        if (!(rowAmount > 0)) {
+          reject("Enter what each person owes");
+          return;
+        }
+      }
+      const total = splitFilledRows.reduce((sum, row) => sum + parseMoney(row.amount), 0);
+      if (total >= entered) {
+        reject("Your share must be more than ₹0 — lower what's owed");
+        return;
+      }
+      owedBy = splitFilledRows.map((row) => ({ account: row.accountId!, amount: parseMoney(row.amount) }));
+    }
+    const share = owedBy ? entered - owedBy.reduce((sum, row) => sum + row.amount, 0) : parseMoney(data.amount);
+
     // A spend carries title + category; a transfer carries toAccount and neither. Amount
     // is positive paise; `type` gives the direction.
     const payload = data.type === "transfer"
       ? { type: data.type, amount: parseMoney(data.amount), account: account._id, toAccount: toAccount!._id, occurredAt: occurredAt.toISOString(), ...extras }
-      : { type: data.type, amount: parseMoney(data.amount), account: account._id, category: data.category, title: data.title, occurredAt: occurredAt.toISOString(), ...extras };
+      : {
+          type: data.type,
+          amount: share,
+          account: account._id,
+          category: data.category,
+          title: data.title,
+          occurredAt: occurredAt.toISOString(),
+          ...(owedBy ? { owedBy } : {}),
+          ...extras,
+        };
 
     setSubmitting(true);
     setSubmitError(null);
@@ -259,6 +350,10 @@ const AddTransaction = () => {
       else {
         await post("/transactions", payload);
       }
+      // Every save here moves a balance — a plain edit's amount, a split's transfers, an
+      // ordinary expense's account. The list held elsewhere (Net Worth, the account
+      // picker) is stale until this reloads it.
+      await useAccountStore.getState().load();
       router.back();
       // The screen is already gone by the time this shows, so it is the only receipt —
       // hence naming the amount and direction rather than just "Saved".
@@ -266,6 +361,10 @@ const AddTransaction = () => {
       if (isEdit) toast.success(`Changes saved — ${amount}`);
       else if (data.type === "transfer") toast.success(`${amount} moved to ${toAccount!.name}`);
       else if (data.type === "income") toast.success(`${amount} added to ${account.name}`);
+      else if (owedBy) {
+        const owedTotalSaved = owedBy.reduce((sum, row) => sum + row.amount, 0);
+        toast.success(`${amount} spent on ${data.title.trim()} — ${formatMoney(owedTotalSaved)} owed to you`);
+      }
       else toast.success(`${amount} spent on ${data.title.trim()}`);
     }
     catch (err) {
@@ -402,6 +501,70 @@ const AddTransaction = () => {
             </Animated.View>
           )}
 
+          {/* Split — only a fresh expense can start one; editing one row of an existing
+              split is still possible below in Activity, just not from here. */}
+          {!isEdit && type === "expense" && (
+            <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)} style={styles.stack}>
+              <PressableScale style={[styles.selRow, !splitOpen && styles.selRowDim]} onPress={toggleSplit} scaleTo={0.98}>
+                <Icon name="person" size={18} color="inkDim" />
+                <AppText size="sm" weight="semibold" color={splitOpen ? "ink" : "inkDim"} style={styles.selValue}>
+                  {owedTotal > 0 ? `Split · ${formatMoney(owedTotal)} owed to you` : "Split with people"}
+                </AppText>
+                <Icon name={splitOpen ? "chevronDown" : "chevronRight"} size={20} color="inkDim" />
+              </PressableScale>
+
+              {splitOpen && (
+                <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(120)} style={styles.stack}>
+                  {splitRows.map((row) => {
+                    const person = allAccounts.find((a) => a._id === row.accountId);
+                    return (
+                      <View key={row.key} style={styles.splitRow}>
+                        <PressableScale
+                          style={styles.splitPerson}
+                          scaleTo={0.98}
+                          onPress={() => {
+                            setActiveSplitKey(row.key);
+                            splitAccountRef.current?.present();
+                          }}
+                        >
+                          <Icon name={(person?.icon ?? "person") as IconName} size={16} color="inkDim" />
+                          <AppText size="sm" weight="bold" color={person ? "ink" : "inkDim"} style={styles.selValue}>
+                            {person?.name ?? "Choose person"}
+                          </AppText>
+                        </PressableScale>
+                        <View style={styles.splitAmount}>
+                          <AppText size="sm" color="inkDim">₹</AppText>
+                          <Input
+                            value={row.amount}
+                            onChangeText={(v) => setSplitAmount(row.key, v)}
+                            placeholder="0"
+                            keyboardType="decimal-pad"
+                            editable={!!row.accountId}
+                            style={styles.splitAmountInput}
+                          />
+                        </View>
+                        <PressableScale style={styles.splitRemove} onPress={() => removeSplitRow(row.key)} scaleTo={0.9}>
+                          <Icon name="close" size={16} color="inkDim" />
+                        </PressableScale>
+                      </View>
+                    );
+                  })}
+
+                  <View style={styles.splitActions}>
+                    <PressableScale onPress={addSplitRow} scaleTo={0.98} disabled={splitRows.length >= 10}>
+                      <AppText size="sm" weight="bold" color="primary">+ Add person</AppText>
+                    </PressableScale>
+                    {splitFilledRows.length > 0 && (
+                      <PressableScale onPress={splitEqually} scaleTo={0.98}>
+                        <AppText size="sm" weight="bold" color="primary">Split equally</AppText>
+                      </PressableScale>
+                    )}
+                  </View>
+                </Animated.View>
+              )}
+            </Animated.View>
+          )}
+
           {!isEdit && type === "transfer" && (
             <Animated.View
               entering={FadeIn.duration(180)}
@@ -530,6 +693,17 @@ const AddTransaction = () => {
 
       <AccountPickerSheet ref={accountRef} selectedId={accountId} onPick={setAccountId} />
       <AccountPickerSheet ref={toAccountRef} selectedId={toAccountId} onPick={setToAccountId} />
+      {/* One sheet shared by every split row — `activeSplitKey` says which row it's for. */}
+      <AccountPickerSheet
+        ref={splitAccountRef}
+        title="Who owes you"
+        selectedId={splitRows.find((r) => r.key === activeSplitKey)?.accountId}
+        filterType="person"
+        allowCreate
+        onPick={(pickedId) => {
+          if (activeSplitKey) setSplitRows((rows) => rows.map((r) => (r.key === activeSplitKey ? { ...r, accountId: pickedId } : r)));
+        }}
+      />
       <CategoryPickerSheet
         ref={categoryRef}
         kind={type === "income" ? "income" : "expense"}
@@ -572,6 +746,42 @@ const styles = StyleSheet.create({
   },
   fieldLabel: {
     letterSpacing: 1.3, // spec .flabel
+  },
+  splitRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  splitPerson: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+  },
+  splitAmount: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    width: 92,
+  },
+  splitAmountInput: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+  },
+  splitRemove: {
+    padding: 8,
+  },
+  splitActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 2,
   },
   // Edit mode — the immutable type segment reads as inert, not interactive
   segRowLocked: {
