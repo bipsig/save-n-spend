@@ -1,7 +1,9 @@
 // Shared types used by both API and Mobile
 
 export type TransactionType = 'expense' | 'income' | 'transfer' | 'positiveAdjustment' | 'negativeAdjustment'
-export type AccountType = 'bank' | 'credit_card' | 'cash' | 'wallet'
+// 'person' is a receivable: its balance is what that person owes the user (negative when
+// the user owes them). It is what a split expense transfers the lent portion into.
+export type AccountType = 'bank' | 'credit_card' | 'cash' | 'wallet' | 'person'
 export type CategoryKind = 'expense' | 'income'
 export type BillStatus = 'pending' | 'paid' | 'overdue'
 export type BillFrequency = 'monthly' | 'yearly'
@@ -95,6 +97,9 @@ export interface ITransaction {
   receiptUrl?: string    // UI: attached receipt; presence drives the "Receipt" tag
   paymentMode?: 'cash' | 'card' | 'upi' | 'transfer'
   occurredAt: string     // ISO date string on the wire
+  // Set on every member of a split: the expense (the user's share) and its sibling
+  // transfers (what each person owes). Absent on ordinary transactions.
+  splitGroupId?: string | null
 }
 
 export interface IBudget {
