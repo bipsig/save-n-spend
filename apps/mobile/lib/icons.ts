@@ -54,6 +54,7 @@ export const iconMap = {
   date: "calendar-month",
   clock: "schedule",
   location: "location-pin",
+  note: "notes",
 
   //budget
   budgetOk: "check-circle",

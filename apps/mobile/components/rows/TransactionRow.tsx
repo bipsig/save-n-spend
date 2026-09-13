@@ -18,19 +18,29 @@ type Props = {
   onPress?: () => void
 }
 
-// One icon + label pair on the meta row (date / location / receipt).
+// One icon + label pair on the meta row (date / location / receipt). `shrink` is for
+// location alone — the one field of unpredictable length, so it's the one that gives
+// way when the row is tight rather than the row wrapping to a second line.
 const MetaItem = ({
   icon,
   label,
   color = "inkDim",
+  shrink = false,
 }: {
   icon: IconName
   label: string
   color?: ColorToken
+  shrink?: boolean
 }) => (
-  <View style={styles.metaItem}>
+  <View style={[styles.metaItem, shrink && styles.metaItemShrink]}>
     <Icon name={icon} size={14} color={color} />
-    <AppText size="xs" color={color} weight={color === "primary" ? "bold" : "regular"}>
+    <AppText
+      size="xs"
+      color={color}
+      weight={color === "primary" ? "bold" : "regular"}
+      numberOfLines={1}
+      style={shrink ? styles.metaTextShrink : undefined}
+    >
       {label}
     </AppText>
   </View>
@@ -80,7 +90,7 @@ const TransactionRow = ({ transaction, onPress }: Props) => {
           <View style={styles.metaRow}>
             <MetaItem icon="date" label={formatTxnDate(transaction.occurredAt)} />
             {transaction.location && (
-              <MetaItem icon="location" label={transaction.location} />
+              <MetaItem icon="location" label={transaction.location} shrink />
             )}
             {transaction.receiptUrl && (
               <MetaItem icon="receipt" label="Receipt" color="primary" />
@@ -91,6 +101,13 @@ const TransactionRow = ({ transaction, onPress }: Props) => {
               <MetaItem icon="person" label="Split" />
             )}
           </View>
+          {/* A note earns its own line rather than a spot in the meta row — unlike a
+              location or "Receipt", there's no fixed length to budget space for. */}
+          {!!transaction.note && (
+            <AppText size="xs" color="inkDim" numberOfLines={1} style={styles.note}>
+              {transaction.note}
+            </AppText>
+          )}
         </View>
 
         {/* The amount is stored positive and the type supplies the sign. A transfer gets
@@ -123,7 +140,9 @@ const styles = StyleSheet.create({
   metaRow: {
     flexDirection: "row",
     alignItems: "center",
-    flexWrap: "wrap",
+    // No wrap: on a narrower device a long location used to push this onto a second
+    // line, growing the card. Location alone shrinks (see metaItemShrink) so the row
+    // always settles on one line instead.
     gap: 12,
     marginTop: spacing.xs,
   },
@@ -131,6 +150,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
+    flexShrink: 0,
+  },
+  metaItemShrink: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  metaTextShrink: {
+    flexShrink: 1,
+  },
+  note: {
+    marginTop: 1,
   },
 })
 

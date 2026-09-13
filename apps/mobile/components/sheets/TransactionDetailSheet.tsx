@@ -219,6 +219,9 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
                 <SelRow icon="wallet" label="ACCOUNT" value={account?.name ?? "—"} />
               )}
               <SelRow icon="date" label="DATE" value={formatFullDate(transaction.occurredAt)} />
+              {!!transaction.note && (
+                <SelRow icon="note" label="NOTE" value={transaction.note} />
+              )}
               {!!transaction.location && (
                 <SelRow icon="location" label="LOCATION" value={transaction.location} />
               )}
