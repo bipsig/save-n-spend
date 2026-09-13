@@ -32,9 +32,12 @@ import {
   cumulativePair,
   buildHeatmap,
   compareRows,
+  seriesLabel,
+  windowLabel,
+  prevLabel,
 } from "@/lib/insights";
 import { exportInsights } from "@/lib/insightsExport";
-import { appZone, calendarFromKey, calendarToday, useAppZone } from "@/lib/zone";
+import { useAppZone } from "@/lib/zone";
 import { toast } from "@/store/toast";
 import { colors, radius, spacing, incomeColor, expenseColor } from "@/theme";
 
@@ -44,64 +47,8 @@ const SEGMENTS: { key: InsightsPeriod; label: string }[] = [
   { key: "year", label: "Year" },
 ];
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const MONTHS_FULL = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-
-// `periodStart` is a bare calendar key ("2026-08-01") the server already cut in the
-// user's zone, so it is read field-by-field and never re-read as a moment.
-const seriesLabel = (key: string, period: InsightsPeriod) => {
-  const d = calendarFromKey(key);
-  if (period === "year") return `${d.getUTCFullYear()}`;
-  if (period === "month") return MONTHS[d.getUTCMonth()];
-  return `${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
-};
-
 const unitsWord = (period: InsightsPeriod) =>
   period === "year" ? "YEARS" : period === "week" ? "WEEKS" : "MONTHS";
-
-// The three label helpers below anchor on today WHERE THE USER IS, then do plain `Date.UTC`
-// arithmetic on that calendar date (see lib/zone). Anchoring on `new Date()` and reading
-// `getUTC*` off it names the wrong window for a third of every Indian day: past 5:30am IST
-// the UTC date is still yesterday, so on the 1st "This Month" would label the previous one.
-const anchor = (): Date => calendarToday(appZone());
-
-// Monday-start of the week that is `offset` weeks from the current one.
-const weekStart = (offset: number) => {
-  const now = anchor();
-  const sinceMonday = (now.getUTCDay() + 6) % 7;
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - sinceMonday + offset * 7));
-};
-
-// The human label for the window the navigator points at. Current/previous read
-// friendly ("This Month" / "Last Month"); anything older is concrete.
-const windowLabel = (period: InsightsPeriod, offset: number): string => {
-  if (offset === 0) return period === "week" ? "This Week" : period === "month" ? "This Month" : "This Year";
-  if (offset === -1) return period === "week" ? "Last Week" : period === "month" ? "Last Month" : "Last Year";
-
-  const now = anchor();
-  if (period === "year") return `${now.getUTCFullYear() + offset}`;
-  if (period === "month") {
-    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, 1));
-    return `${MONTHS_FULL[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
-  }
-  const start = weekStart(offset);
-  const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate() + 6));
-  return start.getUTCMonth() === end.getUTCMonth()
-    ? `${start.getUTCDate()}–${end.getUTCDate()} ${MONTHS[end.getUTCMonth()]}`
-    : `${start.getUTCDate()} ${MONTHS[start.getUTCMonth()]} – ${end.getUTCDate()} ${MONTHS[end.getUTCMonth()]}`;
-};
-
-// Short label for the unit just before the shown window (delta "vs …").
-const prevLabel = (period: InsightsPeriod, offset: number): string => {
-  const now = anchor();
-  if (period === "year") return `${now.getUTCFullYear() + offset - 1}`;
-  if (period === "week") return "prev wk";
-  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset - 1, 1));
-  return MONTHS[d.getUTCMonth()];
-};
 
 type Chart = "trend" | "cumulative" | "donut" | "income" | "account";
 
@@ -210,7 +157,7 @@ const InsightsScreen = () => {
     setExporting(true);
     const label = windowLabel(period, offset);
     try {
-      await exportInsights(data, period, label);
+      await exportInsights(data, period, offset);
       // Names the window: the export is of what's on screen, which may not be this month.
       toast.success(`Insights for ${label} exported`);
     } catch (err) {

@@ -1,7 +1,17 @@
 import type { InsightsSummary, InsightsPeriod } from "@save-n-spend/types";
 import { deliver, htmlEscape, dayStamp } from "@/lib/export";
-import { buildTrend, foldCategories, accountShares } from "@/lib/insights";
-import { calendarFromKey } from "@/lib/zone";
+import {
+  buildTrend,
+  foldCategories,
+  accountShares,
+  cumulativePair,
+  buildHeatmap,
+  compareRows,
+  seriesLabel,
+  windowLabel,
+  prevLabel,
+} from "@/lib/insights";
+import type { Slice, HeatCell, Heatmap, CompareRow } from "@/lib/insights";
 import { incomeColor, expenseColor } from "@/theme";
 // The exact formatter, never the privacy-masked default: an exported file is
 // one the user explicitly asked us to generate, so "₹ ••••" in it would be a bug.
@@ -10,17 +20,13 @@ import { formatMoneyExact as formatMoney } from "@/lib/money";
 // A PDF report of the insights window the user is currently looking at (period +
 // however far they've navigated back). We already hold the InsightsSummary in
 // the screen, so no refetch — the summary is passed straight in.
-
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-// The key is a bare calendar date from the server ("2026-08-12"), already cut in the
-// user's zone — so it is read as fields, never re-interpreted as a moment.
-const seriesLabel = (key: string, period: InsightsPeriod): string => {
-  const d = calendarFromKey(key);
-  if (period === "year") return `${d.getUTCFullYear()}`;
-  if (period === "month") return MONTHS[d.getUTCMonth()];
-  return `${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
-};
+//
+// Mirrors the on-screen sections one for one — Spending trend, Pace, Income vs
+// expense, Where it went, By category, Daily rhythm, Biggest movers, Where it
+// left from — so a report never falls behind the chart set actually shown to
+// the user. Every section reads from the same InsightsSummary and the same
+// lib/insights.ts helpers the screen uses, gated the same way (a year has no
+// daily rhythm; a window with no movers gets no section).
 
 const pct = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 100) : 0);
 const unitsWord = (period: InsightsPeriod) =>
@@ -56,7 +62,7 @@ const shortMoney = (paise: number): string => {
   return `₹${Math.round(r)}`;
 };
 
-// Horizontal gridlines + left-hand amount labels (0 → max), shared by both charts.
+// Horizontal gridlines + left-hand amount labels (0 → max), shared by every line/column chart.
 const yAxis = (max: number): string =>
   [0, 0.5, 1]
     .map((f) => {
@@ -65,6 +71,11 @@ const yAxis = (max: number): string =>
         `<text x="${PAD_L - 6}" y="${(y + 3).toFixed(1)}" font-size="8" fill="${AXIS}" text-anchor="end">${htmlEscape(shortMoney(max * f))}</text>`;
     })
     .join("");
+
+// Sampled x-axis ticks — first, quarters, last — same rule the on-screen charts use so a
+// wide series doesn't crowd the axis with a label per point.
+const sampleTicks = (n: number): number[] =>
+  Array.from(new Set([0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(f * (n - 1)))));
 
 // Same coordinate math as the on-screen RN charts, emitted as an inline SVG that
 // scales to the page width, now with labelled x (time) and y (amount) axes.
@@ -76,8 +87,7 @@ const areaSvg = (values: number[], axis: string[]): string => {
   const y = (v: number) => PLOT_H - (v / max) * PLOT_H;
   const path = values.map((v, i) => `${i ? "L" : "M"} ${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
   const area = `${path} L ${x(n - 1).toFixed(1)},${PLOT_H} L ${x(0).toFixed(1)},${PLOT_H} Z`;
-  const ticks = Array.from(new Set([0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(f * (n - 1)))));
-  const labels = ticks
+  const labels = sampleTicks(n)
     .map((i) => {
       const anchor = i === 0 ? "start" : i === n - 1 ? "end" : "middle";
       return `<text x="${x(i).toFixed(1)}" y="${H - 5}" font-size="9" fill="${AXIS}" text-anchor="${anchor}">${htmlEscape(axis[i] ?? "")}</text>`;
@@ -110,16 +120,172 @@ const columnsSvg = (pairs: { income: number; expense: number }[], labels: string
     <line x1="${PAD_L}" y1="${PLOT_H}" x2="${W}" y2="${PLOT_H}" stroke="#e7e5f0" stroke-width="1"/>${bars}${lbls}</svg>`;
 };
 
+// Mirrors DualLineChart on screen: two running totals on one axis, the previous one dashed
+// and allowed to run past where the current one has got to — that period is finished, and
+// where it ended up is the point of the comparison.
+const paceSvg = (current: number[], previous: number[], labels: string[]): string => {
+  const span = Math.max(current.length, previous.length, 1);
+  const max = Math.max(...current, ...previous, 1);
+  const x = (i: number) => PAD_L + (span <= 1 ? PLOT_W / 2 : (i / (span - 1)) * PLOT_W);
+  const y = (v: number) => PLOT_H - (v / max) * PLOT_H;
+  const line = (series: number[]) => series.map((v, i) => `${i ? "L" : "M"} ${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const curEnd = current.length - 1;
+  const labelEls = sampleTicks(span)
+    .map((i) => {
+      const anchor = i === 0 ? "start" : i === span - 1 ? "end" : "middle";
+      return `<text x="${x(i).toFixed(1)}" y="${H - 5}" font-size="9" fill="${AXIS}" text-anchor="${anchor}">${htmlEscape(labels[i] ?? "")}</text>`;
+    })
+    .join("");
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${yAxis(max)}
+    ${previous.length > 1 ? `<path d="${line(previous)}" fill="none" stroke="${AXIS}" stroke-width="1.5" stroke-dasharray="4 4" stroke-linejoin="round"/>` : ""}
+    ${curEnd >= 0 ? `<path d="${line(current)} L ${x(curEnd).toFixed(1)},${PLOT_H} L ${x(0).toFixed(1)},${PLOT_H} Z" fill="${BRAND}" fill-opacity="0.12"/>` : ""}
+    ${current.length > 1 ? `<path d="${line(current)}" fill="none" stroke="${BRAND}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` : ""}
+    ${curEnd >= 0 ? `<circle cx="${x(curEnd).toFixed(1)}" cy="${y(current[curEnd]).toFixed(1)}" r="3.5" fill="${BRAND}"/>` : ""}
+    ${labelEls}</svg>`;
+};
+
+// Mirrors DonutChart's own wedge math — an annular sweep per slice, biggest first from
+// 12 o'clock, with a small gap between wedges taken off each slice's own end.
+const polar = (cx: number, cy: number, r: number, deg: number) => {
+  const rad = ((deg - 90) * Math.PI) / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+};
+
+const wedge = (cx: number, cy: number, rOuter: number, rInner: number, from: number, to: number): string => {
+  const large = to - from > 180 ? 1 : 0;
+  const o1 = polar(cx, cy, rOuter, from);
+  const o2 = polar(cx, cy, rOuter, to);
+  const i2 = polar(cx, cy, rInner, to);
+  const i1 = polar(cx, cy, rInner, from);
+  return [
+    `M ${o1.x.toFixed(2)},${o1.y.toFixed(2)}`,
+    `A ${rOuter} ${rOuter} 0 ${large} 1 ${o2.x.toFixed(2)},${o2.y.toFixed(2)}`,
+    `L ${i2.x.toFixed(2)},${i2.y.toFixed(2)}`,
+    `A ${rInner} ${rInner} 0 ${large} 0 ${i1.x.toFixed(2)},${i1.y.toFixed(2)}`,
+    "Z",
+  ].join(" ");
+};
+
+const DONUT_SIZE = 148, DONUT_THICK = 22, DONUT_GAP = 1.6;
+
+const donutHtml = (slices: Slice[], centerLabel: string, centerValue: number): string => {
+  const cx = DONUT_SIZE / 2, cy = DONUT_SIZE / 2;
+  const rOuter = DONUT_SIZE / 2 - 2, rInner = rOuter - DONUT_THICK;
+  const sum = slices.reduce((a, s) => a + s.total, 0);
+
+  let cursor = 0;
+  const arcs = slices
+    .map((s) => {
+      const from = cursor;
+      cursor += sum > 0 ? (s.total / sum) * 360 : 0;
+      if (cursor - from <= 0) return "";
+      const end = Math.max(from + 0.4, cursor - Math.min(DONUT_GAP, (cursor - from) / 2));
+      return `<path d="${wedge(cx, cy, rOuter, rInner, from, end)}" fill="${s.color}"/>`;
+    })
+    .join("");
+
+  return `<div class="donut-wrap">
+    <svg width="${DONUT_SIZE}" height="${DONUT_SIZE}" viewBox="0 0 ${DONUT_SIZE} ${DONUT_SIZE}">
+      <circle cx="${cx}" cy="${cy}" r="${(rOuter + rInner) / 2}" stroke="${GRID}" stroke-width="${DONUT_THICK}" fill="none"/>
+      ${arcs}
+    </svg>
+    <div class="donut-center">
+      <div class="k">${htmlEscape(centerLabel)}</div>
+      <div class="v">${htmlEscape(formatMoney(centerValue))}</div>
+    </div>
+  </div>`;
+};
+
+// Mirrors SpendHeatmap: a Monday-first calendar grid, each day tinted by its share of the
+// heaviest day in the window. The dark app's bands (translucent white climbing to solid
+// violet) are inverted for a white page — very light violet climbing to the same brand
+// violet, so the ramp reads the same way against either background.
+const HEAT_BANDS = ["#f1f0f6", "#d9d3ff", "#b3a3ff", "#8c73ff", BRAND];
+
+const heatBand = (cell: HeatCell): string => {
+  if (cell.amount === 0) return HEAT_BANDS[0];
+  if (cell.intensity <= 0.25) return HEAT_BANDS[1];
+  if (cell.intensity <= 0.5) return HEAT_BANDS[2];
+  if (cell.intensity <= 0.75) return HEAT_BANDS[3];
+  return HEAT_BANDS[4];
+};
+
+const HEAT_WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"];
+
+const heatmapHtml = (heatmap: Heatmap): string => {
+  if (heatmap.weeks.length === 0) return "";
+
+  const head = HEAT_WEEKDAYS.map((d) => `<span class="hlabel">${d}</span>`).join("");
+  const rows = heatmap.weeks
+    .map((week) =>
+      `<div class="hrow">${week
+        .map((cell) =>
+          cell === null
+            ? `<span class="hcell empty"></span>`
+            : `<span class="hcell" style="background:${heatBand(cell)}" title="${htmlEscape(formatMoney(cell.amount))}">${cell.dayOfMonth}</span>`,
+        )
+        .join("")}</div>`,
+    )
+    .join("");
+
+  const caption = heatmap.busiest
+    ? `Heaviest day ${formatMoney(heatmap.busiest.amount)} · ${heatmap.clearDays} clear day${heatmap.clearDays === 1 ? "" : "s"}`
+    : "Nothing spent in this window";
+
+  return `<div class="heat"><div class="hrow">${head}</div>${rows}</div><div class="heat-note">${htmlEscape(caption)}</div>`;
+};
+
+// Mirrors CompareBars: each category twice on one shared scale — this window's bar solid,
+// the one before it in the same colour at low opacity, so the pair reads as one category
+// measured twice rather than two different things.
+const moverChange = (row: CompareRow): string => {
+  if (row.previous === 0) return `<span style="color:#b8860b">new</span>`;
+  if (row.current === 0) return `<span style="color:#0f9d63">stopped</span>`;
+  const p = Math.round(row.deltaPct ?? 0);
+  return `<span style="color:${row.delta <= 0 ? "#0f9d63" : "#d64550"}">${row.delta > 0 ? "+" : "−"}${Math.abs(p)}%</span>`;
+};
+
+const moversHtml = (rows: CompareRow[], previousLabel: string): string => {
+  const max = Math.max(...rows.flatMap((r) => [r.current, r.previous]), 1);
+  const width = (v: number) => Math.max((v / max) * 100, v > 0 ? 1.5 : 0);
+
+  return rows
+    .map(
+      (r) => `<div class="mover">
+      <div class="mrow-head"><span class="mname">${htmlEscape(r.name)}</span><span>${htmlEscape(formatMoney(r.current))} ${moverChange(r)}</span></div>
+      <div class="mbar"><span style="width:${width(r.current).toFixed(1)}%;background:${r.color}"></span></div>
+      <div class="mbar prev"><span style="width:${width(r.previous).toFixed(1)}%;background:${r.color}"></span></div>
+      <div class="mprev">${htmlEscape(formatMoney(r.previous))} ${htmlEscape(previousLabel)}</div>
+    </div>`,
+    )
+    .join("");
+};
+
 const legendDot = (color: string, label: string) =>
   `<span class="ld"><span class="dot" style="background:${color}"></span>${htmlEscape(label)}</span>`;
 
-const buildHtml = (data: InsightsSummary, period: InsightsPeriod, label: string): string => {
+const legendDash = (color: string, label: string) =>
+  `<span class="ld"><span class="dashline"><span style="background:${color}"></span><span style="background:${color}"></span></span>${htmlEscape(label)}</span>`;
+
+const buildHtml = (data: InsightsSummary, period: InsightsPeriod, offset: number): string => {
+  const label = windowLabel(period, offset);
+  const vsLabel = prevLabel(period, offset);
+  const prevWindowLabel = windowLabel(period, offset - 1);
+
   const { income, expense, net, savings } = currentTotals(data);
   const cats = foldCategories(data.byCategory);
+  const donutSlices = cats.filter((c) => c.total > 0);
+  const spendTotal = donutSlices.reduce((a, c) => a + c.total, 0);
   const accts = accountShares(data.byAccount);
   const trend = buildTrend(data.trend, period);
   const pairs = data.incomeVsExpense.map((p) => ({ income: p.income, expense: p.expense }));
   const iveLabels = data.incomeVsExpense.map((p) => seriesLabel(p.periodStart, period));
+
+  const pace = cumulativePair(data.trend, data.previousTrend, period);
+  // Only day-bucketed windows get a grid — a year's buckets are months, and a 12-cell
+  // "calendar" would just be the trend line again. Matches the screen's own gate.
+  const heatmap = period === "year" ? null : buildHeatmap(data.trend);
+  const movers = compareRows(data.categoryCompare);
 
   const kpi = (k: string, v: string, cls = "") => `<div class="card"><div class="k">${k}</div><div class="v ${cls}">${v}</div></div>`;
 
@@ -164,6 +330,8 @@ const buildHtml = (data: InsightsSummary, period: InsightsPeriod, label: string)
     .legend { display: flex; flex-wrap: wrap; gap: 16px; margin: 6px 0 2px; font-size: 11px; color: #6b6880; }
     .ld { display: inline-flex; align-items: center; gap: 6px; }
     .dot { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
+    .dashline { display: inline-flex; gap: 3px; width: 14px; }
+    .dashline span { width: 5px; height: 3px; border-radius: 2px; display: inline-block; }
     .stack { display: flex; height: 16px; border-radius: 8px; overflow: hidden; gap: 2px; margin: 10px 0; }
     .stack span { display: block; }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -177,6 +345,22 @@ const buildHtml = (data: InsightsSummary, period: InsightsPeriod, label: string)
     tr.sub td { border-bottom: none; padding-top: 2px; padding-bottom: 2px; color: #6b6880; font-size: 11px; }
     tr.sub .desc { font-weight: 400; padding-left: 22px; }
     tr.sub td.amt { font-weight: 600; }
+    .donut-wrap { display: flex; align-items: center; gap: 24px; margin: 8px 0 4px; }
+    .donut-center .k { font-size: 10px; color: #6b6880; text-transform: uppercase; letter-spacing: 1px; }
+    .donut-center .v { font-size: 20px; font-weight: 800; margin-top: 3px; }
+    .heat { margin: 8px 0 2px; }
+    .hrow { display: flex; gap: 4px; margin-bottom: 4px; }
+    .hlabel { width: 26px; text-align: center; font-size: 9px; color: #9995ad; font-weight: 600; }
+    .hcell { width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; }
+    .hcell.empty { visibility: hidden; }
+    .heat-note { font-size: 11px; color: #6b6880; margin-top: 4px; }
+    .mover { margin-bottom: 14px; }
+    .mover:last-child { margin-bottom: 0; }
+    .mrow-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; margin-bottom: 4px; }
+    .mbar { width: 100%; height: 8px; border-radius: 4px; background: #eeecf6; overflow: hidden; margin-bottom: 3px; }
+    .mbar span { display: block; height: 100%; }
+    .mbar.prev span { opacity: .4; }
+    .mprev { font-size: 10px; color: #9995ad; }
     .foot { margin-top: 24px; font-size: 10px; color: #9995ad; text-align: center; }
   </style></head><body>
     <div class="head">
@@ -196,12 +380,23 @@ const buildHtml = (data: InsightsSummary, period: InsightsPeriod, label: string)
     <h2>Spending trend</h2>
     ${areaSvg(trend.values, trend.axis)}
 
+    <h2>Pace vs ${htmlEscape(prevWindowLabel)}</h2>
+    <div class="legend">${legendDot(BRAND, label)}${legendDash(AXIS, prevWindowLabel)}</div>
+    ${paceSvg(pace.current, pace.previous, pace.labels)}
+
     <h2>Income vs expense · last 6 ${unitsWord(period)}</h2>
     <div class="legend">${legendDot(incomeColor, "Income")}${legendDot(expenseColor, "Expense")}</div>
     ${columnsSvg(pairs, iveLabels)}
 
+    <h2>Where it went</h2>
+    ${donutHtml(donutSlices, "Total spent", spendTotal)}
+
     <h2>By category</h2>
     <table><tbody>${catRows}</tbody></table>
+
+    ${heatmap ? `<h2>Daily rhythm</h2>${heatmapHtml(heatmap)}` : ""}
+
+    ${movers.length > 0 ? `<h2>Biggest changes vs ${htmlEscape(vsLabel)}</h2>${moversHtml(movers, vsLabel)}` : ""}
 
     <h2>Where it left from</h2>
     <div class="stack">${stack}</div>
@@ -218,8 +413,8 @@ const buildHtml = (data: InsightsSummary, period: InsightsPeriod, label: string)
 export const exportInsights = async (
   data: InsightsSummary,
   period: InsightsPeriod,
-  label: string,
+  offset: number,
 ): Promise<void> => {
   const base = `save-n-spend-insights-${period}-${dayStamp(new Date())}`;
-  await deliver("pdf", base, buildHtml(data, period, label));
+  await deliver("pdf", base, buildHtml(data, period, offset));
 };

@@ -10,7 +10,7 @@ import type {
 } from "@save-n-spend/types";
 import { useCallback, useEffect, useState } from "react";
 import { get } from "./api";
-import { calendarFromKey } from "@/lib/zone";
+import { appZone, calendarFromKey, calendarToday } from "@/lib/zone";
 import { useSession } from "@/store/session";
 import { chartPalette, chartOthers } from "@/theme/charts";
 
@@ -321,3 +321,61 @@ export const compareRows = (rows: InsightsCategoryCompare[], top = 6): CompareRo
     deltaPct: r.previous > 0 ? ((r.current - r.previous) / r.previous) * 100 : null,
     color: chartPalette[i % chartPalette.length],
   }));
+
+// Window labels — shared by the screen and the PDF export, so the two can never disagree
+// about what "This Month" or "vs Aug" means.
+
+const MONTHS_FULL = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+// Anchored on today WHERE THE USER IS, then plain `Date.UTC` arithmetic on that calendar
+// date — anchoring on `new Date()` and reading `getUTC*` off it names the wrong window for
+// a third of every Indian day: past 5:30am IST the UTC date is still yesterday, so on the
+// 1st "This Month" would label the previous one.
+const anchor = (): Date => calendarToday(appZone());
+
+// Monday-start of the week that is `offset` weeks from the current one.
+const weekStart = (offset: number): Date => {
+  const now = anchor();
+  const sinceMonday = (now.getUTCDay() + 6) % 7;
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - sinceMonday + offset * 7));
+};
+
+// The human label for the window the navigator points at. Current/previous read
+// friendly ("This Month" / "Last Month"); anything older is concrete.
+export const windowLabel = (period: InsightsPeriod, offset: number): string => {
+  if (offset === 0) return period === "week" ? "This Week" : period === "month" ? "This Month" : "This Year";
+  if (offset === -1) return period === "week" ? "Last Week" : period === "month" ? "Last Month" : "Last Year";
+
+  const now = anchor();
+  if (period === "year") return `${now.getUTCFullYear() + offset}`;
+  if (period === "month") {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, 1));
+    return `${MONTHS_FULL[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+  }
+  const start = weekStart(offset);
+  const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate() + 6));
+  return start.getUTCMonth() === end.getUTCMonth()
+    ? `${start.getUTCDate()}–${end.getUTCDate()} ${MONTH_ABBR[end.getUTCMonth()]}`
+    : `${start.getUTCDate()} ${MONTH_ABBR[start.getUTCMonth()]} – ${end.getUTCDate()} ${MONTH_ABBR[end.getUTCMonth()]}`;
+};
+
+// Short label for the unit just before the shown window (delta "vs …").
+export const prevLabel = (period: InsightsPeriod, offset: number): string => {
+  const now = anchor();
+  if (period === "year") return `${now.getUTCFullYear() + offset - 1}`;
+  if (period === "week") return "prev wk";
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset - 1, 1));
+  return MONTH_ABBR[d.getUTCMonth()];
+};
+
+// `periodStart` is a bare calendar key ("2026-08-01") the server already cut in the user's
+// zone, so it is read field-by-field and never re-read as a moment.
+export const seriesLabel = (key: string, period: InsightsPeriod): string => {
+  const d = calendarFromKey(key);
+  if (period === "year") return `${d.getUTCFullYear()}`;
+  if (period === "month") return MONTH_ABBR[d.getUTCMonth()];
+  return `${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
+};
