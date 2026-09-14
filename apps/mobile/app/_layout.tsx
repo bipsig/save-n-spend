@@ -23,6 +23,7 @@ import { useSettings } from "@/store/settings";
 import { useCategoryStore } from "@/store/categories";
 import { useAccountStore } from "@/store/accounts";
 import { useNotifications } from "@/store/notifications";
+import { useTitleSuggestionStore } from "@/store/titleSuggestions";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -109,12 +110,14 @@ const RootLayout = () => {
       useCategoryStore.getState().load();
       useAccountStore.getState().load();
       useNotifications.getState().load();
+      useTitleSuggestionStore.getState().load();
       void registerForPush();
     }
     else if (status === "guest") {
       useCategoryStore.getState().reset();
       useAccountStore.getState().reset();
       useNotifications.getState().reset();
+      useTitleSuggestionStore.getState().reset();
     }
   }, [status]);
 
