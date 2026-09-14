@@ -10,7 +10,7 @@ import type {
 } from "@save-n-spend/types";
 import { useCallback, useEffect, useState } from "react";
 import { get } from "./api";
-import { appZone, calendarFromKey, calendarToday } from "@/lib/zone";
+import { appZone, calendarDate, calendarDaysBetween, calendarFromKey, calendarToday } from "@/lib/zone";
 import { useSession } from "@/store/session";
 import { chartPalette, chartOthers } from "@/theme/charts";
 
@@ -155,6 +155,27 @@ export const pctChange = (cur: number, prev: number) =>
 const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+// A day period's trend is keyed "YYYY-MM-DDTHH" (see the API's getTrend), not a plain
+// calendar key — `calendarFromKey` can't parse the hour suffix, so this reads it directly
+// rather than routing through that parser.
+//
+// `useInsights` clears `data` in a SEPARATE effect from the one that fetches it, so
+// switching to the Day tab has one render where `period` has already flipped but `data`
+// still holds the previous period's day-keyed trend (10 characters, no "T"). Slicing past
+// the end of a short string returns "", and `Number("")` is 0 — not NaN — so every stale
+// point would silently collapse onto hour 0 and collide. Filtering to real hour keys first
+// is what keeps that one frame from rendering a strip of duplicate cells.
+const isHourKey = (key: string): boolean => key.length === 13 && key[10] === "T";
+const hourOfKey = (key: string): number => Number(key.slice(11, 13));
+
+/** "12a"/"3p"/"11p" — compact enough to carry as a chart axis tick, unlike a full time. */
+export const hourAbbr = (hour: number): string =>
+  hour === 0 ? "12a" : hour < 12 ? `${hour}a` : hour === 12 ? "12p" : `${hour - 12}p`;
+
+/** "12 AM"/"3 PM" — the fuller form, for a tooltip rather than an axis. */
+export const hourFull = (hour: number): string =>
+  hour === 0 ? "12 AM" : hour < 12 ? `${hour} AM` : hour === 12 ? "12 PM" : `${hour - 12} PM`;
+
 // Everything the area chart needs from one pass over the server's buckets: the
 // amounts, the sampled x-axis labels, and the full tooltip labels.
 //
@@ -162,6 +183,17 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 // so this is a plain map — the client never rebuilds the bucket list and the two halves have
 // nothing to disagree about.
 export const buildTrend = (points: InsightsTrendPoint[], period: InsightsPeriod) => {
+  if (period === "day") {
+    // See isHourKey above — drops a frame of stale, differently-shaped data rather than
+    // mis-reading it as hour 0.
+    points = points.filter((p) => isHourKey(p.date));
+    return {
+      values: points.map((p) => p.amount),
+      axis: points.map((p) => hourAbbr(hourOfKey(p.date))),
+      tipLabels: points.map((p) => hourFull(hourOfKey(p.date))),
+    };
+  }
+
   const days = points.map((p) => calendarFromKey(p.date));
 
   return {
@@ -216,14 +248,19 @@ export const cumulativePair = (
 ): CumulativePair => {
   const cur = cumulative(current);
   const prev = cumulative(previous);
-  const days = current.map((p) => calendarFromKey(p.date));
+  const labels = period === "day"
+    // See isHourKey — a frame of stale, differently-shaped data reads as no label at all
+    // rather than as hour 0 for every point.
+    ? current.map((p) => (isHourKey(p.date) ? hourAbbr(hourOfKey(p.date)) : ""))
+    : current.map((p) => {
+      const d = calendarFromKey(p.date);
+      return period === "year" ? MONTH_ABBR[d.getUTCMonth()] : `${d.getUTCDate()}`;
+    });
 
   return {
     current: cur,
     previous: prev,
-    labels: days.map((d) =>
-      period === "year" ? MONTH_ABBR[d.getUTCMonth()] : `${d.getUTCDate()}`,
-    ),
+    labels,
     atCurrentEnd: {
       current: cur[cur.length - 1] ?? 0,
       // The same point in the previous period, not its final figure — comparing today's
@@ -291,6 +328,50 @@ export const buildHeatmap = (points: InsightsTrendPoint[]): Heatmap => {
   };
 };
 
+export type HourCell = {
+  /** 0–23, zone-local. */
+  hour: number;
+  amount: number;
+  /** 0 when nothing was spent, else the share of the heaviest hour, 0–1. */
+  intensity: number;
+};
+
+export type HourlyPattern = {
+  /** However many hours have elapsed today — no padding into hours that haven't happened
+   *  yet, the same way a mid-month heatmap doesn't pad blanks for the rest of the month. */
+  cells: HourCell[];
+  busiest: HourCell | null;
+  clearHours: number;
+};
+
+/**
+ * Today's hour buckets as a flat strip, each tinted by what it cost — the Day period's
+ * analog of `buildHeatmap`, using the exact same "share of the heaviest bucket" intensity
+ * math. Flat rather than a calendar grid: an hour-of-day has no week to align to, so none of
+ * `buildHeatmap`'s Monday-first padding applies here.
+ */
+export const buildHourlyPattern = (points: InsightsTrendPoint[]): HourlyPattern => {
+  // See isHourKey above — one render frame of the previous period's differently-shaped
+  // trend would otherwise read as 24 copies of hour 0 and collide as React keys.
+  points = points.filter((p) => isHourKey(p.date));
+  const max = Math.max(...points.map((p) => p.amount), 0);
+
+  const cells: HourCell[] = points.map((p) => ({
+    hour: hourOfKey(p.date),
+    amount: p.amount,
+    intensity: max > 0 ? p.amount / max : 0,
+  }));
+
+  return {
+    cells,
+    busiest: cells.reduce<HourCell | null>(
+      (best, c) => (c.amount > 0 && (!best || c.amount > best.amount) ? c : best),
+      null,
+    ),
+    clearHours: cells.filter((c) => c.amount === 0).length,
+  };
+};
+
 export type CompareRow = {
   id: string;
   name: string;
@@ -322,6 +403,67 @@ export const compareRows = (rows: InsightsCategoryCompare[], top = 6): CompareRo
     color: chartPalette[i % chartPalette.length],
   }));
 
+export type Projection = {
+  /** Paise. Where the period's spend is headed if today's daily pace holds to the end. */
+  total: number;
+  /** Including today. */
+  daysRemaining: number;
+};
+
+/**
+ * Extrapolates `avgDailySpendCurrent` — already "spent so far ÷ days elapsed", see the
+ * API's getAverageSpend — across however many days the whole period actually has, from a
+ * 28-day February to a 366-day leap year. Works for any period (week/month/year) because
+ * it never assumes a length; `periodStart`/`periodEnd` already say exactly what it is.
+ *
+ * Meaningless for a period that has already finished: `avgDailySpendCurrent` there is the
+ * true average over the FULL period already (see the API), so this would just recover the
+ * known total rather than project anything. Callers only show it for the window in
+ * progress (offset 0) — `daysRemaining` reaching 0 is the same signal, for a caller that
+ * would rather check the number than track its own offset.
+ */
+export const projectPeriod = (
+  avgDailySpendCurrent: number,
+  periodStart: string,
+  periodEnd: string,
+  zone: string,
+): Projection => {
+  const start = calendarDate(new Date(periodStart), zone);
+  const end = calendarDate(new Date(periodEnd), zone); // exclusive, so this IS the day count
+  const totalDays = Math.max(calendarDaysBetween(start, end), 1);
+  const daysRemaining = Math.max(calendarDaysBetween(calendarToday(zone), end), 0);
+
+  return { total: Math.round(avgDailySpendCurrent * totalDays), daysRemaining };
+};
+
+export type DayProjection = {
+  /** Paise. Where today's spend is headed if the pace so far holds for the rest of it. */
+  total: number;
+  /** Including the current hour. */
+  hoursRemaining: number;
+  /** Paise/hour — the Day period's analog of `avgDailySpendCurrent`, computed here rather
+   *  than read from the API: that field divides by whole days elapsed, which is always
+   *  exactly 1 for a window this short (see getAverageSpend), so it would just recover
+   *  today's own total rather than a genuine rate. */
+  avgPerHour: number;
+};
+
+/**
+ * The Day-tab analog of `projectPeriod`, built entirely from the hour-bucketed trend
+ * already fetched for the chart above it — no new API field needed.
+ */
+export const projectDay = (trend: InsightsTrendPoint[]): DayProjection => {
+  // See isHourKey above — without this, one render frame of the previous period's
+  // differently-shaped trend would flash a projection computed from day totals as if
+  // they were hours.
+  trend = trend.filter((p) => isHourKey(p.date));
+  const hoursElapsed = Math.max(trend.length, 1);
+  const totalSoFar = trend.reduce((sum, p) => sum + p.amount, 0);
+  const avgPerHour = Math.round(totalSoFar / hoursElapsed);
+
+  return { total: avgPerHour * 24, hoursRemaining: Math.max(24 - trend.length, 0), avgPerHour };
+};
+
 // Window labels — shared by the screen and the PDF export, so the two can never disagree
 // about what "This Month" or "vs Aug" means.
 
@@ -346,14 +488,18 @@ const weekStart = (offset: number): Date => {
 // The human label for the window the navigator points at. Current/previous read
 // friendly ("This Month" / "Last Month"); anything older is concrete.
 export const windowLabel = (period: InsightsPeriod, offset: number): string => {
-  if (offset === 0) return period === "week" ? "This Week" : period === "month" ? "This Month" : "This Year";
-  if (offset === -1) return period === "week" ? "Last Week" : period === "month" ? "Last Month" : "Last Year";
+  if (offset === 0) return period === "day" ? "Today" : period === "week" ? "This Week" : period === "month" ? "This Month" : "This Year";
+  if (offset === -1) return period === "day" ? "Yesterday" : period === "week" ? "Last Week" : period === "month" ? "Last Month" : "Last Year";
 
   const now = anchor();
   if (period === "year") return `${now.getUTCFullYear() + offset}`;
   if (period === "month") {
     const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, 1));
     return `${MONTHS_FULL[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+  }
+  if (period === "day") {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + offset));
+    return `${d.getUTCDate()} ${MONTH_ABBR[d.getUTCMonth()]}`;
   }
   const start = weekStart(offset);
   const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate() + 6));
@@ -367,15 +513,19 @@ export const prevLabel = (period: InsightsPeriod, offset: number): string => {
   const now = anchor();
   if (period === "year") return `${now.getUTCFullYear() + offset - 1}`;
   if (period === "week") return "prev wk";
+  if (period === "day") return "yesterday";
   const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset - 1, 1));
   return MONTH_ABBR[d.getUTCMonth()];
 };
 
 // `periodStart` is a bare calendar key ("2026-08-01") the server already cut in the user's
-// zone, so it is read field-by-field and never re-read as a moment.
+// zone, so it is read field-by-field and never re-read as a moment. Never an hour key —
+// this labels the 6-unit income-vs-expense series, whose units are whole days even when
+// `period` is "day" (see the API's getIncomeVsExpense), so `calendarFromKey` parses it fine.
 export const seriesLabel = (key: string, period: InsightsPeriod): string => {
   const d = calendarFromKey(key);
   if (period === "year") return `${d.getUTCFullYear()}`;
   if (period === "month") return MONTH_ABBR[d.getUTCMonth()];
-  return `${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
+  if (period === "day") return WEEKDAYS[d.getUTCDay()];
+  return `${d.getUTCDate()}/${d.getUTCMonth() + 1}`; // week
 };
