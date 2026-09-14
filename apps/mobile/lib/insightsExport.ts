@@ -6,12 +6,16 @@ import {
   accountShares,
   cumulativePair,
   buildHeatmap,
+  buildHourlyPattern,
   compareRows,
+  projectPeriod,
+  projectDay,
+  hourAbbr,
   seriesLabel,
   windowLabel,
   prevLabel,
 } from "@/lib/insights";
-import type { Slice, HeatCell, Heatmap, CompareRow } from "@/lib/insights";
+import type { Slice, HeatCell, Heatmap, HourCell, HourlyPattern, CompareRow } from "@/lib/insights";
 import { incomeColor, expenseColor } from "@/theme";
 // The exact formatter, never the privacy-masked default: an exported file is
 // one the user explicitly asked us to generate, so "₹ ••••" in it would be a bug.
@@ -30,7 +34,7 @@ import { formatMoneyExact as formatMoney } from "@/lib/money";
 
 const pct = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 100) : 0);
 const unitsWord = (period: InsightsPeriod) =>
-  period === "year" ? "years" : period === "week" ? "weeks" : "months";
+  period === "year" ? "years" : period === "week" ? "weeks" : period === "day" ? "days" : "months";
 
 // The shown window's totals sit in the last income-vs-expense unit (the series
 // is 6 units ending at the current window).
@@ -122,14 +126,17 @@ const columnsSvg = (pairs: { income: number; expense: number }[], labels: string
 
 // Mirrors DualLineChart on screen: two running totals on one axis, the previous one dashed
 // and allowed to run past where the current one has got to — that period is finished, and
-// where it ended up is the point of the comparison.
-const paceSvg = (current: number[], previous: number[], labels: string[]): string => {
+// where it ended up is the point of the comparison. `projectedEnd`, when given, draws a
+// third segment the same way the on-screen chart does: dashed in the brand colour rather
+// than a fill, continuing from the current line's last point to the period's final bucket.
+const paceSvg = (current: number[], previous: number[], labels: string[], projectedEnd?: number): string => {
   const span = Math.max(current.length, previous.length, 1);
-  const max = Math.max(...current, ...previous, 1);
+  const max = Math.max(...current, ...previous, projectedEnd ?? 0, 1);
   const x = (i: number) => PAD_L + (span <= 1 ? PLOT_W / 2 : (i / (span - 1)) * PLOT_W);
   const y = (v: number) => PLOT_H - (v / max) * PLOT_H;
   const line = (series: number[]) => series.map((v, i) => `${i ? "L" : "M"} ${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
   const curEnd = current.length - 1;
+  const projecting = projectedEnd !== undefined && curEnd >= 0 && curEnd < span - 1;
   const labelEls = sampleTicks(span)
     .map((i) => {
       const anchor = i === 0 ? "start" : i === span - 1 ? "end" : "middle";
@@ -140,6 +147,8 @@ const paceSvg = (current: number[], previous: number[], labels: string[]): strin
     ${previous.length > 1 ? `<path d="${line(previous)}" fill="none" stroke="${AXIS}" stroke-width="1.5" stroke-dasharray="4 4" stroke-linejoin="round"/>` : ""}
     ${curEnd >= 0 ? `<path d="${line(current)} L ${x(curEnd).toFixed(1)},${PLOT_H} L ${x(0).toFixed(1)},${PLOT_H} Z" fill="${BRAND}" fill-opacity="0.12"/>` : ""}
     ${current.length > 1 ? `<path d="${line(current)}" fill="none" stroke="${BRAND}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` : ""}
+    ${projecting ? `<path d="M ${x(curEnd).toFixed(1)},${y(current[curEnd]).toFixed(1)} L ${x(span - 1).toFixed(1)},${y(projectedEnd!).toFixed(1)}" fill="none" stroke="${BRAND}" stroke-width="2" stroke-dasharray="5 5" stroke-linecap="round"/>` : ""}
+    ${projecting ? `<circle cx="${x(span - 1).toFixed(1)}" cy="${y(projectedEnd!).toFixed(1)}" r="4" fill="none" stroke="${BRAND}" stroke-width="2"/>` : ""}
     ${curEnd >= 0 ? `<circle cx="${x(curEnd).toFixed(1)}" cy="${y(current[curEnd]).toFixed(1)}" r="3.5" fill="${BRAND}"/>` : ""}
     ${labelEls}</svg>`;
 };
@@ -202,7 +211,9 @@ const donutHtml = (slices: Slice[], centerLabel: string, centerValue: number): s
 // violet, so the ramp reads the same way against either background.
 const HEAT_BANDS = ["#f1f0f6", "#d9d3ff", "#b3a3ff", "#8c73ff", BRAND];
 
-const heatBand = (cell: HeatCell): string => {
+// Structural rather than `HeatCell` specifically — `HourCell` shares just the two fields
+// this reads, and reuses the exact same bands rather than a second copy of the thresholds.
+const heatBand = (cell: { amount: number; intensity: number }): string => {
   if (cell.amount === 0) return HEAT_BANDS[0];
   if (cell.intensity <= 0.25) return HEAT_BANDS[1];
   if (cell.intensity <= 0.5) return HEAT_BANDS[2];
@@ -233,6 +244,22 @@ const heatmapHtml = (heatmap: Heatmap): string => {
     : "Nothing spent in this window";
 
   return `<div class="heat"><div class="hrow">${head}</div>${rows}</div><div class="heat-note">${htmlEscape(caption)}</div>`;
+};
+
+// Mirrors HourlyRhythm: a flat strip rather than a calendar grid — an hour-of-day has no
+// week to align to — using the same light-page band ramp as heatmapHtml.
+const hourlyPatternHtml = (rhythm: HourlyPattern): string => {
+  if (rhythm.cells.length === 0) return "";
+
+  const bars = rhythm.cells
+    .map((cell: HourCell) => `<span class="sbar" style="background:${heatBand(cell)}" title="${htmlEscape(hourAbbr(cell.hour))}: ${htmlEscape(formatMoney(cell.amount))}"></span>`)
+    .join("");
+
+  const caption = rhythm.busiest
+    ? `Heaviest hour ${formatMoney(rhythm.busiest.amount)} at ${htmlEscape(hourAbbr(rhythm.busiest.hour))} · ${rhythm.clearHours} clear hour${rhythm.clearHours === 1 ? "" : "s"}`
+    : "Nothing spent yet today";
+
+  return `<div class="strip">${bars}</div><div class="heat-note">${htmlEscape(caption)}</div>`;
 };
 
 // Mirrors CompareBars: each category twice on one shared scale — this window's bar solid,
@@ -283,11 +310,22 @@ const buildHtml = (data: InsightsSummary, period: InsightsPeriod, offset: number
 
   const pace = cumulativePair(data.trend, data.previousTrend, period);
   // Only day-bucketed windows get a grid — a year's buckets are months, and a 12-cell
-  // "calendar" would just be the trend line again. Matches the screen's own gate.
-  const heatmap = period === "year" ? null : buildHeatmap(data.trend);
+  // "calendar" would just be the trend line again, and a Day window gets the hourly strip
+  // below instead. Matches the screen's own gate.
+  const heatmap = period === "year" || period === "day" ? null : buildHeatmap(data.trend);
+  const hourlyPattern = period === "day" ? buildHourlyPattern(data.trend) : null;
   const movers = compareRows(data.categoryCompare);
+  // Only the window in progress has anything left to project — a finished period's
+  // "projection" would just restate its own already-known total. Matches the screen's gate.
+  // `avgDailySpendCurrent` degenerates for the Day period (see the API's getAverageSpend),
+  // so it gets its own client-side hourly projection instead of this one.
+  const projection = offset === 0 && period !== "day"
+    ? projectPeriod(data.avgDailySpendCurrent, data.periodStart, data.periodEnd, data.timeZone)
+    : null;
+  const dayProjection = offset === 0 && period === "day" ? projectDay(data.trend) : null;
 
-  const kpi = (k: string, v: string, cls = "") => `<div class="card"><div class="k">${k}</div><div class="v ${cls}">${v}</div></div>`;
+  const kpi = (k: string, v: string, cls = "", sub = "") =>
+    `<div class="card"><div class="k">${k}</div><div class="v ${cls}">${v}</div>${sub ? `<div class="sub">${sub}</div>` : ""}</div>`;
 
   // Each category, then its sub-categories indented beneath it. The children are already
   // counted in the parent's figure, so they carry no bar and no share — a second set of
@@ -326,6 +364,7 @@ const buildHtml = (data: InsightsSummary, period: InsightsPeriod, offset: number
     .card { flex: 1 1 22%; border: 1px solid #e7e5f0; border-radius: 12px; padding: 12px 14px; }
     .card .k { font-size: 10px; color: #6b6880; text-transform: uppercase; letter-spacing: 1px; }
     .card .v { font-size: 17px; font-weight: 800; margin-top: 4px; }
+    .card .sub { font-size: 10px; color: #9995ad; margin-top: 3px; }
     .v.pos { color: #0f9d63; } .v.neg { color: #d64550; }
     .legend { display: flex; flex-wrap: wrap; gap: 16px; margin: 6px 0 2px; font-size: 11px; color: #6b6880; }
     .ld { display: inline-flex; align-items: center; gap: 6px; }
@@ -354,6 +393,8 @@ const buildHtml = (data: InsightsSummary, period: InsightsPeriod, offset: number
     .hcell { width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; }
     .hcell.empty { visibility: hidden; }
     .heat-note { font-size: 11px; color: #6b6880; margin-top: 4px; }
+    .strip { display: flex; gap: 2px; height: 34px; margin: 8px 0 2px; }
+    .sbar { flex: 1; border-radius: 3px; }
     .mover { margin-bottom: 14px; }
     .mover:last-child { margin-bottom: 0; }
     .mrow-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; margin-bottom: 4px; }
@@ -373,8 +414,26 @@ const buildHtml = (data: InsightsSummary, period: InsightsPeriod, offset: number
       ${kpi("Expenses", htmlEscape(formatMoney(expense)), "neg")}
       ${kpi("Net", htmlEscape(formatMoney(net)), net >= 0 ? "pos" : "neg")}
       ${kpi("Savings Rate", `${savings}%`)}
-      ${kpi("Avg Daily Spend", htmlEscape(formatMoney(data.avgDailySpendCurrent)))}
+      ${period === "day"
+        ? kpi("Avg Hourly Spend", htmlEscape(formatMoney(dayProjection?.avgPerHour ?? 0)), "", "so far today")
+        : kpi("Avg Daily Spend", htmlEscape(formatMoney(data.avgDailySpendCurrent)))}
       ${kpi("Top Category", htmlEscape(data.topCategory ?? "—"))}
+      ${projection
+        ? kpi(
+            `Projected ${htmlEscape(windowLabel(period, 0))}`,
+            htmlEscape(formatMoney(projection.total)),
+            "",
+            `${projection.daysRemaining} day${projection.daysRemaining === 1 ? "" : "s"} left`,
+          )
+        : ""}
+      ${dayProjection
+        ? kpi(
+            "Projected Today",
+            htmlEscape(formatMoney(dayProjection.total)),
+            "",
+            `${dayProjection.hoursRemaining} hour${dayProjection.hoursRemaining === 1 ? "" : "s"} left`,
+          )
+        : ""}
     </div>
 
     <h2>Spending trend</h2>
@@ -382,7 +441,7 @@ const buildHtml = (data: InsightsSummary, period: InsightsPeriod, offset: number
 
     <h2>Pace vs ${htmlEscape(prevWindowLabel)}</h2>
     <div class="legend">${legendDot(BRAND, label)}${legendDash(AXIS, prevWindowLabel)}</div>
-    ${paceSvg(pace.current, pace.previous, pace.labels)}
+    ${paceSvg(pace.current, pace.previous, pace.labels, projection?.total ?? dayProjection?.total)}
 
     <h2>Income vs expense · last 6 ${unitsWord(period)}</h2>
     <div class="legend">${legendDot(incomeColor, "Income")}${legendDot(expenseColor, "Expense")}</div>
@@ -395,6 +454,7 @@ const buildHtml = (data: InsightsSummary, period: InsightsPeriod, offset: number
     <table><tbody>${catRows}</tbody></table>
 
     ${heatmap ? `<h2>Daily rhythm</h2>${heatmapHtml(heatmap)}` : ""}
+    ${hourlyPattern ? `<h2>Hourly rhythm</h2>${hourlyPatternHtml(hourlyPattern)}` : ""}
 
     ${movers.length > 0 ? `<h2>Biggest changes vs ${htmlEscape(vsLabel)}</h2>${moversHtml(movers, vsLabel)}` : ""}
 
