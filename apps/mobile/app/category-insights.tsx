@@ -26,13 +26,14 @@ import { useAppZone } from "@/lib/zone";
 import { colors, radius, spacing } from "@/theme";
 
 const SEGMENTS: { key: InsightsPeriod; label: string }[] = [
+  { key: "day", label: "Day" },
   { key: "week", label: "Week" },
   { key: "month", label: "Month" },
   { key: "year", label: "Year" },
 ];
 
 const isPeriod = (v: unknown): v is InsightsPeriod =>
-  v === "week" || v === "month" || v === "year";
+  v === "day" || v === "week" || v === "month" || v === "year";
 
 const Caps = ({ children }: { children: React.ReactNode }) => (
   <AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>
