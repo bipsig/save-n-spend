@@ -11,7 +11,9 @@ import PairedColumns from "@/components/charts/PairedColumns";
 import DualLineChart from "@/components/charts/DualLineChart";
 import DonutChart from "@/components/charts/DonutChart";
 import SpendHeatmap from "@/components/charts/SpendHeatmap";
+import HourlyRhythm from "@/components/charts/HourlyRhythm";
 import CompareBars from "@/components/charts/CompareBars";
+import HighlightCard from "@/components/data/HighlightCard";
 import SegmentedControl from "@/components/ui/SegmentedControl";
 import PeriodNav from "@/components/ui/PeriodNav";
 import Button from "@/components/ui/Button";
@@ -31,24 +33,29 @@ import {
   buildTrend,
   cumulativePair,
   buildHeatmap,
+  buildHourlyPattern,
   compareRows,
+  projectPeriod,
+  projectDay,
   seriesLabel,
   windowLabel,
   prevLabel,
 } from "@/lib/insights";
+import { useHighlights } from "@/lib/highlights";
 import { exportInsights } from "@/lib/insightsExport";
 import { useAppZone } from "@/lib/zone";
 import { toast } from "@/store/toast";
 import { colors, radius, spacing, incomeColor, expenseColor } from "@/theme";
 
 const SEGMENTS: { key: InsightsPeriod; label: string }[] = [
+  { key: "day", label: "Day" },
   { key: "week", label: "Week" },
   { key: "month", label: "Month" },
   { key: "year", label: "Year" },
 ];
 
 const unitsWord = (period: InsightsPeriod) =>
-  period === "year" ? "YEARS" : period === "week" ? "WEEKS" : "MONTHS";
+  period === "year" ? "YEARS" : period === "week" ? "WEEKS" : period === "day" ? "DAYS" : "MONTHS";
 
 type Chart = "trend" | "cumulative" | "donut" | "income" | "account";
 
@@ -123,15 +130,21 @@ const InsightsScreen = () => {
   const [offset, setOffset] = useState(0);
   // The one open chart tooltip — screen-owned so a tap anywhere else clears it.
   const [tip, setTip] = useState<{ chart: Chart; i: number } | null>(null);
-  // The heatmap's selection is a date, not an index, so it can't share `tip`.
+  // The heatmap's selection is a date, not an index, so it can't share `tip`. The hourly
+  // strip's is an hour number for the same reason.
   const [heatDay, setHeatDay] = useState<string | null>(null);
+  const [heatHour, setHeatHour] = useState<number | null>(null);
   const [exporting, setExporting] = useState(false);
   const { data, loading, error, refetch } = useInsights(period, offset);
+  // Always about THIS month, independent of whatever period/offset is selected below —
+  // see docs/insights-engine.md. Its own fetch, not threaded through useInsights.
+  const { highlights, dismiss } = useHighlights();
 
   // Switching period type always re-anchors to the current week/month/year.
   const clearTips = () => {
     setTip(null);
     setHeatDay(null);
+    setHeatHour(null);
   };
 
   const changePeriod = (p: InsightsPeriod) => {
@@ -209,9 +222,19 @@ const InsightsScreen = () => {
     const pace = cumulativePair(data.trend, data.previousTrend, period);
     const paceDelta = pace.atCurrentEnd.current - pace.atCurrentEnd.previous;
     const movers = compareRows(data.categoryCompare);
+    // Only the window in progress has anything left to project — a finished period's
+    // "projection" would just be its own already-known total restated. `avgDailySpendCurrent`
+    // degenerates for the Day period (see getAverageSpend), so it gets its own client-side
+    // hourly projection instead of this one.
+    const projection = offset === 0 && period !== "day"
+      ? projectPeriod(data.avgDailySpendCurrent, data.periodStart, data.periodEnd, data.timeZone)
+      : null;
+    const dayProjection = offset === 0 && period === "day" ? projectDay(data.trend) : null;
+    const prevActualExpense = data.incomeVsExpense[data.incomeVsExpense.length - 2]?.expense ?? 0;
     // A year's buckets are months, so a 12-cell "calendar" would just be the trend line
-    // again. Only day-bucketed windows get a grid.
-    const heatmap = period === "year" ? null : buildHeatmap(data.trend);
+    // again — and a day's own hour-of-day pattern gets the strip below instead of this grid.
+    const heatmap = period === "year" || period === "day" ? null : buildHeatmap(data.trend);
+    const hourlyPattern = period === "day" ? buildHourlyPattern(data.trend) : null;
     const donutSlices = cats.filter((c) => c.total > 0);
     const spendTotal = cats.reduce((a, c) => a + c.total, 0);
     // The tapped slice's own sub-categories, listed under the ring. "Others" is a fold of
@@ -263,6 +286,7 @@ const InsightsScreen = () => {
           <DualLineChart
             current={pace.current}
             previous={pace.previous}
+            projectedEnd={projection?.total ?? dayProjection?.total}
             labels={pace.labels}
             currentLabel={windowLabel(period, offset)}
             previousLabel={windowLabel(period, offset - 1)}
@@ -377,11 +401,17 @@ const InsightsScreen = () => {
           </View>
         </Card>
 
-        {/* Daily rhythm */}
+        {/* Daily rhythm — or, on the Day tab, the hour-of-day equivalent */}
         {heatmap && (
           <Card style={styles.stack}>
             <Caps>DAILY RHYTHM</Caps>
             <SpendHeatmap heatmap={heatmap} active={heatDay} onSelect={setHeatDay} />
+          </Card>
+        )}
+        {hourlyPattern && (
+          <Card style={styles.stack}>
+            <Caps>HOURLY RHYTHM</Caps>
+            <HourlyRhythm rhythm={hourlyPattern} active={heatHour} onSelect={setHeatHour} />
           </Card>
         )}
 
@@ -410,9 +440,20 @@ const InsightsScreen = () => {
 
         {/* KPI grid */}
         <View style={styles.kgrid}>
-          <Kpi label="AVG DAILY SPEND" value={formatMoney(data.avgDailySpendCurrent)}>
-            <Delta value={pctChange(data.avgDailySpendCurrent, data.avgDailySpendPrevious)} goodWhen="down" vs={vsLabel} />
-          </Kpi>
+          {/* The server's own day-average degenerates to just "today's total" for a window
+              this short (see getAverageSpend) — an hourly rate, computed client-side from the
+              trend already in hand, is the meaningful figure for the Day tab instead. */}
+          {period === "day" ? (
+            <Kpi label="AVG HOURLY SPEND" value={formatMoney(dayProjection?.avgPerHour ?? 0)}>
+              <AppText size="xs" color="inkDim">
+                so far today
+              </AppText>
+            </Kpi>
+          ) : (
+            <Kpi label="AVG DAILY SPEND" value={formatMoney(data.avgDailySpendCurrent)}>
+              <Delta value={pctChange(data.avgDailySpendCurrent, data.avgDailySpendPrevious)} goodWhen="down" vs={vsLabel} />
+            </Kpi>
+          )}
           <Kpi label="TOP CATEGORY" value={data.topCategory ?? "—"}>
             {top && (
               <AppText size="xs" color="inkDim">
@@ -428,6 +469,24 @@ const InsightsScreen = () => {
           <Kpi label="SAVINGS RATE" value={`${Math.round(stats.savingsRate)}%`}>
             <Delta value={stats.savingsRateDelta} goodWhen="up" vs={vsLabel} />
           </Kpi>
+          {/* Only while the window is still open — a finished period has nothing left to
+              project, and this would just restate its own known total. */}
+          {projection && (
+            <Kpi label={`PROJECTED ${windowLabel(period, 0).toUpperCase()}`} value={formatMoney(projection.total)}>
+              <Delta value={pctChange(projection.total, prevActualExpense)} goodWhen="down" vs={vsLabel} />
+              <AppText size="xs" color="inkDim">
+                {`${projection.daysRemaining} day${projection.daysRemaining === 1 ? "" : "s"} left`}
+              </AppText>
+            </Kpi>
+          )}
+          {dayProjection && (
+            <Kpi label="PROJECTED TODAY" value={formatMoney(dayProjection.total)}>
+              <Delta value={pctChange(dayProjection.total, prevActualExpense)} goodWhen="down" vs={vsLabel} />
+              <AppText size="xs" color="inkDim">
+                {`${dayProjection.hoursRemaining} hour${dayProjection.hoursRemaining === 1 ? "" : "s"} left`}
+              </AppText>
+            </Kpi>
+          )}
         </View>
       </>
     );
@@ -455,6 +514,17 @@ const InsightsScreen = () => {
           plain Pressable, not PressableScale: this covers the whole page, so a squeeze
           or a tick here would fire on every stray tap and dip the entire screen. */}
       <Pressable style={styles.body} onPress={clearTips}>
+        {/* Always about THIS month, whatever period/offset the charts below are showing —
+            see docs/insights-engine.md. Absent entirely when there's nothing to say, the
+            same as the daily digest staying quiet on an empty day: no header, no "all
+            clear" copy here — those belong to the dedicated Assistant screen. */}
+        {highlights.length > 0 && (
+          <View style={styles.highlights}>
+            {highlights.map((highlight) => (
+              <HighlightCard key={highlight.key} highlight={highlight} onDismiss={dismiss} />
+            ))}
+          </View>
+        )}
         <SegmentedControl segments={SEGMENTS} value={period} onChange={changePeriod} />
         <PeriodNav
           label={windowLabel(period, offset)}
@@ -471,6 +541,9 @@ const InsightsScreen = () => {
 const styles = StyleSheet.create({
   body: {
     gap: spacing.lg,
+  },
+  highlights: {
+    gap: spacing.sm,
   },
   stack: {
     gap: 12,
