@@ -18,6 +18,7 @@ import formatMoney, { paiseToInput, parseMoney, usePrivacyMask } from "@/lib/mon
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Input from "@/components/ui/Input";
+import GhostTitleInput from "@/components/ui/GhostTitleInput";
 import Button from "@/components/ui/Button";
 import { useCategories, useCategoryById } from "@/lib/categories";
 import SegmentedControl from "@/components/ui/SegmentedControl";
@@ -29,6 +30,8 @@ import { accountById, useAccountById, useAccounts, useDefaultAccount } from "@/l
 import AccountPickerSheet from "@/components/sheets/AccountPickerSheet";
 import { get, patch, post } from "@/lib/api";
 import { useAccountStore } from "@/store/accounts";
+import { useTitleSuggestionStore } from "@/store/titleSuggestions";
+import { useTitleMatches } from "@/lib/titleSuggestions";
 import type { ITransaction } from "@save-n-spend/types";
 
 const schema = z.object({
@@ -86,6 +89,31 @@ const TYPE_SEGMENTS: { key: FormValues["type"]; label: string }[] = [
   { key: "income", label: "Income" },
   { key: "transfer", label: "Transfer" },
 ];
+
+// Deliberately not the shared Chip: that one carries a gradient glow built for a fixed,
+// persistent choice set (Bank/Cash/Wallet). This row is a scrollable, ever-changing
+// shortlist the user skims and taps once — the same glass-strip weight as a plain field,
+// not a selector. Carries the suggestion's own category icon/colour, so a chip is
+// recognisable before it's read — the same visual language every category already
+// wears everywhere else in the app.
+const SuggestionChip = ({
+  label,
+  icon,
+  color,
+  onPress,
+}: {
+  label: string;
+  icon: IconName;
+  color: ColorToken;
+  onPress: () => void;
+}) => (
+  <PressableScale style={styles.suggestionChip} onPress={onPress} scaleTo={0.95}>
+    <Icon name={icon} size={11} containerSize={20} containerRadius={7} container="square" gradient={color} />
+    <AppText size="sm" weight="semibold" numberOfLines={1}>
+      {label}
+    </AppText>
+  </PressableScale>
+);
 
 const AddTransaction = () => {
   usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
@@ -168,6 +196,39 @@ const AddTransaction = () => {
   // Category — picked via the shared sheet (search + create on the fly), same as Bills/Budgets.
   const categoryRef = useRef<BottomSheetModal>(null);
   const selectedCategory = useCategoryById(watch("category"));
+
+  // Title autosuggest — ranked by how often this account has used a title, scoped to this
+  // category once one is picked. Hooks run every render regardless of `type`, so a
+  // transfer (which never shows this row) still calls it with "expense" rather than
+  // skipping the call, which React does not allow to be conditional.
+  const titleMatches = useTitleMatches(
+    type === "income" ? "income" : "expense",
+    watch("category"),
+    watch("title"),
+  );
+
+  // The one match ghost-completed inside the field itself — a PREFIX match only, since
+  // there's no way to visually "complete" a title from a match found in its middle. The
+  // strip below still shows every match `useTitleMatches` found, prefix or not, so
+  // nothing found only by substring is lost — it just doesn't get ghosted.
+  const titleValue = watch("title");
+  const ghostMatch = useMemo(() => {
+    const needle = titleValue.trim().toLowerCase();
+    if (!needle) return null;
+    return titleMatches.find((m) => m.title.toLowerCase().startsWith(needle)) ?? null;
+  }, [titleMatches, titleValue]);
+  const ghostSuffix = ghostMatch ? ghostMatch.title.slice(titleValue.length) : null;
+
+  // Shared by the ghost's accept (swipe or tap) and every chip in the strip below, so
+  // "pick a title" means the same thing everywhere it can happen.
+  const acceptTitleSuggestion = (match: { title: string; category: string | null }) => {
+    setValue("title", match.title, { shouldValidate: true });
+    // The inversion the feature is really for: pick a title before a category and get
+    // the category for free. Never overwrites one the user has already chosen.
+    if (!watch("category") && match.category) {
+      setValue("category", match.category, { shouldValidate: true });
+    }
+  };
 
   // Source account (from) — defaults to the user's default, switchable via the picker.
   const accountRef = useRef<BottomSheetModal>(null);
@@ -399,6 +460,10 @@ const AddTransaction = () => {
       // ordinary expense's account. The list held elsewhere (Net Worth, the account
       // picker) is stale until this reloads it.
       await useAccountStore.getState().load();
+      // A title typed for the first time this session — fire-and-forget, so a title
+      // logged just now can be suggested on the very next transaction rather than
+      // waiting for the next launch. Not awaited: nothing on this screen depends on it.
+      if (!isEdit && data.type !== "transfer") void useTitleSuggestionStore.getState().load();
       router.back();
       // The screen is already gone by the time this shows, so it is the only receipt —
       // hence naming the amount and direction rather than just "Saved".
@@ -479,20 +544,43 @@ const AddTransaction = () => {
           {/* Switching type rebuilds this list — a transfer has no title or category, and
               gains a destination. The fades keep that from reading as a glitch. */}
           {type !== "transfer" && (
-            <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)}>
+            <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)} style={styles.field}>
               <Controller
                 control={control}
                 name="title"
                 render={({ field: { value, onChange, onBlur } }) => (
-                  <Input
+                  <GhostTitleInput
                     placeholder="e.g. Groceries at BigBasket"
                     value={value}
                     onChangeText={onChange}
                     onBlur={onBlur}
                     error={errors.title?.message}
+                    ghostSuffix={ghostSuffix}
+                    onAcceptGhost={() => ghostMatch && acceptTitleSuggestion(ghostMatch)}
                   />
                 )}
               />
+              {titleMatches.length > 0 && (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  contentContainerStyle={styles.suggestionRow}
+                >
+                  {titleMatches.map((match) => {
+                    const cat = categories.find((c) => c._id === match.category);
+                    return (
+                      <SuggestionChip
+                        key={match.title}
+                        label={match.title}
+                        icon={(cat?.icon ?? "more") as IconName}
+                        color={(cat?.color ?? "accent") as ColorToken}
+                        onPress={() => acceptTitleSuggestion(match)}
+                      />
+                    );
+                  })}
+                </ScrollView>
+              )}
             </Animated.View>
           )}
 
@@ -783,6 +871,21 @@ const styles = StyleSheet.create({
   },
   field: {
     gap: spacing.sm,
+  },
+  suggestionRow: {
+    gap: spacing.sm,
+    paddingRight: spacing.sm, // so the last chip isn't flush with the screen edge
+  },
+  suggestionChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
   },
   // A fading block holding more than one row has to carry the gap the scroll container
   // would have given those rows directly.
