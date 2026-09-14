@@ -126,6 +126,13 @@ export const startOfDayInZone = (instant: Date, zone: string): Date => {
   return instantInZone(zone, year, month, day);
 };
 
+/** The top of the zone-local hour containing `instant` — the Day period's equivalent of
+ *  `startOfDayInZone`, for bucketing a single day by hour instead of a month by day. */
+export const startOfHourInZone = (instant: Date, zone: string): Date => {
+  const { year, month, day, hour } = partsInZone(instant, zone);
+  return instantInZone(zone, year, month, day, hour);
+};
+
 /** The last millisecond of the zone-local day containing `instant`. */
 export const endOfDayInZone = (instant: Date, zone: string): Date => {
   const { year, month, day } = partsInZone(instant, zone);
@@ -155,6 +162,15 @@ export const startOfWeekInZone = (instant: Date, zone: string): Date => {
 export const addDaysInZone = (instant: Date, zone: string, days: number): Date => {
   const p = partsInZone(instant, zone);
   return instantInZone(zone, p.year, p.month, p.day + days, p.hour, p.minute, p.second);
+};
+
+/** Shift by whole hours. An hour has no DST-length ambiguity the way a day does, but this
+ *  still routes through `partsInZone`/`instantInZone` rather than raw millisecond arithmetic
+ *  — `Date.UTC` normalises an out-of-range hour (e.g. 23 + 3) into the next day correctly,
+ *  the same trick `addDaysInZone` above relies on for an out-of-range day. */
+export const addHoursInZone = (instant: Date, zone: string, hours: number): Date => {
+  const p = partsInZone(instant, zone);
+  return instantInZone(zone, p.year, p.month, p.day, p.hour + hours, p.minute, p.second);
 };
 
 // Day 0 of the next month is the previous month's last day.
@@ -192,6 +208,13 @@ export const monthLabelInZone = (instant: Date, zone: string): string => {
 export const dayKeyInZone = (instant: Date, zone: string): string => {
   const { year, month, day } = partsInZone(instant, zone);
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+};
+
+/** `YYYY-MM-DDTHH` in `zone` — the Day period's bucket key, one level finer than
+ *  `dayKeyInZone`. */
+export const hourKeyInZone = (instant: Date, zone: string): string => {
+  const { hour } = partsInZone(instant, zone);
+  return `${dayKeyInZone(instant, zone)}T${String(hour).padStart(2, "0")}`;
 };
 
 /**

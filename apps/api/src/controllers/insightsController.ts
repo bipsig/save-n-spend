@@ -7,11 +7,14 @@ import mongoose from "mongoose";
 import Account from "../models/Account";
 import {
     addDaysInZone,
+    addHoursInZone,
     addMonthsInZone,
     addYearsInZone,
     dayKeyInZone,
+    hourKeyInZone,
     monthLabelInZone,
     startOfDayInZone,
+    startOfHourInZone,
     startOfMonthInZone,
     startOfWeekInZone,
     startOfYearInZone,
@@ -191,15 +194,26 @@ const parsePeriod = (period: string, offset: number, zone: string): periodType =
             previousEndDate: currentStartDate
         }
     }
-    else {
-        const currentStartDate = addDaysInZone(startOfWeekInZone(now, zone), zone, offset * 7);
-        const currentEndDate = addDaysInZone(currentStartDate, zone, 7);
+    if (period === "day") {
+        const currentStartDate = addDaysInZone(startOfDayInZone(now, zone), zone, offset);
+        const currentEndDate = addDaysInZone(currentStartDate, zone, 1);
         return {
             currentStartDate,
             currentEndDate,
-            previousStartDate: addDaysInZone(currentStartDate, zone, -7),
+            previousStartDate: addDaysInZone(currentStartDate, zone, -1),
             previousEndDate: currentStartDate
         }
+    }
+    // "week" — the only period left once year/month/day are ruled out, but spelled out
+    // rather than left as a bare `else`: a bare else here is exactly how "day" almost
+    // silently fell through to a 7-day window while this was being written.
+    const currentStartDate = addDaysInZone(startOfWeekInZone(now, zone), zone, offset * 7);
+    const currentEndDate = addDaysInZone(currentStartDate, zone, 7);
+    return {
+        currentStartDate,
+        currentEndDate,
+        previousStartDate: addDaysInZone(currentStartDate, zone, -7),
+        previousEndDate: currentStartDate
     }
 }
 
@@ -414,10 +428,11 @@ const getIncomeVsExpense = async (startTime: Date, endTime: Date, period: string
     for (let i = 5; i >= 0; i--) {
         if (period === "year") buckets.push(addYearsInZone(startTime, zone, -i));
         else if (period === "month") buckets.push(addMonthsInZone(startTime, zone, -i));
-        else buckets.push(addDaysInZone(startTime, zone, -i * 7));
+        else if (period === "day") buckets.push(addDaysInZone(startTime, zone, -i));
+        else buckets.push(addDaysInZone(startTime, zone, -i * 7)); // week
     }
 
-    const unit = period === "year" ? "year" : period === "month" ? "month" : "week";
+    const unit = period === "year" ? "year" : period === "month" ? "month" : period === "day" ? "day" : "week";
     // `timezone` is what makes Mongo cut the unit where the user lives; without it the
     // server's buckets and the client's labels drift by the offset — near a month
     // boundary, by a whole unit.
@@ -464,6 +479,13 @@ const getIncomeVsExpense = async (startTime: Date, endTime: Date, period: string
  * `categoryIds` narrows it to one category and its children — the same series, for the
  * detail screen.
  */
+// One bucket per unit — hour (day period), day (week/month), or month (year) — each with
+// its own format string, its own "cap at now" boundary, its own key and its own step. `year`
+// and `week`/`month` used to be told apart by a single boolean; a third granularity doesn't
+// fit that shape, so this is a real 3-way dispatch instead.
+const granularityFor = (period: string): "hour" | "day" | "month" =>
+    period === "year" ? "month" : period === "day" ? "hour" : "day";
+
 const getTrend = async (
     startTime: Date,
     endTime: Date,
@@ -472,7 +494,8 @@ const getTrend = async (
     req: Request,
     categoryIds?: mongoose.Types.ObjectId[]
 ) => {
-    const monthly = period === "year";
+    const granularity = granularityFor(period);
+    const format = granularity === "month" ? "%Y-%m" : granularity === "hour" ? "%Y-%m-%dT%H" : "%Y-%m-%d";
 
     const rows = await Transaction.aggregate([
         {
@@ -490,7 +513,7 @@ const getTrend = async (
                 _id: {
                     $dateToString: {
                         date: "$occurredAt",
-                        format: monthly ? "%Y-%m" : "%Y-%m-%d",
+                        format,
                         timezone: zone
                     }
                 },
@@ -501,20 +524,25 @@ const getTrend = async (
 
     const byKey = new Map<string, number>(rows.map((row) => [row._id as string, row.total as number]));
 
-    // An unfinished window stops after today: the chart should show the month so far, not
-    // a cliff at the current date followed by a flat line to the 31st.
+    // An unfinished window stops after now: the chart should show the period so far, not a
+    // cliff at the current bucket followed by a flat line to the end.
     const now = new Date();
-    const cap = monthly
+    const cap = granularity === "month"
         ? addMonthsInZone(startOfMonthInZone(now, zone), zone, 1)
-        : addDaysInZone(startOfDayInZone(now, zone), zone, 1);
+        : granularity === "hour"
+            ? addHoursInZone(startOfHourInZone(now, zone), zone, 1)
+            : addDaysInZone(startOfDayInZone(now, zone), zone, 1);
     const stop = endTime < cap ? endTime : cap;
+
+    const keyOf = granularity === "month" ? monthLabelInZone : granularity === "hour" ? hourKeyInZone : dayKeyInZone;
+    const stepOf = granularity === "month" ? addMonthsInZone : granularity === "hour" ? addHoursInZone : addDaysInZone;
 
     const out: { date: string; amount: number }[] = [];
     let cursor = startTime;
     while (cursor < stop) {
-        const key = monthly ? monthLabelInZone(cursor, zone) : dayKeyInZone(cursor, zone);
+        const key = keyOf(cursor, zone);
         out.push({ date: key, amount: byKey.get(key) ?? 0 });
-        cursor = monthly ? addMonthsInZone(cursor, zone, 1) : addDaysInZone(cursor, zone, 1);
+        cursor = stepOf(cursor, zone, 1);
     }
 
     return out;
