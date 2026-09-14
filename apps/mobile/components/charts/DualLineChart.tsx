@@ -11,6 +11,11 @@ type Props = {
   /** Drawn dashed and dimmed, and allowed to run PAST the current series — that period is
    *  finished, and where it ended up is what the comparison is for. */
   previous: number[];
+  /** Where `current` is headed by period-end if its pace holds — drawn as a third segment,
+   *  dashed in `color` rather than `previousColor`, continuing on from the current line's
+   *  last point to the period's final bucket. Omit entirely for a finished period; there is
+   *  nothing left to project. */
+  projectedEnd?: number;
   labels?: string[];
   currentLabel: string;
   previousLabel: string;
@@ -44,6 +49,7 @@ const sampleTicks = (labels: string[]): string[] => {
 const DualLineChart = ({
   current,
   previous,
+  projectedEnd,
   labels,
   currentLabel,
   previousLabel,
@@ -60,7 +66,9 @@ const DualLineChart = ({
   const chartH = height - padB;
 
   const span = Math.max(current.length, previous.length);
-  const max = Math.max(...current, ...previous, 1);
+  // The projection is usually the largest figure on the chart — a future total, not a
+  // running one — so it has to be in the scale or its own line would clip off the top.
+  const max = Math.max(...current, ...previous, projectedEnd ?? 0, 1);
 
   const x = (i: number) => (span <= 1 ? w / 2 : (i / (span - 1)) * w);
   const y = (v: number) => chartH - (v / max) * chartH;
@@ -77,6 +85,19 @@ const DualLineChart = ({
   };
 
   const curEnd = current.length - 1;
+
+  // The straight-line value AT a scrubbed index along the projected segment — not just its
+  // endpoint, so scrubbing partway between today and period-end reads as "on pace for ₹X by
+  // THIS point" rather than only ever showing the final total.
+  const projectedAt = (i: number): number => {
+    if (projectedEnd === undefined || curEnd < 0) return projectedEnd ?? 0;
+    if (span - 1 === curEnd) return current[curEnd];
+    const t = (i - curEnd) / (span - 1 - curEnd);
+    return current[curEnd] + (projectedEnd - current[curEnd]) * t;
+  };
+  // Only once the scrubber is actually on the dashed segment — before that, "current" already
+  // has the real answer and a projected row would just repeat it.
+  const showProjected = projectedEnd !== undefined && curEnd >= 0 && curEnd < span - 1;
 
   return (
     <View>
@@ -98,6 +119,20 @@ const DualLineChart = ({
             {previousLabel}
           </AppText>
         </View>
+        {projectedEnd !== undefined && (
+          <View style={styles.legendItem}>
+            {/* Same two-stroke shape as the previous swatch, in `color` instead of
+                `previousColor` — dashed like "previous", but distinguishable by hue since
+                both are on screen at once. */}
+            <View style={styles.dashSwatch}>
+              <View style={[styles.dash, { backgroundColor: color }]} />
+              <View style={[styles.dash, { backgroundColor: color }]} />
+            </View>
+            <AppText size="xs" color="inkDim">
+              Projected
+            </AppText>
+          </View>
+        )}
       </View>
 
       <View
@@ -150,8 +185,27 @@ const DualLineChart = ({
                 strokeLinecap="round"
               />
             )}
+            {/* From where the current line actually stops to the period's final bucket —
+                the same x-position `previous` already reaches when it's the longer series.
+                Dashed and in `color` rather than a fill, so it reads as a forecast continuing
+                the solid line rather than a second real series. */}
+            {projectedEnd !== undefined && curEnd >= 0 && curEnd < span - 1 && (
+              <Path
+                d={`M ${x(curEnd).toFixed(1)},${y(current[curEnd]).toFixed(1)} L ${x(span - 1).toFixed(1)},${y(projectedEnd).toFixed(1)}`}
+                stroke={color}
+                strokeWidth={2}
+                strokeDasharray="5 5"
+                strokeLinecap="round"
+                fill="none"
+              />
+            )}
             {active !== null && (
               <Line x1={x(active)} y1={0} x2={x(active)} y2={chartH} stroke="rgba(255,255,255,0.28)" strokeWidth={1} />
+            )}
+            {/* Where the projected line actually lands, so the number the KPI tile states is
+                also a point you can see on the chart. */}
+            {projectedEnd !== undefined && curEnd >= 0 && curEnd < span - 1 && (
+              <Circle cx={x(span - 1)} cy={y(projectedEnd)} r={4} fill="none" stroke={color} strokeWidth={2} />
             )}
             {/* Where the current period has actually got to. Without it the solid line just
                 ends, which reads as a gap in the data rather than as today. */}
@@ -168,18 +222,34 @@ const DualLineChart = ({
             <AppText size="xs" color="inkDim">
               {labels?.[active] ?? ""}
             </AppText>
+            {/* Labelled now that there can be three rows — with only two, the colour and the
+                legend above were enough; a third made it possible to mistake "last month"
+                for "projected" at a glance (they're both dashed lines). */}
             <View style={styles.tipRow}>
               <View style={[styles.tipDot, { backgroundColor: color }]} />
-              <AppText size="sm" weight="semibold">
+              <AppText size="xs" color="inkDim">This</AppText>
+              <AppText size="sm" weight="semibold" style={styles.tipValue}>
                 {active < current.length ? formatMoney(current[active]) : "—"}
               </AppText>
             </View>
             <View style={styles.tipRow}>
               <View style={[styles.tipDot, { backgroundColor: previousColor }]} />
-              <AppText size="sm" weight="semibold" color="inkDim">
+              <AppText size="xs" color="inkDim">Last</AppText>
+              <AppText size="sm" weight="semibold" color="inkDim" style={styles.tipValue}>
                 {active < previous.length ? formatMoney(previous[active]) : "—"}
               </AppText>
             </View>
+            {showProjected && (
+              <View style={styles.tipRow}>
+                {/* Hollow rather than filled — the same distinction the chart itself draws
+                    between the real end-point dot and the projected one. */}
+                <View style={[styles.tipDot, styles.tipDotHollow, { borderColor: color }]} />
+                <AppText size="xs" color="inkDim">Proj</AppText>
+                <AppText size="sm" weight="semibold" style={styles.tipValue}>
+                  {formatMoney(Math.round(projectedAt(active)))}
+                </AppText>
+              </View>
+            )}
           </View>
         )}
       </View>
@@ -249,6 +319,14 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 2,
+  },
+  tipDotHollow: {
+    backgroundColor: "transparent",
+    borderWidth: 1.5,
+  },
+  tipValue: {
+    flex: 1,
+    textAlign: "right",
   },
 });
 
