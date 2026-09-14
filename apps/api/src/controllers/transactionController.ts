@@ -206,6 +206,55 @@ export const getTransactionSummary = async (req: Request, res: Response): Promis
     reply.ok(res, { income, expenses, savings: income - expenses }, "Transaction summary fetched");
 }
 
+// The last 12 months only — title vocabulary drifts (old jobs, old shops), and bounding the
+// match keeps this cheap on the same {userId, occurredAt} index every other aggregation here
+// already relies on, rather than scanning a growing lifetime of rows for a feature that's
+// only ever surfacing the recent handful anyway.
+const TITLE_SUGGESTION_MONTHS = 12;
+const TITLE_SUGGESTION_LIMIT = 150;
+
+export const getTitleSuggestions = async (req: Request, res: Response): Promise<void> => {
+    const since = new Date();
+    since.setMonth(since.getMonth() - TITLE_SUGGESTION_MONTHS);
+
+    const rows = await Transaction.aggregate([
+        {
+            $match: {
+                userId: new mongoose.Types.ObjectId(req.user!.userId),
+                type: { $in: ["expense", "income"] },
+                title: { $type: "string", $ne: "" },
+                occurredAt: { $gte: since }
+            }
+        },
+        // Newest first, so `$first` below keeps the way the title was spelled most
+        // recently — a simpler stand-in for "most common casing" that needs no second
+        // grouping pass, and the one a user is more likely to expect repeated anyway.
+        { $sort: { occurredAt: -1 } },
+        {
+            $group: {
+                _id: {
+                    type: "$type",
+                    key: { $toLower: { $trim: { input: "$title" } } },
+                    category: "$category"
+                },
+                title: { $first: "$title" },
+                count: { $sum: 1 }
+            }
+        },
+        { $sort: { count: -1 } },
+        { $limit: TITLE_SUGGESTION_LIMIT }
+    ]);
+
+    const suggestions = rows.map((row) => ({
+        title: row.title as string,
+        type: row._id.type as "expense" | "income",
+        category: row._id.category ? (row._id.category as mongoose.Types.ObjectId).toString() : null,
+        count: row.count as number
+    }));
+
+    reply.ok(res, suggestions, "Title suggestions fetched");
+}
+
 export const getTransaction = async (req: Request, res: Response): Promise<void> => {
     const { id: transactionId } = req.params;
 
