@@ -106,6 +106,17 @@ export interface ITransaction {
   splitGroupId?: string | null
 }
 
+// One title a user has actually typed before, ranked by how often — the raw material for
+// the add-transaction form's autosuggest. `category` is the one it was most recently filed
+// under, so a client with no category picked yet can offer it as a side effect of picking
+// the title, not just the other way round.
+export interface ITitleSuggestion {
+  title: string
+  type: 'expense' | 'income'
+  category: string | null
+  count: number
+}
+
 export interface IBudget {
   _id: string
   userId: string
@@ -227,7 +238,7 @@ export interface HealthScore {
   reason?: string
 }
 
-export type InsightsPeriod = "week" | "month" | "year"
+export type InsightsPeriod = "day" | "week" | "month" | "year"
 
 // Bucket keys are zone-local CALENDAR keys, not instants: "2026-08-12" for a day bucket,
 // "2026-08" for a month one. An instant would need re-interpreting in the user's zone by
