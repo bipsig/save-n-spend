@@ -389,7 +389,12 @@ const ActivityScreen = () => {
                 title={narrowed ? "No matching transactions" : "No transactions yet"}
                 subtitle={
                   narrowed
-                    ? "Try a different search, filter, or range."
+                    // Names the actual term when there is one to name — "try a different
+                    // search" reads as generic advice when a category/type filter alone
+                    // is what's narrowing the list, so that case keeps the general line.
+                    ? debouncedQuery
+                      ? `No matches for "${debouncedQuery}".`
+                      : "Try a different filter or range."
                     : "Record what you spend and earn, and this becomes your full history."
                 }
                 // Only the never-recorded-anything case gets a button — the fix for an
