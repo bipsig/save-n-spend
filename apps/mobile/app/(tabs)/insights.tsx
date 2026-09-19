@@ -138,7 +138,10 @@ const InsightsScreen = () => {
   const { data, loading, error, refetch } = useInsights(period, offset);
   // Always about THIS month, independent of whatever period/offset is selected below —
   // see docs/insights-engine.md. Its own fetch, not threaded through useInsights.
-  const { highlights, dismiss } = useHighlights();
+  // `warmingUp` doubles as this screen's own "too new to say anything real" signal —
+  // account-wide, unlike `data.txnCount`, which is scoped to whichever window is on
+  // screen (see the empty-state branch below).
+  const { highlights, dismiss, warmingUp } = useHighlights();
 
   // Switching period type always re-anchors to the current week/month/year.
   const clearTips = () => {
@@ -198,14 +201,44 @@ const InsightsScreen = () => {
       );
     }
 
+    // `data.txnCount === 0` only says THIS window is empty — a quiet Tuesday on an
+    // account with two years of history looks identical to a brand-new one from that
+    // number alone. `warmingUp` is the account-wide signal that tells the two apart, so
+    // the three branches below are genuinely different situations, not one fact dressed
+    // up three ways: no history at all yet, this window just happens to be quiet but you
+    // could still add to it, or this window is closed and adding a transaction now
+    // wouldn't even land in it.
     if (!data || data.txnCount === 0) {
+      if (warmingUp) {
+        return (
+          <EmptyState
+            icon="clock"
+            title="A few transactions unlocks your trends"
+            subtitle="Categories, comparisons and pace all need something to compare against — add a few and they start filling in."
+            actionLabel="Add transaction"
+            onAction={() => router.push("/add-transaction")}
+          />
+        );
+      }
+      if (offset === 0) {
+        return (
+          <EmptyState
+            icon="insights"
+            title={`Nothing logged ${windowLabel(period, 0).toLowerCase()} yet`}
+            subtitle="Add a transaction and it shows up here."
+            actionLabel="Add transaction"
+            onAction={() => router.push("/add-transaction")}
+          />
+        );
+      }
+      // A closed window — adding a transaction now goes into today, not into whatever
+      // past Day/Week/Month/Year is being looked at, so the CTA that makes sense for the
+      // branch above would be actively wrong here.
       return (
         <EmptyState
           icon="insights"
-          title="A week of spending unlocks your trends"
-          subtitle="Add a few transactions and your trends, categories and comparisons show up here."
-          actionLabel="Add transaction"
-          onAction={() => router.push("/add-transaction")}
+          title={`No activity in ${windowLabel(period, offset)}`}
+          subtitle="Nothing was recorded in this window."
         />
       );
     }
