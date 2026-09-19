@@ -16,6 +16,8 @@ import { haptics } from "@/lib/haptics";
 import { parseMoney, usePrivacyMask } from "@/lib/money";
 import formatMoney from "@/lib/money";
 import { post } from "@/lib/api";
+import { fireGoalMilestone } from "@/lib/localNotifications";
+import { useSession } from "@/store/session";
 import { toast } from "@/store/toast";
 import type { IconName } from "@/lib/icons";
 import { spacing } from "@/theme";
@@ -87,6 +89,10 @@ const ContributeSheet = forwardRef<BottomSheetModal, Props>(({ goal, onChanged }
     try {
       const added = parseMoney(data.amount);
       await post(`/goals/${goal._id}/contribute`, { amount: added });
+      // Fire-and-forget: the server's own push has nowhere to land on this build (see
+      // lib/localNotifications.ts), so this is the only copy of the milestone alert that
+      // reaches the lock screen — but it must never hold up the contribution itself.
+      void fireGoalMilestone(goal, added, useSession.getState().user?.prefs?.notifications);
       dismiss();
       onChanged();
       // Hitting the target is the whole point of a goal, so it gets said outright

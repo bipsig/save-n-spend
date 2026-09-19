@@ -1,7 +1,7 @@
 import type { IBill, BillFrequency } from "@save-n-spend/types";
 import { useCallback, useEffect, useState } from "react";
 import { del, get, patch } from "@/lib/api";
-import { appZone, calendarDate, calendarToday } from "@/lib/zone";
+import { appZone, calendarDate, calendarDaysBetween, calendarToday } from "@/lib/zone";
 import { useSession } from "@/store/session";
 
 // Mirrors the server's own period comparison exactly, in the same zone (see the
@@ -25,6 +25,29 @@ export const isActionable = (bill: IBill): boolean => {
   if (bill.recurring && isFuturePeriod(bill.dueDate, bill.frequency)) return false;
   return true;
 };
+
+const isSamePeriod = (a: Date, b: Date, zone: string, frequency?: BillFrequency): boolean => {
+  const da = calendarDate(a, zone);
+  const db = calendarDate(b, zone);
+  if (frequency === "yearly") return da.getUTCFullYear() === db.getUTCFullYear();
+  return da.getUTCFullYear() * 12 + da.getUTCMonth() === db.getUTCFullYear() * 12 + db.getUTCMonth();
+};
+
+// A recurring bill is never marked paid — its due date rolls forward instead — so the only
+// evidence this period's rent is dealt with is `lastPaidAt` falling in the same period as
+// now. Mirrors the API's billService.isSettledForPeriod, used by the local reminder
+// scheduler to skip a bill the reminder job would also skip.
+export const isSettledForPeriod = (
+  bill: Pick<IBill, "lastPaidAt" | "frequency">,
+  now: Date,
+  zone: string,
+): boolean => !!bill.lastPaidAt && isSamePeriod(new Date(bill.lastPaidAt), now, zone, bill.frequency);
+
+// Whole zone-local days until `dueDate`: 0 = today, negative = overdue. Rounded rather than
+// divided exactly, same reason as the API's billService.daysUntilDue — a local day is 23 or
+// 25 hours across a DST change.
+export const daysUntilDue = (dueDate: Date, now: Date, zone: string): number =>
+  calendarDaysBetween(calendarDate(now, zone), calendarDate(dueDate, zone));
 
 export const useBills = () => {
   const status = useSession((s) => s.status);
