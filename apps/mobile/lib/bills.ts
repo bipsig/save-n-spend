@@ -1,7 +1,7 @@
 import type { IBill, BillFrequency } from "@save-n-spend/types";
 import { useCallback, useEffect, useState } from "react";
 import { del, get, patch } from "@/lib/api";
-import { appZone, calendarDate, calendarDaysBetween, calendarToday } from "@/lib/zone";
+import { appZone, calendarDate, calendarDaysBetween, calendarToday, monthKeyOf } from "@/lib/zone";
 import { useSession } from "@/store/session";
 
 // Mirrors the server's own period comparison exactly, in the same zone (see the
@@ -114,4 +114,16 @@ export const outstandingTotal = (items: IBill[]) => {
   const pending = items.filter((b) => b.status === "pending").length;
   const overdue = items.filter((b) => b.status === "overdue").length;
   return { total, pending, overdue };
+};
+
+// What's still going to draw from `month`'s cash — unpaid bills due in that month OR
+// earlier. Not "due this month" alone: an overdue bill carried over from a prior month
+// still gets paid out of *this* month's money whenever it happens, so excluding it would
+// overstate what's actually safe to spend. Bounded at `month` rather than unbounded like
+// `outstandingTotal` above, since a bill due next month shouldn't tank this one's figure.
+export const owedThroughMonth = (items: IBill[], month: string): number => {
+  const zone = appZone();
+  return items
+    .filter((b) => b.status !== "paid" && monthKeyOf(new Date(b.dueDate), zone) <= month)
+    .reduce((sum, b) => sum + b.amount, 0);
 };
