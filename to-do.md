@@ -57,14 +57,14 @@ native work, and phases 0-2 need no Swift at all.
 - [ ] Phase 1 — cold-launch dismiss fallback for deep-linked modal routes. `add-transaction` closes by going back, and a launch that *starts* at the modal has nothing beneath it, so back lands on a blank screen
 - [ ] Phase 2 — `lib/pendingLink.ts` plus two branches in the gate, so a link arriving while signed out survives the redirect to login instead of dropping the user on the dashboard. In memory only, never persisted; also the fallback if WakeGate's late mount eats the initial URL
 - [ ] Phase 3 — App Intent for "Add Transaction" via expo-apple-targets, so it shows up in Shortcuts and Siri without the user assembling one. Opens the app, never writes: a background write would need Keychain sharing (paid tier) and a second copy of the paise handling in Swift
-- [ ] Local storage or soemthing so that the app is usable in offline mdoe as well
+- [X] Local storage or soemthing so that the app is usable in offline mdoe as well
 - [X] Auto suggest labels and titles
 - [X] For You carousel cards were all different heights, and Health Score, the four summary tiles, and the recent-transactions block needed reordering — Health Score now leads, the four tiles stay together as one grid, and Income/Expenses/Savings carry the same trend sparkline Net Worth already had, for free (the net-worth reconstruction was already computing per-month income/expense internally)
 - [X] Budget pace on the Budget screen was silently using today's date even when viewing a past month — `budgetPace` now takes the days-elapsed/days-in-month the caller already resolved instead of recomputing "now" itself. Goal cards got the same pace treatment: "At this pace, done around Month"
 - [X] Highlights on the More screen only ever showed what's live right now — added a permanent, paginated history (`HighlightLog`), sorted newest first, that nothing can dismiss or delete
 - [X] Full account Backup & Restore, from Settings — export every account, category, transaction, budget, bill, and goal as one JSON file, and restore it back later (wipes and replaces only the current account's own data, inside one transaction, behind a hold-to-confirm)
 - [X] Month in Review / Week in Review — a recap of any closed week or month (verdict, a day-by-day timeline, income/expenses/saved vs the period before, categories, habits, net worth, goals, bills), browsable from More → Reviews and surfaced once as a dashboard banner the first time the app opens after a period closes
-- [ ] Need a good loader when trying to refresh page by slidin g it down - this should refresh the page
+- [X] Need a good loader when trying to refresh page by slidin g it down - this should refresh the page
 
 
 Decided against: **widgets**. Data widgets need App Groups or Keychain sharing,
