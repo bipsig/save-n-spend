@@ -29,6 +29,11 @@ export interface DeviceSettings {
    * on one phone must not inherit each other's dismissal.
    */
   getStartedDismissed: string[];
+  /** Paise. The highest net-worth milestone already celebrated on this phone — so the
+   *  same crossing doesn't show twice. Device-local like the rest of this store; a
+   *  reinstall or a second device re-showing one already seen is an acceptable cost for
+   *  a card that's purely celebratory and never acted on. */
+  netWorthMilestoneSeen: number;
 }
 
 const DEFAULTS: DeviceSettings = {
@@ -36,6 +41,7 @@ const DEFAULTS: DeviceSettings = {
   appLock: false,
   autoLockSeconds: 60,
   getStartedDismissed: [],
+  netWorthMilestoneSeen: 0,
 };
 
 /** How long a peek lasts — long enough to read a screenful, short enough that putting the
@@ -76,8 +82,8 @@ export const useSettings = create<SettingsState>((set, get) => ({
   // written, keeping the stored shape identical to the state's.
   update: (patch) => {
     set(patch);
-    const { privacyMode, appLock, autoLockSeconds, getStartedDismissed } = get();
-    void writeJson(STORAGE_KEY, { privacyMode, appLock, autoLockSeconds, getStartedDismissed });
+    const { privacyMode, appLock, autoLockSeconds, getStartedDismissed, netWorthMilestoneSeen } = get();
+    void writeJson(STORAGE_KEY, { privacyMode, appLock, autoLockSeconds, getStartedDismissed, netWorthMilestoneSeen });
     // Switching privacy mode ON must not leave a peek running — it would mask nothing.
     if (patch.privacyMode !== undefined) get().hide();
   },
