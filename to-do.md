@@ -45,11 +45,6 @@
 - [X] Transfers read as transfers — "Transfer", "From → To", an unsigned teal amount, and a detail sheet naming both accounts, instead of a blank title over "Uncategorised" with a red minus
 - [X] Need to fix empty/no transactions as screen is completely generic. For example no transactions for a days insight shouldn't show a weeks spending. Thus work on blank screens correctly.
 - [X] Now daily notifications are rightly being fired but others like bills due notification and weekly notifcations are not being fired to the mobile (its seen within the bell icon)
-- [X] For You carousel cards were all different heights, and Health Score, the four summary tiles, and the recent-transactions block needed reordering — Health Score now leads, the four tiles stay together as one grid, and Income/Expenses/Savings carry the same trend sparkline Net Worth already had, for free (the net-worth reconstruction was already computing per-month income/expense internally)
-- [X] Budget pace on the Budget screen was silently using today's date even when viewing a past month — `budgetPace` now takes the days-elapsed/days-in-month the caller already resolved instead of recomputing "now" itself. Goal cards got the same pace treatment: "At this pace, done around Month"
-- [X] Highlights on the More screen only ever showed what's live right now — added a permanent, paginated history (`HighlightLog`), sorted newest first, that nothing can dismiss or delete
-- [X] Full account Backup & Restore, from Settings — export every account, category, transaction, budget, bill, and goal as one JSON file, and restore it back later (wipes and replaces only the current account's own data, inside one transaction, behind a hold-to-confirm)
-- [X] Month in Review / Week in Review — a recap of any closed week or month (verdict, a day-by-day timeline, income/expenses/saved vs the period before, categories, habits, net worth, goals, bills), browsable from More → Reviews and surfaced once as a dashboard banner the first time the app opens after a period closes
 - [ ] Need a filter for accounts as well on all activity page.
 
 ## 2.0.0 — Shortcuts, Back Tap and the Action Button
@@ -64,6 +59,11 @@ native work, and phases 0-2 need no Swift at all.
 - [ ] Phase 3 — App Intent for "Add Transaction" via expo-apple-targets, so it shows up in Shortcuts and Siri without the user assembling one. Opens the app, never writes: a background write would need Keychain sharing (paid tier) and a second copy of the paise handling in Swift
 - [ ] Local storage or soemthing so that the app is usable in offline mdoe as well
 - [X] Auto suggest labels and titles
+- [X] For You carousel cards were all different heights, and Health Score, the four summary tiles, and the recent-transactions block needed reordering — Health Score now leads, the four tiles stay together as one grid, and Income/Expenses/Savings carry the same trend sparkline Net Worth already had, for free (the net-worth reconstruction was already computing per-month income/expense internally)
+- [X] Budget pace on the Budget screen was silently using today's date even when viewing a past month — `budgetPace` now takes the days-elapsed/days-in-month the caller already resolved instead of recomputing "now" itself. Goal cards got the same pace treatment: "At this pace, done around Month"
+- [X] Highlights on the More screen only ever showed what's live right now — added a permanent, paginated history (`HighlightLog`), sorted newest first, that nothing can dismiss or delete
+- [X] Full account Backup & Restore, from Settings — export every account, category, transaction, budget, bill, and goal as one JSON file, and restore it back later (wipes and replaces only the current account's own data, inside one transaction, behind a hold-to-confirm)
+- [X] Month in Review / Week in Review — a recap of any closed week or month (verdict, a day-by-day timeline, income/expenses/saved vs the period before, categories, habits, net worth, goals, bills), browsable from More → Reviews and surfaced once as a dashboard banner the first time the app opens after a period closes
 - [ ] Need a good loader when trying to refresh page by slidin g it down - this should refresh the page
 
 
