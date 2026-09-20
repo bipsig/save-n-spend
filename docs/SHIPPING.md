@@ -136,6 +136,21 @@ durable source is [`app.json`](../apps/mobile/app.json), and `expo prebuild`
 propagates from there. Anything you patch directly into `Info.plist` is lost on
 the next prebuild.
 
+**Exception, and a real trap:** `build-ipa.sh` only runs `expo prebuild` when
+`ios/` is *missing* — so in practice, hand-edits to native files (Swift,
+`project.pbxproj`) survive every normal `npm run ipa` build. They are only
+wiped the next time something forces a fresh prebuild (a new native
+dependency, `--clean`, or deleting `ios/`). `SceneDelegate.swift` and the
+matching `AppDelegate.swift`/`project.pbxproj` changes (added to fix
+`UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption` — Expo SDK 54
+has no built-in Scene support, so this is hand-rolled, not a config plugin)
+are exactly this kind of file: gone on the next forced prebuild, with the
+crash returning silently unless someone remembers to redo them. The
+`UIApplicationSceneManifest` Info.plist entry is safe either way — it's also
+in `app.json`'s `ios.infoPlist`, which prebuild regenerates correctly. If this
+recurs, either turn the Swift/pbxproj changes into a proper Expo config
+plugin, or upgrade past the Expo SDK version that lacks Scene support.
+
 ---
 
 ## 5. Dev vs prod database
