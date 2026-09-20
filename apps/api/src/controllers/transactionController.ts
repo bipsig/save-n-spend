@@ -109,22 +109,31 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
 }
 
 export const filterTransactions = async (req: Request, res: Response): Promise<void> => {
-    const { startDate, endDate, category, type, search, page, limit } = listTransactionQuerySchema.parse(req.query);
+    const { startDate, endDate, category, account, type, search, page, limit } = listTransactionQuerySchema.parse(req.query);
 
     const filters: Record<string, unknown> = {
         userId: req.user?.userId
     };
 
+    if (account) {
+        // Comma-separated, so the filter picks up any number of accounts — the mobile
+        // filter sheet multi-selects. A transfer into one of them has it as `toAccount`,
+        // not `account` — matching only the source side would silently drop every
+        // transfer these accounts received.
+        const accountIds = account.split(",").filter(Boolean);
+        filters.$or = [{ account: { $in: accountIds } }, { toAccount: { $in: accountIds } }];
+    }
     if (category) {
+        // Same comma-separated multi-select as account. Each selected id can be a parent
+        // or a child — only parents have children to expand, so this just adds none for
+        // an id that's already a leaf.
+        const categoryIds = category.split(",").filter(Boolean);
         const children = await Category.find({
-            parent: category,
+            parent: { $in: categoryIds },
             userId: req.user?.userId
         }, { _id: 1 });
-        
-        const reqCategories = children.map((child) => {
-            return child._id.toString();
-        });
-        reqCategories.push (category);
+
+        const reqCategories = [...categoryIds, ...children.map((child) => child._id.toString())];
 
         filters.category = { $in: reqCategories };
     }

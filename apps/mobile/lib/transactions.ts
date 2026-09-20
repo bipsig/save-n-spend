@@ -58,7 +58,11 @@ export type FeedType = "income" | "expense" | "transfer";
 export type FeedParams = {
   startDate?: string;
   endDate?: string;
-  category?: string;
+  /** Multi-select — joined into one comma-separated query param; the server expands
+   *  each selected category to include its own children. */
+  category?: string[];
+  /** Multi-select — matches a transaction whose `account` OR `toAccount` is any of these. */
+  account?: string[];
   type?: FeedType;
   search?: string;
 };
@@ -71,6 +75,9 @@ export const useTransactionFeed = (params: FeedParams) => {
   const [items, setItems] = useState<ITransaction[]>([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
+  // How many rows this filter combination matches in total, not just what's loaded —
+  // the filter sheet's "Show N results" reads this live as chips are tapped.
+  const [totalDocs, setTotalDocs] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -78,7 +85,7 @@ export const useTransactionFeed = (params: FeedParams) => {
   // A monotonic id so a slow response from a stale filter can't clobber a newer one.
   const reqId = useRef(0);
   // Serialize the filter so the load callback is stable while values are unchanged.
-  const key = `${params.startDate ?? ""}|${params.endDate ?? ""}|${params.category ?? ""}|${params.type ?? ""}|${params.search ?? ""}`;
+  const key = `${params.startDate ?? ""}|${params.endDate ?? ""}|${(params.category ?? []).join(",")}|${(params.account ?? []).join(",")}|${params.type ?? ""}|${params.search ?? ""}`;
 
   const load = useCallback(async (targetPage: number, replace: boolean) => {
     if (useSession.getState().status !== "authed") return;
@@ -91,7 +98,8 @@ export const useTransactionFeed = (params: FeedParams) => {
         limit: PAGE_SIZE,
         startDate: params.startDate,
         endDate: params.endDate,
-        category: params.category,
+        category: params.category?.length ? params.category.join(",") : undefined,
+        account: params.account?.length ? params.account.join(",") : undefined,
         type: params.type,
         search: params.search,
       });
@@ -100,6 +108,7 @@ export const useTransactionFeed = (params: FeedParams) => {
       setItems((prev) => (replace ? res.docs : [...prev, ...res.docs]));
       setPage(res.page);
       setHasMore(res.hasNextPage);
+      setTotalDocs(res.totalDocs);
     }
     catch (err) {
       if (myId !== reqId.current) return;
@@ -142,7 +151,7 @@ export const useTransactionFeed = (params: FeedParams) => {
 
   const refetch = useCallback(() => load(1, true), [load]);
 
-  return { items, loading, loadingMore, error, hasMore, loadMore, refetch };
+  return { items, loading, loadingMore, error, hasMore, totalDocs, loadMore, refetch };
 };
 
 // How many transactions are filed under a category — asked once, right before

@@ -1,17 +1,20 @@
-import { ActivityIndicator, FlatList, ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from "react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
-import type { ICategory, ITransaction } from "@save-n-spend/types";
+import type { ITransaction } from "@save-n-spend/types";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import GradientCard from "@/components/shell/GradientCard";
 import TransactionRow from "@/components/rows/TransactionRow";
 import TransactionDetailSheet from "@/components/sheets/TransactionDetailSheet";
+import FailedTransactionSheet from "@/components/sheets/FailedTransactionSheet";
+import ActivityFiltersSheet, { TYPES, type TypeKey } from "@/components/sheets/ActivityFiltersSheet";
 import ExportSheet from "@/components/sheets/ExportSheet";
 import { AppText } from "@/components/ui/AppText";
 import Search from "@/components/ui/Search";
-import Chip from "@/components/ui/Chip";
+import Icon from "@/components/ui/Icon";
 import Button from "@/components/ui/Button";
+import PressableScale from "@/components/ui/PressableScale";
 import SegmentedControl from "@/components/ui/SegmentedControl";
 import PeriodNav from "@/components/ui/PeriodNav";
 import Fab from "@/components/ui/Fab";
@@ -20,11 +23,12 @@ import ErrorState from "@/components/states/ErrorState";
 import SkeletonState from "@/components/states/SkeletonState";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { useCategories } from "@/lib/categories";
-import type { IconName } from "@/lib/icons";
-import { useTransactionFeed, useTransactionSummary, type FeedType } from "@/lib/transactions";
+import { useTransactionFeed, useTransactionSummary } from "@/lib/transactions";
 import { RANGES, rangeBounds, rangeLabel, rangeNavLabel, isRangeKey, type RangeKey } from "@/lib/dateRange";
 import { dayGroupLabel, monthGroupLabel } from "@/lib/date";
 import { dayKey, monthKeyOf, useAppZone } from "@/lib/zone";
+import { useOutbox } from "@/store/outbox";
+import { usePendingDeletes } from "@/store/pendingDeletes";
 import { colors, radius, spacing } from "@/theme";
 
 // A flat feed row is either a transaction or a group header injected between days
@@ -32,7 +36,7 @@ import { colors, radius, spacing } from "@/theme";
 type ListRow =
   | { kind: "month"; key: string; label: string }
   | { kind: "day"; key: string; label: string }
-  | { kind: "txn"; key: string; tx: ITransaction };
+  | { kind: "txn"; key: string; tx: ITransaction; pending: boolean; failed: boolean };
 
 const DayHeader = ({ label }: { label: string }) => (
   <AppText size="xs" weight="bold" color="inkDim" style={styles.dayHeader}>
@@ -110,19 +114,6 @@ const SummaryCard = ({
   );
 };
 
-// What kind of movement is being read, on its own line above the categories. Money in and
-// money out were only ever told apart by the colour of an amount, and the category chips
-// mixed both kinds in one row — so "Salary" and "Groceries" sat side by side as if they
-// were the same sort of filter.
-type TypeKey = "all" | FeedType;
-
-const TYPES: { key: TypeKey; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "expense", label: "Expense" },
-  { key: "income", label: "Income" },
-  { key: "transfer", label: "Transfers" },
-];
-
 const ActivityScreen = () => {
   usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
   const zone = useAppZone(); // subscribe: the zone decides which day each row sits under
@@ -133,32 +124,28 @@ const ActivityScreen = () => {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [activeType, setActiveType] = useState<TypeKey>("all");
-  const [activeCategory, setActiveCategory] = useState<string>("all");
-
-  // Two-tier category filter: top-level parents, plus a child row once one is active. The
-  // open parent is derived from the selection, so picking a child keeps its parent lit.
-  //
-  // Scoped to the kind being read, since a category only ever belongs to one of them:
-  // filtering Income by "Groceries" can only ever return nothing. Transfers have no
-  // category at all, so the rows go away entirely (see below).
-  const categories = useCategories();
-  const parents = useMemo(
-    () => categories.filter((c) => !c.parent && (activeType === "all" || c.kind === activeType)),
-    [categories, activeType]
-  );
-  const childrenByParent = useMemo(() => {
-    const map = new Map<string, ICategory[]>();
-    for (const c of categories) {
-      if (c.parent) map.set(c.parent, [...(map.get(c.parent) ?? []), c]);
-    }
-    return map;
-  }, [categories]);
-  const openParentId =
-    activeCategory === "all"
-      ? null
-      : (categories.find((c) => c._id === activeCategory)?.parent ?? activeCategory);
-  const openParent = openParentId ? parents.find((p) => p._id === openParentId) : undefined;
-  const childRow = openParentId ? (childrenByParent.get(openParentId) ?? []) : [];
+  // Single-select, like Type — one parent at a time. Sub-categories are multi-select
+  // but scoped to whichever parent is active, so switching parents (or clearing back to
+  // null) drops whatever sub-category picks belonged to the previous one.
+  const [activeCategory, setActiveCategoryRaw] = useState<string | null>(null);
+  const [activeSubCategories, setActiveSubCategories] = useState<string[]>([]);
+  const setActiveCategory = (id: string | null) => {
+    setActiveCategoryRaw(id);
+    setActiveSubCategories([]);
+  };
+  const toggleSubCategory = (id: string) =>
+    setActiveSubCategories((ids) => (ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id]));
+  // Multi-select — an empty array is "no filter".
+  const [activeAccounts, setActiveAccounts] = useState<string[]>([]);
+  const toggleAccount = (id: string) =>
+    setActiveAccounts((ids) => (ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id]));
+  const filtersRef = useRef<BottomSheetModal>(null);
+  // How many of Type/Category/Account are narrowed at all — the trigger button's badge.
+  // Counts groups touched, not individual picks, so selecting three accounts still reads
+  // as "1" rather than a badge that looks alarming. Search doesn't count toward it: it
+  // has its own always-visible field.
+  const activeFilterCount =
+    (activeType !== "all" ? 1 : 0) + (activeCategory !== null ? 1 : 0) + (activeAccounts.length > 0 ? 1 : 0);
 
   // Search moves server-side, so debounce it — one request per pause, not per key.
   useEffect(() => {
@@ -177,11 +164,12 @@ const ActivityScreen = () => {
   const goPrev = () => setOffset((o) => o - 1);
   const goNext = () => setOffset((o) => Math.min(0, o + 1));
 
-  // The category goes back to "all" with it: the rows below are about to be a different
-  // set, and a selection that has left the row it was made in cannot be unmade.
+  // The category selection goes back to empty with it: the categories on offer are
+  // about to be a different set, and a pick that's left the kind it was made in cannot
+  // be unmade.
   const changeType = (t: TypeKey) => {
     setActiveType(t);
-    setActiveCategory("all");
+    setActiveCategory(null);
   };
 
   // Opened from a dashboard tile ("Income" / "Expenses"), which names the kind and the month
@@ -191,7 +179,7 @@ const ActivityScreen = () => {
   useEffect(() => {
     if (params.type && TYPES.some((t) => t.key === params.type)) {
       setActiveType(params.type as TypeKey);
-      setActiveCategory("all");
+      setActiveCategory(null);
     }
     if (isRangeKey(params.range)) {
       setRange(params.range);
@@ -199,10 +187,29 @@ const ActivityScreen = () => {
     }
   }, [params.type, params.range, params.focus]);
 
+  // Specific sub-categories narrow further than the parent alone; picking none just
+  // means "the whole parent" — the server already expands a parent id to its children.
+  const categoryFilter = activeSubCategories.length > 0
+    ? activeSubCategories
+    : activeCategory ? [activeCategory] : undefined;
+
+  // A queued (offline) transaction is always tagged with a specific leaf category, never
+  // a bare parent — so matching it against a parent-only filter needs the same "parent
+  // implies its children" expansion the server does for the real feed.
+  const categories = useCategories();
+  const matchesCategoryFilter = (categoryId: string | null | undefined): boolean => {
+    if (!categoryFilter) return true;
+    if (!categoryId) return false;
+    if (categoryFilter.includes(categoryId)) return true;
+    const parent = categories.find((c) => c._id === categoryId)?.parent;
+    return !!parent && categoryFilter.includes(parent);
+  };
+
   const feed = useTransactionFeed({
     startDate: bounds.startDate,
     endDate: bounds.endDate,
-    category: activeCategory === "all" ? undefined : activeCategory,
+    category: categoryFilter,
+    account: activeAccounts,
     type: activeType === "all" ? undefined : activeType,
     search: debouncedQuery || undefined,
   });
@@ -210,7 +217,68 @@ const ActivityScreen = () => {
 
   const detailRef = useRef<BottomSheetModal>(null);
   const exportRef = useRef<BottomSheetModal>(null);
+  const failedRef = useRef<BottomSheetModal>(null);
   const [activeTransaction, setActiveTransaction] = useState<ITransaction | null>(null);
+  const [activeFailed, setActiveFailed] = useState<{ clientId: string; error: string | null } | null>(null);
+
+  // Queued transactions waiting on this phone — merged into the rows below rather than
+  // shown separately, so a quiet Tuesday with one offline entry still reads as one list.
+  const pendingItems = useOutbox((s) => s.items);
+  const lastDrainedAt = useOutbox((s) => s.lastDrainedAt);
+  const pendingByClientId = useMemo(
+    () => new Map(pendingItems.map((item) => [item.clientId, item])),
+    [pendingItems]
+  );
+  // Once a queued item's real transaction has landed from the server, its clientId shows
+  // up here too — dropping the synthetic row at that point is what stops a drain from
+  // showing the same transaction twice.
+  const syncedClientIds = useMemo(
+    () => new Set(feed.items.map((tx) => tx.clientId).filter((cid): cid is string => !!cid)),
+    [feed.items]
+  );
+  const pendingTransactions = useMemo(() => pendingItems
+    .filter((item) => !syncedClientIds.has(item.clientId))
+    // Same criteria the server-side feed already applies, so a queued transaction only
+    // shows up where its synced twin eventually will.
+    .filter((item) => {
+      const p = item.payload;
+      if (activeType !== "all" && p.type !== activeType) return false;
+      if (!matchesCategoryFilter(p.category as string | undefined)) return false;
+      // A transfer's destination is `toAccount`, not `account` — same both-sides match
+      // as the server's own filter (transactionController.ts's filterTransactions).
+      if (
+        activeAccounts.length > 0
+        && !activeAccounts.includes(p.account as string)
+        && !activeAccounts.includes(p.toAccount as string)
+      ) return false;
+      const occurredAt = p.occurredAt as string | undefined;
+      if (occurredAt) {
+        const day = dayKey(new Date(occurredAt), zone);
+        if (bounds.startDate && day < bounds.startDate) return false;
+        if (bounds.endDate && day > bounds.endDate) return false;
+      }
+      if (debouncedQuery) {
+        const title = ((p.title as string | undefined) ?? "").toLowerCase();
+        if (!title.includes(debouncedQuery.toLowerCase())) return false;
+      }
+      return true;
+    })
+    .map((item) => ({ ...item.payload, _id: item.clientId, clientId: item.clientId }) as unknown as ITransaction),
+  [pendingItems, syncedClientIds, activeType, activeCategory, activeSubCategories, categories, activeAccounts, bounds, zone, debouncedQuery]);
+
+  // Hidden the instant delete is confirmed — the real DELETE only fires if the undo
+  // grace window elapses undisturbed (see store/pendingDeletes.ts). `syncedClientIds`
+  // above deliberately still reads the unfiltered `feed.items` — outbox dedup and delete
+  // state are unrelated, so a deleted-but-not-yet-committed row still counts as "synced".
+  const pendingDeleteKeys = usePendingDeletes((s) => s.keys);
+  const mergedTransactions = useMemo(() => {
+    const visibleFeedItems = feed.items.filter((t) => !pendingDeleteKeys.has(`transaction:${t._id}`));
+    return pendingTransactions.length === 0
+      ? visibleFeedItems
+      : [...pendingTransactions, ...visibleFeedItems].sort(
+        (a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime()
+      );
+  }, [feed.items, pendingTransactions, pendingDeleteKeys]);
 
   // Refresh on focus (e.g. returning from Add Transaction). The hooks already reload
   // themselves when filters change.
@@ -223,13 +291,37 @@ const ActivityScreen = () => {
     refresh.current();
   }, []));
 
+  // A drain can land while this screen is already on-screen (reconnecting mid-browse),
+  // not only on the way back to it — the focus effect above wouldn't otherwise catch it.
+  useEffect(() => {
+    if (lastDrainedAt) refresh.current();
+  }, [lastDrainedAt]);
+
+  // Pull-to-refresh — its own state rather than `feed.loading`, which is also true for
+  // every ordinary filter change and would pop the pull spinner for those too.
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([feed.refetch(), summary.refetch()]);
+    }
+    finally {
+      setRefreshing(false);
+    }
+  };
+
   const openTransactionDetail = (transaction: ITransaction) => {
     setActiveTransaction(transaction);
     detailRef.current?.present();
   };
 
+  const openFailedSheet = (clientId: string, error: string | null) => {
+    setActiveFailed({ clientId, error });
+    failedRef.current?.present();
+  };
+
   // Whether an empty list means "nothing here" or "nothing matching what you asked for".
-  const narrowed = !!debouncedQuery || activeCategory !== "all" || activeType !== "all";
+  const narrowed = !!debouncedQuery || activeCategory !== null || activeAccounts.length > 0 || activeType !== "all";
 
   // Day sections, with a month break when the month rolls over. Only for ranges that can
   // span months (Week/Year/All) — redundant inside a single-month view.
@@ -238,7 +330,7 @@ const ActivityScreen = () => {
     const rows: ListRow[] = [];
     let lastDay: string | null = null;
     let lastMonth: string | null = null;
-    for (const tx of feed.items) {
+    for (const tx of mergedTransactions) {
       // Cut in the user's zone — what the labels print and what the server counted the
       // day in. Keyed off the DEVICE's day, a 1am purchase abroad opens a second "Today".
       const instant = new Date(tx.occurredAt as string);
@@ -252,10 +344,17 @@ const ActivityScreen = () => {
         rows.push({ kind: "day", key: `d-${day}`, label: dayGroupLabel(tx.occurredAt as string) });
         lastDay = day;
       }
-      rows.push({ kind: "txn", key: tx._id, tx });
+      const outboxEntry = tx.clientId ? pendingByClientId.get(tx.clientId) : undefined;
+      rows.push({
+        kind: "txn",
+        key: tx._id,
+        tx,
+        pending: outboxEntry?.status === "queued",
+        failed: outboxEntry?.status === "failed",
+      });
     }
     return rows;
-  }, [feed.items, showMonths, zone]);
+  }, [mergedTransactions, showMonths, zone, pendingByClientId]);
 
   return (
     <ScreenScaffold
@@ -284,64 +383,28 @@ const ActivityScreen = () => {
         />
       )}
 
-      <Search value={query} onChangeText={setQuery} placeholder="Search transactions" />
-
-      {/* Three lines, coarsest first: kind, then category, then sub-category. The kind is a
-          track like the range above it — one of four, mutually exclusive — while the two
-          rows under it are chips, which is what narrowing looks like everywhere else in the
-          app. That difference is the boundary; a chip row holding both was the confusion. */}
-      <View style={styles.filterCol}>
-        <SegmentedControl segments={TYPES} value={activeType} onChange={changeType} />
-
-        {/* A transfer has no category, so there is nothing here to narrow. */}
-        {activeType !== "transfer" && (
-          <>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-              <Chip
-                label="All categories"
-                selected={activeCategory === "all"}
-                onPress={() => setActiveCategory("all")}
-              />
-              {parents.map((parent) => (
-                <Chip
-                  key={parent._id}
-                  label={parent.name}
-                  icon={parent.icon as IconName | undefined}
-                  selected={activeCategory === parent._id}
-                  active={openParentId === parent._id && activeCategory !== parent._id}
-                  onPress={() => setActiveCategory(parent._id)}
-                />
-              ))}
-            </ScrollView>
-
-            {openParent && childRow.length > 0 && (
-              <View style={styles.childWrap}>
-                <View style={styles.childRail} />
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={styles.childScroll}
-                  contentContainerStyle={styles.filterRow}
-                >
-                  <Chip
-                    label={`All ${openParent.name}`}
-                    selected={activeCategory === openParent._id}
-                    onPress={() => setActiveCategory(openParent._id)}
-                  />
-                  {childRow.map((child) => (
-                    <Chip
-                      key={child._id}
-                      label={child.name}
-                      icon={child.icon as IconName | undefined}
-                      selected={activeCategory === child._id}
-                      onPress={() => setActiveCategory(child._id)}
-                    />
-                  ))}
-                </ScrollView>
-              </View>
-            )}
-          </>
-        )}
+      {/* Type/Category/Account used to be three stacked rows here, permanently on
+          screen whether or not anything was actually narrowed. They now live in one
+          sheet reached by this button — same three choices, same live filtering the
+          instant a chip is tapped, just not taking up space when nothing's set. */}
+      <View style={styles.searchRow}>
+        <View style={styles.searchFlex}>
+          <Search value={query} onChangeText={setQuery} placeholder="Search transactions" />
+        </View>
+        <PressableScale
+          style={[styles.filterBtn, activeFilterCount > 0 && styles.filterBtnActive]}
+          onPress={() => filtersRef.current?.present()}
+          scaleTo={0.94}
+        >
+          <Icon name="filter" size={19} color={activeFilterCount > 0 ? "primary" : "inkDim"} />
+          {activeFilterCount > 0 && (
+            <View style={styles.filterBadge}>
+              <AppText size="xs" weight="black" color="surface" style={styles.filterBadgeText}>
+                {activeFilterCount}
+              </AppText>
+            </View>
+          )}
+        </PressableScale>
       </View>
 
       {feed.error ? (
@@ -356,7 +419,19 @@ const ActivityScreen = () => {
             ) : item.kind === "day" ? (
               <DayHeader label={item.label} />
             ) : (
-              <TransactionRow transaction={item.tx} onPress={() => openTransactionDetail(item.tx)} />
+              <TransactionRow
+                transaction={item.tx}
+                pending={item.pending}
+                failed={item.failed}
+                onPress={
+                  item.failed
+                    ? () => openFailedSheet(item.tx.clientId!, pendingByClientId.get(item.tx.clientId!)?.error ?? null)
+                    // A merely-pending row has nothing to fix yet — nothing to tap into.
+                    : item.pending
+                      ? undefined
+                      : () => openTransactionDetail(item.tx)
+                }
+              />
             )
           }
           contentContainerStyle={styles.content}
@@ -365,6 +440,15 @@ const ActivityScreen = () => {
           keyboardShouldPersistTaps="handled"
           onEndReached={feed.loadMore}
           onEndReachedThreshold={0.4}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+              progressBackgroundColor="#1B1730"
+            />
+          }
           ListHeaderComponent={
             <SummaryCard
               label={rangeLabel(range, offset)}
@@ -410,8 +494,28 @@ const ActivityScreen = () => {
         />
       )}
 
-      <TransactionDetailSheet ref={detailRef} transaction={activeTransaction} onDeleted={refresh.current} />
+      <TransactionDetailSheet ref={detailRef} transaction={activeTransaction} onCommitted={refresh.current} />
+      <FailedTransactionSheet
+        ref={failedRef}
+        error={activeFailed?.error ?? null}
+        onRetry={() => activeFailed && useOutbox.getState().retry(activeFailed.clientId)}
+        onEdit={() => activeFailed && router.push({ pathname: "/add-transaction", params: { draftFrom: activeFailed.clientId } })}
+        onDiscard={() => activeFailed && useOutbox.getState().discard(activeFailed.clientId)}
+      />
       <ExportSheet ref={exportRef} defaultRange={range} defaultOffset={offset} />
+      <ActivityFiltersSheet
+        ref={filtersRef}
+        activeType={activeType}
+        onChangeType={changeType}
+        activeCategory={activeCategory}
+        onChangeCategory={setActiveCategory}
+        activeSubCategories={activeSubCategories}
+        onToggleSubCategory={toggleSubCategory}
+        activeAccounts={activeAccounts}
+        onToggleAccount={toggleAccount}
+        onClearAccounts={() => setActiveAccounts([])}
+        resultCount={feed.totalDocs}
+      />
     </ScreenScaffold>
   );
 };
@@ -446,31 +550,46 @@ const styles = StyleSheet.create({
   skeletonCol: {
     gap: spacing.lg, // mirror the real list's row rhythm so the swap doesn't jump
   },
-  filterCol: {
-    gap: spacing.sm,
-  },
-  filterRow: {
+  searchRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    paddingRight: spacing.md, // let the last chip hint at more when it scrolls
   },
-  // Inset behind a short violet rail, tying it to the highlighted parent chip above.
-  childWrap: {
-    flexDirection: "row",
-    alignItems: "stretch",
-    marginLeft: spacing.xs,
-  },
-  childRail: {
-    width: 2,
-    borderRadius: 1,
-    marginVertical: 4,
-    marginRight: spacing.sm,
-    backgroundColor: colors.primary,
-    opacity: 0.55,
-  },
-  childScroll: {
+  searchFlex: {
     flex: 1,
+  },
+  // Reads as a live control once something's set — same violet-tinted border/fill
+  // `Chip`'s own selected state uses — rather than a plain settings gear.
+  filterBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+  },
+  filterBtnActive: {
+    borderColor: "rgba(163,148,255,0.45)",
+    backgroundColor: "rgba(139,123,255,0.14)",
+  },
+  filterBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.primary,
+    borderWidth: 2,
+    borderColor: colors.bg,
+  },
+  filterBadgeText: {
+    lineHeight: 12,
   },
   footer: {
     paddingVertical: spacing.lg,

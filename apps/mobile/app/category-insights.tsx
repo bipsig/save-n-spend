@@ -21,6 +21,7 @@ import SkeletonState from "@/components/states/SkeletonState";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { useCategoryInsights, buildTrend, pctChange } from "@/lib/insights";
 import { useTransactionFeed } from "@/lib/transactions";
+import { usePendingDeletes } from "@/store/pendingDeletes";
 import { rangeBounds, rangeNavLabel } from "@/lib/dateRange";
 import { useAppZone } from "@/lib/zone";
 import { colors, radius, spacing } from "@/theme";
@@ -82,8 +83,12 @@ const CategoryInsightsScreen = () => {
   const feed = useTransactionFeed({
     startDate: bounds.startDate,
     endDate: bounds.endDate,
-    category: id || undefined,
+    category: id ? [id] : undefined,
   });
+  // Hidden the instant delete is confirmed — the real DELETE only fires if the undo
+  // grace window elapses undisturbed (see store/pendingDeletes.ts).
+  const pendingKeys = usePendingDeletes((s) => s.keys);
+  const visibleItems = feed.items.filter((t) => !pendingKeys.has(`transaction:${t._id}`));
 
   const detailRef = useRef<BottomSheetModal>(null);
   const [active, setActive] = useState<ITransaction | null>(null);
@@ -198,7 +203,7 @@ const CategoryInsightsScreen = () => {
                 <SkeletonState key={i} height={72} borderRadius={radius.lg} />
               ))}
             </View>
-          ) : feed.items.length === 0 ? (
+          ) : visibleItems.length === 0 ? (
             <EmptyState
               icon="receipt"
               title="Nothing filed here yet"
@@ -206,7 +211,7 @@ const CategoryInsightsScreen = () => {
             />
           ) : (
             <View style={styles.txnList}>
-              {feed.items.map((txn) => (
+              {visibleItems.map((txn) => (
                 <TransactionRow key={txn._id} transaction={txn} onPress={() => openDetail(txn)} />
               ))}
               {feed.hasMore && (
@@ -253,7 +258,7 @@ const CategoryInsightsScreen = () => {
         onNext={() => { setOffset((o) => Math.min(0, o + 1)); setTip(null); }}
       />
       {renderBody()}
-      <TransactionDetailSheet ref={detailRef} transaction={active} onDeleted={refresh.current} />
+      <TransactionDetailSheet ref={detailRef} transaction={active} onCommitted={refresh.current} />
     </ScreenScaffold>
   );
 };

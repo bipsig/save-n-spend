@@ -56,6 +56,7 @@ export const listTransactionQuerySchema = z.object({
     startDate: z.iso.date().optional(),
     endDate: z.iso.date().optional(),
     category: z.string().optional(),
+    account: z.string().optional(),
     type: z.enum(["expense", "income", "transfer"]).optional(),
     // Capped because the term becomes a `$regex` the database has to run against every
     // candidate title. Escaping (see `escapeRegex` in the controller) removes the
