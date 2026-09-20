@@ -19,6 +19,7 @@ import ConfirmSheet from "@/components/sheets/ConfirmSheet";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { useBills, groupBills, outstandingTotal, isActionable, deleteBill } from "@/lib/bills";
 import { toast } from "@/store/toast";
+import { pendingDeletes, usePendingDeletes } from "@/store/pendingDeletes";
 import { radius, spacing } from "@/theme";
 
 type SectionProps = {
@@ -55,7 +56,11 @@ const Section = ({ label, bills, onPick, onEdit, onDelete }: SectionProps) => {
 
 const BillsScreen = () => {
   usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
-  const { items, loading, error, refetch } = useBills();
+  const { items: allItems, loading, error, refetch } = useBills();
+  // Hidden the instant delete is confirmed — the real DELETE only fires if the undo
+  // grace window elapses undisturbed (see store/pendingDeletes.ts).
+  const pendingKeys = usePendingDeletes((s) => s.keys);
+  const items = allItems.filter((b) => !pendingKeys.has(`bill:${b._id}`));
 
   const markRef = useRef<BottomSheetModal>(null);
   const editRef = useRef<BottomSheetModal>(null);
@@ -159,11 +164,18 @@ const BillsScreen = () => {
         // holding that history: it isn't. The payments are transactions in their own right.
         body="The reminder stops and the bill leaves this list. Any payment you already recorded stays in your transactions, so your balances and totals don't move."
         confirmLabel="Delete bill"
-        onConfirm={async () => {
+        onConfirm={() => {
           if (!removing) return;
-          await deleteBill(removing._id);
-          refetch();
-          toast.success(`${removing.name} deleted`);
+          const key = `bill:${removing._id}`;
+          const name = removing.name;
+          pendingDeletes.schedule(key, name, async () => {
+            await deleteBill(removing._id);
+            refetch();
+          });
+          toast.action("info", `${name} deleted`, {
+            label: "Undo",
+            onPress: () => pendingDeletes.cancel(key),
+          });
         }}
       />
     </ScreenScaffold>

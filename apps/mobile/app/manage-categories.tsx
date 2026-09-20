@@ -22,6 +22,7 @@ import { archiveCategory, reorderCategories, useCategoryTree, type CategoryGroup
 import { countTransactionsIn } from "@/lib/transactions";
 import { useCategoryStore } from "@/store/categories";
 import { toast } from "@/store/toast";
+import { pendingDeletes } from "@/store/pendingDeletes";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { spacing } from "@/theme";
@@ -271,15 +272,25 @@ const ManageCategoriesScreen = () => {
         title={`Delete ${pendingDelete?.name ?? "category"}?`}
         body={deleteBody}
         confirmLabel="Delete category"
-        onConfirm={async () => {
+        onConfirm={() => {
           if (!pendingDelete) return;
-          const archivedChildren = await archiveCategory(pendingDelete._id);
+          const key = `category:${pendingDelete._id}`;
+          const name = pendingDelete.name;
+          // childCount is already known client-side (deleteBody above computes it from
+          // the tree already in memory) — the server's own echo of it only arrives once
+          // the real archive commits, which is silent on success (see pendingDeletes.ts).
+          const childCount = pendingDelete.parent === null
+            ? (expenses.concat(income).find((g) => g.parent._id === pendingDelete._id)?.children.length ?? 0)
+            : 0;
+          pendingDeletes.schedule(key, name, () => archiveCategory(pendingDelete._id).then(() => {}));
           // "Archived", not "deleted", or the confirm's wording is undone by its own
-          // receipt. Children counted in, because they went too.
-          toast.success(
-            archivedChildren === 0
-              ? `${pendingDelete.name} archived`
-              : `${pendingDelete.name} and ${archivedChildren} sub-categor${archivedChildren === 1 ? "y" : "ies"} archived`
+          // receipt. Children counted in, because they go too.
+          toast.action(
+            "info",
+            childCount === 0
+              ? `${name} archived`
+              : `${name} and ${childCount} sub-categor${childCount === 1 ? "y" : "ies"} archived`,
+            { label: "Undo", onPress: () => pendingDeletes.cancel(key) }
           );
         }}
       />

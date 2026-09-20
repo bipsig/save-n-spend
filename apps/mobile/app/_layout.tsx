@@ -27,6 +27,7 @@ import { useAccountStore } from "@/store/accounts";
 import { useNotifications } from "@/store/notifications";
 import { useTitleSuggestionStore } from "@/store/titleSuggestions";
 import { useOutbox } from "@/store/outbox";
+import { usePendingDeletes } from "@/store/pendingDeletes";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -178,6 +179,10 @@ const RootLayout = () => {
       // but the outbox FILE is deliberately untouched by this: see lib/outbox.ts.
       void offlineCache.clearAll();
       useOutbox.getState().resetMemory();
+      // A confirmed delete should be honored, not silently reverted, just because the
+      // session ended before its grace window finished — best-effort, doesn't block
+      // sign-out.
+      void usePendingDeletes.getState().flushAll();
     }
   }, [status]);
 

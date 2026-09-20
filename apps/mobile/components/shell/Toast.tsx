@@ -48,15 +48,17 @@ const Toast = () => {
         entering={SlideInUp.duration(260)}
         exiting={FadeOutUp.duration(180)}
       >
-        <Pressable onPress={dismiss} accessibilityRole="alert" accessibilityLabel={current.message}>
-          <View style={[styles.card, { borderColor: look.border }]}>
-            <LinearGradient
-              colors={["rgba(40,34,66,0.98)", "rgba(24,19,42,0.98)"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0.6, y: 1 }}
-              style={StyleSheet.absoluteFill}
-              pointerEvents="none"
-            />
+        <View style={[styles.card, { borderColor: look.border }]}>
+          <LinearGradient
+            colors={["rgba(40,34,66,0.98)", "rgba(24,19,42,0.98)"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0.6, y: 1 }}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+          {/* A sibling of the action button below, not its wrapper — tapping "Undo" must
+              fire the action and dismiss on its own, never also trigger this tap. */}
+          <Pressable onPress={dismiss} style={styles.body} accessibilityRole="alert" accessibilityLabel={current.message}>
             <Icon
               name={look.icon}
               size={15}
@@ -68,8 +70,21 @@ const Toast = () => {
             <AppText size="xs" weight="semibold" style={styles.message}>
               {current.message}
             </AppText>
-          </View>
-        </Pressable>
+          </Pressable>
+          {current.action && (
+            <Pressable
+              onPress={() => { current.action!.onPress(); dismiss(); }}
+              hitSlop={8}
+              style={styles.actionBtn}
+              accessibilityRole="button"
+              accessibilityLabel={current.action.label}
+            >
+              <AppText size="xs" weight="black" color="primary">
+                {current.action.label}
+              </AppText>
+            </Pressable>
+          )}
+        </View>
       </Animated.View>
     </View>
   );
@@ -84,7 +99,7 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
+    gap: spacing.sm,
     paddingVertical: 11,
     paddingHorizontal: 13,
     borderRadius: radius.md,
@@ -98,9 +113,19 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 12,
   },
+  body: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
   message: {
     flex: 1,
     lineHeight: 18,
+  },
+  actionBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
   },
 });
 

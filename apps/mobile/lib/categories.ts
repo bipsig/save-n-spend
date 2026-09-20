@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import type { CategoryKind, ICategory } from "@save-n-spend/types";
 import type { ColorToken } from "@/theme";
 import { useCategoryStore } from "@/store/categories";
+import { usePendingDeletes } from "@/store/pendingDeletes";
 import { del, patch, post } from "@/lib/api";
 import { applyOrder, persistOrder } from "@/lib/reorder";
 
@@ -9,8 +10,14 @@ import { applyOrder, persistOrder } from "@/lib/reorder";
 // store after login. These helpers read that store — reactive hooks for render, a sync
 // lookup for imperative code.
 
-// The full list, reactive.
-export const useCategories = (): ICategory[] => useCategoryStore((s) => s.list);
+// The full list, reactive. Filtered against pending deletes here — not just at
+// manage-categories — so `useCategoryTree()` (which composes this) and every picker
+// built on it agree the instant a delete is confirmed, not just its own list.
+export const useCategories = (): ICategory[] => {
+  const list = useCategoryStore((s) => s.list);
+  const pending = usePendingDeletes((s) => s.keys);
+  return useMemo(() => list.filter((c) => !pending.has(`category:${c._id}`)), [list, pending]);
+};
 
 // One category by id, reactive.
 export const useCategoryById = (id: string | null | undefined): ICategory | undefined =>

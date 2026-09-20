@@ -1,11 +1,21 @@
+import { useMemo } from "react";
 import { useAccountStore } from "@/store/accounts";
 import { useSession } from "@/store/session";
+import { usePendingDeletes } from "@/store/pendingDeletes";
 import { del, patch, post } from "@/lib/api";
 import { applyOrder, persistOrder } from "@/lib/reorder";
 import type { AccountType, IAccount } from "@save-n-spend/types";
 
+// Filtered here, not just at the manage-accounts screen, so a "deleted" account
+// disappears from every picker built on this hook (Add Transaction, split rows) the
+// instant it's confirmed — not just from its own list. `useAccountById`/`accountById`
+// deliberately do NOT filter: a transaction that already points at an account being
+// deleted should keep showing its real name for the whole grace window, not fall back
+// to a placeholder for something that hasn't actually been deleted yet.
 export const useAccounts = () : IAccount[] => {
-  return useAccountStore((s) => s.list);
+  const list = useAccountStore((s) => s.list);
+  const pending = usePendingDeletes((s) => s.keys);
+  return useMemo(() => list.filter((a) => !pending.has(`account:${a._id}`)), [list, pending]);
 }
 
 // One account by id, reactive — re-renders when accounts load/change.

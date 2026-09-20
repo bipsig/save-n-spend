@@ -23,6 +23,7 @@ import { updatePrefs } from "@/lib/profile";
 import { useAccountStore } from "@/store/accounts";
 import { useSession } from "@/store/session";
 import { toast } from "@/store/toast";
+import { pendingDeletes } from "@/store/pendingDeletes";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { spacing } from "@/theme";
@@ -155,19 +156,27 @@ const ManageAccountsScreen = () => {
         title={`Delete ${pendingDelete?.name ?? "account"}?`}
         body={deleteBody}
         confirmLabel="Delete account"
-        onConfirm={async () => {
+        onConfirm={() => {
           if (!pendingDelete) return;
-          await archiveAccount(pendingDelete._id);
-          // Otherwise the preference would still name an archived account, and
-          // every form that preselects it would silently fall back to nothing.
+          const key = `account:${pendingDelete._id}`;
+          const name = pendingDelete.name;
           const wasDefault = pendingDelete._id === defaultAccountId;
-          if (wasDefault) await updatePrefs({ defaultAccount: null });
+          pendingDeletes.schedule(key, name, async () => {
+            await archiveAccount(pendingDelete._id);
+            // Otherwise the preference would still name an archived account, and every
+            // form that preselects it would silently fall back to nothing. Inside the
+            // commit, not at schedule-time — undoing the delete correctly undoes losing
+            // the default too, for free.
+            if (wasDefault) await updatePrefs({ defaultAccount: null });
+          });
           // Says the second consequence out loud: losing the default is a change the
           // user didn't ask for, and they'd otherwise meet it at the next form.
-          toast.success(
+          toast.action(
+            "info",
             wasDefault
-              ? `${pendingDelete.name} archived — you have no default account now`
-              : `${pendingDelete.name} archived`
+              ? `${name} archived — you have no default account now`
+              : `${name} archived`,
+            { label: "Undo", onPress: () => pendingDeletes.cancel(key) }
           );
         }}
       />

@@ -17,10 +17,11 @@ import Button from "../ui/Button";
 import { formatFullDate } from "@/lib/date";
 import { categoryBg } from "@/lib/categories";
 import { del } from "@/lib/api";
-import { haptics } from "@/lib/haptics";
 import { toast } from "@/store/toast";
 import { useRouter } from "expo-router";
 import { useAccountStore } from "@/store/accounts";
+import { useConnectivity } from "@/store/connectivity";
+import { pendingDeletes } from "@/store/pendingDeletes";
 
 // Spec .selrow — boxed glass strip: leading icon · (caps label over bold value) · optional ›
 const SelRow = ({
@@ -56,12 +57,16 @@ const SelRow = ({
 
 type Props = {
   transaction: ITransaction | null,
-  onDeleted?: () => void
+  /** Fired once the delete actually commits — after the undo grace window elapses
+   *  undisturbed, not at confirm-time (see handleDelete). Firing it earlier would
+   *  refetch a transaction the server hasn't been told about yet and silently undo
+   *  the optimistic hide. */
+  onCommitted?: () => void
 }
 
 const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
   transaction,
-  onDeleted
+  onCommitted
 }, ref) => {
   // Own handle, so `dismiss` closes this sheet rather than whatever happens to sit
   // on top of the provider-wide queue (see CategoryPickerSheet).
@@ -70,6 +75,7 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
   const dismiss = () => innerRef.current?.dismiss();
 
   const router = useRouter();
+  const offline = useConnectivity((s) => s.offline);
 
   const account = useAccountById(transaction?.account);
   const toAccount = useAccountById(transaction?.toAccount);
@@ -86,12 +92,16 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
   usePrivacyMask();
 
   const [confirmView, setConfirmView] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const amount = !transaction ? 0 : transaction?.type === "expense" ? -transaction.amount : transaction?.amount;
 
   const handleEdit = () => {
+    // Editing patches the server directly (unlike a new transaction, it has no queue to
+    // fall back to) — the account/category it names must already exist for its own sake.
+    if (offline) {
+      toast.error("You're offline — editing needs a connection");
+      return;
+    }
     dismiss();
     router.push({
       pathname: "/add-transaction",
@@ -114,40 +124,36 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
     });
   }
 
-  const handleDelete = async () => {
-    if (!transaction) {
-      return;
-    }
-
-    setDeleting(true);
-    setDeleteError(null);
-
-    try {
-      await del(`/transactions/${transaction?._id}`);
+  // Nothing is actually sent to the server yet — the row disappears now, but the real
+  // DELETE only fires if the undo grace window elapses undisturbed (store/pendingDeletes.ts).
+  // This is what makes a split expense's delete simple despite the group-cascade the API
+  // does on commit: since nothing is sent until then, "undo" is just "never send it," and
+  // the group's real splitGroupId is never touched by anything client-side.
+  const handleDelete = () => {
+    if (!transaction) return;
+    const key = `transaction:${transaction._id}`;
+    const label = title;
+    pendingDeletes.schedule(key, label, async () => {
+      await del(`/transactions/${transaction._id}`);
       // A delete reverts the balance move it made — the account list held elsewhere
-      // (Net Worth, the account picker) is stale until this reloads it.
-      await useAccountStore.getState().load();
-      onDeleted?.();
-      dismiss();
-      // Names the row and says the balance moved with it: a delete silently rewrites an
-      // account total, and the sheet that explained that has just closed.
-      toast.success(isTransfer
-        ? "Transfer deleted — both balances restored"
-        : `${title} deleted — ${account?.name ?? "your account"} updated`);
-    }
-    catch (err) {
-      // The one failure that must not be missed: they just confirmed something destructive
-      // and would otherwise walk away believing it happened.
-      haptics.error();
-      setDeleteError(err instanceof Error ? err.message : "Error deleting the transaction");
-    }
-    finally {
-      setDeleting(false);
-    }
+      // (Net Worth, the account picker) is stale until this reloads it. Caught rather
+      // than awaited-and-thrown: a drop here means the delete itself still went through,
+      // and the store's next successful load fills in the real number anyway.
+      await useAccountStore.getState().load().catch(() => {});
+      onCommitted?.();
+    });
+    dismiss();
+    // Names the row so the receipt still means something once the sheet — the only place
+    // that named the account — has already closed.
+    toast.action(
+      "info",
+      isTransfer ? "Transfer deleted" : `${title} deleted`,
+      { label: "Undo", onPress: () => pendingDeletes.cancel(key) }
+    );
   }
 
   return (
-    <AppSheet ref={innerRef} onDismiss={() => { setConfirmView(false); setDeleteError (null); }}>
+    <AppSheet ref={innerRef} onDismiss={() => setConfirmView(false)}>
       {transaction && (
         !confirmView ? (
           // Entering only: an exiting animation keeps both views mounted, and the sheet
@@ -253,7 +259,18 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
                 </View>
               )}
               <View style={styles.actionBtn}>
-                <Button label="Delete" variant="dangerGhost" icon="delete" onPress={() => setConfirmView(true)} />
+                <Button
+                  label="Delete"
+                  variant="dangerGhost"
+                  icon="delete"
+                  onPress={() => {
+                    if (offline) {
+                      toast.error("You're offline — deleting needs a connection");
+                      return;
+                    }
+                    setConfirmView(true);
+                  }}
+                />
               </View>
             </View>
           </Animated.View>
@@ -274,21 +291,15 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
               </AppText>
               <AppText size="sm" color="inkDim" style={styles.confirmCopy}>
                 {isTransfer
-                  ? `${formatMoney(Math.abs(amount))} goes back to ${account?.name ?? "the source account"}, and off ${toAccount?.name ?? "the destination"}. This can't be undone.`
-                  : `${formatMoney(Math.abs(amount))} · ${title} will be removed. Budgets and insights update immediately. This can't be undone.`}
+                  ? `${formatMoney(Math.abs(amount))} goes back to ${account?.name ?? "the source account"}, and off ${toAccount?.name ?? "the destination"}. You'll have a few seconds to undo it after.`
+                  : `${formatMoney(Math.abs(amount))} · ${title} will be removed. Budgets and insights update immediately. You'll have a few seconds to undo it after.`}
               </AppText>
-              {deleteError && (
-                <AppText size="xs" color="danger" style={styles.confirmCopy}>
-                  {deleteError}
-                </AppText>
-              )}
             </View>
             <View style={styles.confirmActions}>
               <Button
                 label="Delete Transaction"
                 variant="danger"
-                onPress={() => handleDelete()}
-                loading={deleting}
+                onPress={handleDelete}
               />
               <Button label="Cancel" variant="ghost" onPress={() => setConfirmView(false)} />
             </View>

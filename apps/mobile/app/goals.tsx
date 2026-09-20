@@ -18,12 +18,17 @@ import ConfirmSheet from "@/components/sheets/ConfirmSheet";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { useGoals, goalsSummary, sortGoals, deleteGoal } from "@/lib/goals";
 import { toast } from "@/store/toast";
+import { pendingDeletes, usePendingDeletes } from "@/store/pendingDeletes";
 import { radius, spacing } from "@/theme";
 
 const GoalsScreen = () => {
   usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
   const router = useRouter();
-  const { items, loading, error, refetch } = useGoals();
+  const { items: allItems, loading, error, refetch } = useGoals();
+  // Hidden the instant delete is confirmed — the real DELETE only fires if the undo
+  // grace window elapses undisturbed (see store/pendingDeletes.ts).
+  const pendingKeys = usePendingDeletes((s) => s.keys);
+  const items = allItems.filter((g) => !pendingKeys.has(`goal:${g._id}`));
 
   const contributeRef = useRef<BottomSheetModal>(null);
   const deleteRef = useRef<BottomSheetModal>(null);
@@ -139,11 +144,18 @@ const GoalsScreen = () => {
             : "The target goes and the card leaves this list. Nothing else changes."
         }
         confirmLabel="Delete goal"
-        onConfirm={async () => {
+        onConfirm={() => {
           if (!removing) return;
-          await deleteGoal(removing._id);
-          refetch();
-          toast.success(`${removing.name} deleted`);
+          const key = `goal:${removing._id}`;
+          const name = removing.name;
+          pendingDeletes.schedule(key, name, async () => {
+            await deleteGoal(removing._id);
+            refetch();
+          });
+          toast.action("info", `${name} deleted`, {
+            label: "Undo",
+            onPress: () => pendingDeletes.cancel(key),
+          });
         }}
       />
     </ScreenScaffold>
