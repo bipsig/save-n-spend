@@ -3,6 +3,7 @@ import AppHeader from "@/components/shell/AppHeader";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import SummaryCard from "@/components/data/SummaryCard";
 import HealthScoreCard from "@/components/data/HealthScoreCard";
+import SafeToSpendCard from "@/components/data/SafeToSpendCard";
 import GetStartedCard from "@/components/data/GetStartedCard";
 import SectionHeader from "@/components/ui/SectionHeader";
 import Fab from "@/components/ui/Fab";
@@ -15,20 +16,22 @@ import { radius, spacing } from "@/theme";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useDashboardSummary } from "@/lib/dashboard";
 import { useHealthScore } from "@/lib/health";
-import { useBills, groupBills } from "@/lib/bills";
+import { useBills, groupBills, owedThroughMonth } from "@/lib/bills";
 import { useGoals, sortGoals } from "@/lib/goals";
 import { useTransactions } from "@/lib/transactions";
-import { useBudgets } from "@/lib/budgets";
+import { useBudgets, budgetTotals, currentMonth } from "@/lib/budgets";
 import { buildSteps, progressOf } from "@/lib/onboarding";
 import type { OnboardingStep } from "@/lib/onboarding";
 import { useSession } from "@/store/session";
 import { useSettings } from "@/store/settings";
 import { useAccountStore } from "@/store/accounts";
+import { useOutbox } from "@/store/outbox";
 import EmptyState from "@/components/states/EmptyState";
 import ErrorState from "@/components/states/ErrorState";
 import SkeletonState from "@/components/states/SkeletonState";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
+import type { ITransaction } from "@save-n-spend/types";
 
 const HomeScreen = () => {
   usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
@@ -47,8 +50,8 @@ const HomeScreen = () => {
   const { items: goals, loading: goalsLoading, refetch: goalsRefetch } = useGoals();
   const { items: transactions, loading: transactionsLoading, refetch: transactionsRefetch } = useTransactions();
 
-  // Budgets are here only for the Get started checklist; the dashboard has no budget
-  // section. Without it the checklist would have to guess at a step it can know.
+  // Feeds both the Get started checklist and the Safe to spend card below — no month
+  // param, so the server's own default (the current month) is what comes back.
   const { items: budgets, loading: budgetsLoading, refetch: budgetsRefetch } = useBudgets();
   const accounts = useAccountStore((s) => s.list);
   const accountsLoaded = useAccountStore((s) => s.loaded);
@@ -56,6 +59,17 @@ const HomeScreen = () => {
   // Its own request, not a field on the summary: the summary describes a named month and the
   // score the trailing 90 days as of now, so one response would span two windows.
   const { data: health, refetch: healthRefetch } = useHealthScore();
+
+  // Queued transactions waiting on this phone — a stable selector (the raw items array),
+  // mapped to displayable rows in a memo rather than in the selector itself, so this
+  // doesn't re-render on every unrelated store change.
+  const pendingItems = useOutbox((s) => s.items);
+  const lastDrainedAt = useOutbox((s) => s.lastDrainedAt);
+  const pendingTransactions = useMemo(
+    () => pendingItems.map((item) => ({ ...item.payload, _id: item.clientId, clientId: item.clientId }) as unknown as ITransaction),
+    [pendingItems]
+  );
+  const pendingClientIds = useMemo(() => new Set(pendingItems.map((item) => item.clientId)), [pendingItems]);
 
   useFocusEffect(useCallback(() => {
     summaryRefetch();
@@ -69,6 +83,34 @@ const HomeScreen = () => {
     // add-transaction.tsx / TransactionDetailSheet — reloads the store itself, so a
     // focus reload would be a second request for an already-correct list.
   }, [summaryRefetch, healthRefetch, billsRefetch, goalsRefetch, transactionsRefetch, budgetsRefetch]));
+
+  // A drain can land while the dashboard is already on screen, not only on the way back
+  // to it — the focus effect above wouldn't otherwise catch that.
+  useEffect(() => {
+    if (lastDrainedAt) transactionsRefetch();
+  }, [lastDrainedAt, transactionsRefetch]);
+
+  // Pull-to-refresh: everything the focus effect reloads, plus accounts — which that
+  // effect deliberately skips (every balance-moving write already reloads the store
+  // itself) but a manual "get me the truth right now" pull should still cover.
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        summaryRefetch(),
+        healthRefetch(),
+        billsRefetch(),
+        goalsRefetch(),
+        transactionsRefetch(),
+        budgetsRefetch(),
+        useAccountStore.getState().load().catch(() => {}),
+      ]);
+    }
+    finally {
+      setRefreshing(false);
+    }
+  };
 
   const dismissedBy = useSettings((s) => s.getStartedDismissed);
   const settingsHydrated = useSettings((s) => s.hydrated);
@@ -107,6 +149,16 @@ const HomeScreen = () => {
   const openActivity = (type: "income" | "expense") =>
     router.push({ pathname: "/activity", params: { type, range: "month", focus: String(Date.now()) } });
 
+  // Remaining budget minus what unpaid bills are still going to draw from this month's
+  // cash — the one figure that's actually actionable "right now", so it leads the
+  // dashboard. Not clamped: a negative number is the honest signal this exists to give.
+  const month = currentMonth();
+  const budgetTotalsThisMonth = budgetTotals(budgets, month);
+  const safeToSpend = budgetTotalsThisMonth.remaining - owedThroughMonth(bills, month);
+  const dailySafeToSpend = budgetTotalsThisMonth.daysLeft > 0
+    ? Math.round(safeToSpend / budgetTotalsThisMonth.daysLeft)
+    : safeToSpend;
+
   // Action queue — overdue first, then the nearest upcoming, capped at 3.
   const billGroups = groupBills(bills);
   const billQueue = [...billGroups.overdue, ...billGroups.upcoming].slice(0, 3);
@@ -114,8 +166,10 @@ const HomeScreen = () => {
   // Motivation — the two nearest active (not-yet-achieved) goals.
   const goalPreview = sortGoals(goals.filter((g) => g.saved < g.target)).slice(0, 2);
 
-  // Recency — the three most recent transactions.
-  const recentTransactions = [...transactions]
+  // Recency — the three most recent transactions, queued ones included so an offline
+  // capture shows up here immediately rather than waiting for a sync that may be minutes
+  // away.
+  const recentTransactions = [...pendingTransactions, ...transactions]
     .sort((a, b) => new Date(b.occurredAt as string).getTime() - new Date(a.occurredAt as string).getTime())
     .slice(0, 3);
 
@@ -154,11 +208,14 @@ const HomeScreen = () => {
         <AppHeader
           name={userName ?? ""}
           onBellPress={() => router.push("/notifications")}
+          streakDays={dashboardSummary?.currentStreak}
         />
       }
       floating={
         <Fab onPress={() => router.push("/add-transaction")} />
       }
+      onRefresh={handleRefresh}
+      refreshing={refreshing}
     >
       {/* First on the screen, above the score and the tiles. For an account with nothing
           in it yet, this is the only thing here that can be acted on — everything below
@@ -169,6 +226,21 @@ const HomeScreen = () => {
           progress={progress}
           onStepPress={openStep}
           onDismiss={dismissGetStarted}
+        />
+      )}
+
+      {/* Leads even the health score — a daily "what can I spend" number is checked far
+          more often than a slower, reflective one. Absent only while budgets/bills are
+          still loading, since its own empty state (no budget set) is a real answer, not
+          a placeholder. */}
+      {!budgetsLoading && !billsLoading && (
+        <SafeToSpendCard
+          hasBudgets={budgets.length > 0}
+          safeToSpend={safeToSpend}
+          dailySafeToSpend={dailySafeToSpend}
+          daysLeft={budgetTotalsThisMonth.daysLeft}
+          onPress={budgets.length > 0 ? () => router.push("/budget") : undefined}
+          onSetBudget={() => router.push("/budget")}
         />
       )}
 
@@ -234,7 +306,12 @@ const HomeScreen = () => {
         <View style={styles.section}>
           <SectionHeader label="RECENT TRANSACTIONS" actionLabel="See all" onAction={() => router.push("/activity")} />
           {recentTransactions.map((transaction) => (
-            <TransactionRow key={transaction._id} transaction={transaction} onPress={() => router.push("/activity")} />
+            <TransactionRow
+              key={transaction._id}
+              transaction={transaction}
+              pending={!!transaction.clientId && pendingClientIds.has(transaction.clientId)}
+              onPress={() => router.push("/activity")}
+            />
           ))}
         </View>
       )}
