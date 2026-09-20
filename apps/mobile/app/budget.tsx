@@ -172,6 +172,8 @@ const BudgetScreen = () => {
           key={summary.budget._id}
           budget={summary.budget}
           spent={summary.spent}
+          daysElapsed={totals.daysElapsed}
+          daysInMonth={totals.daysInMonth}
           onPress={() => openEdit(summary)}
         />
       ))}

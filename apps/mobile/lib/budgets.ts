@@ -90,6 +90,9 @@ export const budgetTotals = (items: BudgetSummary[], month: string = currentMont
   // figure one day less than the user actually has.
   const today = calendarToday(appZone());
   const daysLeft = closed ? 0 : Math.max(daysInMonth - today.getUTCDate(), 0);
+  // Closed month: every day already happened. Otherwise the day-of-month itself, since
+  // "elapsed" and "left" always sum to the whole month.
+  const daysElapsed = closed ? daysInMonth : daysInMonth - daysLeft;
   const dailyLimit = daysLeft > 0 ? Math.round(Math.max(remaining, 0) / daysLeft) : 0;
   const dailyAverage = Math.round(spent / daysInMonth);
 
@@ -97,8 +100,27 @@ export const budgetTotals = (items: BudgetSummary[], month: string = currentMont
 
   return {
     total, spent, remaining, percentUsed, status,
-    closed, daysInMonth, daysLeft, dailyLimit, dailyAverage,
+    closed, daysInMonth, daysLeft, daysElapsed, dailyLimit, dailyAverage,
   };
+};
+
+export type BudgetPace = { ratio: number; color: "success" | "warning" | "danger" };
+
+// Pace against how far into the month it actually is, not the raw percent used — on the
+// 5th everyone is "under budget", and an unadjusted figure would read every category as
+// fine for a fortnight and then collapse. Mirrors the API's healthService `budgetsPillar`
+// ratio math (elapsed floored at a week, so day 1 doesn't read as a 30x overrun).
+//
+// Takes `daysElapsed`/`daysInMonth` from the caller's own `budgetTotals(...)` rather than
+// computing its own — that function already gets this right for a CLOSED month (every day
+// elapsed, none "today"); recomputing from `calendarToday()` here would silently use
+// today's date-of-month even while looking at August from November.
+export const budgetPace = (item: BudgetSummary, daysElapsed: number, daysInMonth: number): BudgetPace => {
+  const elapsed = Math.max(7, daysElapsed) / daysInMonth;
+  const expected = item.budget.limit * elapsed;
+  const ratio = expected > 0 ? item.spent / expected : 0;
+  const color = ratio > 1.15 ? "danger" : ratio > 0.85 ? "warning" : "success";
+  return { ratio, color };
 };
 
 export const budgetExcludedCategoryIds = (
