@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import Constants from "expo-constants";
 import { router } from "expo-router";
@@ -18,7 +18,9 @@ import { AppText } from "@/components/ui/AppText";
 import Avatar from "@/components/ui/Avatar";
 import PressableScale from "@/components/ui/PressableScale";
 import { useAccounts, useDefaultAccount } from "@/lib/accounts";
+import { exportBackup, pickBackupFile, restoreBackup, type PickedBackup } from "@/lib/backup";
 import { useCategories } from "@/lib/categories";
+import { formatFullDate } from "@/lib/date";
 import { lockCapability, authenticate } from "@/lib/lock";
 import { detachPush, registerForPush } from "@/lib/push";
 import {
@@ -29,6 +31,8 @@ import {
 } from "@/lib/profile";
 import { zoneLabel } from "@/lib/timezones";
 import { zoneMatchesDevice } from "@/lib/zone";
+import { useAccountStore } from "@/store/accounts";
+import { useCategoryStore } from "@/store/categories";
 import { useSession } from "@/store/session";
 import { AUTO_LOCK_DELAYS, autoLockLabel, useSettings, type AutoLockSeconds } from "@/store/settings";
 import { useOutbox } from "@/store/outbox";
@@ -75,6 +79,13 @@ const SettingsScreen = () => {
   const exportRef = useRef<BottomSheetModal>(null);
   const logoutRef = useRef<BottomSheetModal>(null);
   const deleteRef = useRef<BottomSheetModal>(null);
+  const restoreRef = useRef<BottomSheetModal>(null);
+
+  const [backingUp, setBackingUp] = useState(false);
+  // Set by pickBackupFile, right before the confirm sheet opens — it's what the
+  // sheet's body states concrete facts from (dated, counted), and what onConfirm
+  // below actually restores.
+  const [picked, setPicked] = useState<PickedBackup | null>(null);
 
   // Signing out clears the in-memory queue but leaves the file on disk (see
   // store/outbox.ts) — real, but worth naming before someone signs out mid-flight and
@@ -120,6 +131,46 @@ const SettingsScreen = () => {
     update({ appLock: true });
     // The one toggle whose result isn't visible here: it changes the next app launch.
     toast.success("App Lock is on");
+  };
+
+  const handleBackup = async () => {
+    if (backingUp) return;
+    setBackingUp(true);
+    try {
+      await exportBackup();
+    }
+    catch (err) {
+      toast.fromError(err, "Couldn't create a backup. Try again.");
+    }
+    finally {
+      setBackingUp(false);
+    }
+  };
+
+  const handlePickBackup = async () => {
+    try {
+      const result = await pickBackupFile();
+      if (!result) return; // cancelled
+      setPicked(result);
+      restoreRef.current?.present();
+    }
+    catch (err) {
+      toast.fromError(err, "Couldn't read that file.");
+    }
+  };
+
+  // Everything budgets/goals/bills need is picked up by their own screens'
+  // useFocusEffect the next time they're visited — only the two long-lived
+  // Zustand stores (accounts, categories) and the cached session user need an
+  // explicit refresh here.
+  const handleRestore = async () => {
+    if (!picked) return;
+    const result = await restoreBackup(picked.payload);
+    useSession.getState().setUser(result.user);
+    await Promise.all([useAccountStore.getState().load(), useCategoryStore.getState().load()]);
+    setPicked(null);
+    toast.success("Backup restored");
+    router.replace("/(tabs)");
   };
 
   const version = Constants.expoConfig?.version ?? "1.0.0";
@@ -347,6 +398,16 @@ const SettingsScreen = () => {
           value="CSV"
           onPress={() => exportRef.current?.present()}
         />
+        <SettingsRow
+          kind="value"
+          icon="cloudBackup"
+          tint="indigo"
+          label="Backup data"
+          sub="A full copy you can restore from later"
+          value={backingUp ? "…" : "JSON"}
+          dimmed={backingUp}
+          onPress={() => void handleBackup()}
+        />
       </Card>
 
       <GroupLabel>ABOUT</GroupLabel>
@@ -386,6 +447,13 @@ const SettingsScreen = () => {
           label="Delete account"
           sub="Signs you out and stops all reminders"
           onPress={() => deleteRef.current?.present()}
+        />
+        <SettingsRow
+          kind="danger"
+          icon="restore"
+          label="Restore from backup"
+          sub="Replaces everything currently in the app — cannot be undone"
+          onPress={() => void handlePickBackup()}
         />
       </Card>
 
@@ -461,6 +529,20 @@ const SettingsScreen = () => {
         confirmLabel="Delete my account"
         hold
         onConfirm={deleteAccount}
+      />
+
+      <ConfirmSheet
+        ref={restoreRef}
+        icon="restore"
+        title="Restore this backup?"
+        body={
+          picked
+            ? `This replaces every account, transaction, budget, bill, and goal currently in the app with the backup from ${formatFullDate(picked.exportedAt)} — ${picked.counts.transactions} transaction${picked.counts.transactions === 1 ? "" : "s"} across ${picked.counts.accounts} account${picked.counts.accounts === 1 ? "" : "s"}. This cannot be undone.`
+            : ""
+        }
+        confirmLabel="Restore"
+        hold
+        onConfirm={handleRestore}
       />
     </ScreenScaffold>
   );

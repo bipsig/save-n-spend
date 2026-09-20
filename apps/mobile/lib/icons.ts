@@ -31,6 +31,8 @@ export const iconMap = {
   edit: 'edit',
   download: 'file-download',
   repeat: 'replay', // "log again" on a past transaction
+  cloudBackup: 'cloud-upload',
+  restore: 'restore',
 
   // Spending categories
   food: 'restaurant',

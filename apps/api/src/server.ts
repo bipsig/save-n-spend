@@ -20,7 +20,10 @@ app.set('trust proxy', 1);
 app.use (cors());
 app.use (helmet());
 app.use (morgan('dev'));
-app.use (express.json());
+// Raised from the unconfigured 100kb default: a full backup export/restore is one JSON
+// body carrying a lifetime of transactions. Global rather than a second per-route
+// express.json() on the restore endpoint, to avoid double-consuming the same body stream.
+app.use (express.json({ limit: '25mb' }));
 
 // Answers as soon as the port is bound, whether or not Atlas has handed back a
 // connection yet. That is deliberate: this endpoint has two jobs beyond telling a human

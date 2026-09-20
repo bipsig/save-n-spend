@@ -11,6 +11,7 @@ import goalRoutes from "./goalRoutes";
 import insightsRoutes from "./insightsRoutes";
 import notificationRoutes from "./notificationRoutes";
 import highlightRoutes from "./highlightRoutes";
+import backupRoutes from "./backupRoutes";
 
 const router = Router();
 
@@ -26,5 +27,6 @@ router.use ('/goals', goalRoutes);
 router.use ('/insights', insightsRoutes);
 router.use ('/notifications', notificationRoutes);
 router.use ('/highlights', highlightRoutes);
+router.use ('/backup', backupRoutes);
 
 export default router;
