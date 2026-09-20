@@ -2,6 +2,7 @@ import type { IGoal } from "@save-n-spend/types";
 import { useCallback, useEffect, useState } from "react";
 import { del, get, patch } from "@/lib/api";
 import { useSession } from "@/store/session";
+import { appZone, zonedParts } from "@/lib/zone";
 
 export const useGoals = () => {
   const status = useSession((s) => s.status);
@@ -65,3 +66,39 @@ export const goalsSummary = (items: IGoal[]) => {
 // Achieved goals sink below the active ones (stable — server order otherwise kept).
 export const sortGoals = (items: IGoal[]): IGoal[] =>
   [...items].sort((a, b) => (a.saved >= a.target ? 1 : 0) - (b.saved >= b.target ? 1 : 0));
+
+/** Zone-local month index from year 0, so two months compare with a single subtraction
+ *  — same convention the API's highlightSnapshotMath/goalWatch use server-side. */
+const monthOrdinal = (instant: Date, zone: string): number => {
+  const { year, month } = zonedParts(instant, zone);
+  return year * 12 + (month - 1);
+};
+
+export type GoalPace = {
+  /** Null when there's no saving rate yet to project from (nothing saved, or the goal
+   *  was created this same month) — not zero, since zero would read as "any day now". */
+  monthsNeeded: number | null;
+  projectedDate: string | null; // ISO
+};
+
+/**
+ * Saved-per-month-since-created, projected forward to the target — the same rate
+ * convention the health score's goalsPillar and the dashboard's Goal Watch use, just run
+ * for every goal here rather than only the closest one. Deadline-agnostic on purpose:
+ * this is "how's it going", not a pass/fail against a date (see goalsPillar for that).
+ */
+export const goalPace = (goal: IGoal): GoalPace => {
+  const remaining = goal.target - goal.saved;
+  if (remaining <= 0) return { monthsNeeded: 0, projectedDate: null }; // achieved
+
+  const zone = appZone();
+  const now = new Date();
+  const monthsRunning = Math.max(1, monthOrdinal(now, zone) - monthOrdinal(new Date(goal.createdAt), zone));
+  const rate = goal.saved / monthsRunning;
+  if (rate <= 0) return { monthsNeeded: null, projectedDate: null };
+
+  const monthsNeeded = Math.ceil(remaining / rate);
+  const projected = new Date(now);
+  projected.setUTCMonth(projected.getUTCMonth() + monthsNeeded);
+  return { monthsNeeded, projectedDate: projected.toISOString() };
+};

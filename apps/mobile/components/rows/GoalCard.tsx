@@ -11,6 +11,7 @@ import formatMoney, { usePrivacyMask } from "@/lib/money";
 import Icon from "../ui/Icon";
 import type { IconName } from "@/lib/icons";
 import { appZone } from "@/lib/zone";
+import { goalPace } from "@/lib/goals";
 
 type Props = {
   goal: IGoal
@@ -41,6 +42,10 @@ const GoalCard = ({ goal, onPress, onEdit, onDelete }: Props) => {
   const color = (goal.color ?? "accent") as ColorToken;
   const percent = Math.min(Math.round((goal.saved / goal.target) * 100), 100);
   const achieved = goal.saved >= goal.target;
+  const pace = achieved ? null : goalPace(goal);
+  const paceLabel = pace?.projectedDate
+    ? new Date(pace.projectedDate).toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: appZone() })
+    : null;
 
   return (
     <PressableScale onPress={onPress} disabled={!onPress} scaleTo={0.98}>
@@ -80,6 +85,16 @@ const GoalCard = ({ goal, onPress, onEdit, onDelete }: Props) => {
         </View>
 
         <ProgressBar value={percent} color={achieved ? "success" : color} />
+
+        {/* A projection, not a warning — unlike the health score's goal pillar, this
+            doesn't need a deadline to say something: "how's it going" is true whether
+            or not one was set. Absent when nothing's been saved yet — there's no rate
+            to project from, and "any day now" would be a guess dressed up as a number. */}
+        {paceLabel && (
+          <AppText size="xs" color="inkDim">
+            At this pace, done around <AppText size="xs" weight="bold" color="ink">{paceLabel}</AppText>.
+          </AppText>
+        )}
       </Card>
     </PressableScale>
   );
