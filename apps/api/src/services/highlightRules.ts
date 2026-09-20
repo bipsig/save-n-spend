@@ -102,6 +102,9 @@ export type Snapshot = {
     months: MonthTotals[];
     /** Average paise per complete month, per parent category. */
     categoryAverages: CategoryTotal[];
+    /** Consecutive zone-local days with at least one logged transaction, ending today (or
+     *  yesterday if today's still in progress). See streakMath.ts. */
+    currentStreak: number;
 };
 
 type Rule = {
@@ -137,6 +140,14 @@ const CATCH_ALL_SHARE = 0.3;
 const CATCH_ALL_MIN_EXPENSE = 200_000; // ₹2,000 — a tiny month is 30% of nothing
 /** How a category is recognised as a catch-all, by name. */
 const CATCH_ALL_NAMES = new Set(["others", "other", "misc", "miscellaneous", "uncategorised", "uncategorized"]);
+
+/** Don't nag on day 1 or 2 — three in a row is the first count worth naming. */
+const STREAK_MIN_DAYS = 3;
+/** Bucketed rather than the raw day-count, so the highlight's `key` is stable across the
+ *  days within one bucket — a raw count would mint a new dismissible key every single
+ *  day, and the 7-day dismiss-expiry would never mean anything (dismissing "day 5" would
+ *  never suppress "day 6" tomorrow regardless). */
+const STREAK_MILESTONES = [3, 7, 14, 30, 60, 90, 180, 365];
 
 const MAX_HIGHLIGHTS = 4;
 
@@ -463,6 +474,34 @@ const catchAllHeavy: Rule = {
     },
 };
 
+const streakMilestone = (n: number): number =>
+    [...STREAK_MILESTONES].reverse().find((m) => n >= m) ?? 0;
+
+/**
+ * Exported on its own, not only wrapped as a Rule below: the controller needs this
+ * exact highlight from a bare day-count during warm-up, before a Snapshot exists to
+ * build the Rule interface expects. Zero materiality either way — a streak never
+ * outranks a rule with real money at stake, it only fills a quiet day.
+ */
+export const buildLoggingStreakHighlight = (streakDays: number): Highlight | null => {
+    if (streakDays < STREAK_MIN_DAYS) return null;
+    const bucket = streakMilestone(streakDays);
+    return {
+        ruleId: "logging_streak",
+        key: `logging_streak:${bucket}`,
+        severity: "win",
+        title: `${streakDays} day${streakDays === 1 ? "" : "s"} in a row logging transactions`,
+        body: "Every day in this streak has at least one entry. Miss a day and it starts over.",
+        materiality: 0,
+        screen: "activity",
+    };
+};
+
+const loggingStreak: Rule = {
+    id: "logging_streak",
+    run: (snap) => buildLoggingStreakHighlight(snap.currentStreak),
+};
+
 const RULES: Rule[] = [
     budgetPace,
     budgetComfortable,
@@ -474,6 +513,7 @@ const RULES: Rule[] = [
     goalPace,
     healthFocus,
     catchAllHeavy,
+    loggingStreak,
 ];
 
 /** For the materiality tiebreak: what to lead with when the rupees are equal. */

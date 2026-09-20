@@ -7,6 +7,8 @@ import Transaction from "../models/Transaction";
 import { budgetProgress } from "./budgetService";
 import { healthScore } from "./healthService";
 import { daysUntilDue, isSettledForPeriod } from "./billService";
+import { addDaysInZone } from "../utils/timezone";
+import { currentStreak, STREAK_LOOKBACK_DAYS } from "./streakMath";
 import {
     categoryRoller,
     monthOrdinal,
@@ -36,9 +38,40 @@ type SpendGroup = { _id: { month: string; category: mongoose.Types.ObjectId | nu
 type TotalsGroup = { _id: { month: string; type: "income" | "expense" }; total: number };
 
 /**
- * One user's money, as of `now`, cut in their zone. `firstTxnAt` is passed in
- * rather than re-queried because the controller already fetched it for the
- * warming-up gate — it bounds how many months the category averages honestly cover.
+ * Consecutive zone-local days with at least one logged transaction — its own function,
+ * not folded silently into `buildSnapshot`, because the controller needs this number
+ * even on the warm-up path where a Snapshot is never built at all (see streakMath.ts and
+ * highlightController.ts).
+ */
+export const computeCurrentStreak = async (
+    userId: string | mongoose.Types.ObjectId,
+    zone: string,
+    now: Date,
+): Promise<number> => {
+    const oid = new mongoose.Types.ObjectId(String(userId));
+    const since = addDaysInZone(now, zone, -STREAK_LOOKBACK_DAYS);
+
+    const dayRows = await Transaction.aggregate<{ _id: string }>([
+        {
+            $match: {
+                userId: oid,
+                // Same exclusion filterTransactions uses for "what the user actually did
+                // with their money" — a balance correction isn't a logged entry.
+                type: { $nin: ["positiveAdjustment", "negativeAdjustment"] },
+                occurredAt: { $gte: since },
+            },
+        },
+        { $group: { _id: { $dateToString: { date: "$occurredAt", format: "%Y-%m-%d", timezone: zone } } } },
+    ]);
+
+    return currentStreak(new Set(dayRows.map((r) => r._id)), now, zone);
+};
+
+/**
+ * One user's money, as of `now`, cut in their zone. `firstTxnAt` and `streakDays` are
+ * passed in rather than re-queried because the controller already fetched them (the
+ * former for the warming-up gate, the latter because it needs it even when this function
+ * never runs) — it bounds how many months the category averages honestly cover.
  */
 export const buildSnapshot = async (
     userId: string | mongoose.Types.ObjectId,
@@ -46,6 +79,7 @@ export const buildSnapshot = async (
     currency: string,
     now: Date,
     firstTxnAt: Date,
+    streakDays: number,
 ): Promise<Snapshot> => {
     const oid = new mongoose.Types.ObjectId(String(userId));
 
@@ -157,5 +191,6 @@ export const buildSnapshot = async (
         },
         months: flows.months,
         categoryAverages: flows.categoryAverages,
+        currentStreak: streakDays,
     };
 };

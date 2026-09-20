@@ -27,6 +27,7 @@ const BASE: Snapshot = {
     thisMonth: { income: 0, expense: 0, byCategory: [] },
     months: [],
     categoryAverages: [],
+    currentStreak: 0,
 };
 
 const snap = (over: Partial<Snapshot>): Snapshot => ({ ...BASE, ...over });
@@ -333,5 +334,31 @@ describe("catch_all_heavy", () => {
             },
         }));
         assert.equal(byRule(out, "catch_all_heavy"), undefined);
+    });
+});
+
+describe("logging_streak", () => {
+    it("says nothing on day 1 or 2 — three in a row is the first count worth naming", () => {
+        const out = runHighlightRules(snap({ currentStreak: 2 }));
+        assert.equal(byRule(out, "logging_streak"), undefined);
+    });
+
+    it("names the exact day count once it clears the floor", () => {
+        const out = runHighlightRules(snap({ currentStreak: 5 }));
+        const hit = byRule(out, "logging_streak");
+        assert.ok(hit);
+        assert.ok(hit.title.includes("5 days"));
+        assert.equal(hit.materiality, 0);
+        assert.equal(hit.severity, "win");
+        assert.equal(hit.screen, "activity");
+    });
+
+    it("keys by milestone bucket, not the raw day count — so the dismiss-map's 7-day expiry means something", () => {
+        const five = byRule(runHighlightRules(snap({ currentStreak: 5 })), "logging_streak");
+        const six = byRule(runHighlightRules(snap({ currentStreak: 6 })), "logging_streak");
+        assert.equal(five?.key, six?.key);
+
+        const seven = byRule(runHighlightRules(snap({ currentStreak: 7 })), "logging_streak");
+        assert.notEqual(seven?.key, six?.key);
     });
 });

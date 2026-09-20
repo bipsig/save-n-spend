@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
 import Transaction from "../models/Transaction";
 import User from "../models/User";
-import { buildSnapshot } from "../services/highlightSnapshotService";
-import { runHighlightRules } from "../services/highlightRules";
+import { buildSnapshot, computeCurrentStreak } from "../services/highlightSnapshotService";
+import { runHighlightRules, buildLoggingStreakHighlight } from "../services/highlightRules";
 import { normalizeZone, startOfDayInZone } from "../utils/timezone";
 import * as reply from "../utils/response";
 
@@ -33,20 +33,26 @@ export const getHighlights = async (req: Request, res: Response): Promise<void> 
     const zone = normalizeZone(user?.prefs?.timeZone);
     const currency = user?.currency ?? "INR";
 
-    const [first, expenseCount] = await Promise.all([
+    const [first, expenseCount, streakDays] = await Promise.all([
         Transaction.findOne({ userId }).sort({ occurredAt: 1 }).select("occurredAt").lean(),
         Transaction.countDocuments({ userId, type: "expense" }),
+        computeCurrentStreak(userId, zone, now),
     ]);
 
     const historyDays = first
         ? Math.round((startOfDayInZone(now, zone).getTime() - startOfDayInZone(first.occurredAt, zone).getTime()) / MS_PER_DAY)
         : 0;
 
-    // The gate comes before the snapshot, so a warming account pays two cheap
-    // queries instead of the whole assembly.
+    // The gate comes before the snapshot, so a warming account pays three cheap
+    // queries instead of the whole assembly. The streak is exempted from it, computed
+    // above regardless — the other nine rules genuinely need history to not be noise,
+    // but a 3-day logging streak is just as true and just as worth saying on day 3 as
+    // it is on day 300, which is precisely the moment this gate would otherwise hide it
+    // for two weeks.
     if (!first || historyDays < MIN_HISTORY_DAYS || expenseCount < MIN_EXPENSES) {
+        const streak = buildLoggingStreakHighlight(streakDays);
         reply.ok(res, {
-            highlights: [],
+            highlights: streak ? [streak] : [],
             generatedAt: now.toISOString(),
             timeZone: zone,
             warmingUp: WARMING_UP,
@@ -54,7 +60,7 @@ export const getHighlights = async (req: Request, res: Response): Promise<void> 
         return;
     }
 
-    const snapshot = await buildSnapshot(userId, zone, currency, now, first.occurredAt);
+    const snapshot = await buildSnapshot(userId, zone, currency, now, first.occurredAt, streakDays);
     const highlights = runHighlightRules(snapshot);
 
     reply.ok(res, {
