@@ -1,10 +1,45 @@
 import { Request, Response } from "express";
+import mongoose from "mongoose";
 import Transaction from "../models/Transaction";
 import User from "../models/User";
+import HighlightLog from "../models/HighlightLog";
 import { buildSnapshot, computeCurrentStreak } from "../services/highlightSnapshotService";
-import { runHighlightRules, buildLoggingStreakHighlight } from "../services/highlightRules";
+import { runHighlightRules, rankHighlightRules, buildLoggingStreakHighlight, type Highlight } from "../services/highlightRules";
 import { normalizeZone, startOfDayInZone } from "../utils/timezone";
+import { highlightHistoryQuerySchema } from "../schemas/highlightSchema";
 import * as reply from "../utils/response";
+
+/**
+ * Writes the permanent record — one row per distinct `key`, forever, never updated once
+ * written. `$setOnInsert` + upsert means a highlight recomputed on every poll (the normal
+ * case) only ever inserts on the FIRST poll that produces it; every later poll under the
+ * same key is a silent no-op, not a duplicate and not an update. A logging failure never
+ * fails the request it rode in on — the live view is real either way.
+ */
+const logHighlights = async (userId: string, highlights: Highlight[]): Promise<void> => {
+    if (highlights.length === 0) return;
+    const oid = new mongoose.Types.ObjectId(userId);
+    try {
+        await HighlightLog.bulkWrite(
+            highlights.map((h) => ({
+                updateOne: {
+                    filter: { userId: oid, key: h.key },
+                    update: {
+                        $setOnInsert: {
+                            userId: oid, ruleId: h.ruleId, key: h.key, severity: h.severity,
+                            title: h.title, body: h.body, materiality: h.materiality, screen: h.screen ?? null,
+                        },
+                    },
+                    upsert: true,
+                },
+            })),
+            { ordered: false },
+        );
+    }
+    catch (err) {
+        console.error("failed to log highlights", err);
+    }
+};
 
 // GET /highlights — the deterministic assistant (docs/insights-engine.md).
 //
@@ -51,6 +86,7 @@ export const getHighlights = async (req: Request, res: Response): Promise<void> 
     // for two weeks.
     if (!first || historyDays < MIN_HISTORY_DAYS || expenseCount < MIN_EXPENSES) {
         const streak = buildLoggingStreakHighlight(streakDays);
+        await logHighlights(userId, streak ? [streak] : []);
         reply.ok(res, {
             highlights: streak ? [streak] : [],
             generatedAt: now.toISOString(),
@@ -61,6 +97,11 @@ export const getHighlights = async (req: Request, res: Response): Promise<void> 
     }
 
     const snapshot = await buildSnapshot(userId, zone, currency, now, first.occurredAt, streakDays);
+    // Every rule that fired gets a permanent record, not just the four shown live — see
+    // logHighlights. `runHighlightRules` (used for the actual response) is just this same
+    // ranking, capped.
+    const ranked = rankHighlightRules(snapshot);
+    await logHighlights(userId, ranked);
     const highlights = runHighlightRules(snapshot);
 
     reply.ok(res, {
@@ -68,4 +109,21 @@ export const getHighlights = async (req: Request, res: Response): Promise<void> 
         generatedAt: now.toISOString(),
         timeZone: zone,
     }, "Highlights fetched");
+};
+
+/**
+ * The permanent, paginated history `getHighlights` above never keeps — every row here
+ * was written once, at first occurrence, and is never edited or removed regardless of
+ * whether the live view still shows it, dismisses it, or has long since stopped
+ * generating it. Newest first.
+ */
+export const getHighlightHistory = async (req: Request, res: Response): Promise<void> => {
+    const { page, limit } = highlightHistoryQuerySchema.parse(req.query);
+
+    const result = await HighlightLog.paginate(
+        { userId: new mongoose.Types.ObjectId(req.user!.userId) },
+        { page, limit, sort: { createdAt: -1 } },
+    );
+
+    reply.ok(res, result, "Highlight history fetched");
 };

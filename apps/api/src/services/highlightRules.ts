@@ -519,9 +519,11 @@ const RULES: Rule[] = [
 /** For the materiality tiebreak: what to lead with when the rupees are equal. */
 const SEVERITY_RANK: Record<HighlightSeverity, number> = { urgent: 0, warning: 1, win: 2, notice: 3 };
 
-/** Every rule over one snapshot, ranked by rupees at stake rather than rule order, and capped —
- *  beyond four this is a report, not a highlight. An empty result is a valid answer. */
-export const runHighlightRules = (snap: Snapshot): Highlight[] =>
+/** Every rule over one snapshot, ranked by rupees at stake rather than rule order. Unsliced
+ *  — the permanent history (highlightController.ts's logHighlights) needs every rule that
+ *  fired, not just the four shown live, so something crowded off the cap still gets
+ *  recorded. `runHighlightRules` below is the capped view everything else keeps using. */
+export const rankHighlightRules = (snap: Snapshot): Highlight[] =>
     RULES
         .map((rule) => {
             try {
@@ -534,5 +536,9 @@ export const runHighlightRules = (snap: Snapshot): Highlight[] =>
             }
         })
         .filter((h): h is Highlight => h !== null)
-        .sort((a, b) => b.materiality - a.materiality || SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity])
-        .slice(0, MAX_HIGHLIGHTS);
+        .sort((a, b) => b.materiality - a.materiality || SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]);
+
+/** The live view — ranked and capped, beyond four this is a report, not a highlight. An
+ *  empty result is a valid answer. */
+export const runHighlightRules = (snap: Snapshot): Highlight[] =>
+    rankHighlightRules(snap).slice(0, MAX_HIGHLIGHTS);

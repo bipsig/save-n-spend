@@ -51,6 +51,16 @@ export const SCREEN_ROUTE: Record<HighlightScreen, string> = {
   activity: "/activity",
 };
 
+/** The human name for `screen`, spoken by accessibility labels ("Opens Budgets.") — kept
+ *  alongside `SCREEN_ROUTE` so the two can never name a screen inconsistently. */
+export const SCREEN_LABEL: Record<HighlightScreen, string> = {
+  budgets: "Budgets",
+  bills: "Bills",
+  goals: "Goals",
+  health: "Health",
+  activity: "Activity",
+};
+
 // Dismissals.
 // Device-local, like privacy mode and the app lock: which cards THIS phone has waved
 // away is not an account fact, and keeping it off the server keeps the whole feature
