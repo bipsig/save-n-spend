@@ -7,14 +7,22 @@ import mongoose from "mongoose";
 import { monthRange } from "../utils/monthRange";
 import { resolveZone } from "../utils/userZone";
 import { healthScore } from "../services/healthService";
+import { computeCurrentStreak } from "../services/highlightSnapshotService";
 
 export const getDashboardSummary = async (req: Request, res: Response): Promise<void> => {
 
   const { month } = dashboardSummaryQuerySchema.parse(req.query);
+  const zone = await resolveZone(req);
+  const now = new Date();
 
   // Shared with GET /budgets rather than cut here: the dashboard's "this month" and a
   // budget's month are the same month by definition, and two implementations drift.
-  const { start, next, label } = monthRange(await resolveZone(req), month);
+  const { start, next, label } = monthRange(zone, month);
+
+  // Sourced directly rather than through GET /highlights: that endpoint only surfaces
+  // the streak when it clears the materiality-ranked, max-4 cap, so a real streak could
+  // go silently missing on a busy day — wrong for a badge meant to always be visible.
+  const currentStreak = await computeCurrentStreak(req.user!.userId, zone, now);
 
   const monthlySums = await Transaction.aggregate([
     {
@@ -55,7 +63,8 @@ export const getDashboardSummary = async (req: Request, res: Response): Promise<
     income,
     expenses,
     savings: income - expenses,
-    netWorth: netWorth[0]?.total ?? 0
+    netWorth: netWorth[0]?.total ?? 0,
+    currentStreak
   };
 
   reply.ok(res, response, "Dashboard Summary Fetched successfully!");

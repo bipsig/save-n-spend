@@ -6,7 +6,11 @@ import PressableScale from "../ui/PressableScale"
 import PeekButton from "./PeekButton"
 import { useNotifications } from "@/store/notifications"
 import { useGreeting } from "@/lib/greeting"
-import { colors, spacing } from "@/theme"
+import { colors, radius, spacing } from "@/theme"
+
+// Mirrors highlightRules.ts's STREAK_MIN_DAYS — "streak" means the same thing (3+
+// consecutive logged days) everywhere it appears in the app, not just on the Highlights card.
+const STREAK_MIN_DAYS = 3;
 
 type Props = {
   name: string,
@@ -15,13 +19,16 @@ type Props = {
   greeting?: string
   initials?: string
   onBellPress?: () => void
+  /** Consecutive days logged. Omit, or pass under 3, to show nothing. */
+  streakDays?: number
 }
 
 const AppHeader = ({
   name,
   greeting,
   initials,
-  onBellPress
+  onBellPress,
+  streakDays
 }: Props) => {
   // The dot means one thing: there is something unread behind the bell.
   const unread = useNotifications((s) => s.unread);
@@ -63,6 +70,12 @@ const AppHeader = ({
       </View>
 
       <View style={styles.actions}>
+        {streakDays !== undefined && streakDays >= STREAK_MIN_DAYS && (
+          <View style={styles.streak} accessibilityLabel={`${streakDays} day streak`}>
+            <Icon name="streak" size={13} color="warning" />
+            <AppText size="xs" weight="black" color="warning">{streakDays}</AppText>
+          </View>
+        )}
         <PeekButton />
 
         {/* `disabled` without a handler, so a bell that leads nowhere doesn't dip or
@@ -110,6 +123,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs
+  },
+  streak: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 8,
+    height: 30,
+    borderRadius: radius.full,
+    backgroundColor: colors.warningSoft,
   },
   bell: {
     position: "relative"

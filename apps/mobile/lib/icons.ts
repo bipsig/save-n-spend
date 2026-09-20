@@ -12,6 +12,7 @@ export const iconMap = {
   // Header / actions
   bell: 'notifications-none',
   search: 'search',
+  filter: 'filter-list',
   add: 'add',
   close: 'close',
   chevronRight: 'chevron-right',
@@ -25,6 +26,7 @@ export const iconMap = {
   eye: 'visibility',
   eyeOff: 'visibility-off',
   trophy: 'emoji-events',
+  streak: 'whatshot',
   delete: 'delete',
   edit: 'edit',
   download: 'file-download',

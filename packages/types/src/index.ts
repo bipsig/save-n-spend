@@ -202,7 +202,8 @@ export interface DashboardSummary {
   income: number,
   expenses: number,
   savings: number,
-  netWorth: number
+  netWorth: number,
+  currentStreak: number
 }
 
 // The five things the health score is made of. Sent individually, not just as the total:
