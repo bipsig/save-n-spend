@@ -3,26 +3,15 @@
 //     (React Native has no localStorage). The store is hydrated from SecureStore
 //     on boot, so this read is synchronous — the closest 1:1 to localStorage.
 //   • BASE_URL is the dev machine's LAN IP: on a phone, localhost is the phone.
-import Constants from "expo-constants";
 import { useSession } from "@/store/session";
+import { useConnectivity } from "@/store/connectivity";
+import * as offlineCache from "@/lib/offlineCache";
+import { BASE_URL } from "@/lib/apiBase";
 
-// Explicit override wins; otherwise derive the host Metro serves from (your
-// laptop's LAN IP in Expo Go) and hit the API on :3000.
-const resolveBaseUrl = (): string => {
-  const fromEnv = process.env.EXPO_PUBLIC_API_URL;
-  if (fromEnv) return fromEnv;
-  const host = Constants.expoConfig?.hostUri?.split(":")[0];
-  return host ? `http://${host}:7019/api/v1` : "http://localhost:7019/api/v1";
-};
-
-const BASE_URL = resolveBaseUrl();
-
-/** The liveness probe, used by the cold-start gate.
- *
- *  Built from BASE_URL with the version prefix stripped, because `GET /health` is the
- *  one route mounted outside `/api/v1` — deriving it here keeps the two from drifting
- *  apart when the deployed URL changes. */
-export const HEALTH_URL = `${BASE_URL.replace(/\/api\/v1\/?$/, "")}/health`;
+// Re-exported so store/wake.ts's existing import path is untouched — BASE_URL/HEALTH_URL
+// moved to lib/apiBase.ts so store/connectivity.ts (imported below) can read HEALTH_URL
+// without importing this file, which would cycle.
+export { HEALTH_URL } from "@/lib/apiBase";
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -58,11 +47,23 @@ const request = async <T>(method: Method, path: string, body?: unknown): Promise
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
   }
-  catch (err) {
+  catch {
     // Nothing came back, so there is no status and nothing about the token is in
-    // question. Status 0 is how a caller tells this apart from a rejection.
-    throw new ApiError(err instanceof Error ? err.message : "Network request failed", 0);
+    // question. Status 0 is how a caller tells this apart from a rejection. The raw
+    // fetch error (timeout, DNS, no route) is not useful to show, so it's dropped in
+    // favor of one clean message every existing catch block in the app can display.
+    useConnectivity.getState().reportOffline();
+    // A GET has a fallback a write does not: its last-known answer. Every hook renders
+    // this exactly as if the request had succeeded — no per-hook offline handling.
+    if (method === "GET") {
+      const cached = await offlineCache.read<T>(path);
+      if (cached) return cached.data;
+    }
+    throw new ApiError("You're offline — check your connection", 0);
   }
+
+  // Any answer at all — even a rejection — proves the server is reachable.
+  useConnectivity.getState().reportOnline();
 
   if (!res.ok) {
     // Best-effort body: a gateway can answer with an HTML error page instead of our
@@ -78,6 +79,7 @@ const request = async <T>(method: Method, path: string, body?: unknown): Promise
   }
 
   const json = await res.json();
+  if (method === "GET") void offlineCache.write(path, json.data);
   return json.data as T; // unwrap the { success, message, data } envelope
 };
 

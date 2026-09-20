@@ -7,6 +7,8 @@ import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
 import Button from "@/components/ui/Button";
 import { createAccount, useAccounts } from "@/lib/accounts";
+import { useConnectivity } from "@/store/connectivity";
+import { toast } from "@/store/toast";
 import { haptics } from "@/lib/haptics";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import type { IconName } from "@/lib/icons";
@@ -59,6 +61,7 @@ const AccountPickerSheet = forwardRef<BottomSheetModal, Props>((
   const allAccounts = useAccounts();
   const accounts = filterType ? allAccounts.filter((a) => a.type === filterType) : allAccounts;
   usePrivacyMask(); // subscribe: a peek has to re-render the balances listed below
+  const offline = useConnectivity((s) => s.offline);
 
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
@@ -189,16 +192,22 @@ const AccountPickerSheet = forwardRef<BottomSheetModal, Props>((
         })}
         {allowCreate && !creating && (
           <PressableScale
-            style={styles.row}
+            style={[styles.row, offline && styles.rowDim]}
             scaleTo={0.98}
             haptic={false}
             onPress={() => {
+              // The picker itself works fully offline (it's a cached list) — only
+              // creating someone new needs the server.
+              if (offline) {
+                toast.info("Adding a person needs a connection");
+                return;
+              }
               haptics.select();
               setCreating(true);
             }}
           >
             <Icon
-              name="add"
+              name={offline ? "lock" : "add"}
               size={20}
               containerSize={44}
               container="square"
@@ -235,6 +244,9 @@ const styles = StyleSheet.create({
   rowSelected: {
     borderColor: "rgba(163,148,255,0.5)",
     backgroundColor: "rgba(139,123,255,0.15)",
+  },
+  rowDim: {
+    opacity: 0.55,
   },
   info: {
     flex: 1,

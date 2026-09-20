@@ -31,6 +31,7 @@ import { zoneLabel } from "@/lib/timezones";
 import { zoneMatchesDevice } from "@/lib/zone";
 import { useSession } from "@/store/session";
 import { AUTO_LOCK_DELAYS, autoLockLabel, useSettings, type AutoLockSeconds } from "@/store/settings";
+import { useOutbox } from "@/store/outbox";
 import { toast } from "@/store/toast";
 import { spacing } from "@/theme";
 import type { BillReminderLead } from "@save-n-spend/types";
@@ -74,6 +75,11 @@ const SettingsScreen = () => {
   const exportRef = useRef<BottomSheetModal>(null);
   const logoutRef = useRef<BottomSheetModal>(null);
   const deleteRef = useRef<BottomSheetModal>(null);
+
+  // Signing out clears the in-memory queue but leaves the file on disk (see
+  // store/outbox.ts) — real, but worth naming before someone signs out mid-flight and
+  // wonders where a transaction went.
+  const pendingSync = useOutbox((s) => s.items.length);
 
   // Every account-level write goes through here, so one place owns the failure message.
   // Success is silent: each row prints the value it just saved, so a "Saved" banner would
@@ -431,7 +437,11 @@ const SettingsScreen = () => {
         ref={logoutRef}
         icon="logout"
         title="Log out?"
-        body="Your data stays on the server. You'll need your password to sign back in."
+        body={
+          pendingSync > 0
+            ? `${pendingSync} transaction${pendingSync === 1 ? "" : "s"} haven't synced yet — they'll sync once you're signed back in. Your data stays on the server. You'll need your password to sign back in.`
+            : "Your data stays on the server. You'll need your password to sign back in."
+        }
         confirmLabel="Log out"
         // detachPush first, while the request is still authenticated: a token left on the
         // account keeps pushing this user's reminders to whoever signs in next.

@@ -11,6 +11,7 @@ import { RANGES, rangeNavLabel, type RangeKey } from "@/lib/dateRange";
 import { exportTransactions, type ExportFormat } from "@/lib/export";
 import { haptics } from "@/lib/haptics";
 import { toast } from "@/store/toast";
+import { useConnectivity } from "@/store/connectivity";
 import { spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
 
@@ -31,6 +32,10 @@ const Caps = ({ children }: { children: React.ReactNode }) => (
 const ExportSheet = forwardRef<BottomSheetModal, Props>(({ defaultRange = "month", defaultOffset = 0 }, ref) => {
   const innerRef = useRef<BottomSheetModal>(null);
   useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
+  // A stale export reads as authoritative in a way a stale screen doesn't — it's a file
+  // someone hands to their accountant — so this is refused outright rather than served
+  // from what's cached, unlike the rest of the app.
+  const offline = useConnectivity((s) => s.offline);
 
   const [range, setRange] = useState<RangeKey>(defaultRange);
   // Carries the page's offset only while the picked range matches the page's —
@@ -99,9 +104,10 @@ const ExportSheet = forwardRef<BottomSheetModal, Props>(({ defaultRange = "month
       onDismiss={reset}
       footer={
         <Button
-          label={busy ? "Preparing…" : `Export ${format.toUpperCase()}`}
-          icon={busy ? undefined : "download"}
+          label={offline ? "Needs a connection" : busy ? "Preparing…" : `Export ${format.toUpperCase()}`}
+          icon={offline || busy ? undefined : "download"}
           loading={busy}
+          disabled={offline}
           onPress={run}
         />
       }
@@ -113,7 +119,9 @@ const ExportSheet = forwardRef<BottomSheetModal, Props>(({ defaultRange = "month
             Export transactions
           </AppText>
           <AppText size="sm" color="inkDim">
-            Pick a span and format — we&apos;ll build the file and open your share sheet.
+            {offline
+              ? "You're offline — a file built from what's cached could miss recent transactions, so this waits for a connection."
+              : "Pick a span and format — we'll build the file and open your share sheet."}
           </AppText>
         </View>
       </View>

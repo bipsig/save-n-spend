@@ -15,7 +15,11 @@ import Money from "../ui/Money"
 
 type Props = {
   transaction: ITransaction,
-  onPress?: () => void
+  onPress?: () => void,
+  /** Queued on this phone, not yet on the server — see store/outbox.ts. */
+  pending?: boolean,
+  /** The server rejected the queued replay — a real problem, not merely unsynced. */
+  failed?: boolean,
 }
 
 // One icon + label pair on the meta row (date / location / receipt). `shrink` is for
@@ -48,7 +52,7 @@ const MetaItem = ({
 
 // Spec .rowcard: gradient category chip · name 15/700 · sub 12 dim ·
 // tiny meta row · signed amount 15/800 colored by type. Flat glass, no shadow.
-const TransactionRow = ({ transaction, onPress }: Props) => {
+const TransactionRow = ({ transaction, onPress, pending = false, failed = false }: Props) => {
   const category = useCategoryById(transaction.category)
   const isIncome = transaction.type === "income"
 
@@ -100,6 +104,13 @@ const TransactionRow = ({ transaction, onPress }: Props) => {
             {transaction.splitGroupId && (
               <MetaItem icon="person" label="Split" />
             )}
+            {/* Same shape as the Split/Receipt chips above — a synthetic row from the
+                outbox is otherwise indistinguishable from a synced one. */}
+            {failed ? (
+              <MetaItem icon="cloudOff" label="Couldn't sync — tap to fix" color="danger" />
+            ) : pending ? (
+              <MetaItem icon="cloudSync" label="Pending" />
+            ) : null}
           </View>
           {/* A note earns its own line rather than a spot in the meta row — unlike a
               location or "Receipt", there's no fixed length to budget space for. */}

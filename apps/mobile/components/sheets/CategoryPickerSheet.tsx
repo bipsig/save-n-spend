@@ -12,6 +12,8 @@ import PressableScale from "@/components/ui/PressableScale";
 import { buildCategoryTree, useCategories } from "@/lib/categories";
 import { useCategoryStore } from "@/store/categories";
 import { post } from "@/lib/api";
+import { useConnectivity } from "@/store/connectivity";
+import { toast } from "@/store/toast";
 import { haptics } from "@/lib/haptics";
 import type { IconName } from "@/lib/icons";
 import { colors, radius, spacing } from "@/theme";
@@ -41,6 +43,7 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
   const dismiss = () => innerRef.current?.dismiss();
 
   const categories = useCategories();
+  const offline = useConnectivity((s) => s.offline);
 
   const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
@@ -60,6 +63,12 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
   // answers the question by pointing at it, so the form needs no parent selector. A new
   // child starts out styled like its parent, as it does in settings.
   const startCreate = (parent: ICategory | null) => {
+    // The picker itself works fully offline (it's a cached list) — only creating
+    // something new needs the server, so that's the one action gated here.
+    if (offline) {
+      toast.info("Creating a category needs a connection");
+      return;
+    }
     haptics.tap();
     setNewParent(parent);
     setDraft({
@@ -150,9 +159,16 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
 
         {/* Unboxed, unlike the rows above it: the same glass panel would make an action
             read as a fourth thing you can pick. */}
-        <PressableScale style={styles.addRow} onPress={() => startCreate(parent)} scaleTo={0.97} haptic={false}>
-          <Icon name="add" size={15} color="primary" />
-          <AppText size="xs" weight="bold" color="primary" numberOfLines={1}>
+        <PressableScale
+          style={[styles.addRow, offline && styles.addRowDim]}
+          onPress={() => startCreate(parent)}
+          scaleTo={0.97}
+          haptic={false}
+        >
+          {/* The lock is the whole message at a glance — offline, this doesn't say WHY
+              in the label itself; that's what the toast on tap is for. */}
+          <Icon name={offline ? "lock" : "add"} size={15} color={offline ? "inkDim" : "primary"} />
+          <AppText size="xs" weight="bold" color={offline ? "inkDim" : "primary"} numberOfLines={1}>
             {`New under ${parent.name}`}
           </AppText>
         </PressableScale>
@@ -221,8 +237,16 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
     </>
   ) : (
     // Each group carries its own "new under …" row, so this one is explicitly for a
-    // heading that doesn't exist yet.
-    <Button label="+ New top-level category" variant="secondary" onPress={() => startCreate(null)} />
+    // heading that doesn't exist yet. Dimmed rather than `disabled` when offline — the
+    // tap still lands, so the guard inside `startCreate` gets to explain why.
+    <View style={offline && styles.dimmed}>
+      <Button
+        label={offline ? "New category" : "+ New top-level category"}
+        variant="secondary"
+        icon={offline ? "lock" : undefined}
+        onPress={() => startCreate(null)}
+      />
+    </View>
   );
 
   return (
@@ -343,6 +367,12 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 9,
     paddingHorizontal: 12,
+  },
+  addRowDim: {
+    opacity: 0.55,
+  },
+  dimmed: {
+    opacity: 0.55,
   },
   childRow: {
     flexDirection: "row",

@@ -1,6 +1,6 @@
 import type { ITransaction } from "@save-n-spend/types";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { get } from "@/lib/api";
+import { ApiError, get } from "@/lib/api";
 import { useSession } from "@/store/session";
 
 interface Paginated<T> {
@@ -103,6 +103,13 @@ export const useTransactionFeed = (params: FeedParams) => {
     }
     catch (err) {
       if (myId !== reqId.current) return;
+      // A page-two miss offline must not blank the page-one rows already on screen —
+      // it just means there's nothing further cached, so the list quietly stops here.
+      // A reconnect's refetch (already wired to focus) resets `hasMore` on its own.
+      if (!replace && err instanceof ApiError && err.status === 0) {
+        setHasMore(false);
+        return;
+      }
       setError(err instanceof Error ? err.message : "Failed to load");
     }
     finally {

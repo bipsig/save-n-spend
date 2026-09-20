@@ -1,10 +1,11 @@
-import { ScrollView, StyleSheet, View } from "react-native";
+import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppText } from "../ui/AppText";
 import GlowBackground from "./GlowBackground";
 import PeekButton from "./PeekButton";
-import { spacing } from "@/theme";
+import OfflineBanner from "./OfflineBanner";
+import { colors, spacing } from "@/theme";
 
 type Props = {
   title?: string;
@@ -14,6 +15,10 @@ type Props = {
   scroll?: boolean;
   /** Off while a row is being dragged, so the drag doesn't scroll the screen under it. */
   scrollEnabled?: boolean;
+  /** Pull-to-refresh. Only meaningful with `scroll` (the default) — a screen that
+   *  renders its own scroller (e.g. Activity's FlatList) wires RefreshControl itself. */
+  onRefresh?: () => void | Promise<void>;
+  refreshing?: boolean;
   /** Rendered above the scroll content, pinned to the screen (e.g. the FAB). */
   floating?: React.ReactNode;
   children: React.ReactNode;
@@ -26,6 +31,8 @@ const ScreenScaffold = ({
   header,
   scroll = true,
   scrollEnabled = true,
+  onRefresh,
+  refreshing = false,
   floating,
   children,
 }: Props) => {
@@ -68,6 +75,9 @@ const ScreenScaffold = ({
             )}
           </View>
         )}
+        {/* Renders nothing while online — every screen built on this scaffold gets the
+            offline notice for free, the same way every screen already gets PeekButton. */}
+        <OfflineBanner />
         {scroll ? (
           <ScrollView
             style={styles.scroll}
@@ -76,6 +86,19 @@ const ScreenScaffold = ({
             showsVerticalScrollIndicator={false}
             keyboardDismissMode="on-drag"
             keyboardShouldPersistTaps="handled"
+            refreshControl={
+              onRefresh ? (
+                // Tinted to the brand rather than left as the system default — a plain
+                // black/white spinner over this ground reads as broken, not loading.
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={onRefresh}
+                  tintColor={colors.primary}
+                  colors={[colors.primary]}
+                  progressBackgroundColor="#1B1730"
+                />
+              ) : undefined
+            }
           >
             {children}
           </ScrollView>

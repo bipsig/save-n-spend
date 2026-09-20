@@ -17,13 +17,16 @@ import PeekBar from "@/components/shell/PeekBar";
 import Toast from "@/components/shell/Toast";
 import KeyboardDoneBar from "@/components/ui/KeyboardDoneBar";
 import WakeGate from "@/components/shell/WakeGate";
-import { useWake } from "@/store/wake";
+import { ping, useWake } from "@/store/wake";
+import * as offlineCache from "@/lib/offlineCache";
 import { useSession } from "@/store/session";
 import { useSettings } from "@/store/settings";
+import { useConnectivity } from "@/store/connectivity";
 import { useCategoryStore } from "@/store/categories";
 import { useAccountStore } from "@/store/accounts";
 import { useNotifications } from "@/store/notifications";
 import { useTitleSuggestionStore } from "@/store/titleSuggestions";
+import { useOutbox } from "@/store/outbox";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -45,6 +48,7 @@ const RootLayout = () => {
   // the lock overlay, which must decide before the first paint.
   useEffect(() => {
     void useSettings.getState().hydrate();
+    void useConnectivity.getState().hydrate();
   }, []);
 
   // Is the server even up? First and unconditional, so it runs in parallel with the
@@ -61,32 +65,75 @@ const RootLayout = () => {
       // Read fresh — the render-time closure would be stale after the await.
       const token = useSession.getState().token;
       if (!token) return; // no token → hydrate already set `guest`
-      // Held until the server answers, or `/auth/me` is the request that pays for the
-      // cold start, times out, and throws away a perfectly good token.
-      await useWake.getState().probe();
 
-      // A saved token is only discarded because the server ANSWERED and refused it. No
-      // signal, a gateway error, an instance still coming up: none of those say the token
-      // is bad, so each buys one more attempt behind a fresh probe.
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        try {
-          const me = await get<IUser>("/auth/me");
-          if (alive) setUser(me); // → authed
-          return;
+      const cachedMe = await offlineCache.read<IUser>("/auth/me");
+
+      if (!cachedMe) {
+        // No cached session to fall back on — a fresh install, or a cleared cache. Only
+        // path left is the original one: wait out a possible cold start, then really
+        // need an answer, since there is nothing else to show in the meantime.
+        await useWake.getState().probe();
+
+        // A saved token is only discarded because the server ANSWERED and refused it. No
+        // signal, a gateway error, an instance still coming up: none of those say the
+        // token is bad, so each buys one more attempt behind a fresh probe.
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          try {
+            const me = await get<IUser>("/auth/me");
+            if (alive) setUser(me); // → authed
+            return;
+          }
+          catch (err) {
+            const refused = err instanceof ApiError && (err.status === 401 || err.status === 403);
+            if (refused) break;
+            if (attempt === 2) break;
+            await useWake.getState().retry(); // back behind the waking screen, then try again
+          }
         }
-        catch (err) {
-          const refused = err instanceof ApiError && (err.status === 401 || err.status === 403);
-          if (refused) break;
-          if (attempt === 2) break;
-          await useWake.getState().retry(); // back behind the waking screen, then try again
-        }
+
+        if (!alive) return;
+        // Open the gate before signing out, or the unreachable screen sits on top of the
+        // login screen we are sending them to.
+        useWake.getState().proceedAnyway();
+        await signOut(); // expired, invalid, or unreachable twice → back to `guest`
+        return;
       }
 
+      // A cached session exists — a cold Render instance and no signal at all deserve the
+      // same answer here: show what's already on the phone rather than a minute of waking
+      // screens over data that's about to be shown stale either way. One quick reachability
+      // check stands in for the full wake sequence.
+      const reachable = await ping(4_000);
       if (!alive) return;
-      // Open the gate before signing out, or the unreachable screen sits on top of the
-      // login screen we are sending them to.
+
+      if (!reachable) {
+        setUser(cachedMe.data);
+        useConnectivity.getState().reportOffline();
+        useWake.getState().proceedAnyway();
+        return;
+      }
+
+      // Reachable — open the gate now rather than wait on the mount effect's own separate
+      // probe (above) to reach the same conclusion on its own clock.
       useWake.getState().proceedAnyway();
-      await signOut(); // expired, invalid, or unreachable twice → back to `guest`
+
+      try {
+        const me = await get<IUser>("/auth/me");
+        if (alive) setUser(me);
+      }
+      catch (err) {
+        if (!alive) return;
+        const refused = err instanceof ApiError && (err.status === 401 || err.status === 403);
+        if (refused) {
+          await signOut(); // the token is genuinely dead, not merely unreachable a moment ago
+          return;
+        }
+        // The health check just answered, so this is a flake rather than a cold start —
+        // no retry loop; fall back to what's cached rather than a wake screen on top of
+        // a gate that's already open.
+        setUser(cachedMe.data);
+        useConnectivity.getState().reportOffline();
+      }
     })();
     return () => {
       alive = false;
@@ -107,19 +154,38 @@ const RootLayout = () => {
   // reinstall or an OS-reissued token gets picked up.
   useEffect(() => {
     if (status === "authed") {
-      useCategoryStore.getState().load();
-      useAccountStore.getState().load();
+      // Un-awaited, so a cache-miss offline (rare after the first online session) is a
+      // handled rejection rather than one that reaches the console as unhandled — the
+      // cached copy, if any, already landed via lib/api.ts's own catch.
+      useCategoryStore.getState().load().catch(() => {});
+      useAccountStore.getState().load().catch(() => {});
       useNotifications.getState().load();
-      useTitleSuggestionStore.getState().load();
+      useTitleSuggestionStore.getState().load().catch(() => {});
       void registerForPush();
+      // Catches up on anything left queued from a prior session — an app killed mid-drain
+      // just replays from here; the clientId dedupe on the server makes that safe.
+      const userId = useSession.getState().user?._id;
+      if (userId) {
+        void useOutbox.getState().load(userId).then(() => useOutbox.getState().drain());
+      }
     }
     else if (status === "guest") {
       useCategoryStore.getState().reset();
       useAccountStore.getState().reset();
       useNotifications.getState().reset();
       useTitleSuggestionStore.getState().reset();
+      // Financial data must not survive a sign-out or an account switch on this phone —
+      // but the outbox FILE is deliberately untouched by this: see lib/outbox.ts.
+      void offlineCache.clearAll();
+      useOutbox.getState().resetMemory();
     }
   }, [status]);
+
+  // Reconnecting is what actually syncs a queue, not just what stops the banner saying so.
+  const offline = useConnectivity((s) => s.offline);
+  useEffect(() => {
+    if (!offline && status === "authed") void useOutbox.getState().drain();
+  }, [offline, status]);
 
   // The evening banner, re-planned whenever the inputs move: on reaching `authed`, when the
   // user document lands with the real preferences, again the moment a digest switch is

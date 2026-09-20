@@ -28,10 +28,11 @@ import { spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
 import { accountById, useAccountById, useAccounts, useDefaultAccount } from "@/lib/accounts";
 import AccountPickerSheet from "@/components/sheets/AccountPickerSheet";
-import { get, patch, post } from "@/lib/api";
+import { ApiError, get, patch, post } from "@/lib/api";
 import { useAccountStore } from "@/store/accounts";
 import { useTitleSuggestionStore } from "@/store/titleSuggestions";
 import { useTitleMatches } from "@/lib/titleSuggestions";
+import { makeClientId, useOutbox } from "@/store/outbox";
 import type { ITransaction } from "@save-n-spend/types";
 
 const schema = z.object({
@@ -118,7 +119,7 @@ const SuggestionChip = ({
 const AddTransaction = () => {
   usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
   const router = useRouter();
-  const { id, repeatId, settleAccount } = useLocalSearchParams<{ id?: string; repeatId?: string; settleAccount?: string }>();
+  const { id, repeatId, settleAccount, draftFrom } = useLocalSearchParams<{ id?: string; repeatId?: string; settleAccount?: string; draftFrom?: string }>();
   const isEdit = !!id;
 
   const categories = useCategories();
@@ -188,6 +189,29 @@ const AddTransaction = () => {
       }
     })();
   }, [repeatId, reset])
+
+  // "Edit as new draft" from a failed outbox row — the same prefill as editing, but the
+  // source is the queued payload sitting on the phone rather than a fetch, since the
+  // server never actually has this one. Resaving or requeuing discards the original
+  // (see onSubmit) rather than leaving two copies of the same attempt around.
+  useEffect(() => {
+    if (!draftFrom) return;
+    const item = useOutbox.getState().items.find((i) => i.clientId === draftFrom);
+    if (!item) return;
+    const p = item.payload as Record<string, unknown>;
+    reset({
+      title: (p.title as string | undefined) ?? "",
+      amount: paiseToInput((p.amount as number | undefined) ?? 0),
+      type: (p.type as FormValues["type"] | undefined) ?? "expense",
+      category: (p.category as string | undefined) ?? "",
+      note: (p.note as string | undefined) ?? "",
+      location: (p.location as string | undefined) ?? "",
+    });
+    if (p.occurredAt) setOccurredAt(new Date(p.occurredAt as string));
+    setAccountId((p.account as string | undefined) ?? null);
+    setToAccountId((p.toAccount as string | undefined) ?? null);
+    if (p.note || p.location) setExtrasOpen(true);
+  }, [draftFrom, reset])
 
   // Spec: the CTA label is live — it names what you're saving.
   const type = watch("type");
@@ -428,10 +452,16 @@ const AddTransaction = () => {
     }
     const share = owedBy ? entered - owedBy.reduce((sum, row) => sum + row.amount, 0) : parseMoney(data.amount);
 
+    // Generated unconditionally, on every send, not only once a failure is detected —
+    // otherwise the FIRST attempt (the one that may have actually reached the server,
+    // with only its response lost) would go out with no clientId at all, and a queued
+    // retry would create a genuine duplicate rather than hit the dedupe index.
+    const clientId = makeClientId();
+
     // A spend carries title + category; a transfer carries toAccount and neither. Amount
     // is positive paise; `type` gives the direction.
     const payload = data.type === "transfer"
-      ? { type: data.type, amount: parseMoney(data.amount), account: account._id, toAccount: toAccount!._id, occurredAt: occurredAt.toISOString(), ...extras }
+      ? { type: data.type, amount: parseMoney(data.amount), account: account._id, toAccount: toAccount!._id, occurredAt: occurredAt.toISOString(), clientId, ...extras }
       : {
           type: data.type,
           amount: share,
@@ -440,6 +470,7 @@ const AddTransaction = () => {
           title: data.title,
           occurredAt: occurredAt.toISOString(),
           ...(owedBy ? { owedBy } : {}),
+          clientId,
           ...extras,
         };
 
@@ -458,12 +489,15 @@ const AddTransaction = () => {
       }
       // Every save here moves a balance — a plain edit's amount, a split's transfers, an
       // ordinary expense's account. The list held elsewhere (Net Worth, the account
-      // picker) is stale until this reloads it.
-      await useAccountStore.getState().load();
+      // picker) is stale until this reloads it. Caught rather than awaited-and-thrown: a
+      // drop here means the save itself still worked, and the store's next successful
+      // load fills in the real number anyway.
+      await useAccountStore.getState().load().catch(() => {});
       // A title typed for the first time this session — fire-and-forget, so a title
       // logged just now can be suggested on the very next transaction rather than
       // waiting for the next launch. Not awaited: nothing on this screen depends on it.
       if (!isEdit && data.type !== "transfer") void useTitleSuggestionStore.getState().load();
+      if (draftFrom) useOutbox.getState().discard(draftFrom);
       router.back();
       // The screen is already gone by the time this shows, so it is the only receipt —
       // hence naming the amount and direction rather than just "Saved".
@@ -478,6 +512,16 @@ const AddTransaction = () => {
       else toast.success(`${amount} spent on ${data.title.trim()}`);
     }
     catch (err) {
+      // Only a genuinely new create can queue — an edit's failure has nowhere else to
+      // go, and the account/category it names must already exist for its own sake, so
+      // there's nothing queuing would fix later.
+      if (!isEdit && err instanceof ApiError && err.status === 0) {
+        await useOutbox.getState().enqueue(clientId, payload);
+        if (draftFrom) useOutbox.getState().discard(draftFrom);
+        router.back();
+        toast.info(`${formatMoney(parseMoney(data.amount))} saved offline — will sync once you're back online`);
+        return;
+      }
       // On the screen rather than toasted — everything the user typed is still in the
       // fields, and the reason has to be readable next to it.
       reject(err instanceof Error ? err.message : "Error creating new transaction");

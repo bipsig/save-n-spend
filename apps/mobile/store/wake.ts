@@ -47,8 +47,9 @@ interface WakeState {
 }
 
 /** One `GET /health`, with a hard timeout. ANY status counts — the question is "is a process
- *  listening", not "is it healthy". */
-const ping = async (timeoutMs: number): Promise<boolean> => {
+ *  listening", not "is it healthy". Exported for the boot flow's own quick reachability
+ *  check on a cached-session launch, which skips this store's full waking sequence. */
+export const ping = async (timeoutMs: number): Promise<boolean> => {
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), timeoutMs);
 
@@ -77,6 +78,11 @@ export const useWake = create<WakeState>((set, get) => {
             set({ phase: 'awake' });
             return;
         }
+
+        // `proceedAnyway` (or an offline-authed boot on cached data) while this first
+        // ping was in flight — stop, and do not drag the screen the user is already
+        // looking at back into the waking screen.
+        if (get().phase !== 'probing' && get().phase !== 'waking') return;
 
         // Only now does the user learn any of this is happening.
         set({ phase: 'waking', attempt: 1 });
