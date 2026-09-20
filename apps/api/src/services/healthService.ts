@@ -51,6 +51,11 @@ export type HealthScore = {
     pillars: Pillar[];
     focus?: { key: PillarKey; label: string; hint: string };
     reason?: string;
+    /** Raw months of runway, same measurement as the "buffer" pillar's `value` string —
+     *  kept alongside it rather than parsed back out of that string, for a dashboard card
+     *  that wants the number without duplicating the pillar's own arithmetic. Null exactly
+     *  when the pillar itself is null (no spending to measure runway against). */
+    runwayMonths: number | null;
 };
 
 // Ordered by how much each predicts about someone's finances a year out. Budgets and goals
@@ -157,11 +162,11 @@ const bufferPillar = (
     liquid: number,
     cardDebt: number,
     expenses: number,
-): Pillar | null => {
+): { pillar: Pillar | null; months: number | null } => {
     const monthlyExpense = expenses / (WINDOW_DAYS / 30);
 
     // No spending, so no runway to be short of — and dividing by it reports Infinity months.
-    if (monthlyExpense <= 0) return null;
+    if (monthlyExpense <= 0) return { pillar: null, months: null };
 
     const net = Math.max(0, liquid - cardDebt);
     const months = net / monthlyExpense;
@@ -169,7 +174,7 @@ const bufferPillar = (
 
     const floor = Math.round(monthlyExpense * 3);
 
-    return {
+    const pillar: Pillar = {
         key: "buffer",
         label: "Safety buffer",
         score,
@@ -182,6 +187,7 @@ const bufferPillar = (
                 ? `${formatAmount(cardDebt)} on cards is eating most of your buffer. Clearing it lifts this faster than saving more does.`
                 : `${formatAmount(net)} on hand covers ${months.toFixed(1)} months. Three months of your own expenses — about ${formatAmount(floor)} — is the usual floor.`,
     };
+    return { pillar, months };
 };
 
 /**
@@ -352,6 +358,7 @@ const notEnoughData = (reason: string, windowDays = WINDOW_DAYS): HealthScore =>
     windowDays,
     pillars: [],
     reason,
+    runwayMonths: null,
 });
 
 /** The user's financial health score, as of now — never a named month, which is why it is
@@ -422,11 +429,13 @@ export const healthScore = async (
         categories.map((row) => [String(row._id), row.name]),
     );
 
+    const buffer = bufferPillar(liquid, cardDebt, expenses);
+
     // Heaviest first, so a pillar never changes position. The dashboard shows the first
     // three that apply; the full list is on the detail screen.
     const pillars = [
         savingsPillar(income, expenses),
-        bufferPillar(liquid, cardDebt, expenses),
+        buffer.pillar,
         billsPillar(bills, now, zone),
         budgetsPillar(budgets.items, categoryNames, now, zone),
         goalsPillar(goals, now, zone),
@@ -467,5 +476,6 @@ export const healthScore = async (
         windowDays: WINDOW_DAYS,
         pillars,
         focus: focus ? { key: focus.key, label: focus.label, hint: focus.hint as string } : undefined,
+        runwayMonths: buffer.months,
     };
 };

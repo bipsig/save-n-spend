@@ -118,6 +118,10 @@ export interface ITitleSuggestion {
   type: 'expense' | 'income'
   category: string | null
   count: number
+  // The most recent transaction filed under this exact title+category — lets a "repeat
+  // this" chip prefill without a second round trip to find one.
+  lastAmount: number
+  lastTransactionId: string
 }
 
 export interface IBudget {
@@ -152,6 +156,9 @@ export interface IGoal {
   icon?: string
   color?: string
   deadline?: string      // ISO date string
+  // Already on the wire (Mongoose timestamps) — named here so a pace/ETA projection
+  // (saved ÷ months since this) can be computed client-side without a new endpoint.
+  createdAt: string
 }
 
 // What happened, not what it looks like: copy is composed on the server, and the type is
@@ -203,7 +210,72 @@ export interface DashboardSummary {
   expenses: number,
   savings: number,
   netWorth: number,
-  currentStreak: number
+  /** Current total + up to 3 prior complete-month boundaries, oldest first, floored to
+   *  actual history — length 1 (current only) for an account younger than one complete
+   *  month. Reconstructed server-side; Account.balance has no stored history to read. */
+  netWorthTrend: { label: string; total: number }[],
+  /** Same window as `netWorthTrend`, but each month's own income/expense rather than a
+   *  cumulative net-worth total — feeds the Income/Expenses/Savings tiles' own sparklines,
+   *  the same way netWorthTrend feeds the Net Worth tile's. */
+  flowTrend: { label: string; income: number; expense: number }[],
+  currentStreak: number,
+  /** The current zone-local Monday-start week, not the month above — a tighter
+   *  feedback loop than a figure that barely moves day to day. */
+  weekIncome: number,
+  weekExpense: number,
+  /** The single expense that moved this month's total the most. Null on a month
+   *  with no expenses at all. */
+  biggestExpense: { title: string; amount: number; occurredAt: string } | null,
+  /** Present only when the request named a `since` — how much happened between that
+   *  moment and now. Absent (not zero) when there's nothing to compare against yet. */
+  sinceLastOpened?: { transactions: number; spent: number }
+}
+
+// GET /dashboard/insights — the "For You" carousel's genuinely-new slides. Kept off
+// DashboardSummary: these are ranked/omit-shaped and chart-series-shaped, not scalars.
+export interface GoalWatchSlice {
+  goalName: string
+  monthsNeeded: number
+  projectedDate: string
+  saved: number
+  target: number
+}
+
+export interface WeekdayHeatmapCell {
+  /** "Mon".."Sun", Monday-first to match the rest of the app. */
+  day: string
+  total: number
+  /** 0 when nothing was spent that weekday, else its share of the heaviest weekday, 0-1. */
+  intensity: number
+}
+
+export interface DashboardPacePoint {
+  /** "YYYY-MM-DD" where `current`/`average` overlap a real calendar day this month;
+   *  "day-N" for an `average` point past the end of a shorter current month. */
+  date: string
+  amount: number
+}
+
+export interface DashboardPace {
+  /** This month's expense total, one point per elapsed day. */
+  current: DashboardPacePoint[]
+  /** The average of the last `monthsAveraged` complete months, per day-of-month —
+   *  may run longer than `current` (a finished month's own length), on purpose. */
+  average: DashboardPacePoint[]
+  monthsAveraged: number
+}
+
+export interface DashboardInsights {
+  forYou: {
+    /** Null when there's no active goal with a real saving rate to project from. */
+    goalWatch: GoalWatchSlice | null
+    /** Null before day 5 of the month — too little of it has happened yet to mean anything. */
+    noSpendDays: number | null
+    /** Null before two full weeks of this month's history — one loud Tuesday isn't a pattern. */
+    weekdayHeatmap: WeekdayHeatmapCell[] | null
+  }
+  /** Null for an account younger than one complete month — nothing to average against. */
+  pace: DashboardPace | null
 }
 
 // The five things the health score is made of. Sent individually, not just as the total:
@@ -240,6 +312,9 @@ export interface HealthScore {
   focus?: { key: HealthPillarKey; label: string; hint: string }
   /** Why there is no score. Present only when `score` is null. */
   reason?: string
+  /** Same measurement as the buffer pillar's `value` string, as a raw number — null
+   *  exactly when that pillar is null (no spending to measure runway against). */
+  runwayMonths: number | null
 }
 
 export type InsightsPeriod = "day" | "week" | "month" | "year"
@@ -371,4 +446,77 @@ export interface HighlightsPayload {
   timeZone: string      // the zone every day-count in the copy was cut in
   /** Present instead of highlights while the account is too new to compare against. */
   warmingUp?: string
+}
+
+// GET /highlights/history — the permanent record `HighlightsPayload` above never keeps.
+// One row per distinct highlight key, written once at first occurrence, never edited or
+// removed — not paired with a dismiss action anywhere, by design.
+export interface IHighlightLog extends IHighlight {
+  createdAt: string // ISO — when this key was first seen, ever
+}
+
+export interface HighlightHistoryPage {
+  docs: IHighlightLog[]
+  page: number
+  hasNextPage: boolean
+  totalDocs: number
+}
+
+// GET /reviews?period=week|month&offset=N — a recap of one CLOSED period, computed on
+// demand rather than stored: correct even if a past transaction is later edited.
+
+export type ReviewPeriod = 'week' | 'month'
+
+export interface ReviewMoment {
+  date: string        // ISO
+  kind: 'win' | 'warn' | 'neutral'
+  text: string         // plain language, money already formatted server-side
+}
+
+export interface ReviewCategorySlice {
+  categoryId: string
+  name: string
+  total: number        // paise
+  pct: number          // 0-100, share of this period's expense
+}
+
+/** Only goals with a real logged contribution this period — see GoalContributionLog. */
+export interface ReviewGoalContribution {
+  goalId: string
+  name: string
+  contributed: number  // paise
+}
+
+export interface ReviewBillSummary {
+  paidCount: number
+  /** Non-recurring only — a recurring bill's dueDate rolls forward on payment, so a past
+   *  occurrence isn't reconstructable from what's stored today. */
+  dueCount: number
+  /** Non-recurring only, same reason. */
+  late: { name: string; daysLate: number }[]
+}
+
+export interface ReviewPayload {
+  period: ReviewPeriod
+  offset: number
+  periodLabel: string   // "August 2026" | "Aug 18 – 24"
+  periodStart: string    // ISO
+  periodEnd: string       // ISO, exclusive
+  verdict: { headline: string; detail: string }
+  income: number
+  expenses: number
+  saved: number
+  previousIncome: number
+  previousExpenses: number
+  previousSaved: number
+  categories: ReviewCategorySlice[]
+  biggestExpense: { title: string; amount: number; occurredAt: string } | null
+  /** Dated and sorted; short is expected — only what's real, never padded out. */
+  timeline: ReviewMoment[]
+  habits: { streakAtEnd: number; activeDays: number; totalDays: number; noSpendDays: number }
+  /** Null for a week — no weekly net-worth reconstruction exists, and a week barely
+   *  moves it anyway. */
+  netWorth: { total: number; previousTotal: number } | null
+  goals: ReviewGoalContribution[]
+  bills: ReviewBillSummary
 }

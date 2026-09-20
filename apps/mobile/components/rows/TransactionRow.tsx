@@ -7,6 +7,7 @@ import type { IconName } from "@/lib/icons"
 import type { ColorToken } from "@/theme"
 import { spacing } from "@/theme"
 import { formatTxnDate } from "@/lib/date"
+import formatMoney, { usePrivacyMask } from "@/lib/money"
 import Icon from "../ui/Icon"
 import CategoryName from "../ui/CategoryName"
 import { AppText } from "../ui/AppText"
@@ -55,6 +56,7 @@ const MetaItem = ({
 const TransactionRow = ({ transaction, onPress, pending = false, failed = false }: Props) => {
   const category = useCategoryById(transaction.category)
   const isIncome = transaction.type === "income"
+  usePrivacyMask(); // subscribe: the accessibility label below reads formatMoney() directly
 
   // A transfer carries no title and no category (see add-transaction), so the ordinary
   // row rendered it as a blank name over "Uncategorised" with a red minus — three
@@ -63,10 +65,26 @@ const TransactionRow = ({ transaction, onPress, pending = false, failed = false 
   const from = useAccountById(transaction.account)
   const to = useAccountById(transaction.toAccount)
 
+  const description = isTransfer
+    ? `Transfer, ${from?.name ?? "an account"} to ${to?.name ?? "an account"}`
+    : `${transaction.title}, ${category?.name ?? "uncategorised"}`;
+  const statusNote = failed ? ", couldn't sync" : pending ? ", pending sync" : "";
+  const amountNote = isTransfer
+    ? formatMoney(transaction.amount)
+    : `${isIncome ? "plus" : "minus"} ${formatMoney(transaction.amount)}`;
+  const label = `${description}, ${formatTxnDate(transaction.occurredAt)}${statusNote}. ${amountNote}.`;
+
   return (
     // `disabled` when there's no handler, so a row that leads nowhere doesn't dip or
     // buzz and promise a detail sheet that isn't coming.
-    <PressableScale onPress={onPress} disabled={!onPress} scaleTo={0.98}>
+    <PressableScale
+      onPress={onPress}
+      disabled={!onPress}
+      scaleTo={0.98}
+      accessibilityRole={onPress ? "button" : undefined}
+      accessibilityLabel={onPress ? label : undefined}
+      accessibilityHint={onPress ? "Opens more detail" : undefined}
+    >
       <Card style={styles.card}>
         <Icon
           name={isTransfer ? "transfer" : ((category?.icon ?? "more") as IconName)}

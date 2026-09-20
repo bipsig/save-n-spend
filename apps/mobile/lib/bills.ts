@@ -127,3 +127,25 @@ export const owedThroughMonth = (items: IBill[], month: string): number => {
     .filter((b) => b.status !== "paid" && monthKeyOf(new Date(b.dueDate), zone) <= month)
     .reduce((sum, b) => sum + b.amount, 0);
 };
+
+/** The fixed-cost floor: what's committed every period regardless of anything else this
+ *  month, plus which bills make it up — named so the figure isn't just a number with no
+ *  way to sanity-check it. */
+export const recurringBillsTotal = (items: IBill[]): { total: number; topNames: string[] } => {
+  const recurring = items.filter((b) => b.recurring && b.status !== "paid");
+  const total = recurring.reduce((sum, b) => sum + b.amount, 0);
+  const topNames = [...recurring].sort((a, b) => b.amount - a.amount).slice(0, 3).map((b) => b.name);
+  return { total, topNames };
+};
+
+/** Matches the app's own "this week" framing elsewhere (see lib/insights.ts) — due today
+ *  through 6 days out, or already overdue. */
+const URGENT_WINDOW_DAYS = 6;
+
+export const urgentBills = (items: IBill[], now: Date = new Date()): { count: number; total: number } => {
+  const zone = appZone();
+  const urgent = items.filter(
+    (b) => b.status !== "paid" && daysUntilDue(new Date(b.dueDate), now, zone) <= URGENT_WINDOW_DAYS,
+  );
+  return { count: urgent.length, total: urgent.reduce((sum, b) => sum + b.amount, 0) };
+};

@@ -5,27 +5,48 @@ import SummaryCard from "@/components/data/SummaryCard";
 import HealthScoreCard from "@/components/data/HealthScoreCard";
 import SafeToSpendCard from "@/components/data/SafeToSpendCard";
 import GetStartedCard from "@/components/data/GetStartedCard";
+import QuickLogRow from "@/components/data/QuickLogRow";
+import SpendingSnapshotCard from "@/components/data/SpendingSnapshotCard";
+import BudgetsAtAGlanceCard from "@/components/data/BudgetsAtAGlanceCard";
+import BillsGlanceCard from "@/components/data/BillsGlanceCard";
+import ForYouCarousel, { FOR_YOU_SLIDE_HEIGHT } from "@/components/data/ForYouCarousel";
+import HighlightCard from "@/components/data/HighlightCard";
 import SectionHeader from "@/components/ui/SectionHeader";
 import Fab from "@/components/ui/Fab";
-import BillRow from "@/components/rows/BillRow";
-import GoalCard from "@/components/rows/GoalCard";
 import TransactionRow from "@/components/rows/TransactionRow";
 import NetWorthSheet from "@/components/sheets/NetWorthSheet";
 import { usePrivacyMask } from "@/lib/money";
 import { radius, spacing } from "@/theme";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useDashboardSummary } from "@/lib/dashboard";
+import { useDashboardSummary, useDashboardInsights } from "@/lib/dashboard";
+import GoalWatchSlide from "@/components/data/GoalWatchSlide";
+import NoSpendDaysSlide from "@/components/data/NoSpendDaysSlide";
+import WeekdayHeatmapSlide from "@/components/data/WeekdayHeatmapSlide";
 import { useHealthScore } from "@/lib/health";
-import { useBills, groupBills, owedThroughMonth } from "@/lib/bills";
-import { useGoals, sortGoals } from "@/lib/goals";
+import { useBills, owedThroughMonth } from "@/lib/bills";
+import { useGoals } from "@/lib/goals";
 import { useTransactions } from "@/lib/transactions";
+import { useInsights } from "@/lib/insights";
+import { useHighlights } from "@/lib/highlights";
 import { useBudgets, budgetTotals, currentMonth } from "@/lib/budgets";
+import { projectSafeToSpend } from "@/lib/forecast";
+import { milestoneCrossed } from "@/lib/netWorthMilestone";
+import NetWorthMilestoneBanner from "@/components/data/NetWorthMilestoneBanner";
+import { currentPeriodKey } from "@/lib/reviews";
+import { rangeNavLabel } from "@/lib/dateRange";
+import ReviewReadyBanner from "@/components/data/ReviewReadyBanner";
+import { appZone, calendarDate, calendarDaysBetween, calendarToday } from "@/lib/zone";
 import { buildSteps, progressOf } from "@/lib/onboarding";
 import type { OnboardingStep } from "@/lib/onboarding";
 import { useSession } from "@/store/session";
 import { useSettings } from "@/store/settings";
 import { useAccountStore } from "@/store/accounts";
 import { useOutbox } from "@/store/outbox";
+import { useLastOpened } from "@/store/lastOpened";
+import EmergencyFundCard from "@/components/data/EmergencyFundCard";
+import SinceLastOpenedCard from "@/components/data/SinceLastOpenedCard";
+import WeekPulseRow from "@/components/data/WeekPulseRow";
+import PaceCard from "@/components/data/PaceCard";
 import EmptyState from "@/components/states/EmptyState";
 import ErrorState from "@/components/states/ErrorState";
 import SkeletonState from "@/components/states/SkeletonState";
@@ -42,7 +63,10 @@ const HomeScreen = () => {
   const userName = useSession((s) => s.user?.name);
   const userId = useSession((s) => s.user?._id);
 
-  const { data: dashboardSummary, loading: summaryLoading, error: summaryError, refetch: summaryRefetch } = useDashboardSummary();
+  // Read once at mount and held for the whole session (see store/lastOpened) — the
+  // moment this specific screen instance's own digest is anchored to.
+  const previousOpenedAt = useLastOpened((s) => s.previousOpenedAt);
+  const { data: dashboardSummary, loading: summaryLoading, error: summaryError, refetch: summaryRefetch } = useDashboardSummary(previousOpenedAt);
 
   // The three previews (action queue / motivation / recency), composed client-side from the
   // live list endpoints — the same shapes an eventual GET /dashboard would return.
@@ -59,6 +83,20 @@ const HomeScreen = () => {
   // Its own request, not a field on the summary: the summary describes a named month and the
   // score the trailing 90 days as of now, so one response would span two windows.
   const { data: health, refetch: healthRefetch } = useHealthScore();
+
+  // Feeds the Spending Snapshot's top categories — the same window Insights itself opens
+  // on, so the two never disagree about what "this month" means.
+  const { data: insights, refetch: insightsRefetch } = useInsights("month", 0);
+
+  // The same ranked, dismissible list Highlights/Insights already show — the dashboard
+  // just takes the single worst warning and the single best win off the top rather than
+  // re-deriving anything.
+  const { highlights, dismiss: dismissHighlight, refetch: highlightsRefetch } = useHighlights();
+
+  // The carousel's genuinely-new slides — a goal's ETA, a no-spend-day count, a weekday
+  // pattern. Its own request, ranked/omit-shaped rather than the scalars the summary
+  // above deals in.
+  const { data: dashboardInsights, refetch: dashboardInsightsRefetch } = useDashboardInsights();
 
   // Queued transactions waiting on this phone — a stable selector (the raw items array),
   // mapped to displayable rows in a memo rather than in the selector itself, so this
@@ -78,11 +116,14 @@ const HomeScreen = () => {
     goalsRefetch();
     transactionsRefetch();
     budgetsRefetch();
+    insightsRefetch();
+    highlightsRefetch();
+    dashboardInsightsRefetch();
     // Accounts are NOT refetched here: every write that can move a balance — the
     // mutations in `lib/accounts`, and transaction create/edit/delete in
     // add-transaction.tsx / TransactionDetailSheet — reloads the store itself, so a
     // focus reload would be a second request for an already-correct list.
-  }, [summaryRefetch, healthRefetch, billsRefetch, goalsRefetch, transactionsRefetch, budgetsRefetch]));
+  }, [summaryRefetch, healthRefetch, billsRefetch, goalsRefetch, transactionsRefetch, budgetsRefetch, insightsRefetch, highlightsRefetch, dashboardInsightsRefetch]));
 
   // A drain can land while the dashboard is already on screen, not only on the way back
   // to it — the focus effect above wouldn't otherwise catch that.
@@ -104,6 +145,9 @@ const HomeScreen = () => {
         goalsRefetch(),
         transactionsRefetch(),
         budgetsRefetch(),
+        insightsRefetch(),
+        highlightsRefetch(),
+        dashboardInsightsRefetch(),
         useAccountStore.getState().load().catch(() => {}),
       ]);
     }
@@ -115,6 +159,8 @@ const HomeScreen = () => {
   const dismissedBy = useSettings((s) => s.getStartedDismissed);
   const settingsHydrated = useSettings((s) => s.hydrated);
   const updateSettings = useSettings((s) => s.update);
+  const netWorthMilestoneSeen = useSettings((s) => s.netWorthMilestoneSeen);
+  const lastReviewedPeriod = useSettings((s) => s.lastReviewedPeriod);
 
   const progress = progressOf(buildSteps({ transactions, accounts, budgets, bills, goals }));
 
@@ -158,13 +204,50 @@ const HomeScreen = () => {
   const dailySafeToSpend = budgetTotalsThisMonth.daysLeft > 0
     ? Math.round(safeToSpend / budgetTotalsThisMonth.daysLeft)
     : safeToSpend;
+  // Null when there isn't enough of the month yet, or it's already closed — the card
+  // and the week pulse below both fall back to stating today's figure alone.
+  const forecast = projectSafeToSpend(budgets, bills, month);
+  // This MONTH's income-so-far against expenses-so-far plus the forecast's own daily
+  // rate projected across the days left — not the week's figures, which the pulse row
+  // states on their own. Income is never projected forward (see lib/forecast) — it's
+  // typically lumpy, so income-to-date only ever understates likely savings, the safer
+  // direction to be wrong in.
+  const savingsPace = forecast && dashboardSummary
+    ? dashboardSummary.income - (dashboardSummary.expenses + forecast.dailyBurnRate * budgetTotalsThisMonth.daysLeft)
+    : undefined;
 
-  // Action queue — overdue first, then the nearest upcoming, capped at 3.
-  const billGroups = groupBills(bills);
-  const billQueue = [...billGroups.overdue, ...billGroups.upcoming].slice(0, 3);
+  // Null with fewer than 2 trend points — nothing to compare against yet, same as the
+  // sparkline's own floor.
+  const netWorthTrend = dashboardSummary?.netWorthTrend;
+  const netWorthMilestone = netWorthTrend && netWorthTrend.length >= 2
+    ? milestoneCrossed(netWorthTrend[netWorthTrend.length - 2].total, netWorthTrend[netWorthTrend.length - 1].total, netWorthMilestoneSeen)
+    : null;
 
-  // Motivation — the two nearest active (not-yet-achieved) goals.
-  const goalPreview = sortGoals(goals.filter((g) => g.saved < g.target)).slice(0, 2);
+  // Marked "seen" the moment it's shown, not only if tapped — a celebration that
+  // reappears every reload because it was never acknowledged would stop feeling rare.
+  useEffect(() => {
+    if (netWorthMilestone !== null) updateSettings({ netWorthMilestoneSeen: netWorthMilestone });
+  }, [netWorthMilestone, updateSettings]);
+
+  // The period that just closed, week and month independently — a new month is also a
+  // new week, so both can be unseen at once; month wins that day (see
+  // ReviewReadyBanner's own doc comment). Never more than one banner shown at a time.
+  const closedMonthKey = currentPeriodKey("month");
+  const closedWeekKey = currentPeriodKey("week");
+  const reviewBanner =
+    closedMonthKey && closedMonthKey !== lastReviewedPeriod.month
+      ? { period: "month" as const, key: closedMonthKey }
+      : closedWeekKey && closedWeekKey !== lastReviewedPeriod.week
+        ? { period: "week" as const, key: closedWeekKey }
+        : null;
+
+  // Same "seen the moment it's shown" convention as the net-worth milestone above.
+  useEffect(() => {
+    if (reviewBanner) {
+      updateSettings({ lastReviewedPeriod: { ...lastReviewedPeriod, [reviewBanner.period]: reviewBanner.key } });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reviewBanner?.period, reviewBanner?.key]);
 
   // Recency — the three most recent transactions, queued ones included so an offline
   // capture shows up here immediately rather than waiting for a sync that may be minutes
@@ -229,18 +312,15 @@ const HomeScreen = () => {
         />
       )}
 
-      {/* Leads even the health score — a daily "what can I spend" number is checked far
-          more often than a slower, reflective one. Absent only while budgets/bills are
-          still loading, since its own empty state (no budget set) is a real answer, not
-          a placeholder. */}
-      {!budgetsLoading && !billsLoading && (
-        <SafeToSpendCard
-          hasBudgets={budgets.length > 0}
-          safeToSpend={safeToSpend}
-          dailySafeToSpend={dailySafeToSpend}
-          daysLeft={budgetTotalsThisMonth.daysLeft}
-          onPress={budgets.length > 0 ? () => router.push("/budget") : undefined}
-          onSetBudget={() => router.push("/budget")}
+      {/* Anchored to THIS phone's own last visit, not the calendar — absent on a first-
+          ever launch (nothing to compare against yet) and whenever the server hasn't
+          echoed the digest back (an older cached response, or the request still
+          in flight with the previous, unpersonalised query). */}
+      {previousOpenedAt && dashboardSummary.sinceLastOpened && (
+        <SinceLastOpenedCard
+          previousOpenedAt={previousOpenedAt}
+          transactions={dashboardSummary.sinceLastOpened.transactions}
+          spent={dashboardSummary.sinceLastOpened.spent}
         />
       )}
 
@@ -251,8 +331,45 @@ const HomeScreen = () => {
         <HealthScoreCard health={health} onPress={() => router.push("/health")} />
       )}
 
-      {/* The month, under the verdict that reads it. Every tile leads to where its figure
-          comes from — the two halves to their own transactions, savings to the trend that
+      {/* One horizontally swipeable stack in place of several separate vertical cards —
+          same signal (a highlight, a goal's pace, a pattern), without permanently
+          claiming that much space when a brand-new account has none of it yet. */}
+      <ForYouCarousel
+        slides={[
+          highlights.find((h) => h.severity === "warning") && (
+            <HighlightCard
+              highlight={highlights.find((h) => h.severity === "warning")!}
+              onDismiss={dismissHighlight}
+              minHeight={FOR_YOU_SLIDE_HEIGHT}
+            />
+          ),
+          highlights.find((h) => h.severity === "win") && (
+            <HighlightCard
+              highlight={highlights.find((h) => h.severity === "win")!}
+              onDismiss={dismissHighlight}
+              minHeight={FOR_YOU_SLIDE_HEIGHT}
+            />
+          ),
+          dashboardInsights?.forYou.goalWatch && (
+            <GoalWatchSlide slice={dashboardInsights.forYou.goalWatch} />
+          ),
+          dashboardInsights?.forYou.noSpendDays !== null && dashboardInsights?.forYou.noSpendDays !== undefined && (
+            <NoSpendDaysSlide
+              noSpendDays={dashboardInsights.forYou.noSpendDays}
+              daysElapsed={calendarToday(appZone()).getUTCDate()}
+              avgDailySpendCurrent={insights?.avgDailySpendCurrent}
+              avgDailySpendPrevious={insights?.avgDailySpendPrevious}
+            />
+          ),
+          dashboardInsights?.forYou.weekdayHeatmap && (
+            <WeekdayHeatmapSlide cells={dashboardInsights.forYou.weekdayHeatmap} />
+          ),
+        ]}
+      />
+
+      {/* All four together, right after the carousel — one reading of the month, not
+          split across the screen. Every tile still leads to where its figure comes
+          from: the two halves to their own transactions, savings to the trend that
           explains the gap, net worth to the accounts it sums. */}
       <View style={styles.grid}>
         <View style={styles.gridRow}>
@@ -263,6 +380,8 @@ const HomeScreen = () => {
             label="Income"
             amount={dashboardSummary.income}
             onPress={() => openActivity("income")}
+            destination="Activity"
+            trend={dashboardSummary.flowTrend.map((point) => point.income)}
           />
           <SummaryCard
             icon="expenses"
@@ -271,6 +390,9 @@ const HomeScreen = () => {
             label="Expenses"
             amount={dashboardSummary.expenses}
             onPress={() => openActivity("expense")}
+            destination="Activity"
+            trend={dashboardSummary.flowTrend.map((point) => point.expense)}
+            trendGoodDirection="down"
           />
         </View>
 
@@ -287,6 +409,8 @@ const HomeScreen = () => {
             caption={savingsCaption}
             captionColor="info"
             onPress={() => router.push("/insights")}
+            destination="Insights"
+            trend={dashboardSummary.flowTrend.map((point) => point.income - point.expense)}
           />
           <SummaryCard
             icon="investments"
@@ -295,9 +419,68 @@ const HomeScreen = () => {
             label="Net Worth"
             amount={dashboardSummary.netWorth}
             onPress={accounts.length > 0 ? () => netWorthRef.current?.present() : undefined}
+            destination="your accounts"
+            trend={netWorthTrend?.map((point) => point.total)}
           />
         </View>
       </View>
+
+      {netWorthMilestone !== null && (
+        <NetWorthMilestoneBanner
+          milestone={netWorthMilestone}
+          onPress={() => netWorthRef.current?.present()}
+        />
+      )}
+
+      {reviewBanner && (
+        <ReviewReadyBanner
+          label={rangeNavLabel(reviewBanner.period, -1).toLowerCase()}
+          onPress={() => router.push({ pathname: "/review", params: { period: reviewBanner.period, offset: "-1" } })}
+        />
+      )}
+
+      {/* Leads even the health score — a daily "what can I spend" number is checked far
+          more often than a slower, reflective one. Absent only while budgets/bills are
+          still loading, since its own empty state (no budget set) is a real answer, not
+          a placeholder. */}
+      {!budgetsLoading && !billsLoading && (
+        <SafeToSpendCard
+          hasBudgets={budgets.length > 0}
+          safeToSpend={safeToSpend}
+          dailySafeToSpend={dailySafeToSpend}
+          daysLeft={budgetTotalsThisMonth.daysLeft}
+          forecast={forecast}
+          onPress={budgets.length > 0 ? () => router.push("/budget") : undefined}
+          onSetBudget={() => router.push("/budget")}
+        />
+      )}
+
+      {health && <EmergencyFundCard runwayMonths={health.runwayMonths} />}
+
+      <QuickLogRow />
+
+      {insights && (
+        <SpendingSnapshotCard
+          byCategory={insights.byCategory}
+          biggestExpense={
+            dashboardSummary.biggestExpense
+              ? {
+                title: dashboardSummary.biggestExpense.title,
+                amount: dashboardSummary.biggestExpense.amount,
+                daysAgo: calendarDaysBetween(
+                  calendarDate(new Date(dashboardSummary.biggestExpense.occurredAt), appZone()),
+                  calendarToday(appZone()),
+                ),
+              }
+              : null
+          }
+          onPress={() => router.push("/insights")}
+        />
+      )}
+
+      {!budgetsLoading && (
+        <BudgetsAtAGlanceCard items={budgets} onPress={() => router.push("/budget")} />
+      )}
 
       {/* Under the month's figures: those are a reading of thirty days, which doesn't change
           between two glances, while these three rows answer "did that go in?" — the question
@@ -316,22 +499,16 @@ const HomeScreen = () => {
         </View>
       )}
 
-      {billQueue.length > 0 && (
-        <View style={styles.section}>
-          <SectionHeader label="UPCOMING BILLS" onAction={() => router.push("/bills")} />
-          {billQueue.map((bill) => (
-            <BillRow key={bill._id} bill={bill} onPress={() => router.push("/bills")} />
-          ))}
-        </View>
-      )}
+      {dashboardInsights?.pace && <PaceCard pace={dashboardInsights.pace} />}
 
-      {goalPreview.length > 0 && (
-        <View style={styles.section}>
-          <SectionHeader label="SAVINGS GOALS" onAction={() => router.push("/goals")} />
-          {goalPreview.map((goal) => (
-            <GoalCard key={goal._id} goal={goal} onPress={() => router.push("/goals")} />
-          ))}
-        </View>
+      <WeekPulseRow
+        income={dashboardSummary.weekIncome}
+        expense={dashboardSummary.weekExpense}
+        savingsPace={savingsPace}
+      />
+
+      {!billsLoading && (
+        <BillsGlanceCard items={bills} onPress={() => router.push("/bills")} />
       )}
 
       {/* The floor of the screen when there is genuinely nothing to list. Reachable two
@@ -348,7 +525,7 @@ const HomeScreen = () => {
         />
       )}
 
-      <NetWorthSheet ref={netWorthRef} netWorth={dashboardSummary.netWorth} />
+      <NetWorthSheet ref={netWorthRef} netWorth={dashboardSummary.netWorth} trend={netWorthTrend} />
     </ScreenScaffold>
   );
 };

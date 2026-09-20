@@ -28,6 +28,7 @@ import { useNotifications } from "@/store/notifications";
 import { useTitleSuggestionStore } from "@/store/titleSuggestions";
 import { useOutbox } from "@/store/outbox";
 import { usePendingDeletes } from "@/store/pendingDeletes";
+import { useLastOpened } from "@/store/lastOpened";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -168,6 +169,7 @@ const RootLayout = () => {
       const userId = useSession.getState().user?._id;
       if (userId) {
         void useOutbox.getState().load(userId).then(() => useOutbox.getState().drain());
+        void useLastOpened.getState().hydrate(userId);
       }
     }
     else if (status === "guest") {

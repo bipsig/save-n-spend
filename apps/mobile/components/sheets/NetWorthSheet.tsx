@@ -8,8 +8,9 @@ import { AppText } from "@/components/ui/AppText";
 import Button from "@/components/ui/Button";
 import Icon from "@/components/ui/Icon";
 import Money from "@/components/ui/Money";
+import Sparkline from "@/components/charts/Sparkline";
 import { useAccounts } from "@/lib/accounts";
-import { usePrivacyMask } from "@/lib/money";
+import formatMoney, { usePrivacyMask } from "@/lib/money";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { spacing } from "@/theme";
@@ -29,12 +30,16 @@ const byBalance = (a: IAccount, b: IAccount) => b.balance - a.balance;
 type Props = {
   /** The dashboard tile's figure, passed in so the two can't disagree on rounding. */
   netWorth: number;
+  /** Current + up to 3 prior complete-month boundaries, oldest first — same data the
+   *  dashboard tile's own sparkline reads, so the two never disagree either. Length 1
+   *  (or absent) for an account too young to have a trend yet. */
+  trend?: { label: string; total: number }[];
 };
 
 // What the Net Worth tile is made of. The server sums the balance of every account that
 // isn't archived (dashboardController), so these rows add up to the figure above them —
 // which is the whole reason the sheet exists rather than a link to Manage accounts.
-const NetWorthSheet = forwardRef<BottomSheetModal, Props>(({ netWorth }, ref) => {
+const NetWorthSheet = forwardRef<BottomSheetModal, Props>(({ netWorth, trend }, ref) => {
   const innerRef = useRef<BottomSheetModal>(null);
   useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
   const dismiss = () => innerRef.current?.dismiss();
@@ -43,6 +48,8 @@ const NetWorthSheet = forwardRef<BottomSheetModal, Props>(({ netWorth }, ref) =>
   usePrivacyMask(); // subscribe: a peek has to re-render the balances listed below
 
   const owed = accounts.some((a) => a.balance < 0);
+  const hasTrend = !!trend && trend.length >= 2;
+  const trendUp = hasTrend && trend[trend.length - 1].total >= trend[0].total;
 
   return (
     <AppSheet ref={innerRef} scrollable>
@@ -51,16 +58,30 @@ const NetWorthSheet = forwardRef<BottomSheetModal, Props>(({ netWorth }, ref) =>
           NET WORTH
         </AppText>
         <Money value={netWorth} size="2xl" weight="black" />
-        <AppText size="xs" color="inkDim">
-          {accounts.length === 1
-            ? "Across your one account, as it stands now."
-            : `Across your ${accounts.length} accounts, as it stands now.`}
-        </AppText>
+        {hasTrend ? (
+          <>
+            <Sparkline values={trend!.map((point) => point.total)} />
+            <AppText size="xs" color="inkDim">
+              {trendUp ? "Up" : "Down"} from {formatMoney(trend![0].total)} {trend![0].label}.
+            </AppText>
+          </>
+        ) : (
+          <AppText size="xs" color="inkDim">
+            {accounts.length === 1
+              ? "Across your one account, as it stands now."
+              : `Across your ${accounts.length} accounts, as it stands now.`}
+          </AppText>
+        )}
       </View>
 
       <View style={styles.list}>
         {[...accounts].sort(byBalance).map((account) => (
-          <View key={account._id} style={styles.row}>
+          <View
+            key={account._id}
+            style={styles.row}
+            accessible
+            accessibilityLabel={`${account.name}, ${TYPE_LABEL[account.type]}, ${formatMoney(account.balance)}`}
+          >
             <Icon
               name={(account.icon ?? "wallet") as IconName}
               size={20}

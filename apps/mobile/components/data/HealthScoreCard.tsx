@@ -47,8 +47,16 @@ const HealthScoreCard = ({ health, onPress }: Props) => {
   // never swaps position between two loads of the same screen.
   const shown = health.pillars.filter((pillar) => pillar.score !== null).slice(0, 3);
 
+  const label = `Finance health score: ${health.score} out of 100, ${health.rating}. Opens Health.`;
+
   return (
-    <PressableScale onPress={onPress} disabled={!onPress} scaleTo={0.98}>
+    <PressableScale
+      onPress={onPress}
+      disabled={!onPress}
+      scaleTo={0.98}
+      accessibilityRole={onPress ? "button" : undefined}
+      accessibilityLabel={onPress ? label : undefined}
+    >
       <Card style={styles.card}>
         <View style={styles.topContainer}>
           <Icon

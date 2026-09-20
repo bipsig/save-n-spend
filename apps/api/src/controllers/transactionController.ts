@@ -247,6 +247,11 @@ export const getTitleSuggestions = async (req: Request, res: Response): Promise<
                     category: "$category"
                 },
                 title: { $first: "$title" },
+                // So a "quick log" chip can prefill and repeat a habitual transaction without
+                // a second round trip to resolve which one — same `$first` after the newest-
+                // first sort above, so this is the single most recent transaction in the bucket.
+                lastAmount: { $first: "$amount" },
+                lastTransactionId: { $first: "$_id" },
                 count: { $sum: 1 }
             }
         },
@@ -258,7 +263,9 @@ export const getTitleSuggestions = async (req: Request, res: Response): Promise<
         title: row.title as string,
         type: row._id.type as "expense" | "income",
         category: row._id.category ? (row._id.category as mongoose.Types.ObjectId).toString() : null,
-        count: row.count as number
+        count: row.count as number,
+        lastAmount: row.lastAmount as number,
+        lastTransactionId: (row.lastTransactionId as mongoose.Types.ObjectId).toString()
     }));
 
     reply.ok(res, suggestions, "Title suggestions fetched");
