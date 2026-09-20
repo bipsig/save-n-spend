@@ -2,7 +2,7 @@
   "expo": {
     "name": "Save n Spend",
     "slug": "save-n-spend",
-    "version": "1.10.0",
+    "version": "2.0.0",
     "scheme": "savenspend",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
