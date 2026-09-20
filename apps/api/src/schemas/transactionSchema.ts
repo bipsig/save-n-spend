@@ -7,6 +7,9 @@ const baseTransaction = z.object({
     receiptUrl: z.string().optional(),
     paymentMode: z.enum(["cash", "upi", "card", "transfer"]).optional(),
     occurredAt: z.string().optional(),
+    // Set by an offline-queued create so a replay after a lost response is a no-op
+    // rather than a duplicate — see Transaction.ts's partial-unique index on this field.
+    clientId: z.string().min(8).max(64).optional(),
 });
 
 const incomeTransaction = baseTransaction.extend({

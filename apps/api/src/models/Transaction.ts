@@ -19,6 +19,8 @@ export interface ITransaction extends Document {
     receiptUrl?: string | null;
     occurredAt: Date;
     splitGroupId?: mongoose.Types.ObjectId | null;
+    /** Set only by an offline-queued create; absent on every ordinary transaction. */
+    clientId?: string | null;
 };
 
 const TransactionSchema = new Schema<ITransaction>({
@@ -36,11 +38,20 @@ const TransactionSchema = new Schema<ITransaction>({
     occurredAt: { type: Schema.Types.Date, required: true },
     // Shared by every member of a split expense — the expense (the user's share) and one
     // transfer per person owed. Deleting the expense deletes the group by this key.
-    splitGroupId: { type: Schema.Types.ObjectId, default: null }
+    splitGroupId: { type: Schema.Types.ObjectId, default: null },
+    clientId: { type: String }
 }, { timestamps: true });
 
 TransactionSchema.index({ userId: 1, occurredAt: -1 });
 TransactionSchema.index({ userId: 1, splitGroupId: 1 }, { sparse: true });
+// Partial (not sparse): only index queued-offline creates, so the many ordinary
+// transactions with clientId:undefined are never indexed and can't collide on unique.
+// A duplicate replay throws E11000 inside the create's own session.withTransaction,
+// which errorHandler.ts already turns into a 409 the client reads as "already applied".
+TransactionSchema.index(
+    { userId: 1, clientId: 1 },
+    { unique: true, partialFilterExpression: { clientId: { $type: 'string' } } }
+);
 TransactionSchema.plugin(mongoosePaginate);
 
 export default mongoose.model<ITransaction, PaginateModel<ITransaction>>(

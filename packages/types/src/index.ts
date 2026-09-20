@@ -104,6 +104,9 @@ export interface ITransaction {
   // Set on every member of a split: the expense (the user's share) and its sibling
   // transfers (what each person owes). Absent on ordinary transactions.
   splitGroupId?: string | null
+  // Set only by an offline-queued create, so the mobile feed can dedupe its synthetic
+  // pending row against this same transaction once it lands from the server.
+  clientId?: string | null
 }
 
 // One title a user has actually typed before, ranked by how often — the raw material for
