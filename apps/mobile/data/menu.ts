@@ -16,6 +16,7 @@ export const moneyItems: MoreItem[] = [
   { key: "budget", label: "Manage Budget", icon: "insights", tint: "violet", path: "/budget" },
   { key: "bills",  label: "Bills & Payments", icon: "bills", tint: "amber",  path: "/bills" },
   { key: "goals",  label: "Savings Goals", icon: "savings", tint: "green",  path: "/goals" },
+  { key: "reviews", label: "Reviews", icon: "summary", tint: "indigo", path: "/review-history" },
 ];
 
 // APP — settings & support. Help sits here as well as inside Settings' ABOUT

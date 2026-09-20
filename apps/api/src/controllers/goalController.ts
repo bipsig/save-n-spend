@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import Goal from "../models/Goal";
+import GoalContributionLog from "../models/GoalContributionLog";
 import { createGoalSchema, updateGoalSchema, contributeGoalSchema } from "../schemas/goalSchema";
 import { checkGoalMilestone } from "../services/goalAlertService";
 import { AppError } from "../utils/AppError";
@@ -72,6 +73,22 @@ export const contributeGoal = async (req: Request, res: Response): Promise<void>
 
     goal.saved = Math.min(goal.saved + amount, goal.target);
     await goal.save();
+
+    // The only record of WHEN this happened — Goal.saved is a plain running total with no
+    // history of its own. Logged as the amount actually applied (clamped at target), not
+    // the raw request, so a review's "saved this period" always matches the goal's own
+    // number. Best-effort: a failure here must not roll back a contribution that already
+    // landed.
+    try {
+        await GoalContributionLog.create({
+            userId: req.user?.userId,
+            goalId: goal._id,
+            amount: goal.saved - savedBefore,
+        });
+    }
+    catch (err) {
+        console.error("failed to log goal contribution", err);
+    }
 
     await checkGoalMilestone(goal, savedBefore);
 

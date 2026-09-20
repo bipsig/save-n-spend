@@ -55,3 +55,15 @@ export const daysUntilDue = (dueDate: Date, now: Date, zone: string): number => 
     const due = startOfDayInZone(dueDate, zone).getTime();
     return Math.round((due - today) / 86_400_000);
 };
+
+/**
+ * Whole zone-local days a PAID bill was late by: 0 or negative = on time. Only meaningful
+ * for a non-recurring bill — a recurring one's `dueDate` has already rolled forward to its
+ * NEXT occurrence by the time this runs (see `markBillPaid`), so comparing it against a
+ * past `lastPaidAt` would be checking payment against the wrong due date.
+ */
+export const daysLate = (dueDate: Date, lastPaidAt: Date, zone: string): number => {
+    const due = startOfDayInZone(dueDate, zone).getTime();
+    const paid = startOfDayInZone(lastPaidAt, zone).getTime();
+    return Math.round((paid - due) / 86_400_000);
+};

@@ -34,6 +34,11 @@ export interface DeviceSettings {
    *  reinstall or a second device re-showing one already seen is an acceptable cost for
    *  a card that's purely celebratory and never acted on. */
   netWorthMilestoneSeen: number;
+  /** The most recent week/month `periodKey` the ReviewReadyBanner has already shown, so
+   *  it nudges once per closed period rather than every time the dashboard loads.
+   *  Marked seen the moment it's SHOWN, not only if tapped — same convention as
+   *  `netWorthMilestoneSeen`. */
+  lastReviewedPeriod: { week: string | null; month: string | null };
 }
 
 const DEFAULTS: DeviceSettings = {
@@ -42,6 +47,7 @@ const DEFAULTS: DeviceSettings = {
   autoLockSeconds: 60,
   getStartedDismissed: [],
   netWorthMilestoneSeen: 0,
+  lastReviewedPeriod: { week: null, month: null },
 };
 
 /** How long a peek lasts — long enough to read a screenful, short enough that putting the
@@ -82,8 +88,8 @@ export const useSettings = create<SettingsState>((set, get) => ({
   // written, keeping the stored shape identical to the state's.
   update: (patch) => {
     set(patch);
-    const { privacyMode, appLock, autoLockSeconds, getStartedDismissed, netWorthMilestoneSeen } = get();
-    void writeJson(STORAGE_KEY, { privacyMode, appLock, autoLockSeconds, getStartedDismissed, netWorthMilestoneSeen });
+    const { privacyMode, appLock, autoLockSeconds, getStartedDismissed, netWorthMilestoneSeen, lastReviewedPeriod } = get();
+    void writeJson(STORAGE_KEY, { privacyMode, appLock, autoLockSeconds, getStartedDismissed, netWorthMilestoneSeen, lastReviewedPeriod });
     // Switching privacy mode ON must not leave a peek running — it would mask nothing.
     if (patch.privacyMode !== undefined) get().hide();
   },

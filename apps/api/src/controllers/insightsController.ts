@@ -170,7 +170,7 @@ type periodType = {
 //
 // Stepped with the zone-aware helpers, not by adding milliseconds: a month is 28–31 days,
 // and across a DST change a week is not 168 hours.
-const parsePeriod = (period: string, offset: number, zone: string): periodType => {
+export const parsePeriod = (period: string, offset: number, zone: string): periodType => {
 
     const now = new Date();
 
@@ -235,7 +235,7 @@ type CategorySlice = {
  * Archived categories are included in the name lookup on purpose: spend filed under one before
  * it was archived still needs something to be called.
  */
-const getCategoryBreakDown = async (startTime: Date, endTime: Date, req: Request): Promise<CategorySlice[]> => {
+export const getCategoryBreakDown = async (startTime: Date, endTime: Date, req: Request): Promise<CategorySlice[]> => {
     const categories = await Category.find({
         userId: req.user?.userId
     })
@@ -486,7 +486,7 @@ const getIncomeVsExpense = async (startTime: Date, endTime: Date, period: string
 const granularityFor = (period: string): "hour" | "day" | "month" =>
     period === "year" ? "month" : period === "day" ? "hour" : "day";
 
-const getTrend = async (
+export const getTrend = async (
     startTime: Date,
     endTime: Date,
     period: string,
