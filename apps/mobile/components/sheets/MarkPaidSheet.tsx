@@ -10,6 +10,7 @@ import PressableScale from "@/components/ui/PressableScale";
 import { AppText } from "@/components/ui/AppText";
 import { useCategoryById } from "@/lib/categories";
 import { useAccountById, useDefaultAccount } from "@/lib/accounts";
+import { useAccountStore } from "@/store/accounts";
 import { post } from "@/lib/api";
 import { haptics } from "@/lib/haptics";
 import { toast } from "@/store/toast";
@@ -43,6 +44,8 @@ const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
 
   const accountRef = useRef<BottomSheetModal>(null);
   const category = useCategoryById(bill?.category ?? null);
+  const investment = useAccountById(bill?.toInvestment ?? null);
+  const isSip = !!bill?.toInvestment;
   const defaultAccount = useDefaultAccount();
 
   const [accountId, setAccountId] = useState<string | null>(null);
@@ -61,13 +64,20 @@ const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
     setError(null);
     try {
       await post(`/bills/${bill._id}/${action}`, action === "pay" && accountId ? { account: accountId } : undefined);
+      // Paying moves money (an expense, or a transfer into a holding). The account store
+      // backs Net Worth's per-account rows and Add-Transaction's "available" line, and the
+      // dashboard doesn't reload accounts on focus — so without this they'd read stale until
+      // a manual reload. Skipping doesn't move money, so it needs no reload.
+      if (action === "pay") await useAccountStore.getState().load().catch(() => {});
       dismiss();
       onChanged();
       // Names the consequence the sheet promised, so the receipt matches the preview:
       // paying moves money, skipping deliberately doesn't.
       toast.success(
         action === "pay"
-          ? `${bill.name} paid — ${formatMoney(bill.amount)} logged`
+          ? isSip
+            ? `${formatMoney(bill.amount)} invested in ${investment?.name ?? bill.name}`
+            : `${bill.name} paid — ${formatMoney(bill.amount)} logged`
           : `${bill.name} skipped this cycle — no money moved`
       );
     }
@@ -89,12 +99,12 @@ const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
         <>
           <View style={styles.identity}>
             <Icon
-              name={(category?.icon ?? "bills") as IconName}
+              name={isSip ? "investments" : ((category?.icon ?? "bills") as IconName)}
               size={30}
               container="square"
               containerSize={64}
               containerRadius={21}
-              gradient={(category?.color ?? "accent") as ColorToken}
+              gradient={isSip ? "green" : ((category?.color ?? "accent") as ColorToken)}
             />
             <AppText size="md" weight="black">
               {bill.name}
@@ -109,9 +119,15 @@ const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
           </AppText>
 
           <View style={styles.effects}>
-            <Effect icon="budgetOk" color="success">
-              Logs a <AppText size="sm" weight="bold" color="ink">{formatMoney(bill.amount)}</AppText> expense in {category?.name ?? "Uncategorized"}
-            </Effect>
+            {isSip ? (
+              <Effect icon="investments" color="success">
+                Invests <AppText size="sm" weight="bold" color="ink">{formatMoney(bill.amount)}</AppText> into {investment?.name ?? "your holding"} — not spending
+              </Effect>
+            ) : (
+              <Effect icon="budgetOk" color="success">
+                Logs a <AppText size="sm" weight="bold" color="ink">{formatMoney(bill.amount)}</AppText> expense in {category?.name ?? "Uncategorized"}
+              </Effect>
+            )}
             <Effect icon="budgetOk" color="success">
               This bill flips to <AppText size="sm" weight="bold" color="ink">PAID</AppText> for this cycle
             </Effect>
@@ -129,7 +145,7 @@ const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
             <Icon name="wallet" size={18} color="inkDim" />
             <View style={styles.selText}>
               <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
-                PAY FROM
+                {isSip ? "INVEST FROM" : "PAY FROM"}
               </AppText>
               <AppText size="sm" weight="semibold">
                 {payFrom?.name ?? "Default account"}
@@ -145,7 +161,7 @@ const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
           )}
 
           <Button
-            label="Mark as Paid"
+            label={isSip ? "Mark as invested" : "Mark as Paid"}
             variant="success"
             onPress={() => run("pay")}
             loading={busy === "pay"}

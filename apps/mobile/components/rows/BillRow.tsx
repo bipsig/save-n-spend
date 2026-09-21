@@ -7,9 +7,11 @@ import Badge from "../ui/Badge";
 import PressableScale from "../ui/PressableScale";
 import RowActions from "./RowActions";
 import { useCategoryById } from "@/lib/categories";
+import { useAccountById } from "@/lib/accounts";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { spacing } from "@/theme";
+import { chipTintFor } from "@/theme/gradients";
 import { formatDueLabel } from "@/lib/date";
 import { isActionable } from "@/lib/bills";
 import Money from "../ui/Money";
@@ -24,13 +26,18 @@ type Props = {
 
 const BillRow = ({ bill, onPress, onEdit, onDelete }: Props) => {
   const category = useCategoryById(bill.category);
+  // A SIP: funds an investment rather than being spending — shown with the investment look.
+  const investment = useAccountById(bill.toInvestment);
+  const isSip = !!bill.toInvestment;
 
   // A pending bill already pushed into a future period (paid/skipped this cycle,
   // or created ahead) — shown but not yet actionable.
   const scheduled = bill.status === "pending" && !isActionable(bill);
 
   const dueLabel = formatDueLabel(bill.dueDate, bill.status, bill.lastPaidAt);
-  const meta = bill.recurring && bill.frequency ? `${dueLabel} · ${bill.frequency}` : dueLabel;
+  const meta = isSip
+    ? [dueLabel, investment?.name ?? "SIP", bill.frequency].filter(Boolean).join(" · ")
+    : bill.recurring && bill.frequency ? `${dueLabel} · ${bill.frequency}` : dueLabel;
 
   // Tone the due label by urgency (value-in-hand derivation): overdue = red,
   // paid/scheduled = dim, otherwise amber when it's coming up soon.
@@ -45,11 +52,11 @@ const BillRow = ({ bill, onPress, onEdit, onDelete }: Props) => {
     <PressableScale onPress={onPress} disabled={!onPress || bill.status === "paid"} scaleTo={0.98}>
       <Card style={[styles.container, bill.status === "overdue" && styles.overdue, scheduled && styles.scheduled]}>
       <Icon
-        name={(category?.icon ?? "bills") as IconName}
+        name={isSip ? "investments" : ((category?.icon ?? "bills") as IconName)}
         size={22}
         container="square"
         containerSize={44}
-        gradient={(category?.color ?? "accent") as ColorToken}
+        gradient={isSip ? chipTintFor(investment?.color) : ((category?.color ?? "accent") as ColorToken)}
       />
 
       {/* Capped to a line each: the trailing actions take width off this column, and a

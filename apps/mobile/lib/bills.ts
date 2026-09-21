@@ -82,12 +82,15 @@ export const useBills = () => {
 export type BillPatch = {
   name: string;
   amount: number;
-  category: string;
+  /** Null when the bill funds an investment (a SIP has no category). */
+  category?: string | null;
   dueDate: string;
   recurring: boolean;
   frequency?: BillFrequency;
   /** 0 = no advance nudge. The due-day and overdue notices aren't a lead time. */
   reminderDays: number;
+  /** An investment account id when this bill is a SIP; null clears it back to an expense. */
+  toInvestment?: string | null;
 };
 
 export const updateBill = (id: string, body: BillPatch) => patch<IBill>(`/bills/${id}`, body);
@@ -132,7 +135,10 @@ export const owedThroughMonth = (items: IBill[], month: string): number => {
  *  month, plus which bills make it up — named so the figure isn't just a number with no
  *  way to sanity-check it. */
 export const recurringBillsTotal = (items: IBill[]): { total: number; topNames: string[] } => {
-  const recurring = items.filter((b) => b.recurring && b.status !== "paid");
+  // SIPs (bills that fund an investment) are excluded — a contribution is saving, not a
+  // fixed cost, so it doesn't belong in the "committed to bills" figure. They surface on the
+  // Investments hub's Recurring section instead.
+  const recurring = items.filter((b) => b.recurring && b.status !== "paid" && !b.toInvestment);
   const total = recurring.reduce((sum, b) => sum + b.amount, 0);
   const topNames = [...recurring].sort((a, b) => b.amount - a.amount).slice(0, 3).map((b) => b.name);
   return { total, topNames };
@@ -144,8 +150,10 @@ const URGENT_WINDOW_DAYS = 6;
 
 export const urgentBills = (items: IBill[], now: Date = new Date()): { count: number; total: number } => {
   const zone = appZone();
+  // SIPs are left out of the dashboard "N bills due soon" nudge for the same reason as
+  // recurringBillsTotal — they aren't bills. A SIP due soon shows on the Investments hub.
   const urgent = items.filter(
-    (b) => b.status !== "paid" && daysUntilDue(new Date(b.dueDate), now, zone) <= URGENT_WINDOW_DAYS,
+    (b) => b.status !== "paid" && !b.toInvestment && daysUntilDue(new Date(b.dueDate), now, zone) <= URGENT_WINDOW_DAYS,
   );
   return { count: urgent.length, total: urgent.reduce((sum, b) => sum + b.amount, 0) };
 };

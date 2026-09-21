@@ -7,6 +7,7 @@ import { BottomSheetModal, BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import type { IBill } from "@save-n-spend/types";
 import AppSheet from "./AppSheet";
 import CategoryPickerSheet from "./CategoryPickerSheet";
+import AccountPickerSheet from "./AccountPickerSheet";
 import BackButton from "@/components/shell/BackButton";
 import Button from "@/components/ui/Button";
 import Chip from "@/components/ui/Chip";
@@ -18,6 +19,8 @@ import DateField from "@/components/ui/DateField";
 import AmountHeroInput from "@/components/ui/AmountHeroInput";
 import { AppText } from "@/components/ui/AppText";
 import { useCategoryById } from "@/lib/categories";
+import { useAccountById } from "@/lib/accounts";
+import { chipTintFor } from "@/theme/gradients";
 import { haptics } from "@/lib/haptics";
 import { updateBill } from "@/lib/bills";
 import { parseMoney } from "@/lib/money";
@@ -44,9 +47,19 @@ const schema = z.object({
     .regex(/^\s*₹?\s*[\d,]+(\.\d{1,2})?\s*$/, "Enter a valid amount")
     .refine((v) => parseMoney(v) > 0, "Enter a valid amount"),
   frequency: z.enum(["once", "monthly", "yearly"]),
-  category: z.string().min(1, "Choose a category"),
+  category: z.string(),
   dueDate: z.date(),
   remind: z.boolean(),
+  // A SIP: when on, the bill funds an investment (a transfer) instead of an expense, so it
+  // needs an investment account instead of a category.
+  fundsInvestment: z.boolean(),
+  toInvestment: z.string().nullable(),
+}).superRefine((data, ctx) => {
+  if (data.fundsInvestment) {
+    if (!data.toInvestment) ctx.addIssue({ code: "custom", path: ["toInvestment"], message: "Choose an investment" });
+  } else if (data.category.length === 0) {
+    ctx.addIssue({ code: "custom", path: ["category"], message: "Choose a category" });
+  }
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -60,6 +73,8 @@ const defaults = (bill: IBill | null): FormValues => ({
   category: bill?.category ?? "",
   dueDate: bill ? new Date(bill.dueDate) : startOfToday(),
   remind: bill ? (bill.reminderDays ?? REMIND_DAYS) > 0 : true,
+  fundsInvestment: !!bill?.toInvestment,
+  toInvestment: bill?.toInvestment ?? null,
 });
 
 // One sheet for both, like EditCategorySheet: the fields are identical and `bill` being
@@ -73,6 +88,7 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
   const dismiss = () => innerRef.current?.dismiss();
 
   const pickerRef = useRef<BottomSheetModal>(null);
+  const investmentPickerRef = useRef<BottomSheetModal>(null);
 
   const editing = bill !== null;
   const [submitting, setSubmitting] = useState(false);
@@ -101,6 +117,8 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
   }, [bill, reset]);
 
   const category = useCategoryById(watch("category"));
+  const fundsInvestment = watch("fundsInvestment");
+  const investment = useAccountById(watch("toInvestment"));
 
   const onSubmit = async (data: FormValues) => {
     const recurring = data.frequency !== "once";
@@ -108,13 +126,17 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
     const body = {
       name,
       amount: parseMoney(data.amount),
-      category: data.category,
       dueDate: toZonedDayISO(data.dueDate),
       recurring,
       ...(recurring ? { frequency: data.frequency as "monthly" | "yearly" } : {}),
       // Always sent, unlike a bare omission: turning the switch off has to overwrite
       // the lead already stored, or the bill keeps nudging.
       reminderDays: data.remind ? REMIND_DAYS : 0,
+      // A SIP funds an investment (no category); an ordinary bill has a category and no
+      // investment. Both keys sent so switching a bill between the two clears the other.
+      ...(data.fundsInvestment
+        ? { toInvestment: data.toInvestment, category: null }
+        : { category: data.category, toInvestment: null }),
     };
 
     setSubmitting(true);
@@ -219,25 +241,68 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
         />
       </View>
 
-      <PressableScale style={styles.selRow} onPress={() => pickerRef.current?.present()} scaleTo={0.98}>
-        <Icon
-          name={(category?.icon ?? "add") as IconName}
-          size={17}
-          containerSize={34}
-          containerRadius={11}
-          container="square"
-          gradient={(category?.color ?? "accent") as ColorToken}
-        />
-        <View style={styles.selText}>
-          <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
-            CATEGORY
+      {/* A SIP funds an investment instead of being spending. Toggling on swaps the
+          category picker below for an investment picker. */}
+      <View style={styles.remindRow}>
+        <View style={styles.remindText}>
+          <AppText size="sm" weight="bold">
+            Funds an investment
           </AppText>
-          <AppText size="sm" weight="semibold" color={category ? "ink" : "inkDim"}>
-            {category?.name ?? "Choose a category"}
+          <AppText size="xs" color="inkDim">
+            A SIP — logs a contribution to a holding, not spending
           </AppText>
         </View>
-        <Icon name="chevronRight" size={20} color="inkDim" />
-      </PressableScale>
+        <Toggle
+          value={fundsInvestment}
+          onValueChange={(on) => {
+            setValue("fundsInvestment", on, { shouldValidate: true });
+            if (on) investmentPickerRef.current?.present();
+            else setValue("toInvestment", null, { shouldValidate: true });
+          }}
+        />
+      </View>
+
+      {fundsInvestment ? (
+        <PressableScale style={styles.selRow} onPress={() => investmentPickerRef.current?.present()} scaleTo={0.98}>
+          <Icon
+            name={(investment?.icon ?? "investments") as IconName}
+            size={17}
+            containerSize={34}
+            containerRadius={11}
+            container="square"
+            gradient={chipTintFor(investment?.color)}
+          />
+          <View style={styles.selText}>
+            <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
+              INVEST IN
+            </AppText>
+            <AppText size="sm" weight="semibold" color={investment ? "ink" : "inkDim"}>
+              {investment?.name ?? "Choose an investment"}
+            </AppText>
+          </View>
+          <Icon name="chevronRight" size={20} color="inkDim" />
+        </PressableScale>
+      ) : (
+        <PressableScale style={styles.selRow} onPress={() => pickerRef.current?.present()} scaleTo={0.98}>
+          <Icon
+            name={(category?.icon ?? "add") as IconName}
+            size={17}
+            containerSize={34}
+            containerRadius={11}
+            container="square"
+            gradient={(category?.color ?? "accent") as ColorToken}
+          />
+          <View style={styles.selText}>
+            <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
+              CATEGORY
+            </AppText>
+            <AppText size="sm" weight="semibold" color={category ? "ink" : "inkDim"}>
+              {category?.name ?? "Choose a category"}
+            </AppText>
+          </View>
+          <Icon name="chevronRight" size={20} color="inkDim" />
+        </PressableScale>
+      )}
 
       <Controller
         control={control}
@@ -257,9 +322,9 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
         )}
       />
 
-      {(errors.name || errors.amount || errors.category || error) && (
+      {(errors.name || errors.amount || errors.category || errors.toInvestment || error) && (
         <AppText size="xs" color="danger">
-          {errors.name?.message ?? errors.amount?.message ?? errors.category?.message ?? error}
+          {errors.name?.message ?? errors.amount?.message ?? errors.category?.message ?? errors.toInvestment?.message ?? error}
         </AppText>
       )}
 
@@ -275,6 +340,14 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
       ref={pickerRef}
       kind="expense"
       onPick={(categoryId) => setValue("category", categoryId, { shouldValidate: true })}
+    />
+
+    <AccountPickerSheet
+      ref={investmentPickerRef}
+      title="Invest in"
+      filterType="investment"
+      selectedId={watch("toInvestment")}
+      onPick={(accountId) => setValue("toInvestment", accountId, { shouldValidate: true })}
     />
     </>
   );
