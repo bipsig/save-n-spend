@@ -78,6 +78,14 @@ export const transactionSummaryQuerySchema = z.object({
     path: ["endDate"]
 })
 
+// Converting an existing expense into an investment contribution. Its own endpoint rather
+// than part of updateTransaction: that schema is a flat partial with no `type` and a
+// non-nullable `category`, and this deliberately changes both (expense → transfer, category
+// dropped) plus sets the destination — invariants the general edit path doesn't enforce.
+export const convertToInvestmentSchema = z.object({
+    toAccount: z.string(),
+}).strict();
+
 export const updateTransactionSchema = z.object({
     amount: z.number().int().positive().optional(),
     account: z.string().optional(),

@@ -1,5 +1,6 @@
 import cron from "node-cron";
 import mongoose from "mongoose";
+import Account from "../models/Account";
 import Bill from "../models/Bill";
 import Goal from "../models/Goal";
 import Transaction from "../models/Transaction";
@@ -43,6 +44,10 @@ const SEND_HOUR = 18;
 const DAILY_HOUR = 18;
 const WEEKLY_HOUR = 19;
 const MONTHLY_HOUR = 20;
+/** The revalue-investments nudge, on the user's own chosen day of month. Same evening slot
+ *  as the monthly digest — a different type and dedupe key, so if a user's reminder day is
+ *  the 1st the two are distinct nudges, not a collision. */
+const REVALUE_HOUR = 20;
 
 /** How far ahead a goal deadline starts being mentioned. */
 const DEADLINE_WINDOW_DAYS = 7;
@@ -69,6 +74,8 @@ type ReminderUser = {
             dailySummary?: boolean;
             weeklySummary?: boolean;
             monthlySummary?: boolean;
+            investmentReminder?: boolean;
+            investmentReminderDay?: number;
         };
     };
 };
@@ -123,12 +130,14 @@ const remindBills = async (user: ReminderUser, zone: string, now: Date): Promise
         // bill's next period is a new key without any state to reset.
         const due = dayKeyInZone(bill.dueDate, zone);
         const lead = bill.reminderDays ?? user.prefs?.notifications?.billReminderLead ?? 3;
+        // A SIP bill funds an investment — the nudge reads as investing, not paying a bill.
+        const sip = !!bill.toInvestment;
 
         if (days < 0) {
             await notify(user as NotifiableUser, {
                 type: "billOverdue",
-                title: `${bill.name} is overdue`,
-                body: `${amount} was due ${plural(-days, "day")} ago.`,
+                title: sip ? `${bill.name} — SIP overdue` : `${bill.name} is overdue`,
+                body: sip ? `${amount} was due to invest ${plural(-days, "day")} ago.` : `${amount} was due ${plural(-days, "day")} ago.`,
                 dedupeKey: `bill:${String(bill._id)}:overdue:${due}`,
                 link: { screen: "bills", id: String(bill._id) },
             });
@@ -139,8 +148,8 @@ const remindBills = async (user: ReminderUser, zone: string, now: Date): Promise
             // Its own key, so someone reminded three days early still hears about it on the day.
             await notify(user as NotifiableUser, {
                 type: "billReminder",
-                title: `${bill.name} is due today`,
-                body: `${amount} due today.`,
+                title: sip ? `Time to invest — ${bill.name}` : `${bill.name} is due today`,
+                body: sip ? `${amount} to invest today.` : `${amount} due today.`,
                 dedupeKey: `bill:${String(bill._id)}:today:${due}`,
                 link: { screen: "bills", id: String(bill._id) },
             });
@@ -150,8 +159,8 @@ const remindBills = async (user: ReminderUser, zone: string, now: Date): Promise
         if (days <= lead) {
             await notify(user as NotifiableUser, {
                 type: "billReminder",
-                title: `${bill.name} due in ${plural(days, "day")}`,
-                body: `${amount} due on ${dateLabel(bill.dueDate, zone)}.`,
+                title: sip ? `${bill.name} · invest in ${plural(days, "day")}` : `${bill.name} due in ${plural(days, "day")}`,
+                body: sip ? `${amount} to invest on ${dateLabel(bill.dueDate, zone)}.` : `${amount} due on ${dateLabel(bill.dueDate, zone)}.`,
                 dedupeKey: `bill:${String(bill._id)}:due:${due}`,
                 link: { screen: "bills", id: String(bill._id) },
             });
@@ -288,6 +297,27 @@ const sendMonthlySummary = async (user: ReminderUser, zone: string, now: Date): 
     });
 };
 
+const sendRevalueReminder = async (user: ReminderUser, zone: string, now: Date): Promise<void> => {
+    if (!wantsNotification(user.prefs?.notifications, "revalueInvestments")) return;
+
+    // Nothing to revalue → no nudge. Cheap count, and it keeps the reminder honest for
+    // someone who turned it on but hasn't added an investment yet.
+    const count = await Account.countDocuments({ userId: user._id, type: "investment", isArchived: false });
+    if (count === 0) return;
+
+    await notify(user as NotifiableUser, {
+        type: "revalueInvestments",
+        title: "Time to update your investments",
+        body: `Update what your ${plural(count, "investment")} ${count === 1 ? "is" : "are"} worth today to keep your net worth and returns accurate.`,
+        // Month-scoped, so it fires at most once in a given month however many ticks run.
+        dedupeKey: `revalue:${monthLabelInZone(now, zone)}`,
+        // `id: "revalue"` is the sentinel routeFor reads to open the hub with its revalue
+        // sheet already up — the nudge's whole point is to prompt the update, not just land
+        // on the screen. A plain investments link (e.g. a future milestone push) omits it.
+        link: { screen: "investments", id: "revalue" },
+    });
+};
+
 /**
  * One pass over every user who hasn't switched notifications off. `now` is a parameter so a
  * script or test can drive this at an arbitrary instant — nothing inside reads the clock. A full
@@ -326,6 +356,11 @@ export const runReminders = async (now: Date = new Date()): Promise<void> => {
 
             if (day === 1 && hour >= MONTHLY_HOUR) {
                 await sendMonthlySummary(user as ReminderUser, zone, now);
+            }
+
+            // On the user's own chosen day of month (default 1, capped at 28 on the way in).
+            if (day === (user.prefs?.notifications?.investmentReminderDay ?? 1) && hour >= REVALUE_HOUR) {
+                await sendRevalueReminder(user as ReminderUser, zone, now);
             }
         }
         catch (err) {

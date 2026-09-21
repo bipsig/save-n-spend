@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
     AVERAGE_MONTHS,
     categoryRoller,
+    contributionStreak,
     rollUpFlows,
     snapshotWindow,
 } from "./highlightSnapshotMath";
@@ -299,5 +300,29 @@ describe("rollUpFlows", () => {
         assert.deepEqual(flows.current, { income: 0, expense: 0 });
         assert.deepEqual(flows.thisMonthByCategory, []);
         assert.deepEqual(flows.categoryAverages, []);
+    });
+});
+
+describe("contributionStreak", () => {
+    const ZONE = "Asia/Kolkata";
+    // Mid-September 2026.
+    const now = new Date("2026-09-15T06:00:00Z");
+
+    it("counts consecutive months ending at this month when it has a contribution", () => {
+        assert.equal(contributionStreak(new Set(["2026-09", "2026-08", "2026-07"]), now, ZONE), 3);
+    });
+
+    it("falls back to last month when this month's contribution hasn't landed yet", () => {
+        // No 2026-09 yet, but Aug/Jul/Jun in a row → streak still counts (SIP not due yet).
+        assert.equal(contributionStreak(new Set(["2026-08", "2026-07", "2026-06"]), now, ZONE), 3);
+    });
+
+    it("is zero when neither this nor last month has one", () => {
+        assert.equal(contributionStreak(new Set(["2026-05"]), now, ZONE), 0);
+    });
+
+    it("stops at the first gap", () => {
+        // Sep, Aug present; Jul missing → streak is 2, not 4.
+        assert.equal(contributionStreak(new Set(["2026-09", "2026-08", "2026-06", "2026-05"]), now, ZONE), 2);
     });
 });

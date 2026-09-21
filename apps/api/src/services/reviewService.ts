@@ -169,6 +169,31 @@ export const buildReview = async (
         .filter((b) => !b.recurring && b.lastPaidAt && daysLate(b.dueDate, b.lastPaidAt, zone) > 0)
         .map((b) => ({ name: b.name, daysLate: daysLate(b.dueDate, b.lastPaidAt as Date, zone) }));
 
+    // Investments this period — contributed (transfers in), portfolio change (net of the
+    // value-updates), and the holding that gained most. Null when there are no investments.
+    const investmentAccounts = await Account.find({ userId: oid, type: "investment", isArchived: false }).select("name").lean();
+    let investments: ReviewPayload["investments"] = null;
+    if (investmentAccounts.length > 0) {
+        const invIds = investmentAccounts.map((a) => a._id);
+        const nameById = new Map(investmentAccounts.map((a) => [String(a._id), a.name]));
+        const [contribRows, adjRows] = await Promise.all([
+            Transaction.aggregate<{ _id: null; total: number }>([
+                { $match: { userId: oid, type: "transfer", toAccount: { $in: invIds }, occurredAt: { $gte: start, $lt: end } } },
+                { $group: { _id: null, total: { $sum: "$amount" } } },
+            ]),
+            Transaction.aggregate<{ _id: mongoose.Types.ObjectId; total: number }>([
+                { $match: { userId: oid, type: { $in: ["positiveAdjustment", "negativeAdjustment"] }, account: { $in: invIds }, occurredAt: { $gte: start, $lt: end } } },
+                { $group: { _id: "$account", total: { $sum: { $cond: [{ $eq: ["$type", "positiveAdjustment"] }, "$amount", { $multiply: ["$amount", -1] }] } } } },
+            ]),
+        ]);
+        const gainer = adjRows.filter((r) => r.total > 0).sort((a, b) => b.total - a.total)[0];
+        investments = {
+            contributed: contribRows[0]?.total ?? 0,
+            portfolioChange: adjRows.reduce((s, r) => s + r.total, 0),
+            biggestGainer: gainer ? { name: nameById.get(String(gainer._id)) ?? "Investment", amount: gainer.total } : null,
+        };
+    }
+
     const timeline = await buildTimeline(userId, zone, currency, period, start, end, saved, req);
 
     return {
@@ -193,5 +218,6 @@ export const buildReview = async (
         netWorth,
         goals,
         bills: { paidCount: paidBills.length, dueCount: dueBills, late },
+        investments,
     };
 };

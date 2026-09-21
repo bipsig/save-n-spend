@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { createTransaction, deleteTransaction, filterTransactions, getTitleSuggestions, getTransaction, getTransactionSummary, updateTransaction } from "../../controllers/transactionController";
+import { convertToInvestment, createTransaction, deleteTransaction, filterTransactions, getTitleSuggestions, getTransaction, getTransactionSummary, updateTransaction } from "../../controllers/transactionController";
 import { protect } from "../../middleware/authMiddleware";
 
 const router = Router();
@@ -12,6 +12,7 @@ router.get("/summary", protect, getTransactionSummary);
 router.get("/title-suggestions", protect, getTitleSuggestions);
 router.get("/:id", protect, getTransaction);
 router.patch("/:id", protect, updateTransaction);
+router.post("/:id/convert-to-investment", protect, convertToInvestment);
 router.delete("/:id", protect, deleteTransaction);
 
 export default router;

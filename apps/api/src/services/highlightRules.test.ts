@@ -28,6 +28,7 @@ const BASE: Snapshot = {
     months: [],
     categoryAverages: [],
     currentStreak: 0,
+    investments: { hasInvestments: false, totalValue: 0, daysSinceRevalued: null, contributionStreakMonths: 0 },
 };
 
 const snap = (over: Partial<Snapshot>): Snapshot => ({ ...BASE, ...over });
@@ -360,5 +361,33 @@ describe("logging_streak", () => {
 
         const seven = byRule(runHighlightRules(snap({ currentStreak: 7 })), "logging_streak");
         assert.notEqual(seven?.key, six?.key);
+    });
+});
+
+describe("investment rules", () => {
+    const withInv = (over: Partial<Snapshot["investments"]>) =>
+        snap({ investments: { hasInvestments: true, totalValue: 0, daysSinceRevalued: null, contributionStreakMonths: 0, ...over } });
+
+    it("nudges when values are stale, not before, and never without investments", () => {
+        assert.equal(byRule(runHighlightRules(withInv({ daysSinceRevalued: 40 })), "investment_stale")?.severity, "notice");
+        assert.equal(byRule(runHighlightRules(withInv({ daysSinceRevalued: 20 })), "investment_stale"), undefined);
+        // Never revalued (possibly brand-new) is not nagged.
+        assert.equal(byRule(runHighlightRules(withInv({ daysSinceRevalued: null })), "investment_stale"), undefined);
+        // No investments at all → silent.
+        assert.equal(byRule(runHighlightRules(snap({})), "investment_stale"), undefined);
+    });
+
+    it("celebrates crossing a portfolio milestone, keyed by bucket", () => {
+        const hit = byRule(runHighlightRules(withInv({ totalValue: 120_000_00 })), "investment_milestone");
+        assert.equal(hit?.severity, "win");
+        // Highest bucket at or below ₹1,20,000 is ₹1,00,000.
+        assert.equal(hit?.key, "investment_milestone:10000000");
+        // Nothing invested → no milestone.
+        assert.equal(byRule(runHighlightRules(withInv({ totalValue: 0 })), "investment_milestone"), undefined);
+    });
+
+    it("marks an investing streak of three months or more", () => {
+        assert.equal(byRule(runHighlightRules(withInv({ contributionStreakMonths: 4 })), "investing_streak")?.severity, "win");
+        assert.equal(byRule(runHighlightRules(withInv({ contributionStreakMonths: 2 })), "investing_streak"), undefined);
     });
 });

@@ -11,9 +11,11 @@ import { addDaysInZone } from "../utils/timezone";
 import { currentStreak, STREAK_LOOKBACK_DAYS } from "./streakMath";
 import {
     categoryRoller,
+    contributionStreak,
     monthOrdinal,
     rollUpFlows,
     snapshotWindow,
+    wholeDays,
 } from "./highlightSnapshotMath";
 import type {
     AccountFact,
@@ -173,6 +175,32 @@ export const buildSnapshot = async (
         monthsUntilDeadline: goal.deadline ? monthOrdinal(goal.deadline, zone) - monthOrdinal(now, zone) : null,
     }));
 
+    // Investment facts for the investment highlight rules. Reuses the accounts already
+    // fetched above; only the value-update recency and the contribution months need their
+    // own (small) queries, and only when the user actually holds investments.
+    const investmentAccounts = accounts.filter((a) => a.type === "investment");
+    let investments = { hasInvestments: false, totalValue: 0, daysSinceRevalued: null as number | null, contributionStreakMonths: 0 };
+    if (investmentAccounts.length > 0) {
+        const invIds = investmentAccounts.map((a) => a._id);
+        const [lastAdj, contribMonthRows] = await Promise.all([
+            Transaction.aggregate<{ _id: null; last: Date }>([
+                { $match: { userId: oid, type: { $in: ["positiveAdjustment", "negativeAdjustment"] }, account: { $in: invIds } } },
+                { $group: { _id: null, last: { $max: "$occurredAt" } } },
+            ]),
+            Transaction.aggregate<{ _id: string }>([
+                { $match: { userId: oid, type: "transfer", toAccount: { $in: invIds } } },
+                { $group: { _id: { $dateToString: { date: "$occurredAt", format: "%Y-%m", timezone: zone } } } },
+            ]),
+        ]);
+        const last = lastAdj[0]?.last;
+        investments = {
+            hasInvestments: true,
+            totalValue: investmentAccounts.reduce((sum, a) => sum + a.balance, 0),
+            daysSinceRevalued: last ? wholeDays(new Date(last), now, zone) : null,
+            contributionStreakMonths: contributionStreak(new Set(contribMonthRows.map((r) => r._id)), now, zone),
+        };
+    }
+
     return {
         currency,
         monthLabel: label,
@@ -192,5 +220,6 @@ export const buildSnapshot = async (
         months: flows.months,
         categoryAverages: flows.categoryAverages,
         currentStreak: streakDays,
+        investments,
     };
 };

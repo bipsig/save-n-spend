@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { createTransactionSchema, listTransactionQuerySchema, transactionSummaryQuerySchema, updateTransactionSchema } from "../schemas/transactionSchema";
+import { convertToInvestmentSchema, createTransactionSchema, listTransactionQuerySchema, transactionSummaryQuerySchema, updateTransactionSchema } from "../schemas/transactionSchema";
 import mongoose from "mongoose";
 import Account from "../models/Account";
 import { AppError } from "../utils/AppError";
@@ -54,6 +54,16 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
 
     if (actualAccounts.length !== accountIds.length) {
         throw AppError.badRequest("Account not found");
+    }
+
+    // Redeeming (a transfer OUT of an investment) can't exceed what the holding is recorded
+    // to be worth — a negative holding is meaningless. Banks are allowed to overdraw (a
+    // pending deposit, a corrected balance), so this guard is scoped to investment sources.
+    if (reqBody.type === "transfer") {
+        const source = actualAccounts.find((a) => String(a._id) === String(reqBody.account));
+        if (source?.type === "investment" && reqBody.amount > source.balance) {
+            throw AppError.badRequest("You can't redeem more than this investment is currently worth — update its value first if it has grown");
+        }
     }
 
     // Resolved once, because the budget alert below has to be told which month this
@@ -325,8 +335,21 @@ export const updateTransaction = async (req: Request, res: Response): Promise<vo
     try {
         await session.withTransaction(async () => {
             await applyEffects (transaction, "revert", session);
-            
+
             transaction.set(reqBody);
+
+            // Same guard as createTransaction, but on the edit path: a redemption (transfer
+            // out of an investment) can't exceed what the holding is worth. Checked after the
+            // revert, so the source balance read here excludes this transaction's own old
+            // effect — i.e. it's the holding's worth as if this redemption didn't exist, which
+            // is exactly what the new amount must fit within. Without this, editing a small
+            // redemption up to a huge one drives the holding (and net worth) negative.
+            if (transaction.type === "transfer") {
+                const source = await Account.findById(transaction.account).session(session);
+                if (source?.type === "investment" && transaction.amount > source.balance) {
+                    throw AppError.badRequest("You can't redeem more than this investment is currently worth — update its value first if it has grown");
+                }
+            }
 
             await applyEffects (transaction, "add", session);
 
@@ -345,6 +368,65 @@ export const updateTransaction = async (req: Request, res: Response): Promise<vo
 
     reply.ok(res, transaction, "Transaction updated!");
 
+}
+
+// Backward-compat: reclassify an old expense (a SIP logged as spending) as an investment
+// contribution. It becomes a transfer into the chosen investment account — the money the
+// expense removed from the source stays removed there, but now lands in the investment, so
+// net worth rises by that amount and it leaves the spending charts. See docs/architecture
+// and the Investments plan.
+export const convertToInvestment = async (req: Request, res: Response): Promise<void> => {
+    const { id: transactionId } = req.params;
+    const { toAccount } = convertToInvestmentSchema.parse(req.body);
+
+    const transaction = await Transaction.findOne({
+        _id: transactionId,
+        userId: req.user?.userId
+    });
+
+    if (!transaction) {
+        throw AppError.notFound("Transaction not found");
+    }
+    if (transaction.type !== "expense") {
+        throw AppError.badRequest("Only an expense can be converted to an investment");
+    }
+    // A split expense's amount is only the user's own share, and its sibling transfers
+    // reference this group — converting it would orphan them. Take it out of the split first.
+    if (transaction.splitGroupId) {
+        throw AppError.badRequest("This expense is part of a split — remove it from the split first");
+    }
+
+    const investment = await Account.findOne({
+        _id: toAccount,
+        userId: req.user?.userId,
+        type: "investment",
+        isArchived: false
+    });
+
+    if (!investment) {
+        throw AppError.badRequest("Choose an investment account");
+    }
+    if (String(investment._id) === String(transaction.account)) {
+        throw AppError.badRequest("Can't invest into the same account it came from");
+    }
+
+    const session = await mongoose.startSession();
+    try {
+        await session.withTransaction(async () => {
+            // Undo the expense's balance move, flip it to a transfer into the investment,
+            // then reapply — the same revert→set→add the normal edit uses. Net effect on the
+            // source account is zero; the investment gains the amount.
+            await applyEffects(transaction, "revert", session);
+            transaction.set({ type: "transfer", toAccount: investment._id, category: null });
+            await applyEffects(transaction, "add", session);
+            await transaction.save({ session });
+        });
+    }
+    finally {
+        session.endSession();
+    }
+
+    reply.ok(res, transaction, "Converted to investment");
 }
 
 export const deleteTransaction = async (req: Request, res: Response) : Promise<void> => {

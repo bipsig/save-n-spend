@@ -2,17 +2,19 @@ import z from "zod";
 
 export const createAccountSchema = z.object({
     name: z.string().min(1).trim(),
-    type: z.enum(["bank", "credit_card", "cash", "wallet", "person"]),
+    type: z.enum(["bank", "credit_card", "cash", "wallet", "person", "investment"]),
     startingBalance: z.number().int(),
     icon: z.string().optional(),
-    color: z.string().optional()
+    color: z.string().optional(),
+    investmentKind: z.string().trim().min(1).max(40).optional()
 }).strict();
 
 export const updateAccountSchema = z.object({
     name: z.string().min(1).trim().optional(),
-    type: z.enum(["bank", "credit_card", "cash", "wallet", "person"]).optional(),
+    type: z.enum(["bank", "credit_card", "cash", "wallet", "person", "investment"]).optional(),
     icon: z.string().optional(),
-    color: z.string().optional()
+    color: z.string().optional(),
+    investmentKind: z.string().trim().min(1).max(40).optional()
 }).strict();
 
 // The user's list in the order they just left it in, front to back. Not a single

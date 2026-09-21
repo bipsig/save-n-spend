@@ -13,6 +13,7 @@ import notificationRoutes from "./notificationRoutes";
 import highlightRoutes from "./highlightRoutes";
 import backupRoutes from "./backupRoutes";
 import reviewRoutes from "./reviewRoutes";
+import investmentRoutes from "./investmentRoutes";
 
 const router = Router();
 
@@ -30,5 +31,6 @@ router.use ('/notifications', notificationRoutes);
 router.use ('/highlights', highlightRoutes);
 router.use ('/backup', backupRoutes);
 router.use ('/reviews', reviewRoutes);
+router.use ('/investments', investmentRoutes);
 
 export default router;

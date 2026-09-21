@@ -24,6 +24,8 @@ export const updateMeSchema = z.object({
             dailySummary: z.boolean().optional(),
             weeklySummary: z.boolean().optional(),
             monthlySummary: z.boolean().optional(),
+            investmentReminder: z.boolean().optional(),
+            investmentReminderDay: z.number().int().min(1).max(28).optional(),
         }).strict().optional(),
     }).strict().optional(),
 }).strict();

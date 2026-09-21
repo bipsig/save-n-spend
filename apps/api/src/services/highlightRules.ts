@@ -10,7 +10,7 @@ import { formatAmount } from "../utils/money";
 export type HighlightSeverity = "urgent" | "warning" | "notice" | "win";
 
 /** Where tapping the card lands. The client maps these to routes. */
-export type HighlightScreen = "budgets" | "bills" | "goals" | "health" | "activity";
+export type HighlightScreen = "budgets" | "bills" | "goals" | "health" | "activity" | "investments";
 
 export type Highlight = {
     ruleId: string;
@@ -105,6 +105,19 @@ export type Snapshot = {
     /** Consecutive zone-local days with at least one logged transaction, ending today (or
      *  yesterday if today's still in progress). See streakMath.ts. */
     currentStreak: number;
+    /** Investment holdings, folded to the few facts the rules need. */
+    investments: InvestmentFacts;
+};
+
+export type InvestmentFacts = {
+    hasInvestments: boolean;
+    /** Σ current value of all investment accounts, paise. */
+    totalValue: number;
+    /** Whole days since the most recent value-update, or null if never revalued (or none). */
+    daysSinceRevalued: number | null;
+    /** Consecutive months (ending this month, or last month if this one's contribution
+     *  hasn't landed yet) with at least one contribution. */
+    contributionStreakMonths: number;
 };
 
 type Rule = {
@@ -502,6 +515,75 @@ const loggingStreak: Rule = {
     run: (snap) => buildLoggingStreakHighlight(snap.currentStreak),
 };
 
+// Investment rules. All materiality 0 — nudges and celebrations, not money at risk, so
+// they rank below anything with rupees on the line and only surface on a quiet day.
+
+/** Values gone stale — a nudge to revalue so net worth and returns stay honest. Only once
+ *  there's a revaluation on record to age from; a never-revalued (possibly brand-new)
+ *  holding isn't nagged. */
+const INVESTMENT_STALE_DAYS = 35;
+const investmentStale: Rule = {
+    id: "investment_stale",
+    run: (snap) => {
+        const inv = snap.investments;
+        if (!inv.hasInvestments || inv.daysSinceRevalued === null || inv.daysSinceRevalued < INVESTMENT_STALE_DAYS) return null;
+        const weeks = Math.round(inv.daysSinceRevalued / 7);
+        return {
+            ruleId: "investment_stale",
+            // Per-month key, so a dismissed nudge can return next month if still stale.
+            key: `investment_stale:${snap.monthLabel}`,
+            severity: "notice",
+            title: `Your investment values are about ${weeks} weeks old`,
+            body: "Update what they're worth so your net worth and returns stay accurate.",
+            materiality: 0,
+            screen: "investments",
+        };
+    },
+};
+
+/** Portfolio crossed a round number. Keyed by the bucket, so it fires once when crossed and
+ *  never again for that bucket. Investments have no dashboard banner of their own (unlike net
+ *  worth), so this is where the moment is marked. */
+const INVESTMENT_MILESTONES = [5_000_00, 10_000_00, 25_000_00, 50_000_00, 100_000_00, 250_000_00, 500_000_00, 1_000_000_00];
+const investmentMilestone: Rule = {
+    id: "investment_milestone",
+    run: (snap) => {
+        const v = snap.investments.totalValue;
+        if (v <= 0) return null;
+        const bucket = [...INVESTMENT_MILESTONES].reverse().find((m) => v >= m);
+        if (!bucket) return null;
+        return {
+            ruleId: "investment_milestone",
+            key: `investment_milestone:${bucket}`,
+            severity: "win",
+            title: `Your investments crossed ${formatAmount(bucket, snap.currency)}`,
+            body: `Your portfolio is now worth ${formatAmount(v, snap.currency)}.`,
+            materiality: 0,
+            screen: "investments",
+        };
+    },
+};
+
+const INVESTING_STREAK_MIN = 3;
+const INVESTING_STREAK_MILESTONES = [3, 6, 12, 24, 36, 60];
+const investingStreak: Rule = {
+    id: "investing_streak",
+    run: (snap) => {
+        const months = snap.investments.contributionStreakMonths;
+        if (months < INVESTING_STREAK_MIN) return null;
+        const bucket = [...INVESTING_STREAK_MILESTONES].reverse().find((m) => months >= m) ?? 0;
+        return {
+            ruleId: "investing_streak",
+            key: `investing_streak:${bucket}`,
+            severity: "win",
+            title: `${months} months of investing in a row`,
+            body: "You've added to your investments every month — the habit that does the heavy lifting.",
+            materiality: 0,
+            screen: "investments",
+        };
+    },
+};
+
 const RULES: Rule[] = [
     budgetPace,
     budgetComfortable,
@@ -514,6 +596,9 @@ const RULES: Rule[] = [
     healthFocus,
     catchAllHeavy,
     loggingStreak,
+    investmentStale,
+    investmentMilestone,
+    investingStreak,
 ];
 
 /** For the materiality tiebreak: what to lead with when the rupees are equal. */

@@ -11,6 +11,8 @@ export interface INotificationPrefs {
   dailySummary: boolean;
   weeklySummary: boolean;
   monthlySummary: boolean;
+  investmentReminder: boolean;
+  investmentReminderDay: number;
 }
 
 export interface IUser extends Document {
@@ -82,7 +84,10 @@ const UserSchema = new Schema<IUser>(
         // year, on a day the user is already thinking about last month, is not.
         dailySummary: { type: Boolean, default: false },
         weeklySummary: { type: Boolean, default: false },
-        monthlySummary: { type: Boolean, default: true }
+        monthlySummary: { type: Boolean, default: true },
+        // Opt-in, on a user-chosen day of month (capped 1–28 so it lands every month).
+        investmentReminder: { type: Boolean, default: false },
+        investmentReminderDay: { type: Number, min: 1, max: 28, default: 1 }
       }
     },
 

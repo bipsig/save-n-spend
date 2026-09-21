@@ -9,7 +9,8 @@ export type NotificationType =
     | "goalDeadline"
     | "dailySummary"
     | "weeklySummary"
-    | "monthlySummary";
+    | "monthlySummary"
+    | "revalueInvestments";
 
 export interface INotificationDoc extends Document {
     userId: mongoose.Types.ObjectId;

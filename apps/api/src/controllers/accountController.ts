@@ -36,6 +36,7 @@ export const createAccount = async (req: Request, res: Response): Promise<void> 
         startingBalance: reqBody.startingBalance,
         icon: reqBody.icon ?? "wallet",
         color: reqBody.color ?? "success",
+        investmentKind: reqBody.investmentKind,
         order: existing
     });
 

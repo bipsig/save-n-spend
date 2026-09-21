@@ -8,6 +8,7 @@ export interface IAccount extends Document {
     startingBalance: number;
     icon?: string
     color?: string
+    investmentKind?: string
     isArchived: boolean
     /**
      * When the user last reconciled this account against their bank. Stamped even when
@@ -26,11 +27,13 @@ export interface IAccount extends Document {
 const AccountSchema = new Schema<IAccount>({
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     name: { type: String, required: true, trim: true },
-    type: { type: String, enum: ["bank", "credit_card", "cash", "wallet", "person" ], required: true },
+    type: { type: String, enum: ["bank", "credit_card", "cash", "wallet", "person", "investment" ], required: true },
     balance: { type: Number, required: true, default: 0 },
     startingBalance: { type: Number, required: true, default: 0 },
     icon: { type: String },
     color: { type: String },
+    // Only meaningful for type "investment" — the hub's grouping key (SIP / Mutual Fund / …).
+    investmentKind: { type: String },
     isArchived: { type: Boolean, default: false },
     lastSyncedAt: { type: Schema.Types.Date, default: null },
     order: { type: Number, default: 0 }

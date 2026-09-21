@@ -51,6 +51,9 @@ export const wantsNotification = (prefs: Partial<INotificationPrefs> | undefined
         case "monthlySummary":
             // On by default, unlike its siblings — twelve a year is a fair assumption.
             return prefs?.monthlySummary !== false;
+        // Opt-in: not everyone tracks investments, and it only helps once you do.
+        case "revalueInvestments":
+            return prefs?.investmentReminder === true;
         case "billReminder":
         case "billOverdue":
             return true;

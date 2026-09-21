@@ -3,6 +3,7 @@ import {
     monthLabelInZone,
     partsInZone,
     startOfDayInZone,
+    startOfMonthInZone,
 } from "../utils/timezone";
 import { monthRange } from "../utils/monthRange";
 import type { CategoryTotal, MonthTotals } from "./highlightRules";
@@ -33,6 +34,23 @@ export const wholeDays = (from: Date, to: Date, zone: string): number =>
 export const monthOrdinal = (instant: Date, zone: string): number => {
     const { year, month } = partsInZone(instant, zone);
     return year * 12 + (month - 1);
+};
+
+/**
+ * Consecutive months (as "YYYY-MM" keys) with a contribution, ending at this month — or at
+ * last month when this month's hasn't landed yet, so a monthly SIP that fires on the 5th
+ * doesn't read as a broken streak on the 1st. The monthly analogue of streakMath's
+ * today-or-yesterday anchor.
+ */
+export const contributionStreak = (months: Set<string>, now: Date, zone: string): number => {
+    const monthStart = startOfMonthInZone(now, zone);
+    let cursor = months.has(monthLabelInZone(now, zone)) ? monthStart : addMonthsInZone(monthStart, zone, -1);
+    let streak = 0;
+    while (months.has(monthLabelInZone(cursor, zone))) {
+        streak++;
+        cursor = addMonthsInZone(cursor, zone, -1);
+    }
+    return streak;
 };
 
 /**
