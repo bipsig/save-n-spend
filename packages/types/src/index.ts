@@ -3,7 +3,7 @@
 export type TransactionType = 'expense' | 'income' | 'transfer' | 'positiveAdjustment' | 'negativeAdjustment'
 // 'person' is a receivable: its balance is what that person owes the user (negative when
 // the user owes them). It is what a split expense transfers the lent portion into.
-export type AccountType = 'bank' | 'credit_card' | 'cash' | 'wallet' | 'person'
+export type AccountType = 'bank' | 'credit_card' | 'cash' | 'wallet' | 'person' | 'investment'
 export type CategoryKind = 'expense' | 'income'
 export type BillStatus = 'pending' | 'paid' | 'overdue'
 export type BillFrequency = 'monthly' | 'yearly'
@@ -25,6 +25,11 @@ export interface INotificationPrefs {
   dailySummary: boolean;
   weeklySummary: boolean;
   monthlySummary: boolean;
+  /** Opt-in monthly nudge to update investment values, on `investmentReminderDay`. */
+  investmentReminder: boolean;
+  /** Day of month (1–28) the investment-revalue reminder fires. Capped at 28 so it lands
+   *  every month regardless of length. */
+  investmentReminderDay: number;
 }
 
 // Account-level preferences: they follow the user across devices, so they live on the
@@ -61,6 +66,10 @@ export interface IAccount {
   startingBalance: number
   icon?: string
   color?: string
+  // Present only on investment-type accounts — the grouping key on the Investments hub
+  // (SIP / Mutual Fund / FD / …). Free string, not an enum: kinds are a UI preset, so a
+  // new one never needs a schema change.
+  investmentKind?: string
   isArchived: boolean
   // ISO. When the user last reconciled against their bank; absent if never.
   lastSyncedAt?: string | null
@@ -139,6 +148,9 @@ export interface IBill {
   amount: number         // paise
   category: string | null
   account?: string
+  /** When set, this bill is a recurring contribution (a SIP): marking it paid moves money
+   *  into this investment account as a transfer, not an expense. */
+  toInvestment?: string | null
   dueDate: string        // ISO date string
   status: BillStatus
   lastPaidAt?: string | null
@@ -161,6 +173,39 @@ export interface IGoal {
   createdAt: string
 }
 
+// GET /investments — the Investments hub. Each holding is an investment-type account;
+// `invested` is net contributions (transfers in − transfers out), `current` its balance,
+// `gain` the difference (= the sum of its revaluation adjustments). All paise.
+export interface InvestmentHolding {
+  accountId: string
+  name: string
+  icon?: string
+  color?: string
+  /** The grouping key on the hub (SIP / Mutual Fund / …); "Other" when unset. */
+  kind: string
+  invested: number
+  current: number
+  gain: number
+  /** ISO of the last value-update (adjustment), or null if never revalued. */
+  lastUpdatedAt: string | null
+}
+
+export interface InvestmentAllocationSlice {
+  kind: string
+  current: number
+}
+
+export interface InvestmentsPayload {
+  holdings: InvestmentHolding[]
+  totals: { invested: number; current: number; gain: number }
+  /** Current value per kind, biggest first — the allocation donut. */
+  allocation: InvestmentAllocationSlice[]
+  /** This zone-local month so far — the hub's momentum card. `contributed` = money put in
+   *  this month; `portfolioChange` = net of this month's value-updates (gains − losses);
+   *  `income` = income logged this month, so the hub can show what share of it was invested. */
+  thisMonth: { contributed: number; portfolioChange: number; income: number }
+}
+
 // What happened, not what it looks like: copy is composed on the server, and the type is
 // what the client picks an icon and tint from, and what the preference switches gate on.
 export type NotificationType =
@@ -173,13 +218,14 @@ export type NotificationType =
   | 'dailySummary'      // yesterday's income and spending
   | 'weeklySummary'     // the week that just ended
   | 'monthlySummary'    // the month that just ended, sent on the 1st
+  | 'revalueInvestments' // monthly nudge to update investment values
 
 /** Where tapping lands. A screen name, not a URL — a stored path would be a route that
  *  has to keep working forever. */
 export interface NotificationLink {
   // 'accounts' is local-only — the on-device owed-money nudge is the sole source of it, so
   // the server never writes this value; see rescheduleLocalNotifications.
-  screen: 'bills' | 'budget' | 'goals' | 'insights' | 'accounts'
+  screen: 'bills' | 'budget' | 'goals' | 'insights' | 'accounts' | 'investments'
   id?: string
 }
 
@@ -423,7 +469,7 @@ export interface InsightsCategoryDetail {
 export type HighlightSeverity = 'urgent' | 'warning' | 'notice' | 'win'
 
 /** Where tapping a card lands — semantic, so the server never knows route paths. */
-export type HighlightScreen = 'budgets' | 'bills' | 'goals' | 'health' | 'activity'
+export type HighlightScreen = 'budgets' | 'bills' | 'goals' | 'health' | 'activity' | 'investments'
 
 export interface IHighlight {
   ruleId: string
@@ -496,6 +542,14 @@ export interface ReviewBillSummary {
   late: { name: string; daysLate: number }[]
 }
 
+/** All paise, all scoped to the reviewed period. `contributed` = money invested,
+ *  `portfolioChange` = net of value-updates (gains − losses). */
+export interface ReviewInvestments {
+  contributed: number
+  portfolioChange: number
+  biggestGainer: { name: string; amount: number } | null
+}
+
 export interface ReviewPayload {
   period: ReviewPeriod
   offset: number
@@ -519,4 +573,6 @@ export interface ReviewPayload {
   netWorth: { total: number; previousTotal: number } | null
   goals: ReviewGoalContribution[]
   bills: ReviewBillSummary
+  /** Null when the user has no investment accounts at all. */
+  investments: ReviewInvestments | null
 }
