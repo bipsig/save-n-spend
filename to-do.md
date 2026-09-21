@@ -65,6 +65,10 @@ native work, and phases 0-2 need no Swift at all.
 - [X] Full account Backup & Restore, from Settings — export every account, category, transaction, budget, bill, and goal as one JSON file, and restore it back later (wipes and replaces only the current account's own data, inside one transaction, behind a hold-to-confirm)
 - [X] Month in Review / Week in Review — a recap of any closed week or month (verdict, a day-by-day timeline, income/expenses/saved vs the period before, categories, habits, net worth, goals, bills), browsable from More → Reviews and surfaced once as a dashboard banner the first time the app opens after a period closes
 - [X] Need a good loader when trying to refresh page by slidin g it down - this should refresh the page
+- [ ] Create something for investments => So i want to work on a new feature called investments. as you can see on the insights screenshot how weird and outliers it seems. it is because i give sips on 5th 10th 17th. so this changes the meaning of expenseas they are currently attributed as expense. 
+So what i want to implement is a system where such transaction are logged as investments. now there can be options to add multiple investments like sip1, sip2. an invesment might go to any one. now on a particular day of the month set by the user the app shall prompt the user to update the value or protfolio of each sip. like if 10k has grown to 12k. this should be automatic. so this way user shall be able to track their protfolio as well while making the expenses chart more real and meaningful because these shouldnt show up any more. one thing to keep in mind is that it should be backward compatible that is the expenses that are now logged as invesmtnets can be converted into this particular inevetsment type of transaction (manually going an dupdating) dont need a script for that.
+
+So now i need you to give me the feasiblity how it would look and the complete desingn plan. once thats done we can then decide on the screens on how it would look and all. 
 
 
 Decided against: **widgets**. Data widgets need App Groups or Keychain sharing,
