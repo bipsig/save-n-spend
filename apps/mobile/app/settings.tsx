@@ -13,6 +13,7 @@ import ConfirmSheet from "@/components/sheets/ConfirmSheet";
 import EditProfileSheet from "@/components/sheets/EditProfileSheet";
 import ExportSheet from "@/components/sheets/ExportSheet";
 import OptionSheet, { type Option } from "@/components/sheets/OptionSheet";
+import DayOfMonthSheet from "@/components/sheets/DayOfMonthSheet";
 import TimeZoneSheet from "@/components/sheets/TimeZoneSheet";
 import { AppText } from "@/components/ui/AppText";
 import Avatar from "@/components/ui/Avatar";
@@ -47,6 +48,13 @@ const GroupLabel = ({ children }: { children: string }) => (
   </AppText>
 );
 
+// 1 → "1st", 2 → "2nd", 22 → "22nd". Only ever 1–28 here, but general anyway.
+const ordinal = (n: number): string => {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return `${n}${s[(v - 20) % 10] ?? s[v] ?? s[0]}`;
+};
+
 const REMINDER_LEADS: Option[] = [
   { value: 1, label: "1 day" },
   { value: 3, label: "3 days" },
@@ -74,6 +82,7 @@ const SettingsScreen = () => {
   const accountRef = useRef<BottomSheetModal>(null);
   const zoneRef = useRef<BottomSheetModal>(null);
   const reminderRef = useRef<BottomSheetModal>(null);
+  const investmentDayRef = useRef<BottomSheetModal>(null);
   const autoLockRef = useRef<BottomSheetModal>(null);
   const passwordRef = useRef<BottomSheetModal>(null);
   const exportRef = useRef<BottomSheetModal>(null);
@@ -339,6 +348,25 @@ const SettingsScreen = () => {
           on={notifications.monthlySummary}
           onToggle={(next) => setNotification({ monthlySummary: next })}
         />
+        <SettingsRow
+          kind="toggle"
+          icon="investments"
+          tint="teal"
+          label="Investment updates"
+          sub="A monthly nudge to update what your investments are worth"
+          dimmed={!notifications.enabled}
+          on={notifications.investmentReminder}
+          onToggle={(next) => setNotification({ investmentReminder: next })}
+        />
+        <SettingsRow
+          kind="value"
+          icon="date"
+          tint="violet"
+          label="Reminder day"
+          value={`${ordinal(notifications.investmentReminderDay)} of the month`}
+          dimmed={!notifications.enabled || !notifications.investmentReminder}
+          onPress={() => investmentDayRef.current?.present()}
+        />
       </Card>
 
       <GroupLabel>SECURITY</GroupLabel>
@@ -485,6 +513,12 @@ const SettingsScreen = () => {
         onPick={(days) =>
           savePrefs({ notifications: { billReminderLead: days as BillReminderLead } })
         }
+      />
+
+      <DayOfMonthSheet
+        ref={investmentDayRef}
+        value={notifications.investmentReminderDay}
+        onPick={(day) => savePrefs({ notifications: { investmentReminderDay: day } })}
       />
 
       <OptionSheet

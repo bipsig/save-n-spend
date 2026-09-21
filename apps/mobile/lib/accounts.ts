@@ -43,6 +43,8 @@ export type AccountDraft = {
   startingBalance: number;
   icon?: string;
   color?: string;
+  /** Only for type "investment" — the hub's grouping key (SIP / Mutual Fund / …). */
+  investmentKind?: string;
 };
 
 export const createAccount = async (draft: AccountDraft): Promise<IAccount> => {
@@ -57,7 +59,7 @@ export const createAccount = async (draft: AccountDraft): Promise<IAccount> => {
 // a separate endpoint precisely so it can never happen by accident during a rename.
 export const updateAccount = async (
   id: string,
-  patchBody: { name?: string; type?: AccountType; icon?: string; color?: string }
+  patchBody: { name?: string; type?: AccountType; icon?: string; color?: string; investmentKind?: string }
 ): Promise<void> => {
   await patch<IAccount>(`/accounts/${id}`, patchBody);
   await useAccountStore.getState().load();

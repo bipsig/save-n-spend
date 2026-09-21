@@ -30,10 +30,12 @@ const DIGEST_HOUR = 18;
 const DAILY_ID = "local:dailySummary";
 const WEEKLY_ID = "local:weeklySummary";
 const MONTHLY_ID = "local:monthlySummary";
+const INVESTMENT_ID = "local:revalueInvestments";
 
-/** Mirror WEEKLY_HOUR / MONTHLY_HOUR in the API's jobs/reminderJob.ts. */
+/** Mirror WEEKLY_HOUR / MONTHLY_HOUR / REVALUE_HOUR in the API's jobs/reminderJob.ts. */
 const WEEKLY_HOUR = 19;
 const MONTHLY_HOUR = 20;
+const REVALUE_HOUR = 20;
 
 /** Fallback lead when neither the bill nor the account's own prefs set one — matches the
  *  API's billReminderLead default. */
@@ -140,6 +142,10 @@ const wantsBillReminders = (prefs: INotificationPrefs | undefined): boolean =>
 /** Shared by goal deadlines and milestones, same as the server's `goalMilestones` switch. */
 const wantsGoalNotifications = (prefs: INotificationPrefs | undefined): boolean =>
   prefs?.enabled !== false && prefs?.goalMilestones !== false;
+
+/** Opt-in, same as the server's `investmentReminder === true`. */
+const wantsInvestmentReminder = (prefs: INotificationPrefs | undefined): boolean =>
+  prefs?.enabled !== false && prefs?.investmentReminder === true;
 
 /**
  * Tonight's digest, if there is one to send.
@@ -276,6 +282,44 @@ const scheduleMonthlySummary = async (
       title: `${monthLabel(lastMonthStart)} in review`,
       body: privacyMode ? "Your monthly summary is ready." : flowLine(summary.income, summary.expenses),
       data: { link: { screen: "insights" } },
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: fireAt,
+      ...(Platform.OS === "android" ? { channelId: "default" } : {}),
+    },
+  });
+};
+
+/**
+ * The monthly "update your investment values" nudge, on the user's own chosen day of month —
+ * mirrors the server's `day === investmentReminderDay` gate. Silent if there are no
+ * investments to revalue. No content to precompute (no amounts), so unlike the digests it
+ * just needs the right day and hour.
+ */
+const scheduleInvestmentReminder = async (
+  prefs: INotificationPrefs | undefined,
+  zone: string,
+  accounts: IAccount[],
+): Promise<void> => {
+  if (!wantsInvestmentReminder(prefs)) return;
+
+  const { year, month, day } = zonedParts(new Date(), zone);
+  if (day !== (prefs?.investmentReminderDay ?? 1)) return;
+
+  const holdings = accounts.filter((a) => a.type === "investment" && !a.isArchived);
+  if (holdings.length === 0) return;
+
+  const fireAt = instantInZone(zone, year, month, day, REVALUE_HOUR, 0);
+  if (fireAt.getTime() <= Date.now()) return;
+
+  await Notifications.scheduleNotificationAsync({
+    identifier: INVESTMENT_ID,
+    content: {
+      title: "Time to update your investments",
+      body: `Update what your ${plural(holdings.length, "investment")} ${holdings.length === 1 ? "is" : "are"} worth today to keep your net worth accurate.`,
+      // `id: "revalue"` mirrors the server nudge — routeFor opens the hub's revalue sheet.
+      data: { link: { screen: "investments", id: "revalue" } },
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -491,11 +535,27 @@ export const rescheduleLocalNotifications = async (
       // Nothing queued yet — the ordinary case on a first launch.
     });
 
-    await scheduleDailySummary(notificationPrefs, zone, accounts);
-    await scheduleWeeklySummary(notificationPrefs, zone);
-    await scheduleMonthlySummary(notificationPrefs, zone);
-    await scheduleBillReminders(notificationPrefs, zone);
-    await scheduleGoalDeadlines(notificationPrefs, zone);
+    // Each scheduler is isolated: several hit the network (the digests fetch /summary, bills
+    // and goals fetch their lists), and a single failure must not abort the ones after it.
+    // Before, one rejected fetch here silently dropped every later digest/reminder — so a
+    // flaky daily-summary call took the weekly, monthly, bill and goal banners down with it.
+    const safe = async (label: string, fn: () => Promise<unknown>): Promise<void> => {
+      try {
+        await fn();
+      }
+      catch (err) {
+        console.warn(`[local] ${label} failed to schedule`, err);
+      }
+    };
+
+    await Promise.all([
+      safe("daily", () => scheduleDailySummary(notificationPrefs, zone, accounts)),
+      safe("weekly", () => scheduleWeeklySummary(notificationPrefs, zone)),
+      safe("monthly", () => scheduleMonthlySummary(notificationPrefs, zone)),
+      safe("bills", () => scheduleBillReminders(notificationPrefs, zone)),
+      safe("goals", () => scheduleGoalDeadlines(notificationPrefs, zone)),
+      safe("investment", () => scheduleInvestmentReminder(notificationPrefs, zone, accounts)),
+    ]);
   }
   catch (err) {
     console.warn("[local] could not reschedule", err);

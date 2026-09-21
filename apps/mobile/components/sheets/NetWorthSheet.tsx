@@ -21,6 +21,7 @@ const TYPE_LABEL: Record<AccountType, string> = {
   cash: "Cash",
   wallet: "Wallet",
   person: "Owes you",
+  investment: "Investment",
 };
 
 // Biggest holding first, which also drops anything owed (a used credit card carries a

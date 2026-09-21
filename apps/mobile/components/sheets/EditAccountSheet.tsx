@@ -24,6 +24,9 @@ import { spacing } from "@/theme";
 type Props = {
   /** The account being edited, or `null` to create a new one. */
   account: IAccount | null;
+  /** Type to preselect when CREATING (ignored when editing) — e.g. the Investments hub
+   *  opens this pre-set to "investment". */
+  defaultType?: AccountType;
   onSaved?: () => void;
 };
 
@@ -35,7 +38,13 @@ const TYPES: { key: AccountType; label: string; icon: IconName }[] = [
   { key: "cash", label: "Cash", icon: "payments" },
   { key: "wallet", label: "Wallet", icon: "wallet" },
   { key: "person", label: "Person", icon: "person" },
+  { key: "investment", label: "Investment", icon: "investments" },
 ];
+
+// Preset grouping keys for an investment account. Free-text too — a kind not in this list
+// is stored verbatim, so a new one never needs a code change (see `investmentKind`). Blank
+// on save falls back to "Other" so the hub always has a group to file it under.
+const INVESTMENT_KINDS = ["SIP", "Mutual Fund", "Stocks", "Fixed Deposit", "Recurring Deposit", "PPF", "NPS", "Gold", "Crypto"];
 
 const iconForType = (type: AccountType): IconName =>
   TYPES.find((t) => t.key === type)?.icon ?? "wallet";
@@ -62,7 +71,7 @@ const toPaise = (rupees: string): number | null => {
 // Spec §08 — New / Edit account (Tier-2). One sheet for both; `account === null` is the only
 // branch. Creating sets an opening balance, which can never be edited again; editing offers
 // a reconciliation against the bank instead, through a different endpoint.
-const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, onSaved }, ref) => {
+const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, defaultType, onSaved }, ref) => {
   const innerRef = useRef<BottomSheetModal>(null);
   useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
   const dismiss = () => innerRef.current?.dismiss();
@@ -73,6 +82,7 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, onSaved
 
   const [name, setName] = useState("");
   const [type, setType] = useState<AccountType>("bank");
+  const [investmentKind, setInvestmentKind] = useState("");
   const [opening, setOpening] = useState("");
   const [icon, setIcon] = useState<IconName>("bank");
   const [color, setColor] = useState<ColorToken>("info");
@@ -88,17 +98,19 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, onSaved
   const [note, setNote] = useState("");
 
   useEffect(() => {
+    const initialType = account?.type ?? defaultType ?? "bank";
     setName(account?.name ?? "");
-    setType(account?.type ?? "bank");
+    setType(initialType);
+    setInvestmentKind(account?.investmentKind ?? "");
     setOpening("");
-    setIcon((account?.icon as IconName) ?? "bank");
+    setIcon((account?.icon as IconName) ?? iconForType(initialType));
     setColor((account?.color as ColorToken) ?? "info");
     setActual("");
     setNote("");
     // Seeded from where the balance sits, so a card normally owed opens on "Owed".
     setNegative((account?.balance ?? 0) < 0);
     setError(null);
-  }, [account]);
+  }, [account, defaultType]);
 
   // The correction about to be made, or `null` when there is nothing to do. `undefined`
   // marks an unparseable figure, so the save path refuses it rather than reading a typo as
@@ -148,8 +160,10 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, onSaved
     setBusy(true);
     setError(null);
     try {
+      // Blank kind on an investment falls back to "Other" so the hub always has a group.
+      const kind = type === "investment" ? (investmentKind.trim() || "Other") : undefined;
       if (editing) {
-        await updateAccount(account._id, { name: trimmed, type, icon, color });
+        await updateAccount(account._id, { name: trimmed, type, icon, color, investmentKind: kind });
         // A second call, skipped when the field was blank, so renaming an account never
         // sends anything that could move money. The server records the difference as an
         // adjustment; see `syncAccountBalance`.
@@ -157,7 +171,7 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, onSaved
           await syncAccountBalance(account._id, target, note.trim() || undefined);
         }
       }
-      else await createAccount({ name: trimmed, type, startingBalance, icon, color });
+      else await createAccount({ name: trimmed, type, startingBalance, icon, color, investmentKind: kind });
       onSaved?.();
       dismiss();
       // Names the correction when there was one — the bigger of the two things that just
@@ -228,17 +242,59 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, onSaved
         <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>
           TYPE
         </AppText>
-        <View style={styles.types}>
-          {TYPES.map((option) => (
-            <Chip
-              key={option.key}
-              label={option.label}
-              selected={type === option.key}
-              onPress={() => pickType(option.key)}
-            />
-          ))}
-        </View>
+        {editing ? (
+          // Fixed once created — changing it would silently recategorise the account and
+          // its history (e.g. an investment dropping out of the Investments hub). Reclassify
+          // by deleting and recreating instead.
+          <>
+            <View style={styles.types}>
+              <Chip label={TYPES.find((t) => t.key === type)?.label ?? type} selected disabled />
+            </View>
+            <AppText size="xs" color="inkDim" style={styles.note}>
+              Set when the account was created and can&apos;t be changed.
+            </AppText>
+          </>
+        ) : (
+          <View style={styles.types}>
+            {TYPES.map((option) => (
+              <Chip
+                key={option.key}
+                label={option.label}
+                selected={type === option.key}
+                onPress={() => pickType(option.key)}
+              />
+            ))}
+          </View>
+        )}
       </View>
+
+      {/* Only for an investment — the grouping key on the hub. Presets as chips, plus a
+          free-text field so an unlisted kind is kept verbatim. */}
+      {type === "investment" && (
+        <View style={styles.field}>
+          <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>
+            KIND
+          </AppText>
+          <View style={styles.types}>
+            {INVESTMENT_KINDS.map((k) => (
+              <Chip
+                key={k}
+                label={k}
+                selected={investmentKind.trim() === k}
+                onPress={() => setInvestmentKind(k)}
+              />
+            ))}
+          </View>
+          <Input
+            label="Or type your own"
+            placeholder="e.g. ELSS"
+            value={investmentKind}
+            onChangeText={setInvestmentKind}
+            autoCapitalize="words"
+            InputComponent={BottomSheetTextInput}
+          />
+        </View>
+      )}
 
       {/* Two different fields wearing the same shape. At creation this is the opening
           balance — a term the running total is built from, which is why it can never be

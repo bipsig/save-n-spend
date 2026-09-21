@@ -198,6 +198,43 @@ const ReviewScreen = () => {
             </>
           )}
 
+          {review.investments && (review.investments.contributed > 0 || review.investments.portfolioChange !== 0) && (
+            <>
+              <GroupLabel>Investments</GroupLabel>
+              <Card style={styles.card}>
+                <View style={styles.statRow}>
+                  <View style={styles.stat}>
+                    <Money value={review.investments.contributed} weight="black" size="md" numberOfLines={1} />
+                    <AppText size="xs" weight="bold" color="inkDim" style={styles.statLabel}>Contributed</AppText>
+                  </View>
+                  <View style={styles.statDivider} />
+                  <View style={styles.stat}>
+                    <AppText size="md" weight="black" color={review.investments.portfolioChange >= 0 ? "success" : "danger"}>
+                      {review.investments.portfolioChange >= 0 ? "▲ " : "▼ "}{formatMoney(Math.abs(review.investments.portfolioChange))}
+                    </AppText>
+                    <AppText size="xs" weight="bold" color="inkDim" style={styles.statLabel}>Portfolio</AppText>
+                  </View>
+                </View>
+                {review.income > 0 && review.investments.contributed > 0 && (
+                  <View style={styles.hlRow}>
+                    <Icon name="investments" size={14} color="success" />
+                    <AppText size="xs" weight="semibold" color="inkDim">
+                      You invested {Math.round((review.investments.contributed / review.income) * 100)}% of the income you logged
+                    </AppText>
+                  </View>
+                )}
+                {review.investments.biggestGainer && (
+                  <View style={styles.hlRow}>
+                    <Icon name="investments" size={14} color="success" />
+                    <AppText size="xs" weight="semibold" color="inkDim">
+                      {review.investments.biggestGainer.name} gained {formatMoney(review.investments.biggestGainer.amount)}
+                    </AppText>
+                  </View>
+                )}
+              </Card>
+            </>
+          )}
+
           {(review.bills.paidCount > 0 || review.bills.dueCount > 0) && (
             <>
               <GroupLabel>Bills</GroupLabel>

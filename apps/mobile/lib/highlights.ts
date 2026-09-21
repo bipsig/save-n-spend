@@ -49,6 +49,7 @@ export const SCREEN_ROUTE: Record<HighlightScreen, string> = {
   goals: "/goals",
   health: "/health",
   activity: "/activity",
+  investments: "/investments",
 };
 
 /** The human name for `screen`, spoken by accessibility labels ("Opens Budgets.") — kept
@@ -59,6 +60,7 @@ export const SCREEN_LABEL: Record<HighlightScreen, string> = {
   goals: "Goals",
   health: "Health",
   activity: "Activity",
+  investments: "Investments",
 };
 
 // Dismissals.

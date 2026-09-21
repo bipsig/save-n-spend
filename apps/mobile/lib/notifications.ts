@@ -27,6 +27,7 @@ export const LOOK: Record<NotificationType, Look> = {
   dailySummary: { icon: "summary", tint: "violet" },
   weeklySummary: { icon: "summary", tint: "violet" },
   monthlySummary: { icon: "summary", tint: "violet" },
+  revalueInvestments: { icon: "investments", tint: "teal" },
 };
 
 /**
@@ -35,13 +36,16 @@ export const LOOK: Record<NotificationType, Look> = {
  * The stored link names a screen rather than a path, so renaming a route here cannot orphan a
  * notification written months ago.
  */
-export const routeFor = (link?: NotificationLink): "/bills" | "/budget" | "/goals" | "/(tabs)/insights" | "/manage-accounts" | null => {
+export const routeFor = (link?: NotificationLink): "/bills" | "/budget" | "/goals" | "/(tabs)/insights" | "/manage-accounts" | "/investments" | "/investments?revalue=1" | null => {
   switch (link?.screen) {
     case "bills": return "/bills";
     case "budget": return "/budget";
     case "goals": return "/goals";
     case "insights": return "/(tabs)/insights";
     case "accounts": return "/manage-accounts";
+    // The revalue nudge (id: "revalue") lands with the update sheet already open; any other
+    // investments link just opens the hub.
+    case "investments": return link.id === "revalue" ? "/investments?revalue=1" : "/investments";
     default: return null;
   }
 };

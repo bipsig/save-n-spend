@@ -28,6 +28,8 @@ import { spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
 import { accountById, useAccountById, useAccounts, useDefaultAccount } from "@/lib/accounts";
 import AccountPickerSheet from "@/components/sheets/AccountPickerSheet";
+import RevalueSheet from "@/components/sheets/RevalueSheet";
+import { useInvestments } from "@/lib/investments";
 import { ApiError, get, patch, post } from "@/lib/api";
 import { useAccountStore } from "@/store/accounts";
 import { useTitleSuggestionStore } from "@/store/titleSuggestions";
@@ -41,16 +43,18 @@ const schema = z.object({
     .string()
     .regex(/^\s*₹?\s*[\d,]+(\.\d{1,2})?\s*$/, "Enter a valid amount")
     .refine((v) => parseMoney(v) > 0, "Enter a valid amount"),
-  type: z.enum(["income", "expense", "transfer"]),
+  // "invest" is a UI mode, not a stored type — it posts as a transfer whose destination
+  // is an investment account (see onSubmit). It behaves exactly like transfer here.
+  type: z.enum(["income", "expense", "transfer", "invest"]),
   // The picker only renders real categories (kind-filtered), so a non-empty
   // selection is a valid one; the server is the source of truth on save.
   category: z.string(),
   note: z.string(),
   location: z.string(),
 }).superRefine((data, ctx) => {
-  // A transfer moves money between accounts — it has no title or category.
+  // A transfer/invest moves money between accounts — it has no title or category.
   // Spends (income/expense) require both.
-  if (data.type !== "transfer") {
+  if (data.type !== "transfer" && data.type !== "invest") {
     if (data.title.trim().length === 0) {
       ctx.addIssue({ code: "custom", path: ["title"], message: "Title is required" });
     }
@@ -89,6 +93,7 @@ const TYPE_SEGMENTS: { key: FormValues["type"]; label: string }[] = [
   { key: "expense", label: "Expense" },
   { key: "income", label: "Income" },
   { key: "transfer", label: "Transfer" },
+  { key: "invest", label: "Invest" },
 ];
 
 // Deliberately not the shared Chip: that one carries a gradient glow built for a fixed,
@@ -119,7 +124,7 @@ const SuggestionChip = ({
 const AddTransaction = () => {
   usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
   const router = useRouter();
-  const { id, repeatId, settleAccount, draftFrom } = useLocalSearchParams<{ id?: string; repeatId?: string; settleAccount?: string; draftFrom?: string }>();
+  const { id, repeatId, settleAccount, draftFrom, mode, redeemFrom } = useLocalSearchParams<{ id?: string; repeatId?: string; settleAccount?: string; draftFrom?: string; mode?: string; redeemFrom?: string }>();
   const isEdit = !!id;
 
   const categories = useCategories();
@@ -213,9 +218,18 @@ const AddTransaction = () => {
     if (p.note || p.location) setExtrasOpen(true);
   }, [draftFrom, reset])
 
+  // Deep-linked "+ Invest" from the Investments hub opens straight in invest mode.
+  useEffect(() => {
+    if (mode === "invest" && !id) setValue("type", "invest");
+  }, [mode, id, setValue]);
+
   // Spec: the CTA label is live — it names what you're saving.
   const type = watch("type");
   const amountRaw = watch("amount");
+  // Transfer and invest are the same money move (account → account); invest just filters
+  // the destination to investment accounts and posts as a transfer. This flag folds the
+  // two together everywhere the flow is identical.
+  const isMoveType = type === "transfer" || type === "invest";
 
   // Category — picked via the shared sheet (search + create on the fly), same as Bills/Budgets.
   const categoryRef = useRef<BottomSheetModal>(null);
@@ -267,6 +281,24 @@ const AddTransaction = () => {
   const toAccountRef = useRef<BottomSheetModal>(null);
   const [toAccountId, setToAccountId] = useState<string | null>(null);
   const toAccount = useAccountById(toAccountId);
+
+  // "Redeem" from a holding's detail — a transfer OUT of the investment, source preset,
+  // destination defaulting to the user's default account. It's a transfer under the hood,
+  // same as invest; only the source being an investment makes it read as a redemption.
+  const isRedeem = type === "transfer" && account?.type === "investment";
+  useEffect(() => {
+    if (!redeemFrom || id) return;
+    setValue("type", "transfer");
+    setAccountId(redeemFrom);
+    setToAccountId(defaultAccount?._id ?? null);
+  }, [redeemFrom, id, setValue, defaultAccount]);
+
+  // Redeeming books at the holding's recorded value, which is only as fresh as the last
+  // update — so redeem mode offers "update value first" (see the row below). Fetched only
+  // when arriving to redeem, since a plain expense has no use for it.
+  const revalueRef = useRef<BottomSheetModal>(null);
+  const { data: investmentsData, refetch: refetchInvestments } = useInvestments(!!redeemFrom);
+  const redeemHolding = investmentsData?.holdings.find((h) => h.accountId === account?._id) ?? null;
 
   // "Settle up" from a person account's sheet — a transfer prefilled in whichever direction
   // clears the balance, amount included. Nothing is locked: the real repayment can differ
@@ -340,7 +372,7 @@ const AddTransaction = () => {
   const entered = parseMoney(amountRaw);
   const balanceLine = useMemo(() => {
     if (isEdit || !account) return null;
-    if (type === "transfer") {
+    if (isMoveType) {
       const dest = toAccount ? ` → ${toAccount.name}` : "";
       return entered > 0
         ? `From ${account.name}${dest} · ${formatMoney(account.balance - entered)} left after this`
@@ -355,7 +387,7 @@ const AddTransaction = () => {
     }
     const after = type === "income" ? account.balance + entered : account.balance - entered;
     return `${type === "income" ? "To" : "From"} ${account.name} · ${formatMoney(after)} ${type === "income" ? "after this" : "left after this"}`;
-  }, [account, toAccount, entered, type, isEdit, owedTotal]);
+  }, [account, toAccount, entered, type, isMoveType, isEdit, owedTotal]);
 
   const setAmount = (next: string) =>
     setValue("amount", next, { shouldValidate: true });
@@ -414,14 +446,22 @@ const AddTransaction = () => {
       reject("Account is missing");
       return;
     }
-    // Transfer needs a distinct destination; RHF can't validate account state.
-    if (data.type === "transfer") {
+    // Transfer/invest needs a distinct destination; RHF can't validate account state.
+    const move = data.type === "transfer" || data.type === "invest";
+    if (move) {
       if (!toAccount) {
-        reject("Choose the destination account");
+        reject(data.type === "invest" ? "Choose which investment to put this in" : "Choose the destination account");
         return;
       }
       if (toAccount._id === account._id) {
         reject("Pick two different accounts");
+        return;
+      }
+      // Redeeming can't take out more than the holding is worth (the server enforces this
+      // too). If it has grown since the last update, the recorded value is stale — the row
+      // below lets them update it first.
+      if (account.type === "investment" && parseMoney(data.amount) > account.balance) {
+        reject(`You can only redeem up to ${formatMoney(account.balance)} — update the value first if it has grown`);
         return;
       }
     }
@@ -458,10 +498,12 @@ const AddTransaction = () => {
     // retry would create a genuine duplicate rather than hit the dedupe index.
     const clientId = makeClientId();
 
-    // A spend carries title + category; a transfer carries toAccount and neither. Amount
-    // is positive paise; `type` gives the direction.
-    const payload = data.type === "transfer"
-      ? { type: data.type, amount: parseMoney(data.amount), account: account._id, toAccount: toAccount!._id, occurredAt: occurredAt.toISOString(), clientId, ...extras }
+    // A spend carries title + category; a transfer/invest carries toAccount and neither.
+    // Amount is positive paise; `type` gives the direction. Invest posts as a transfer —
+    // the destination being an investment account is what makes it an investment (nothing
+    // in the ledger distinguishes it; Activity/reviews read the destination's type).
+    const payload = move
+      ? { type: "transfer", amount: parseMoney(data.amount), account: account._id, toAccount: toAccount!._id, occurredAt: occurredAt.toISOString(), clientId, ...extras }
       : {
           type: data.type,
           amount: share,
@@ -496,13 +538,15 @@ const AddTransaction = () => {
       // A title typed for the first time this session — fire-and-forget, so a title
       // logged just now can be suggested on the very next transaction rather than
       // waiting for the next launch. Not awaited: nothing on this screen depends on it.
-      if (!isEdit && data.type !== "transfer") void useTitleSuggestionStore.getState().load();
+      if (!isEdit && !move) void useTitleSuggestionStore.getState().load();
       if (draftFrom) useOutbox.getState().discard(draftFrom);
       router.back();
       // The screen is already gone by the time this shows, so it is the only receipt —
       // hence naming the amount and direction rather than just "Saved".
       const amount = formatMoney(parseMoney(data.amount));
       if (isEdit) toast.success(`Changes saved — ${amount}`);
+      else if (data.type === "invest") toast.success(`${amount} invested in ${toAccount!.name}`);
+      else if (data.type === "transfer" && account.type === "investment") toast.success(`${amount} redeemed from ${account.name}`);
       else if (data.type === "transfer") toast.success(`${amount} moved to ${toAccount!.name}`);
       else if (data.type === "income") toast.success(`${amount} added to ${account.name}`);
       else if (owedBy) {
@@ -587,7 +631,7 @@ const AddTransaction = () => {
         >
           {/* Switching type rebuilds this list — a transfer has no title or category, and
               gains a destination. The fades keep that from reading as a glitch. */}
-          {type !== "transfer" && (
+          {!isMoveType && (
             <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)} style={styles.field}>
               <Controller
                 control={control}
@@ -628,8 +672,8 @@ const AddTransaction = () => {
             </Animated.View>
           )}
 
-          {/* The shared tiered picker, same as Bills / Budgets. Hidden for transfers. */}
-          {type !== "transfer" && (
+          {/* The shared tiered picker, same as Bills / Budgets. Hidden for transfers/invest. */}
+          {!isMoveType && (
             <Animated.View
               entering={FadeIn.duration(180)}
               exiting={FadeOut.duration(120)}
@@ -664,9 +708,9 @@ const AddTransaction = () => {
             </Animated.View>
           )}
 
-          {/* A spend picks one source; a transfer picks source → destination. Not editable
-              in edit mode — it would need cross-account balance reconciliation. */}
-          {!isEdit && type !== "transfer" && (
+          {/* A spend picks one source; a transfer/invest picks source → destination. Not
+              editable in edit mode — it would need cross-account balance reconciliation. */}
+          {!isEdit && !isMoveType && (
             <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)}>
               <PressableScale style={styles.selRow} onPress={() => accountRef.current?.present()} scaleTo={0.98}>
                 <Icon name="wallet" size={18} color="inkDim" />
@@ -742,7 +786,7 @@ const AddTransaction = () => {
             </Animated.View>
           )}
 
-          {!isEdit && type === "transfer" && (
+          {!isEdit && isMoveType && (
             <Animated.View
               entering={FadeIn.duration(180)}
               exiting={FadeOut.duration(120)}
@@ -758,15 +802,34 @@ const AddTransaction = () => {
               </PressableScale>
 
               <PressableScale style={styles.selRow} onPress={() => toAccountRef.current?.present()} scaleTo={0.98}>
-                <Icon name="activity" size={18} color="inkDim" />
+                <Icon name={type === "invest" ? "investments" : "activity"} size={18} color="inkDim" />
                 <View style={styles.selText}>
-                  <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>TO</AppText>
+                  <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>
+                    {isRedeem ? "REDEEM TO" : type === "invest" ? "INVEST IN" : "TO"}
+                  </AppText>
                   <AppText size="sm" weight="bold" color={toAccount ? "ink" : "inkDim"}>
-                    {toAccount?.name ?? "Select destination"}
+                    {toAccount?.name ?? (type === "invest" ? "Select an investment" : "Select destination")}
                   </AppText>
                 </View>
                 <Icon name="chevronRight" size={20} color="inkDim" />
               </PressableScale>
+
+              {/* Redeeming books at the recorded value — offer to correct it first, since a
+                  holding that grew since the last update would otherwise redeem low (and the
+                  guard in onSubmit blocks redeeming more than what's recorded). */}
+              {isRedeem && redeemHolding && (
+                <PressableScale style={styles.selRow} onPress={() => revalueRef.current?.present()} scaleTo={0.98}>
+                  <Icon name="investments" size={18} color="inkDim" />
+                  <View style={styles.selText}>
+                    <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>WORTH NOW</AppText>
+                    <AppText size="sm" weight="bold">
+                      {formatMoney(account!.balance)}
+                      <AppText size="xs" weight="semibold" color="inkDim"> · tap to update if it's grown</AppText>
+                    </AppText>
+                  </View>
+                  <Icon name="chevronRight" size={20} color="inkDim" />
+                </PressableScale>
+              )}
             </Animated.View>
           )}
 
@@ -862,6 +925,8 @@ const AddTransaction = () => {
           label={
             isEdit ? "Save Changes"
             : type === "income" ? "Save Income"
+            : type === "invest" ? (entered > 0 ? `Invest ${formatMoney(entered)}` : "Invest")
+            : isRedeem ? (entered > 0 ? `Redeem ${formatMoney(entered)}` : "Redeem")
             : type === "transfer" ? (entered > 0 ? `Transfer ${formatMoney(entered)}` : "Transfer")
             : "Save Expense"
           }
@@ -869,7 +934,14 @@ const AddTransaction = () => {
       </View>
 
       <AccountPickerSheet ref={accountRef} selectedId={accountId} onPick={setAccountId} />
-      <AccountPickerSheet ref={toAccountRef} selectedId={toAccountId} onPick={setToAccountId} />
+      {/* Invest filters the destination to investment accounts; a plain transfer shows all. */}
+      <AccountPickerSheet
+        ref={toAccountRef}
+        selectedId={toAccountId}
+        onPick={setToAccountId}
+        title={type === "invest" ? "Invest in" : undefined}
+        filterType={type === "invest" ? "investment" : undefined}
+      />
       {/* One sheet shared by every split row — `activeSplitKey` says which row it's for. */}
       <AccountPickerSheet
         ref={splitAccountRef}
@@ -885,6 +957,14 @@ const AddTransaction = () => {
         ref={categoryRef}
         kind={type === "income" ? "income" : "expense"}
         onPick={(categoryId) => setValue("category", categoryId, { shouldValidate: true })}
+      />
+      {/* Redeem mode only — one holding, so the sheet reads as "what's this worth now".
+          syncAccountBalance reloads the account store, so the value line and redeem guard
+          above pick up the new figure; refetch keeps invested/growth framing fresh. */}
+      <RevalueSheet
+        ref={revalueRef}
+        holdings={redeemHolding ? [{ accountId: redeemHolding.accountId, name: redeemHolding.name, invested: redeemHolding.invested, current: redeemHolding.current }] : []}
+        onSaved={() => { void refetchInvestments(); }}
       />
     </ScreenScaffold>
     </BottomSheetModalProvider>

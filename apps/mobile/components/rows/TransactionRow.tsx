@@ -65,8 +65,15 @@ const TransactionRow = ({ transaction, onPress, pending = false, failed = false 
   const from = useAccountById(transaction.account)
   const to = useAccountById(transaction.toAccount)
 
+  // A transfer INTO an investment account is a contribution; OUT of one is a redemption.
+  // Same underlying money move, but it reads as investing, not a plain account transfer.
+  const toInvestment = isTransfer && to?.type === "investment"
+  const fromInvestment = isTransfer && from?.type === "investment"
+  const isInvestment = toInvestment || fromInvestment
+  const moveLabel = toInvestment ? "Invested" : fromInvestment ? "Redeemed" : "Transfer"
+
   const description = isTransfer
-    ? `Transfer, ${from?.name ?? "an account"} to ${to?.name ?? "an account"}`
+    ? `${moveLabel}, ${from?.name ?? "an account"} to ${to?.name ?? "an account"}`
     : `${transaction.title}, ${category?.name ?? "uncategorised"}`;
   const statusNote = failed ? ", couldn't sync" : pending ? ", pending sync" : "";
   const amountNote = isTransfer
@@ -87,17 +94,18 @@ const TransactionRow = ({ transaction, onPress, pending = false, failed = false 
     >
       <Card style={styles.card}>
         <Icon
-          name={isTransfer ? "transfer" : ((category?.icon ?? "more") as IconName)}
+          name={isInvestment ? "investments" : isTransfer ? "transfer" : ((category?.icon ?? "more") as IconName)}
           container="square"
-          // Teal, which is neither the green of money in nor the red of money out.
-          gradient={isTransfer ? "teal" : ((category?.color ?? "accent") as ColorToken)}
+          // Green for an investment (money working, not spent); teal for a plain transfer,
+          // which is neither the green of money in nor the red of money out.
+          gradient={isInvestment ? "green" : isTransfer ? "teal" : ((category?.color ?? "accent") as ColorToken)}
           size={22}
           containerSize={44}
         />
 
         <View style={styles.details}>
           <AppText size="md" weight="bold">
-            {isTransfer ? "Transfer" : transaction.title}
+            {isTransfer ? moveLabel : transaction.title}
           </AppText>
           {isTransfer ? (
             <AppText size="sm" color="inkDim">

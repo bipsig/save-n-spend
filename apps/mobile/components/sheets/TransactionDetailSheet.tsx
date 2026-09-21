@@ -22,6 +22,8 @@ import { useRouter } from "expo-router";
 import { useAccountStore } from "@/store/accounts";
 import { useConnectivity } from "@/store/connectivity";
 import { pendingDeletes } from "@/store/pendingDeletes";
+import AccountPickerSheet from "@/components/sheets/AccountPickerSheet";
+import { convertToInvestment } from "@/lib/investments";
 
 // Spec .selrow — boxed glass strip: leading icon · (caps label over bold value) · optional ›
 const SelRow = ({
@@ -73,6 +75,7 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
   const innerRef = useRef<BottomSheetModal>(null);
   useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
   const dismiss = () => innerRef.current?.dismiss();
+  const convertRef = useRef<BottomSheetModal>(null);
 
   const router = useRouter();
   const offline = useConnectivity((s) => s.offline);
@@ -86,7 +89,12 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
   // has to be told: otherwise the sheet opens on a blank heading, an "Uncategorised" badge
   // and a green "+ ₹1,000" for money that only moved between the user's own accounts.
   const isTransfer = transaction?.type === "transfer";
-  const title = isTransfer ? "Transfer" : transaction?.title ?? "Transaction";
+  // A transfer into an investment account is a contribution; out of one, a redemption.
+  const toInvestment = isTransfer && toAccount?.type === "investment";
+  const fromInvestment = isTransfer && account?.type === "investment";
+  const isInvestment = toInvestment || fromInvestment;
+  const moveLabel = toInvestment ? "Invested" : fromInvestment ? "Redeemed" : "Transfer";
+  const title = isTransfer ? moveLabel : transaction?.title ?? "Transaction";
   // Subscribes this sheet to the mask so the delete-confirm's inline amount reveals with
   // everything else. `<Money>` handles its own; a `formatMoney` in a template string can't.
   usePrivacyMask();
@@ -110,6 +118,29 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
       }
     });
   }
+
+  // Turn this expense into an investment contribution. Picks the destination holding,
+  // then hands off to the API's convert endpoint (expense → transfer into that account).
+  const openConvert = () => {
+    if (offline) {
+      toast.error("You're offline — converting needs a connection");
+      return;
+    }
+    convertRef.current?.present();
+  };
+
+  const handleConvert = async (toAccountId: string) => {
+    if (!transaction) return;
+    try {
+      await convertToInvestment(transaction._id, toAccountId);
+      dismiss();
+      toast.success("Moved to your investments");
+      onCommitted?.();
+    }
+    catch (err) {
+      toast.fromError(err, "Couldn't convert. Try again.");
+    }
+  };
 
   // Same transaction, landing on today instead of its own moment — a split's expense
   // already stores only the user's own share as its amount, so repeating one naturally
@@ -162,12 +193,12 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
             {/* Spec §08 .centerid — chip · title · spaced-sign amount · tinted badge */}
             <View style={styles.identity}>
               <Icon
-                name={isTransfer ? "transfer" : ((category?.icon ?? "activity") as IconName)}
+                name={isInvestment ? "investments" : isTransfer ? "transfer" : ((category?.icon ?? "activity") as IconName)}
                 size={30}
                 containerSize={64}
                 containerRadius={21}
                 container="square"
-                gradient={isTransfer ? "teal" : ((category?.color ?? "accent") as ColorToken)}
+                gradient={isInvestment ? "green" : isTransfer ? "teal" : ((category?.color ?? "accent") as ColorToken)}
               />
               <AppText size="md" weight="black">
                 {title}
@@ -185,7 +216,11 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
               />
               {isTransfer ? (
                 <AppText size="xs" color="inkDim">
-                  Moved between your accounts — not income or spending
+                  {toInvestment
+                    ? "Money moved into your investments — not spending"
+                    : fromInvestment
+                      ? "Money moved out of your investments — not income"
+                      : "Moved between your accounts — not income or spending"}
                 </AppText>
               ) : (
                 <>
@@ -219,7 +254,7 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
               {isTransfer ? (
                 <>
                   <SelRow icon="wallet" label="FROM" value={account?.name ?? "—"} />
-                  <SelRow icon="transfer" label="TO" value={toAccount?.name ?? "—"} />
+                  <SelRow icon={toInvestment ? "investments" : "transfer"} label={toInvestment ? "INVESTED IN" : "TO"} value={toAccount?.name ?? "—"} />
                 </>
               ) : (
                 <SelRow icon="wallet" label="ACCOUNT" value={account?.name ?? "—"} />
@@ -245,6 +280,17 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
               icon="repeat"
               onPress={() => handleRepeat()}
             />
+
+            {/* Backward-compat: an expense that was really a SIP/investment can be moved
+                out of spending into a holding. Expense-only — income/transfers aren't it. */}
+            {transaction.type === "expense" && !transaction.splitGroupId && (
+              <Button
+                label="Convert to investment"
+                variant="secondary"
+                icon="investments"
+                onPress={openConvert}
+              />
+            )}
 
             <View style={styles.actions}>
               {/* Transfers can't be edited (the form has no transfer mode yet) — delete + recreate */}
@@ -306,6 +352,12 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
           </Animated.View>
         )
       )}
+      <AccountPickerSheet
+        ref={convertRef}
+        title="Convert into"
+        filterType="investment"
+        onPick={(pickedId) => void handleConvert(pickedId)}
+      />
     </AppSheet>
   )
 })

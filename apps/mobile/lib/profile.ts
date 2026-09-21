@@ -59,6 +59,8 @@ export const FALLBACK_PREFS: IUserPrefs = {
     dailySummary: false,
     weeklySummary: false,
     monthlySummary: true,
+    investmentReminder: false,
+    investmentReminderDay: 1,
   },
 };
 
