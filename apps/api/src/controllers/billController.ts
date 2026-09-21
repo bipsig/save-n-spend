@@ -64,6 +64,18 @@ export const createBill = async (req: Request, res: Response): Promise<void> => 
         throw AppError.badRequest("Frequency is required for recurring bills");
     }
 
+    if (reqBody.toInvestment) {
+        const investment = await Account.findOne({
+            _id: reqBody.toInvestment,
+            userId: req.user?.userId,
+            type: "investment",
+            isArchived: false
+        });
+        if (!investment) {
+            throw AppError.badRequest("Choose an investment account");
+        }
+    }
+
     const bill = await Bill.create({
         userId: req.user?.userId,
         ...reqBody
@@ -85,6 +97,18 @@ export const updateBill = async (req: Request, res: Response): Promise<void> => 
 
         if (!category) {
             throw AppError.badRequest("Category not found");
+        }
+    }
+
+    if (reqBody.toInvestment) {
+        const investment = await Account.findOne({
+            _id: reqBody.toInvestment,
+            userId: req.user?.userId,
+            type: "investment",
+            isArchived: false
+        });
+        if (!investment) {
+            throw AppError.badRequest("Choose an investment account");
         }
     }
 
@@ -162,38 +186,77 @@ export const markBillPaid = async (req: Request, res: Response): Promise<void> =
         throw AppError.badRequest("No account to charge this bill to");
     }
 
+    // A SIP bill funds an investment: marking it done moves money INTO that holding as a
+    // transfer, not an expense — so it never hits the spending charts and lands in the
+    // holding. Re-checked here (not just at create) in case the holding was archived since.
+    let investmentId: mongoose.Types.ObjectId | null = null;
+    if (bill.toInvestment) {
+        const investment = await Account.findOne({ _id: bill.toInvestment, userId: req.user?.userId, type: "investment", isArchived: false });
+        if (!investment) {
+            throw AppError.badRequest("This SIP's investment no longer exists — edit the bill to point it at one");
+        }
+        investmentId = investment._id as mongoose.Types.ObjectId;
+    }
+
+    let settledBill = bill;
     const session = await mongoose.startSession();
     try {
         await session.withTransaction(async () => {
-            const [transaction] = await Transaction.create([{
-                userId: req.user?.userId,
-                type: "expense",
-                amount: bill.amount,
-                account: account?._id,
-                category: bill.category,
-                title: bill.name,
-                occurredAt: new Date()
-            }], { session });
+            // Claim the bill atomically BEFORE moving any money. The status/period guard above
+            // is a check-then-act: a double-tap or an offline-queue replay can both pass it and
+            // each post a full expense/transfer + double-debit the account. This conditional
+            // update is the idempotency key — for a one-off it's status:"pending"; for a
+            // recurring bill it's the current dueDate, which this same update advances, so a
+            // second racing request matches nothing, gets null, and aborts the whole txn
+            // (rolling back before any transaction is written).
+            const now = new Date();
+            const claimed = bill.recurring
+                ? await Bill.findOneAndUpdate(
+                    { _id: bill._id, userId: req.user?.userId, dueDate: bill.dueDate },
+                    { dueDate: advanceDueDate(bill.dueDate, zone, bill.frequency), lastPaidAt: now },
+                    { session, new: true },
+                )
+                : await Bill.findOneAndUpdate(
+                    { _id: bill._id, userId: req.user?.userId, status: "pending" },
+                    { status: "paid", lastPaidAt: now },
+                    { session, new: true },
+                );
+
+            if (!claimed) {
+                throw AppError.badRequest("This bill was just handled — nothing more to do");
+            }
+
+            const [transaction] = await Transaction.create([
+                investmentId
+                    ? {
+                        userId: req.user?.userId,
+                        type: "transfer",
+                        amount: bill.amount,
+                        account: account?._id,
+                        toAccount: investmentId,
+                        occurredAt: now
+                    }
+                    : {
+                        userId: req.user?.userId,
+                        type: "expense",
+                        amount: bill.amount,
+                        account: account?._id,
+                        category: bill.category,
+                        title: bill.name,
+                        occurredAt: now
+                    }
+            ], { session });
 
             await applyEffects(transaction, "add", session);
 
-            if (bill.recurring) {
-                bill.dueDate = advanceDueDate(bill.dueDate, zone, bill.frequency);
-            }
-            else {
-                bill.status = "paid";
-            }
-
-            bill.lastPaidAt = new Date();
-
-            await bill.save({ session });
+            settledBill = claimed;
         })
     }
     finally {
         session.endSession();
     }
 
-    reply.ok(res, bill, "Bill marked as paid");
+    reply.ok(res, settledBill, "Bill marked as paid");
 }
 
 export const skipBill = async (req: Request, res: Response): Promise<void> => {

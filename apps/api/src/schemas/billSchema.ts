@@ -8,7 +8,8 @@ export const createBillSchema = z.object({
     dueDate: z.coerce.date(),
     recurring: z.boolean().optional(),
     frequency: z.enum(["monthly", "yearly"]).optional(),
-    reminderDays: z.number().int().min(0).optional()
+    reminderDays: z.number().int().min(0).optional(),
+    toInvestment: z.string().nullable().optional()
 }).strict();
 
 export const updateBillSchema = z.object({
@@ -19,7 +20,8 @@ export const updateBillSchema = z.object({
     dueDate: z.coerce.date().optional(),
     recurring: z.boolean().optional(),
     frequency: z.enum(["monthly", "yearly"]).optional(),
-    reminderDays: z.number().int().min(0).optional()
+    reminderDays: z.number().int().min(0).optional(),
+    toInvestment: z.string().nullable().optional()
 }).strict();
 
 export const listBillQuerySchema = z.object({
