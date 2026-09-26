@@ -72,6 +72,12 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
     defaultValues: { limit: "" },
   });
 
+  // Also on dismiss: reopening on the same budget (same props) must not show a cancelled edit.
+  const resetForm = () => {
+    reset({ limit: summary ? paiseToInput(summary.budget.limit) : "" });
+    setError(null);
+  };
+
   useEffect(() => {
     reset({ limit: summary ? paiseToInput(summary.budget.limit) : "" });
   }, [summary, categoryId, reset]);
@@ -182,7 +188,7 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
   );
 
   return (
-    <AppSheet ref={innerRef} onDismiss={() => setError(null)}>
+    <AppSheet ref={innerRef} onDismiss={resetForm}>
       {isEdit ? (
         <View style={styles.identity}>{identity}</View>
       ) : (

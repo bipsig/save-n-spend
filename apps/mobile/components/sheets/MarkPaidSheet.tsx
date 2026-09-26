@@ -94,7 +94,11 @@ const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
 
   return (
     <>
-    <AppSheet ref={innerRef} onDismiss={() => setError(null)}>
+    <AppSheet ref={innerRef} onDismiss={() => {
+      // Back to the bill's own account — a "pay from" picked and then cancelled shouldn't stick.
+      setAccountId(bill?.account ?? defaultAccount?._id ?? null);
+      setError(null);
+    }}>
       {bill && (
         <>
           <View style={styles.identity}>

@@ -67,7 +67,11 @@ const EditProfileSheet = forwardRef<BottomSheetModal, { onSaved?: () => void }>(
   return (
     <AppSheet
       ref={innerRef}
-      onDismiss={() => setError(null)}
+      onDismiss={() => {
+        // A cancelled edit shouldn't be there next time — the saved name should.
+        setValue("name", user?.name ?? "");
+        setError(null);
+      }}
       footer={<Button label="Save profile" loading={isSubmitting} onPress={submit} />}
     >
       {/* Live identity preview — the initials update as the name is typed. */}

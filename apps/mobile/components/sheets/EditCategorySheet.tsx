@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { ICategory } from "@save-n-spend/types";
 import AppSheet from "./AppSheet";
@@ -56,7 +56,7 @@ const EditCategorySheet = forwardRef<BottomSheetModal, Props>(({ category, paren
   // A new child inherits its parent's kind, icon, and colour: the server rejects a
   // mismatched kind outright, and starting a child off looking like its parent is
   // both the likely answer and a visible statement of where it belongs.
-  useEffect(() => {
+  const resetForm = useCallback(() => {
     setForm({
       name: category?.name ?? "",
       kind: category?.kind ?? parent?.kind ?? "expense",
@@ -66,6 +66,10 @@ const EditCategorySheet = forwardRef<BottomSheetModal, Props>(({ category, paren
     });
     setError(null);
   }, [category, parent]);
+
+  // Also on dismiss: adding a second new category opens on the same props, and must not
+  // show the first one's name.
+  useEffect(() => { resetForm(); }, [resetForm]);
 
   const save = async () => {
     const trimmed = form.name.trim();
@@ -111,7 +115,7 @@ const EditCategorySheet = forwardRef<BottomSheetModal, Props>(({ category, paren
       ref={innerRef}
       scrollable
       snapPoints={["78%"]}
-      onDismiss={() => setError(null)}
+      onDismiss={resetForm}
       footer={
         <Button
           label={categoryCtaLabel(editing, editing ? null : parent?._id ?? null)}

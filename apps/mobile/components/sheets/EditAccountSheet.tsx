@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { BottomSheetModal, BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { useRouter } from "expo-router";
@@ -110,7 +110,10 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
   const [how, setHow] = useState<InvestedHow>("sip");
   const [basisTouched, setBasisTouched] = useState(false);
 
-  useEffect(() => {
+  // Back to what this sheet was opened for — the account's own values, or a blank new one.
+  // Run on dismiss too, not only when `account` changes: adding a second new account opens
+  // on the same `null`, so a props-keyed reset alone would leave the first one's entries.
+  const resetForm = useCallback(() => {
     const initialType = account?.type ?? defaultType ?? "bank";
     setName(account?.name ?? "");
     setType(initialType);
@@ -129,6 +132,8 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
     setBasisTouched(false);
     setError(null);
   }, [account, defaultType]);
+
+  useEffect(() => { resetForm(); }, [resetForm]);
 
   // The correction about to be made, or `null` when there is nothing to do. `undefined`
   // marks an unparseable figure, so the save path refuses it rather than reading a typo as
@@ -249,7 +254,7 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
       ref={innerRef}
       scrollable
       snapPoints={["82%"]}
-      onDismiss={() => setError(null)}
+      onDismiss={resetForm}
       footer={
         <Button
           label={editing ? "Save changes" : "Create account"}
