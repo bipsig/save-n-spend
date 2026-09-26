@@ -98,3 +98,9 @@ export const updateTransactionSchema = z.object({
     paymentMode: z.enum(["cash", "upi", "card", "transfer"]).optional(),
     occurredAt: z.string().optional(),
 }).strict()
+// "Move the past payments too" after setting up a SIP from a suggestion — the same
+// reclassification as the single convert, over a batch, in one transaction.
+export const bulkConvertToInvestmentSchema = z.object({
+    transactionIds: z.array(z.string()).min(1).max(60),
+    toAccount: z.string(),
+}).strict();

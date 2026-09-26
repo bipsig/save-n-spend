@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { convertToInvestmentSchema, createTransactionSchema, listTransactionQuerySchema, transactionSummaryQuerySchema, updateTransactionSchema } from "../schemas/transactionSchema";
+import { convertToInvestmentSchema, bulkConvertToInvestmentSchema, createTransactionSchema, listTransactionQuerySchema, transactionSummaryQuerySchema, updateTransactionSchema } from "../schemas/transactionSchema";
 import mongoose from "mongoose";
 import Account from "../models/Account";
 import { AppError } from "../utils/AppError";
@@ -427,6 +427,49 @@ export const convertToInvestment = async (req: Request, res: Response): Promise<
     }
 
     reply.ok(res, transaction, "Converted to investment");
+}
+
+// The batch form of convertToInvestment, for "move the past payments too" after a SIP is set
+// up from a recurring suggestion. Only plain expenses owned by the caller are touched — split
+// members and anything already converted are skipped rather than failing the whole batch —
+// and all of it lands in one transaction, so it's all or nothing.
+export const bulkConvertToInvestment = async (req: Request, res: Response): Promise<void> => {
+    const { transactionIds, toAccount } = bulkConvertToInvestmentSchema.parse(req.body);
+
+    const investment = await Account.findOne({
+        _id: toAccount,
+        userId: req.user?.userId,
+        type: "investment",
+        isArchived: false
+    });
+    if (!investment) {
+        throw AppError.badRequest("Choose an investment account");
+    }
+
+    const transactions = await Transaction.find({
+        _id: { $in: transactionIds },
+        userId: req.user?.userId,
+        type: "expense",
+        splitGroupId: null,
+        account: { $ne: investment._id },
+    });
+
+    const session = await mongoose.startSession();
+    try {
+        await session.withTransaction(async () => {
+            for (const transaction of transactions) {
+                await applyEffects(transaction, "revert", session);
+                transaction.set({ type: "transfer", toAccount: investment._id, category: null });
+                await applyEffects(transaction, "add", session);
+                await transaction.save({ session });
+            }
+        });
+    }
+    finally {
+        session.endSession();
+    }
+
+    reply.ok(res, { converted: transactions.length }, "Converted to investment");
 }
 
 export const deleteTransaction = async (req: Request, res: Response) : Promise<void> => {
