@@ -28,15 +28,21 @@ export const createAccount = async (req: Request, res: Response): Promise<void> 
         isArchived: false
     });
 
+    // An investment can start worth something other than what went in — the gain or loss
+    // made before it was tracked here. `startingBalance` stays the cost basis and `balance`
+    // is today's value; the gap is that pre-tracking gain, not a movement this month, so
+    // it's stored directly rather than as a value-update.
+    const investment = reqBody.type === "investment";
     const savedAccount = await Account.create({
         userId: req.user?.userId,
         name: reqBody.name,
         type: reqBody.type,
-        balance: reqBody.startingBalance,
+        balance: investment && reqBody.currentValue !== undefined ? reqBody.currentValue : reqBody.startingBalance,
         startingBalance: reqBody.startingBalance,
         icon: reqBody.icon ?? "wallet",
         color: reqBody.color ?? "success",
         investmentKind: reqBody.investmentKind,
+        ...(investment ? { investedSince: reqBody.investedSince ?? null, investedHow: reqBody.investedHow ?? null } : {}),
         order: existing
     });
 

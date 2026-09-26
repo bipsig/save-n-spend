@@ -7,7 +7,7 @@
     "start": "node dist/server.js",
     "seed": "ts-node src/scripts/seed.ts",
     "reminders": "ts-node src/scripts/reminders.ts",
-    "test": "node --require ts-node/register --test src/services/highlightRules.test.ts src/services/highlightSnapshotMath.test.ts src/services/streakMath.test.ts src/services/netWorthMath.test.ts src/services/paceMath.test.ts src/services/reviewMath.test.ts src/services/billService.test.ts src/services/recurringMath.test.ts src/services/cashFlowMath.test.ts"
+    "test": "node --require ts-node/register --test src/services/highlightRules.test.ts src/services/highlightSnapshotMath.test.ts src/services/streakMath.test.ts src/services/netWorthMath.test.ts src/services/paceMath.test.ts src/services/reviewMath.test.ts src/services/billService.test.ts src/services/recurringMath.test.ts src/services/cashFlowMath.test.ts src/services/investmentMath.test.ts"
   },
   "dependencies": {
     "@save-n-spend/types": "*",

@@ -9,6 +9,10 @@ export interface IAccount extends Document {
     icon?: string
     color?: string
     investmentKind?: string
+    /** Investments: when the opening amount (`startingBalance`, the cost basis at creation)
+     *  started going in, and whether as a lump or monthly. Dates it for the yearly return. */
+    investedSince?: Date | null
+    investedHow?: "sip" | "lump" | null
     isArchived: boolean
     /**
      * When the user last reconciled this account against their bank. Stamped even when
@@ -34,6 +38,8 @@ const AccountSchema = new Schema<IAccount>({
     color: { type: String },
     // Only meaningful for type "investment" — the hub's grouping key (SIP / Mutual Fund / …).
     investmentKind: { type: String },
+    investedSince: { type: Schema.Types.Date, default: null },
+    investedHow: { type: String, enum: ["sip", "lump", null], default: null },
     isArchived: { type: Boolean, default: false },
     lastSyncedAt: { type: Schema.Types.Date, default: null },
     order: { type: Number, default: 0 }

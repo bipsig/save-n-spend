@@ -6,7 +6,13 @@ export const createAccountSchema = z.object({
     startingBalance: z.number().int(),
     icon: z.string().optional(),
     color: z.string().optional(),
-    investmentKind: z.string().trim().min(1).max(40).optional()
+    investmentKind: z.string().trim().min(1).max(40).optional(),
+    // Investments only. `startingBalance` is then what was invested so far (the cost basis);
+    // `currentValue` is what it's worth today, which can differ — a holding bought at ₹1L now
+    // worth ₹90k. Omitted means worth exactly what went in.
+    currentValue: z.number().int().min(0).optional(),
+    investedSince: z.coerce.date().refine((d) => d.getTime() <= Date.now(), "The start date can't be in the future").optional(),
+    investedHow: z.enum(["sip", "lump"]).optional()
 }).strict();
 
 export const updateAccountSchema = z.object({
@@ -36,3 +42,12 @@ export const syncAccountBalanceSchema = z.object({
     balance: z.number().int(),
     note: z.string().trim().min(1).max(120).optional()
 }).strict();
+// Correcting a holding's cost basis after the fact — how much has gone in, since when, and
+// how. `invested` is the TOTAL invested; the server works out the opening amount from it.
+// Its own schema, like the balance sync: it restates the gain, so it shouldn't ride on a rename.
+export const investmentBasisSchema = z.object({
+    invested: z.number().int().min(0).optional(),
+    investedSince: z.coerce.date().refine((d) => d.getTime() <= Date.now(), "The start date can't be in the future").nullable().optional(),
+    investedHow: z.enum(["sip", "lump"]).nullable().optional()
+}).strict();
+
