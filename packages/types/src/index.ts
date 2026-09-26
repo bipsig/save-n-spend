@@ -70,6 +70,11 @@ export interface IAccount {
   // (SIP / Mutual Fund / FD / …). Free string, not an enum: kinds are a UI preset, so a
   // new one never needs a schema change.
   investmentKind?: string
+  // Investments only. When the money already in it at creation started going in, and how —
+  // a lump on that date or spread monthly since (a SIP). What the yearly return needs to
+  // date the opening amount. Absent until set.
+  investedSince?: string | null
+  investedHow?: InvestedHow | null
   isArchived: boolean
   // ISO. When the user last reconciled against their bank; absent if never.
   lastSyncedAt?: string | null
@@ -176,6 +181,12 @@ export interface IGoal {
 // GET /investments — the Investments hub. Each holding is an investment-type account;
 // `invested` is net contributions (transfers in − transfers out), `current` its balance,
 // `gain` the difference (= the sum of its revaluation adjustments). All paise.
+export type InvestedHow = 'sip' | 'lump'
+
+/** Why a yearly return is or isn't shown. `tooEarly`: under ~3 months of history, where
+ *  annualising is noise. `noStartDate`: there's an opening amount with no date to put it on. */
+export type AnnualReturnStatus = 'ok' | 'tooEarly' | 'noStartDate' | 'unavailable'
+
 export interface InvestmentHolding {
   accountId: string
   name: string
@@ -188,6 +199,12 @@ export interface InvestmentHolding {
   gain: number
   /** ISO of the last value-update (adjustment), or null if never revalued. */
   lastUpdatedAt: string | null
+  investedSince: string | null
+  investedHow: InvestedHow | null
+  /** Money-weighted yearly return (XIRR) as a fraction — 0.124 is 12.4% a year. Null
+   *  unless `annualReturnStatus` is 'ok'. */
+  annualReturn: number | null
+  annualReturnStatus: AnnualReturnStatus
 }
 
 export interface InvestmentAllocationSlice {
@@ -197,7 +214,7 @@ export interface InvestmentAllocationSlice {
 
 export interface InvestmentsPayload {
   holdings: InvestmentHolding[]
-  totals: { invested: number; current: number; gain: number }
+  totals: { invested: number; current: number; gain: number; annualReturn: number | null; annualReturnStatus: AnnualReturnStatus }
   /** Current value per kind, biggest first — the allocation donut. */
   allocation: InvestmentAllocationSlice[]
   /** This zone-local month so far — the hub's momentum card. `contributed` = money put in
