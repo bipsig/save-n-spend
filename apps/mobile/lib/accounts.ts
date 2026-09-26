@@ -4,7 +4,7 @@ import { useSession } from "@/store/session";
 import { usePendingDeletes } from "@/store/pendingDeletes";
 import { del, patch, post } from "@/lib/api";
 import { applyOrder, persistOrder } from "@/lib/reorder";
-import type { AccountType, IAccount } from "@save-n-spend/types";
+import type { AccountType, IAccount, InvestedHow } from "@save-n-spend/types";
 
 // Filtered here, not just at the manage-accounts screen, so a "deleted" account
 // disappears from every picker built on this hook (Add Transaction, split rows) the
@@ -45,6 +45,12 @@ export type AccountDraft = {
   color?: string;
   /** Only for type "investment" — the hub's grouping key (SIP / Mutual Fund / …). */
   investmentKind?: string;
+  /** Investments: what it's worth today, when that differs from `startingBalance` (which is
+   *  then what's been invested so far). */
+  currentValue?: number;
+  /** Investments: when the opening amount started going in (ISO), and how. */
+  investedSince?: string;
+  investedHow?: InvestedHow;
 };
 
 export const createAccount = async (draft: AccountDraft): Promise<IAccount> => {

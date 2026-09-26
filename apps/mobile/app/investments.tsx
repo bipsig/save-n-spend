@@ -16,7 +16,7 @@ import ErrorState from "@/components/states/ErrorState";
 import SkeletonState from "@/components/states/SkeletonState";
 import EditAccountSheet from "@/components/sheets/EditAccountSheet";
 import RevalueSheet from "@/components/sheets/RevalueSheet";
-import { useInvestments, returnPct } from "@/lib/investments";
+import { useInvestments, returnPct, formatAnnual } from "@/lib/investments";
 import { useAccounts } from "@/lib/accounts";
 import { useBills } from "@/lib/bills";
 import { formatDueLabel } from "@/lib/date";
@@ -51,7 +51,12 @@ const HoldingRow = ({ h, onPress }: { h: InvestmentHolding; onPress: () => void 
         />
         <View style={styles.holdInfo}>
           <AppText size="sm" weight="bold" numberOfLines={1}>{h.name}</AppText>
-          <AppText size="xs" color="inkDim">Invested {formatMoney(h.invested)}</AppText>
+          <AppText size="xs" color="inkDim" numberOfLines={1}>
+            Invested {formatMoney(h.invested)}
+            {h.annualReturnStatus === "ok" && h.annualReturn !== null && (
+              <AppText size="xs" weight="bold" color={gainColor(h.annualReturn)}> · {formatAnnual(h.annualReturn)}</AppText>
+            )}
+          </AppText>
         </View>
         <View style={styles.holdRight}>
           <Money value={h.current} weight="bold" size="sm" align="right" />
@@ -107,6 +112,8 @@ const InvestmentsScreen = () => {
   );
 
   const holdings = data?.holdings ?? [];
+  // Holdings whose opening amount has no date — the yearly return can't be worked out.
+  const undated = holdings.filter((h) => h.annualReturnStatus === "noStartDate");
   // Best performer: the holding with the strongest positive simple return.
   const best = holdings
     .map((h) => ({ h, pct: returnPct(h.invested, h.gain) }))
@@ -159,12 +166,36 @@ const InvestmentsScreen = () => {
                 </AppText>
               );
             })()}
+            {data.totals.annualReturnStatus === "ok" && data.totals.annualReturn !== null && (
+              <AppText size="xs" weight="bold" color={gainColor(data.totals.annualReturn)}>
+                {formatAnnual(data.totals.annualReturn)} across your portfolio
+              </AppText>
+            )}
             <View style={styles.split}>
               <View style={styles.splitCell}><AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>Invested</AppText><Money value={data.totals.invested} weight="black" size="sm" /></View>
               <View style={styles.splitDivider} />
               <View style={styles.splitCell}><AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>Current</AppText><Money value={data.totals.current} weight="black" size="sm" /></View>
             </View>
           </Card>
+
+          {undated.length > 0 && (
+            <PressableScale
+              onPress={() => router.push({ pathname: "/investment-detail", params: { id: undated[0].accountId, edit: "1" } })}
+              scaleTo={0.98}
+              accessibilityRole="button"
+            >
+              <Card style={styles.perfCard}>
+                <Icon name="date" size={16} containerSize={38} containerRadius={12} container="square" gradient="blue" />
+                <View style={styles.holdInfo}>
+                  <AppText size="sm" weight="bold" numberOfLines={1}>
+                    {undated.length === 1 ? `Add when ${undated[0].name} started` : `Add start dates to ${undated.length} holdings`}
+                  </AppText>
+                  <AppText size="xs" color="inkDim">To see yearly returns</AppText>
+                </View>
+                <Icon name="chevronRight" size={20} color="inkDim" />
+              </Card>
+            </PressableScale>
+          )}
 
           {donutSlices.length > 1 && (
             <Card style={styles.card}>

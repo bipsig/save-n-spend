@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import type { InvestmentsPayload, ITransaction } from "@save-n-spend/types";
-import { get, post } from "@/lib/api";
+import type { InvestedHow, InvestmentsPayload, ITransaction } from "@save-n-spend/types";
+import { get, patch, post } from "@/lib/api";
 import { useAccountStore } from "@/store/accounts";
 import { useSession } from "@/store/session";
 import { chartPalette, chartOthers } from "@/theme";
@@ -59,5 +59,26 @@ export const returnPct = (invested: number, gain: number): number | null =>
  *  investment account). Reloads the account store, since a balance moved. */
 export const convertToInvestment = async (transactionId: string, toAccount: string): Promise<void> => {
   await post<ITransaction>(`/transactions/${transactionId}/convert-to-investment`, { toAccount });
+  await useAccountStore.getState().load().catch(() => {});
+};
+
+/** "+12.4% a year" / "−6.8% a year". One decimal: a yearly return reads to a tenth. */
+export const formatAnnual = (rate: number): string => {
+  const pct = rate * 100;
+  const sign = pct > 0.05 ? "+" : pct < -0.05 ? "−" : "";
+  return `${sign}${Math.abs(pct).toFixed(1)}% a year`;
+};
+
+export type InvestmentBasis = {
+  /** Total invested so far, paise. The server works out the opening amount from it. */
+  invested?: number;
+  investedSince?: string | null;
+  investedHow?: InvestedHow | null;
+};
+
+/** Corrects what's been invested, since when, and how. Today's value isn't touched — for
+ *  that, the balance sync. Reloads the account store, since `startingBalance` moved. */
+export const updateInvestmentBasis = async (id: string, basis: InvestmentBasis): Promise<void> => {
+  await patch(`/investments/${id}/basis`, basis);
   await useAccountStore.getState().load().catch(() => {});
 };

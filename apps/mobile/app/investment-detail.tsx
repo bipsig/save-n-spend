@@ -20,7 +20,7 @@ import { useAccountStore } from "@/store/accounts";
 import { get } from "@/lib/api";
 import { formatTxnDate } from "@/lib/date";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
-import { returnPct } from "@/lib/investments";
+import { formatAnnual, returnPct, useInvestments } from "@/lib/investments";
 import type { IconName } from "@/lib/icons";
 import { colors, spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
@@ -44,7 +44,7 @@ const effectOn = (t: ITransaction, id: string): number => {
 const InvestmentDetailScreen = () => {
   usePrivacyMask();
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, edit } = useLocalSearchParams<{ id: string; edit?: string }>();
   const account = useAccountById(id);
   const allAccounts = useAccounts();
 
@@ -52,6 +52,18 @@ const InvestmentDetailScreen = () => {
   const [error, setError] = useState<string | null>(null);
   const revalueRef = useRef<BottomSheetModal>(null);
   const editRef = useRef<BottomSheetModal>(null);
+  // The server's figures for this holding — the yearly return is worked out there.
+  const { data: portfolio, refetch: refetchPortfolio } = useInvestments();
+  const holding = portfolio?.holdings.find((h) => h.accountId === id) ?? null;
+
+  // Arriving from the hub's "add when it started" nudge opens the editor straight away.
+  const [autoEdited, setAutoEdited] = useState(false);
+  useEffect(() => {
+    if (edit === "1" && !autoEdited && account) {
+      setAutoEdited(true);
+      editRef.current?.present();
+    }
+  }, [edit, autoEdited, account]);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -67,10 +79,11 @@ const InvestmentDetailScreen = () => {
     }
   }, [id]);
 
-  useFocusEffect(useCallback(() => { void load(); }, [load]));
+  useFocusEffect(useCallback(() => { void load(); void refetchPortfolio(); }, [load, refetchPortfolio]));
 
   const afterChange = () => {
     void load();
+    void refetchPortfolio();
     void useAccountStore.getState().load();
   };
 
@@ -103,15 +116,23 @@ const InvestmentDetailScreen = () => {
   const gain = current - invested;
   const pct = returnPct(invested, gain);
 
-  // Value over time — oldest first, running sum of each transaction's effect.
+  // Value over time — oldest first. Counted back from today's value rather than up from the
+  // opening balance: a holding can start worth something other than what went in (bought at
+  // ₹1L, worth ₹90k when added), so only the current value is a sure anchor.
   const chronological = [...(txns ?? [])].sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime());
-  // Seed at the opening balance so the value line reflects true worth over time, not just
-  // the movement since zero.
-  const line: number[] = [];
-  let running = account.startingBalance;
+  const totalEffect = chronological.reduce((sum, t) => sum + effectOn(t, id!), 0);
+  const line: number[] = [current - totalEffect];
+  let running = current - totalEffect;
   for (const t of chronological) { running += effectOn(t, id!); line.push(running); }
 
+  const annual = holding?.annualReturnStatus === "ok" ? holding.annualReturn : null;
+
   const nameOf = (accId?: string | null) => (accId ? allAccounts.find((a) => a._id === accId)?.name : undefined);
+
+  const sinceLabel = holding?.investedSince
+    ? new Date(holding.investedSince).toLocaleDateString("en-IN", { month: "short", year: "numeric" })
+    : null;
+
 
   const historyRow = (t: ITransaction): HistoryRow => {
     const eff = effectOn(t, id!);
@@ -143,8 +164,23 @@ const InvestmentDetailScreen = () => {
         <View style={styles.statDivider} />
         <View style={styles.stat}><AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>Gain</AppText><AppText size="sm" weight="black" color={gainColor(gain)}>{formatMoney(gain)}</AppText></View>
         <View style={styles.statDivider} />
-        <View style={styles.stat}><AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>Return</AppText><AppText size="sm" weight="black" color={gainColor(gain)}>{pct !== null ? `${pct >= 0 ? "+" : ""}${Math.round(pct)}%` : "—"}</AppText></View>
+        <View style={styles.stat}><AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>Per year</AppText><AppText size="sm" weight="black" color={annual !== null ? gainColor(annual) : "inkDim"}>{annual !== null ? formatAnnual(annual).replace(" a year", "") : "—"}</AppText></View>
       </Card>
+
+      {/* Why the yearly figure is what it is — or how to get one. */}
+      {holding?.annualReturnStatus === "noStartDate" ? (
+        <PressableScale onPress={() => editRef.current?.present()} scaleTo={0.98} accessibilityRole="button">
+          <AppText size="xs" weight="semibold" color="primary">Add when it started to see the yearly return ›</AppText>
+        </PressableScale>
+      ) : (
+        <AppText size="xs" color="inkDim">
+          {holding?.annualReturnStatus === "ok"
+            ? `${pct !== null ? `${pct >= 0 ? "+" : "−"}${Math.abs(pct).toFixed(1)}% all time. ` : ""}Per year counts each rupee for the time it's been invested${sinceLabel ? `, since ${sinceLabel}` : ""}.`
+            : holding?.annualReturnStatus === "tooEarly"
+              ? "A yearly return shows once your money has been in for about three months."
+              : ""}
+        </AppText>
+      )}
 
       <View style={styles.ctaRow}>
         <View style={styles.ctaHalf}>
@@ -193,7 +229,7 @@ const InvestmentDetailScreen = () => {
         onSaved={afterChange}
       />
 
-      <EditAccountSheet ref={editRef} account={account} onSaved={afterChange} />
+      <EditAccountSheet ref={editRef} account={account} invested={invested} onSaved={afterChange} />
     </ScreenScaffold>
   );
 };

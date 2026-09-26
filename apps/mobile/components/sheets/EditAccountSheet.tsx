@@ -2,7 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import { StyleSheet, View } from "react-native";
 import { BottomSheetModal, BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { useRouter } from "expo-router";
-import type { AccountType, IAccount } from "@save-n-spend/types";
+import type { AccountType, IAccount, InvestedHow } from "@save-n-spend/types";
 import AppSheet from "./AppSheet";
 import { AppText } from "@/components/ui/AppText";
 import AmountHeroInput from "@/components/ui/AmountHeroInput";
@@ -12,8 +12,10 @@ import ColorPicker from "@/components/ui/ColorPicker";
 import Icon from "@/components/ui/Icon";
 import IconPicker from "@/components/ui/IconPicker";
 import Input from "@/components/ui/Input";
+import DateField from "@/components/ui/DateField";
 import { createAccount, syncAccountBalance, updateAccount } from "@/lib/accounts";
-import { formatTxnDate } from "@/lib/date";
+import { formatTxnDate, startOfToday } from "@/lib/date";
+import { updateInvestmentBasis, type InvestmentBasis } from "@/lib/investments";
 import { haptics } from "@/lib/haptics";
 import type { IconName } from "@/lib/icons";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
@@ -27,6 +29,8 @@ type Props = {
   /** Type to preselect when CREATING (ignored when editing) — e.g. the Investments hub
    *  opens this pre-set to "investment". */
   defaultType?: AccountType;
+  /** Editing an investment: the total invested so far (paise), shown as what's recorded. */
+  invested?: number;
   onSaved?: () => void;
 };
 
@@ -71,7 +75,7 @@ const toPaise = (rupees: string): number | null => {
 // Spec §08 — New / Edit account (Tier-2). One sheet for both; `account === null` is the only
 // branch. Creating sets an opening balance, which can never be edited again; editing offers
 // a reconciliation against the bank instead, through a different endpoint.
-const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, defaultType, onSaved }, ref) => {
+const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, defaultType, invested, onSaved }, ref) => {
   const innerRef = useRef<BottomSheetModal>(null);
   useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
   const dismiss = () => innerRef.current?.dismiss();
@@ -97,6 +101,15 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
   const [negative, setNegative] = useState(false);
   const [note, setNote] = useState("");
 
+  // Investments. What it's worth today when that differs from what went in (blank = the
+  // same), and when and how the money already in it went in — which dates it for the yearly
+  // return. When editing, `investedInput` corrects the invested total (blank = keep).
+  const [worth, setWorth] = useState("");
+  const [investedInput, setInvestedInput] = useState("");
+  const [startDate, setStartDate] = useState<Date>(startOfToday());
+  const [how, setHow] = useState<InvestedHow>("sip");
+  const [basisTouched, setBasisTouched] = useState(false);
+
   useEffect(() => {
     const initialType = account?.type ?? defaultType ?? "bank";
     setName(account?.name ?? "");
@@ -109,6 +122,11 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
     setNote("");
     // Seeded from where the balance sits, so a card normally owed opens on "Owed".
     setNegative((account?.balance ?? 0) < 0);
+    setWorth("");
+    setInvestedInput("");
+    setStartDate(account?.investedSince ? new Date(account.investedSince) : startOfToday());
+    setHow(account?.investedHow ?? "sip");
+    setBasisTouched(false);
     setError(null);
   }, [account, defaultType]);
 
@@ -139,6 +157,18 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
     router.push({ pathname: "/add-transaction", params: { settleAccount: account._id } });
   };
 
+  const isInvestment = type === "investment";
+  const openingPaise = toPaise(opening);
+  const worthPaise = worth.trim() === "" ? null : toPaise(worth);
+  const investedPaise = investedInput.trim() === "" ? null : toPaise(investedInput);
+  // The invested total the preview measures against: a correction being typed, else what's
+  // recorded. And the value: a new one being typed, else what's recorded.
+  const basisNow = editing ? (investedPaise ?? invested ?? 0) : (openingPaise ?? 0);
+  const valueNow = editing ? (typeof target === "number" ? target : account?.balance ?? 0) : (worthPaise ?? openingPaise ?? 0);
+  const previewGain = valueNow - basisNow;
+  // Start date and how only matter once there's money that went in before tracking began.
+  const needsStart = isInvestment && (editing ? (investedPaise ?? account?.startingBalance ?? 0) > 0 || !!account?.investedSince : (openingPaise ?? 0) > 0);
+
   const save = async () => {
     const trimmed = name.trim();
     if (trimmed.length < 2) {
@@ -157,6 +187,12 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
       setError("Enter the balance as a number, or leave it blank to keep the one you have.");
       return;
     }
+    // `toPaise` answers null for a typo; a blank field is already null above and means "keep".
+    if (isInvestment && ((worth.trim() !== "" && worthPaise === null) || (investedInput.trim() !== "" && investedPaise === null))) {
+      haptics.error();
+      setError("Enter amounts as numbers, or leave them blank.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -164,6 +200,15 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
       const kind = type === "investment" ? (investmentKind.trim() || "Other") : undefined;
       if (editing) {
         await updateAccount(account._id, { name: trimmed, type, icon, color, investmentKind: kind });
+        if (isInvestment) {
+          const basis: InvestmentBasis = {};
+          if (investedPaise !== null) basis.invested = investedPaise;
+          if (basisTouched && needsStart) {
+            basis.investedSince = startDate.toISOString();
+            basis.investedHow = how;
+          }
+          if (Object.keys(basis).length > 0) await updateInvestmentBasis(account._id, basis);
+        }
         // A second call, skipped when the field was blank, so renaming an account never
         // sends anything that could move money. The server records the difference as an
         // adjustment; see `syncAccountBalance`.
@@ -171,7 +216,18 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
           await syncAccountBalance(account._id, target, note.trim() || undefined);
         }
       }
-      else await createAccount({ name: trimmed, type, startingBalance, icon, color, investmentKind: kind });
+      else {
+        await createAccount({
+          name: trimmed,
+          type,
+          startingBalance,
+          icon,
+          color,
+          investmentKind: kind,
+          ...(isInvestment && worthPaise !== null ? { currentValue: worthPaise } : {}),
+          ...(isInvestment && startingBalance > 0 ? { investedSince: startDate.toISOString(), investedHow: how } : {}),
+        });
+      }
       onSaved?.();
       dismiss();
       // Names the correction when there was one — the bigger of the two things that just
@@ -301,7 +357,33 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
           edited again. When editing it is a reconciliation: the user reads a figure off
           their banking app, and the server records the gap as an adjustment rather than
           overwriting a number that is supposed to be the sum of its history. */}
-      {editing ? (
+      {editing && isInvestment ? (
+        <>
+          <View style={styles.field}>
+            <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>INVESTED SO FAR</AppText>
+            <AmountHeroInput value={investedInput} onChangeText={setInvestedInput} />
+            <AppText size="xs" color="inkDim" style={styles.note}>
+              We have {formatMoney(invested ?? 0)} recorded as invested. Enter the real total to correct it — this changes your gain, not what it&apos;s worth. Leave blank to keep it.
+            </AppText>
+          </View>
+          <View style={styles.field}>
+            <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>WORTH TODAY</AppText>
+            <AmountHeroInput value={actual} onChangeText={setActual} />
+            <AppText size="xs" color="inkDim" style={styles.note}>
+              Recorded as {formatMoney(account.balance)}. Leave blank to keep it.
+            </AppText>
+          </View>
+          <GainPreview gain={previewGain} basis={basisNow} show={investedPaise !== null || typeof target === "number"} />
+          {needsStart && (
+            <StartFields
+              date={startDate}
+              how={how}
+              onDate={(d) => { setStartDate(d); setBasisTouched(true); }}
+              onHow={(h) => { setHow(h); setBasisTouched(true); }}
+            />
+          )}
+        </>
+      ) : editing ? (
         <View style={styles.field}>
           <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>
             UPDATE BALANCE
@@ -362,6 +444,29 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
               : "You haven't checked this against your bank yet."}
           </AppText>
         </View>
+      ) : isInvestment ? (
+        <>
+          <View style={styles.field}>
+            <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>INVESTED SO FAR</AppText>
+            <AmountHeroInput value={opening} onChangeText={setOpening} />
+            <AppText size="xs" color="inkDim" style={styles.note}>
+              What you&apos;ve put in until now. Leave blank if you&apos;re just starting.
+            </AppText>
+          </View>
+          {(openingPaise ?? 0) > 0 && (
+            <>
+              <View style={styles.field}>
+                <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>WORTH TODAY</AppText>
+                <AmountHeroInput value={worth} onChangeText={setWorth} />
+                <AppText size="xs" color="inkDim" style={styles.note}>
+                  What it&apos;s worth right now. Leave blank if it&apos;s the same as what you put in.
+                </AppText>
+              </View>
+              <GainPreview gain={previewGain} basis={basisNow} show={worthPaise !== null} />
+              <StartFields date={startDate} how={how} onDate={setStartDate} onHow={setHow} />
+            </>
+          )}
+        </>
       ) : (
         <View style={styles.field}>
           <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>
@@ -398,6 +503,42 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
 });
 
 EditAccountSheet.displayName = "EditAccountSheet";
+
+// "▼ ₹10,000 (−10%) so far" — what the two figures imply, before saving.
+const GainPreview = ({ gain, basis, show }: { gain: number; basis: number; show: boolean }) => {
+  if (!show) return null;
+  const pct = basis > 0 ? (gain / basis) * 100 : null;
+  return (
+    <AppText size="xs" weight="bold" color={gain > 0 ? "success" : gain < 0 ? "danger" : "inkDim"}>
+      {gain === 0
+        ? "No gain or loss so far"
+        : `${gain > 0 ? "▲" : "▼"} ${formatMoney(Math.abs(gain))}${pct !== null ? ` (${gain > 0 ? "+" : "−"}${Math.abs(pct).toFixed(1)}%)` : ""} so far`}
+    </AppText>
+  );
+};
+
+// When the money already in it started going in, and how — which is what dates it for the
+// yearly return. A SIP's amount is spread monthly from the start date; a lump sits on it.
+const StartFields = ({ date, how, onDate, onHow }: {
+  date: Date;
+  how: InvestedHow;
+  onDate: (d: Date) => void;
+  onHow: (h: InvestedHow) => void;
+}) => (
+  <View style={styles.field}>
+    <DateField label="STARTED" value={date} onChange={onDate} maximumDate={new Date()} />
+    <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>HOW</AppText>
+    <View style={styles.types}>
+      <Chip label="Monthly SIP" selected={how === "sip"} onPress={() => onHow("sip")} />
+      <Chip label="Lump sum" selected={how === "lump"} onPress={() => onHow("lump")} />
+    </View>
+    <AppText size="xs" color="inkDim" style={styles.note}>
+      {how === "sip"
+        ? "Spread evenly month by month from the start date — so your yearly return counts each instalment only for the time it was invested."
+        : "All of it went in on the start date."}
+    </AppText>
+  </View>
+);
 
 const styles = StyleSheet.create({
   identity: {
