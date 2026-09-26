@@ -51,3 +51,9 @@ export const investmentBasisSchema = z.object({
     investedHow: z.enum(["sip", "lump"]).nullable().optional()
 }).strict();
 
+// Deleting a holding outright. `undo` reverses every money move into and out of it (they
+// were mistakes); `keep` leaves the other accounts' balances exactly as they are (the money
+// really moved — the holding is just being set up again).
+export const deleteInvestmentQuerySchema = z.object({
+    mode: z.enum(["undo", "keep"]),
+});
