@@ -1,6 +1,6 @@
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
-import type { IAccount, IBill, IGoal, INotificationPrefs } from "@save-n-spend/types";
+import type { IAccount, IBill, IGoal, INotificationPrefs, RecurringSuggestionsPayload } from "@save-n-spend/types";
 import { get } from "@/lib/api";
 import { formatMoneyExact } from "@/lib/money";
 import { useSettings } from "@/store/settings";
@@ -458,6 +458,39 @@ const scheduleGoalDeadlines = async (
   }
 };
 
+/**
+ * New repeating payments that aren't bills yet — mirrors the reminder job's remindRecurring.
+ * Keyed by the set of suggestions, so it fires once per new find rather than every launch
+ * the same ones are still waiting. No amounts in the copy, so privacy mode has nothing to hide.
+ */
+const scheduleRecurringFound = async (prefs: INotificationPrefs | undefined): Promise<void> => {
+  if (prefs?.enabled === false) return;
+
+  let expenses: RecurringSuggestionsPayload["expenses"];
+  try {
+    ({ expenses } = await get<RecurringSuggestionsPayload>("/recurring"));
+  }
+  catch {
+    return;
+  }
+  if (expenses.length === 0) return;
+
+  const key = `recurring:${expenses.map((p) => p.key).sort().join("|")}`;
+  if (await alreadyNotified(key)) return;
+
+  const one = expenses.length === 1;
+  await Notifications.scheduleNotificationAsync({
+    identifier: `local:recurring`,
+    content: {
+      title: one ? `${expenses[0].title} looks like a monthly payment` : `${plural(expenses.length, "payment")} look like they repeat`,
+      body: `Turn ${one ? "it" : "them"} into ${one ? "a bill" : "bills"} to get reminded before ${one ? "it's" : "they're"} due.`,
+      data: { link: { screen: "bills", id: "suggestions" } },
+    },
+    trigger: null,
+  });
+  await markNotified(key);
+};
+
 /** The 25/50/75/100% crossings a goal can hit, word for word the API's `checkGoalMilestone`. */
 const MILESTONES = [25, 50, 75, 100];
 
@@ -555,6 +588,7 @@ export const rescheduleLocalNotifications = async (
       safe("bills", () => scheduleBillReminders(notificationPrefs, zone)),
       safe("goals", () => scheduleGoalDeadlines(notificationPrefs, zone)),
       safe("investment", () => scheduleInvestmentReminder(notificationPrefs, zone, accounts)),
+      safe("recurring", () => scheduleRecurringFound(notificationPrefs)),
     ]);
   }
   catch (err) {

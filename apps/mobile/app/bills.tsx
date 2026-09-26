@@ -1,9 +1,9 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, { LinearTransition } from "react-native-reanimated";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
-import type { IBill } from "@save-n-spend/types";
+import type { IBill, RecurringPattern } from "@save-n-spend/types";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import Card from "@/components/data/Card";
 import BillRow from "@/components/rows/BillRow";
@@ -14,10 +14,16 @@ import EmptyState from "@/components/states/EmptyState";
 import ErrorState from "@/components/states/ErrorState";
 import SkeletonState from "@/components/states/SkeletonState";
 import MarkPaidSheet from "@/components/sheets/MarkPaidSheet";
-import EditBillSheet from "@/components/sheets/EditBillSheet";
+import EditBillSheet, { type BillDraft } from "@/components/sheets/EditBillSheet";
+import RecurringSuggestionsSheet from "@/components/sheets/RecurringSuggestionsSheet";
+import Icon from "@/components/ui/Icon";
+import PressableScale from "@/components/ui/PressableScale";
 import ConfirmSheet from "@/components/sheets/ConfirmSheet";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { useBills, groupBills, outstandingTotal, isActionable, deleteBill } from "@/lib/bills";
+import { bulkConvertToInvestment, dismissRecurring, useRecurringSuggestions } from "@/lib/recurring";
+import { useAccountById } from "@/lib/accounts";
+import { startOfToday } from "@/lib/date";
 import { toast } from "@/store/toast";
 import { pendingDeletes, usePendingDeletes } from "@/store/pendingDeletes";
 import { radius, spacing } from "@/theme";
@@ -71,9 +77,71 @@ const BillsScreen = () => {
   const [editing, setEditing] = useState<IBill | null>(null);
   const [removing, setRemoving] = useState<IBill | null>(null);
 
+  const { data: suggestions, refetch: refetchSuggestions } = useRecurringSuggestions();
+  const suggestionsRef = useRef<BottomSheetModal>(null);
+  const convertRef = useRef<BottomSheetModal>(null);
+  const [draft, setDraft] = useState<BillDraft | null>(null);
+  const [draftPattern, setDraftPattern] = useState<RecurringPattern | null>(null);
+  // A SIP just set up from a suggestion, whose past payments can be moved into the holding.
+  const [convert, setConvert] = useState<{ pattern: RecurringPattern; toInvestment: string } | null>(null);
+  const convertHolding = useAccountById(convert?.toInvestment ?? null);
+
   useFocusEffect(useCallback(() => {
     refetch();
-  }, [refetch]));
+    void refetchSuggestions();
+  }, [refetch, refetchSuggestions]));
+
+  // Arriving from the "payments look like they repeat" notification opens the review list.
+  const { suggestions: openSuggestions } = useLocalSearchParams<{ suggestions?: string }>();
+  const [autoOpened, setAutoOpened] = useState(false);
+  useEffect(() => {
+    if (openSuggestions === "1" && !autoOpened && suggestions.expenses.length > 0) {
+      setAutoOpened(true);
+      suggestionsRef.current?.present();
+    }
+  }, [openSuggestions, autoOpened, suggestions.expenses.length]);
+
+  const addFromSuggestion = (pattern: RecurringPattern) => {
+    // Next due is a month after the last payment — or today, if that's already passed and
+    // this cycle hasn't been paid yet.
+    const next = new Date(pattern.nextExpectedAt);
+    const today = startOfToday();
+    setDraftPattern(pattern);
+    setDraft({
+      name: pattern.title,
+      amount: pattern.amount,
+      category: pattern.category,
+      account: pattern.account,
+      dueDate: next < today ? today : next,
+      fundsInvestment: pattern.looksLikeSip,
+    });
+    setEditing(null);
+    editRef.current?.present();
+  };
+
+  const dismissSuggestion = async (pattern: RecurringPattern) => {
+    try {
+      await dismissRecurring(pattern.key);
+      await refetchSuggestions();
+      toast.info(`Won't suggest ${pattern.title} again`);
+    }
+    catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't dismiss that");
+    }
+  };
+
+  const afterSave = (bill: IBill) => {
+    void refetchSuggestions();
+    const pattern = draftPattern;
+    setDraft(null);
+    setDraftPattern(null);
+    // Set up as a SIP from a suggestion, with past payments still logged as spending —
+    // offer to move them into the holding too.
+    if (pattern && bill.toInvestment && pattern.transactionIds.length > 0) {
+      setConvert({ pattern, toInvestment: bill.toInvestment });
+      convertRef.current?.present();
+    }
+  };
 
   const onPick = (bill: IBill) => {
     setActive(bill);
@@ -94,8 +162,33 @@ const BillsScreen = () => {
   // bill that was edited.
   const openAdd = () => {
     setEditing(null);
+    setDraft(null);
+    setDraftPattern(null);
     editRef.current?.present();
   };
+
+  const suggestionCount = suggestions.expenses.length;
+  const suggestionBanner = suggestionCount > 0 && (
+    <PressableScale
+      onPress={() => suggestionsRef.current?.present()}
+      scaleTo={0.98}
+      accessibilityRole="button"
+      accessibilityLabel={`${suggestionCount} recurring payment${suggestionCount === 1 ? "" : "s"} found. Review.`}
+    >
+      <Card style={styles.suggest}>
+        <Icon name="repeat" size={18} container="square" containerSize={40} containerRadius={13} gradient="blue" />
+        <View style={styles.suggestText}>
+          <AppText size="sm" weight="bold">
+            {suggestionCount === 1
+              ? `${suggestions.expenses[0].title} looks like it repeats`
+              : `We found ${suggestionCount} recurring payments`}
+          </AppText>
+          <AppText size="xs" color="inkDim">Review and turn them into bills</AppText>
+        </View>
+        <Icon name="chevronRight" size={20} color="inkDim" />
+      </Card>
+    </PressableScale>
+  );
 
   const headerRight = <Button label="+ Add Bill" pill size="sm" onPress={openAdd} />;
 
@@ -124,6 +217,7 @@ const BillsScreen = () => {
 
   return (
     <ScreenScaffold title="Bills" headerRight={headerRight}>
+      {suggestionBanner}
       {items.length === 0 ? (
         <EmptyState
           icon="bills"
@@ -154,7 +248,28 @@ const BillsScreen = () => {
       )}
 
       <MarkPaidSheet ref={markRef} bill={active} onChanged={refetch} />
-      <EditBillSheet ref={editRef} bill={editing} onChanged={refetch} />
+      <EditBillSheet ref={editRef} bill={editing} draft={draft} onChanged={refetch} onSaved={afterSave} />
+      <RecurringSuggestionsSheet
+        ref={suggestionsRef}
+        suggestions={suggestions.expenses}
+        onAdd={addFromSuggestion}
+        onDismiss={dismissSuggestion}
+      />
+      <ConfirmSheet
+        ref={convertRef}
+        icon="investments"
+        tone="primary"
+        title={`Move ${convert?.pattern.transactionIds.length ?? 0} past payments into ${convertHolding?.name ?? "the holding"}?`}
+        body="They're logged as spending right now. Moving them makes them contributions to this holding, so your spending drops and the holding's invested amount goes up. Your bank balance doesn't change."
+        confirmLabel="Move them"
+        cancelLabel="Not now"
+        onConfirm={async () => {
+          if (!convert) return;
+          const moved = await bulkConvertToInvestment(convert.pattern.transactionIds, convert.toInvestment);
+          toast.success(`${moved} payment${moved === 1 ? "" : "s"} moved to ${convertHolding?.name ?? "the holding"}`);
+          setConvert(null);
+        }}
+      />
 
       <ConfirmSheet
         ref={deleteRef}
@@ -185,6 +300,15 @@ const BillsScreen = () => {
 const styles = StyleSheet.create({
   strip: {
     gap: spacing.sm,
+  },
+  suggest: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  suggestText: {
+    flex: 1,
+    gap: 2,
   },
   counts: {
     flexDirection: "row",

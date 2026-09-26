@@ -34,10 +34,28 @@ import type { ColorToken } from "@/theme";
 /** The lead time the "remind me" switch stands for. 0 is how the server says "don't". */
 const REMIND_DAYS = 3;
 
+/** A new bill prefilled from somewhere else — a recurring-payment suggestion. Only used when
+ *  `bill` is null. */
+export type BillDraft = {
+  name: string;
+  /** Paise. */
+  amount: number;
+  category?: string | null;
+  /** The account it's usually paid from; saved with the bill so Mark paid preselects it. */
+  account?: string | null;
+  dueDate: Date;
+  /** Opens with "Funds an investment" already on (a SIP-looking suggestion). */
+  fundsInvestment?: boolean;
+};
+
 type Props = {
   /** The bill being edited, or `null` to add a new one. */
   bill: IBill | null;
+  /** Prefill for a new bill (ignored when editing). */
+  draft?: BillDraft | null;
   onChanged: () => void;
+  /** The bill as saved — for a caller that has a follow-up step (moving past payments). */
+  onSaved?: (bill: IBill) => void;
 };
 
 const schema = z.object({
@@ -66,21 +84,37 @@ type FormValues = z.infer<typeof schema>;
 
 // The amount goes back as a plain rupee string because that is what the field edits;
 // `parseMoney` turns it into paise again on submit.
-const defaults = (bill: IBill | null): FormValues => ({
-  name: bill?.name ?? "",
-  amount: bill ? (bill.amount / 100).toFixed(2).replace(/\.00$/, "") : "",
-  frequency: bill ? (bill.recurring ? bill.frequency ?? "monthly" : "once") : "monthly",
-  category: bill?.category ?? "",
-  dueDate: bill ? new Date(bill.dueDate) : startOfToday(),
-  remind: bill ? (bill.reminderDays ?? REMIND_DAYS) > 0 : true,
-  fundsInvestment: !!bill?.toInvestment,
-  toInvestment: bill?.toInvestment ?? null,
-});
+const rupees = (paise: number): string => (paise / 100).toFixed(2).replace(/\.00$/, "");
+
+const defaults = (bill: IBill | null, draft?: BillDraft | null): FormValues => {
+  if (!bill && draft) {
+    return {
+      name: draft.name,
+      amount: rupees(draft.amount),
+      frequency: "monthly",
+      category: draft.fundsInvestment ? "" : draft.category ?? "",
+      dueDate: draft.dueDate,
+      remind: true,
+      fundsInvestment: !!draft.fundsInvestment,
+      toInvestment: null,
+    };
+  }
+  return {
+    name: bill?.name ?? "",
+    amount: bill ? rupees(bill.amount) : "",
+    frequency: bill ? (bill.recurring ? bill.frequency ?? "monthly" : "once") : "monthly",
+    category: bill?.category ?? "",
+    dueDate: bill ? new Date(bill.dueDate) : startOfToday(),
+    remind: bill ? (bill.reminderDays ?? REMIND_DAYS) > 0 : true,
+    fundsInvestment: !!bill?.toInvestment,
+    toInvestment: bill?.toInvestment ?? null,
+  };
+};
 
 // One sheet for both, like EditCategorySheet: the fields are identical and `bill` being
 // null is the only difference. Adding a bill is a Tier-2 sheet rather than a route
 // because none of its fields needs the full height a goal's numpad and grids do.
-const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, ref) => {
+const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, draft, onChanged, onSaved }, ref) => {
   // Own handle, so `dismiss` closes this form and not the category picker it opens
   // on top of itself (see CategoryPickerSheet).
   const innerRef = useRef<BottomSheetModal>(null);
@@ -112,9 +146,9 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
   // blank, which is what makes reopening the SAME row work — `bill` wouldn't change,
   // so this effect wouldn't fire to put the values back.
   useEffect(() => {
-    reset(defaults(bill));
+    reset(defaults(bill, draft));
     setError(null);
-  }, [bill, reset]);
+  }, [bill, draft, reset]);
 
   const category = useCategoryById(watch("category"));
   const fundsInvestment = watch("fundsInvestment");
@@ -137,15 +171,17 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
       ...(data.fundsInvestment
         ? { toInvestment: data.toInvestment, category: null }
         : { category: data.category, toInvestment: null }),
+      // A suggestion knows which account it's usually paid from; a hand-made bill doesn't.
+      ...(!bill && draft?.account ? { account: draft.account } : {}),
     };
 
     setSubmitting(true);
     setError(null);
     try {
-      if (bill) await updateBill(bill._id, body);
-      else await post("/bills", body);
+      const saved = bill ? await updateBill(bill._id, body) : await post<IBill>("/bills", body);
       dismiss();
       onChanged();
+      onSaved?.(saved);
       // Named, not just "Bill added": the sheet closes onto a list the row may have
       // scrolled out of, and the name is what makes it findable.
       toast.success(editing ? `${name} updated` : `${name} added to your bills`);
@@ -164,7 +200,7 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
 
   return (
     <>
-    <AppSheet ref={innerRef} onDismiss={() => { reset(defaults(bill)); setError(null); }}>
+    <AppSheet ref={innerRef} onDismiss={() => { reset(defaults(bill, draft)); setError(null); }}>
       <View style={styles.header}>
         <AppText size="md" weight="black">
           {editing ? "Edit Bill" : "Add Bill"}

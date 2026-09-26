@@ -28,6 +28,7 @@ export const LOOK: Record<NotificationType, Look> = {
   weeklySummary: { icon: "summary", tint: "violet" },
   monthlySummary: { icon: "summary", tint: "violet" },
   revalueInvestments: { icon: "investments", tint: "teal" },
+  recurringFound: { icon: "repeat", tint: "blue" },
 };
 
 /**
@@ -36,9 +37,10 @@ export const LOOK: Record<NotificationType, Look> = {
  * The stored link names a screen rather than a path, so renaming a route here cannot orphan a
  * notification written months ago.
  */
-export const routeFor = (link?: NotificationLink): "/bills" | "/budget" | "/goals" | "/(tabs)/insights" | "/manage-accounts" | "/investments" | "/investments?revalue=1" | null => {
+export const routeFor = (link?: NotificationLink): "/bills" | "/bills?suggestions=1" | "/budget" | "/goals" | "/(tabs)/insights" | "/manage-accounts" | "/investments" | "/investments?revalue=1" | null => {
   switch (link?.screen) {
-    case "bills": return "/bills";
+    // The recurring-payments nudge (id: "suggestions") opens Bills with the review list up.
+    case "bills": return link.id === "suggestions" ? "/bills?suggestions=1" : "/bills";
     case "budget": return "/budget";
     case "goals": return "/goals";
     case "insights": return "/(tabs)/insights";

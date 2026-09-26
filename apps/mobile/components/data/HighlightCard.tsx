@@ -35,7 +35,8 @@ const HighlightCard = ({ highlight, onDismiss, minHeight }: Props) => {
   const open = () => {
     if (!highlight.screen) return;
     haptics.tap();
-    router.push(SCREEN_ROUTE[highlight.screen] as never);
+    // The recurring-payments card opens its review list directly, not just the Bills screen.
+    router.push((highlight.ruleId === "recurring_found" ? "/bills?suggestions=1" : SCREEN_ROUTE[highlight.screen]) as never);
   };
 
   // Money already sits inside `body`/`title` as formatted, privacy-aware text (the rules
