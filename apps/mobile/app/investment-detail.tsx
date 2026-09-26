@@ -15,6 +15,9 @@ import { AppText } from "@/components/ui/AppText";
 import EmptyState from "@/components/states/EmptyState";
 import RevalueSheet from "@/components/sheets/RevalueSheet";
 import EditAccountSheet from "@/components/sheets/EditAccountSheet";
+import DeleteInvestmentSheet, { type DeleteInvestmentSummary } from "@/components/sheets/DeleteInvestmentSheet";
+import { useBills } from "@/lib/bills";
+import { toast } from "@/store/toast";
 import { useAccountById, useAccounts } from "@/lib/accounts";
 import { useAccountStore } from "@/store/accounts";
 import { get } from "@/lib/api";
@@ -52,6 +55,8 @@ const InvestmentDetailScreen = () => {
   const [error, setError] = useState<string | null>(null);
   const revalueRef = useRef<BottomSheetModal>(null);
   const editRef = useRef<BottomSheetModal>(null);
+  const deleteRef = useRef<BottomSheetModal>(null);
+  const { items: bills } = useBills();
   // The server's figures for this holding — the yearly return is worked out there.
   const { data: portfolio, refetch: refetchPortfolio } = useInvestments();
   const holding = portfolio?.holdings.find((h) => h.accountId === id) ?? null;
@@ -128,6 +133,20 @@ const InvestmentDetailScreen = () => {
   const annual = holding?.annualReturnStatus === "ok" ? holding.annualReturn : null;
 
   const nameOf = (accId?: string | null) => (accId ? allAccounts.find((a) => a._id === accId)?.name : undefined);
+
+  // What deleting it would take with it, for the confirm sheet to spell out.
+  const moneyIn = (txns ?? []).filter((t) => t.type === "transfer" && t.toAccount === id);
+  const moneyOut = (txns ?? []).filter((t) => t.type === "transfer" && t.account === id);
+  const uniqueNames = (ids: (string | null | undefined)[]) =>
+    [...new Set(ids.map((x) => nameOf(x) ?? "another account"))];
+  const deleteSummary: DeleteInvestmentSummary = {
+    id: account._id,
+    name: account.name,
+    moneyIn: { count: moneyIn.length, total: contributions, from: uniqueNames(moneyIn.map((t) => t.account)) },
+    moneyOut: { count: moneyOut.length, total: redemptions, to: uniqueNames(moneyOut.map((t) => t.toAccount)) },
+    valueUpdates: (txns ?? []).filter((t) => t.type === "positiveAdjustment" || t.type === "negativeAdjustment").length,
+    sipBills: bills.filter((b) => b.toInvestment === id).map((b) => b.name),
+  };
 
   const sinceLabel = holding?.investedSince
     ? new Date(holding.investedSince).toLocaleDateString("en-IN", { month: "short", year: "numeric" })
@@ -223,6 +242,8 @@ const InvestmentDetailScreen = () => {
 
       {error && <AppText size="sm" color="danger">{error}</AppText>}
 
+      <Button label="Delete investment" variant="ghost" icon="delete" onPress={() => deleteRef.current?.present()} />
+
       <RevalueSheet
         ref={revalueRef}
         holdings={[{ accountId: account._id, name: account.name, invested, current }]}
@@ -230,6 +251,15 @@ const InvestmentDetailScreen = () => {
       />
 
       <EditAccountSheet ref={editRef} account={account} invested={invested} onSaved={afterChange} />
+
+      <DeleteInvestmentSheet
+        ref={deleteRef}
+        summary={deleteSummary}
+        onDeleted={() => {
+          router.back();
+          toast.success(`${account.name} deleted`);
+        }}
+      />
     </ScreenScaffold>
   );
 };

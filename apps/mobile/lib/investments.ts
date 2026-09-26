@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { InvestedHow, InvestmentsPayload, ITransaction } from "@save-n-spend/types";
-import { get, patch, post } from "@/lib/api";
+import { del, get, patch, post } from "@/lib/api";
 import { useAccountStore } from "@/store/accounts";
 import { useSession } from "@/store/session";
 import { chartPalette, chartOthers } from "@/theme";
@@ -80,5 +80,14 @@ export type InvestmentBasis = {
  *  that, the balance sync. Reloads the account store, since `startingBalance` moved. */
 export const updateInvestmentBasis = async (id: string, basis: InvestmentBasis): Promise<void> => {
   await patch(`/investments/${id}/basis`, basis);
+  await useAccountStore.getState().load().catch(() => {});
+};
+
+export type DeleteInvestmentMode = "undo" | "keep";
+
+/** Removes a holding and everything on it. See the API's deleteInvestment for what the two
+ *  modes do to the accounts on the other side of its money moves. */
+export const deleteInvestment = async (id: string, mode: DeleteInvestmentMode): Promise<void> => {
+  await del(`/investments/${id}?mode=${mode}`);
   await useAccountStore.getState().load().catch(() => {});
 };
