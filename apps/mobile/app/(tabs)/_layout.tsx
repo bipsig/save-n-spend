@@ -13,11 +13,12 @@ const TabsLayout = () => {
       screenListeners={{ tabPress: () => haptics.select() }}
       screenOptions={{
         headerShown: false,
-        // Fade, not "shift": shift translates each screen, and a tab mounting for the
-        // first time mid-translate could come up blank and then paint into the slot the
-        // next tab had already taken. Opacity alone has no such ordering to get wrong,
-        // and still avoids the hard cut that made "See all" feel unlike a stack push.
-        animation: "fade",
+        // No transition. Any animated tab switch can be interrupted partway — a quick
+        // second tap, a re-render as data lands — and leave the incoming tab stuck at the
+        // animation's start: blank under "fade" (opacity 0; it flashes into view only as
+        // you leave), mis-placed under "shift". An instant cut has nothing to get stuck,
+        // and it's how native iOS tab bars behave anyway. Stack pushes keep their slide.
+        animation: "none",
         tabBarActiveTintColor: "#A394FF", // spec .tabi.on — violet
         tabBarInactiveTintColor: theme.colors.inkDim,
         tabBarStyle: {
