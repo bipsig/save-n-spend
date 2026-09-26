@@ -9,6 +9,7 @@ import { healthScore } from "./healthService";
 import { daysUntilDue, isSettledForPeriod } from "./billService";
 import { addDaysInZone } from "../utils/timezone";
 import { currentStreak, STREAK_LOOKBACK_DAYS } from "./streakMath";
+import { getRecurringSuggestions, keysSignature } from "./recurringService";
 import {
     categoryRoller,
     contributionStreak,
@@ -178,6 +179,17 @@ export const buildSnapshot = async (
     // Investment facts for the investment highlight rules. Reuses the accounts already
     // fetched above; only the value-update recency and the contribution months need their
     // own (small) queries, and only when the user actually holds investments.
+    // Recurring payments that aren't bills yet. Its own failure costs only this card, never
+    // the snapshot.
+    const suggestions = await getRecurringSuggestions(oid, zone, now).catch(() => ({ expenses: [], income: [] }));
+    const recurring = {
+        count: suggestions.expenses.length,
+        signature: keysSignature(suggestions.expenses.map((p) => p.key)),
+        topTitle: suggestions.expenses[0]?.title ?? null,
+        topAmount: suggestions.expenses[0]?.amount ?? 0,
+        monthlyTotal: suggestions.expenses.reduce((sum, p) => sum + p.amount, 0),
+    };
+
     const investmentAccounts = accounts.filter((a) => a.type === "investment");
     let investments = { hasInvestments: false, totalValue: 0, daysSinceRevalued: null as number | null, contributionStreakMonths: 0 };
     if (investmentAccounts.length > 0) {
@@ -221,5 +233,6 @@ export const buildSnapshot = async (
         categoryAverages: flows.categoryAverages,
         currentStreak: streakDays,
         investments,
+        recurring,
     };
 };

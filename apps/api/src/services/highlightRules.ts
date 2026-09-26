@@ -107,6 +107,20 @@ export type Snapshot = {
     currentStreak: number;
     /** Investment holdings, folded to the few facts the rules need. */
     investments: InvestmentFacts;
+    /** Recurring expenses spotted in the history that aren't bills yet. */
+    recurring: RecurringFacts;
+};
+
+export type RecurringFacts = {
+    count: number;
+    /** Changes whenever the set of suggestions does — the card's key, so a dismissed card
+     *  comes back only when something new is found. */
+    signature: string;
+    /** The biggest suggestion, for the title. */
+    topTitle: string | null;
+    topAmount: number;
+    /** Σ of every suggestion's monthly amount, paise. */
+    monthlyTotal: number;
 };
 
 export type InvestmentFacts = {
@@ -584,6 +598,30 @@ const investingStreak: Rule = {
     },
 };
 
+/** Repeating payments that aren't set up as bills yet. Ranked by what they cost a year, so a
+ *  big untracked one (rent) earns a slot while a ₹129 subscription doesn't push budget news
+ *  off the carousel — the Bills banner and the notification still cover the small ones. */
+const recurringFound: Rule = {
+    id: "recurring_found",
+    run: (snap) => {
+        const r = snap.recurring;
+        if (r.count === 0 || !r.topTitle) return null;
+        return {
+            ruleId: "recurring_found",
+            key: `recurring_found:${r.signature}`,
+            severity: "notice",
+            title: r.count === 1
+                ? `${r.topTitle} looks like a monthly payment`
+                : `${r.count} payments look like they repeat every month`,
+            body: r.count === 1
+                ? `About ${formatAmount(r.topAmount, snap.currency)} each month. Turn it into a bill to get reminded and see it coming.`
+                : `Including ${r.topTitle} (about ${formatAmount(r.topAmount, snap.currency)}). Turn them into bills to get reminded and see them coming.`,
+            materiality: r.monthlyTotal * 12,
+            screen: "bills",
+        };
+    },
+};
+
 const RULES: Rule[] = [
     budgetPace,
     budgetComfortable,
@@ -599,6 +637,7 @@ const RULES: Rule[] = [
     investmentStale,
     investmentMilestone,
     investingStreak,
+    recurringFound,
 ];
 
 /** For the materiality tiebreak: what to lead with when the rupees are equal. */

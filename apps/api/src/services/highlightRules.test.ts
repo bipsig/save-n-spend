@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { runHighlightRules } from "./highlightRules";
+import { rankHighlightRules, runHighlightRules } from "./highlightRules";
 import type { Highlight, Snapshot } from "./highlightRules";
 
 // The rules are pure functions from a snapshot to sentences, so every test here is
@@ -29,6 +29,7 @@ const BASE: Snapshot = {
     categoryAverages: [],
     currentStreak: 0,
     investments: { hasInvestments: false, totalValue: 0, daysSinceRevalued: null, contributionStreakMonths: 0 },
+    recurring: { count: 0, signature: "", topTitle: null, topAmount: 0, monthlyTotal: 0 },
 };
 
 const snap = (over: Partial<Snapshot>): Snapshot => ({ ...BASE, ...over });
@@ -389,5 +390,25 @@ describe("investment rules", () => {
     it("marks an investing streak of three months or more", () => {
         assert.equal(byRule(runHighlightRules(withInv({ contributionStreakMonths: 4 })), "investing_streak")?.severity, "win");
         assert.equal(byRule(runHighlightRules(withInv({ contributionStreakMonths: 2 })), "investing_streak"), undefined);
+    });
+});
+
+describe("recurring_found", () => {
+    const find = (s: Snapshot) => rankHighlightRules(s).find((h) => h.ruleId === "recurring_found");
+
+    it("stays quiet with nothing to suggest", () => {
+        assert.equal(find(snap({})), undefined);
+    });
+
+    it("names the payment when there's one, and keys on the set", () => {
+        const h = find(snap({ recurring: { count: 1, signature: "abc", topTitle: "Spotify", topAmount: 12_900, monthlyTotal: 12_900 } }));
+        assert.equal(h?.title, "Spotify looks like a monthly payment");
+        assert.equal(h?.key, "recurring_found:abc");
+        assert.equal(h?.materiality, 12_900 * 12);
+    });
+
+    it("counts them when there are several", () => {
+        const h = find(snap({ recurring: { count: 3, signature: "x", topTitle: "Rent", topAmount: 1_500_000, monthlyTotal: 1_600_000 } }));
+        assert.equal(h?.title, "3 payments look like they repeat every month");
     });
 });

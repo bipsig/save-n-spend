@@ -56,6 +56,8 @@ export const wantsNotification = (prefs: Partial<INotificationPrefs> | undefined
             return prefs?.investmentReminder === true;
         case "billReminder":
         case "billOverdue":
+        // Rare (only when something new is found), so it rides on the primary switch alone.
+        case "recurringFound":
             return true;
         default:
             return true;

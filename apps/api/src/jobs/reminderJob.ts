@@ -6,6 +6,7 @@ import Goal from "../models/Goal";
 import Transaction from "../models/Transaction";
 import User from "../models/User";
 import { daysUntilDue, isSettledForPeriod } from "../services/billService";
+import { getRecurringSuggestions, keysSignature } from "../services/recurringService";
 import { notify, wantsNotification, type NotifiableUser } from "../services/notificationService";
 import { formatAmount } from "../utils/money";
 import {
@@ -318,6 +319,26 @@ const sendRevalueReminder = async (user: ReminderUser, zone: string, now: Date):
     });
 };
 
+/** New repeating payments that aren't bills yet. Keyed by the set of suggestions, so it
+ *  fires once per new find — not every evening the same ones are still there. */
+const remindRecurring = async (user: ReminderUser, zone: string, now: Date): Promise<void> => {
+    if (!wantsNotification(user.prefs?.notifications, "recurringFound")) return;
+
+    const { expenses } = await getRecurringSuggestions(user._id, zone, now);
+    if (expenses.length === 0) return;
+
+    const top = expenses[0];
+    await notify(user as NotifiableUser, {
+        type: "recurringFound",
+        title: expenses.length === 1
+            ? `${top.title} looks like a monthly payment`
+            : `${plural(expenses.length, "payment")} look like they repeat`,
+        body: `Turn ${expenses.length === 1 ? "it" : "them"} into ${expenses.length === 1 ? "a bill" : "bills"} to get reminded before ${expenses.length === 1 ? "it's" : "they're"} due.`,
+        dedupeKey: `recurring:${keysSignature(expenses.map((p) => p.key))}`,
+        link: { screen: "bills", id: "suggestions" },
+    });
+};
+
 /**
  * One pass over every user who hasn't switched notifications off. `now` is a parameter so a
  * script or test can drive this at an arbitrary instant — nothing inside reads the clock. A full
@@ -344,6 +365,7 @@ export const runReminders = async (now: Date = new Date()): Promise<void> => {
 
             await remindBills(user as ReminderUser, zone, now);
             await remindGoalDeadlines(user as ReminderUser, zone, now);
+            await remindRecurring(user as ReminderUser, zone, now);
 
             if (hour >= DAILY_HOUR) {
                 await sendDailySummary(user as ReminderUser, zone, now);
