@@ -15,6 +15,7 @@ export type MoreItem = {
 export const moneyItems: MoreItem[] = [
   { key: "budget", label: "Manage Budget", icon: "insights", tint: "violet", path: "/budget" },
   { key: "bills",  label: "Bills & Payments", icon: "bills", tint: "amber",  path: "/bills" },
+  { key: "cashflow", label: "Cash Flow", icon: "date", tint: "blue", path: "/cash-flow" },
   { key: "goals",  label: "Savings Goals", icon: "savings", tint: "green",  path: "/goals" },
   { key: "investments", label: "Investments", icon: "investments", tint: "teal", path: "/investments" },
   { key: "reviews", label: "Reviews", icon: "summary", tint: "indigo", path: "/review-history" },

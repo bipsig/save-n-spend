@@ -24,6 +24,8 @@ import NoSpendDaysSlide from "@/components/data/NoSpendDaysSlide";
 import WeekdayHeatmapSlide from "@/components/data/WeekdayHeatmapSlide";
 import { useHealthScore } from "@/lib/health";
 import { useBills, owedThroughMonth } from "@/lib/bills";
+import { useCashFlow } from "@/lib/cashFlow";
+import CashFlowGlanceCard from "@/components/data/CashFlowGlanceCard";
 import { useGoals } from "@/lib/goals";
 import { useTransactions } from "@/lib/transactions";
 import { useInsights } from "@/lib/insights";
@@ -109,8 +111,11 @@ const HomeScreen = () => {
   );
   const pendingClientIds = useMemo(() => new Set(pendingItems.map((item) => item.clientId)), [pendingItems]);
 
+  const { data: cashFlow, refetch: cashFlowRefetch } = useCashFlow();
+
   useFocusEffect(useCallback(() => {
     summaryRefetch();
+    void cashFlowRefetch();
     healthRefetch();
     billsRefetch();
     goalsRefetch();
@@ -123,7 +128,7 @@ const HomeScreen = () => {
     // mutations in `lib/accounts`, and transaction create/edit/delete in
     // add-transaction.tsx / TransactionDetailSheet — reloads the store itself, so a
     // focus reload would be a second request for an already-correct list.
-  }, [summaryRefetch, healthRefetch, billsRefetch, goalsRefetch, transactionsRefetch, budgetsRefetch, insightsRefetch, highlightsRefetch, dashboardInsightsRefetch]));
+  }, [summaryRefetch, cashFlowRefetch, healthRefetch, billsRefetch, goalsRefetch, transactionsRefetch, budgetsRefetch, insightsRefetch, highlightsRefetch, dashboardInsightsRefetch]));
 
   // A drain can land while the dashboard is already on screen, not only on the way back
   // to it — the focus effect above wouldn't otherwise catch that.
@@ -140,6 +145,7 @@ const HomeScreen = () => {
     try {
       await Promise.all([
         summaryRefetch(),
+        cashFlowRefetch(),
         healthRefetch(),
         billsRefetch(),
         goalsRefetch(),
@@ -510,6 +516,8 @@ const HomeScreen = () => {
       {!billsLoading && (
         <BillsGlanceCard items={bills} onPress={() => router.push("/bills")} />
       )}
+
+      {cashFlow && <CashFlowGlanceCard data={cashFlow} onPress={() => router.push("/cash-flow")} />}
 
       {/* The floor of the screen when there is genuinely nothing to list. Reachable two
           ways — a fresh account that dismissed the checklist, and one whose transactions
