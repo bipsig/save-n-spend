@@ -206,6 +206,74 @@ export interface InvestmentsPayload {
   thisMonth: { contributed: number; portfolioChange: number; income: number }
 }
 
+/** A repeating expense or income spotted in the transaction history. `key` is stable per
+ *  kind + normalised title — what a dismissal is stored against. */
+export interface RecurringPattern {
+  key: string
+  kind: 'expense' | 'income'
+  /** The most recent title as the user typed it. */
+  title: string
+  /** Median amount across occurrences, paise. */
+  amount: number
+  category: string | null
+  categoryName: string | null
+  /** The account used most often for it. */
+  account: string | null
+  /** How many months it showed up in, within the lookback window. */
+  occurrences: number
+  lastAt: string
+  /** Last occurrence + 1 month, as an ISO instant. */
+  nextExpectedAt: string
+  /** Title or category reads like an investment (SIP / MF / ELSS / PPF / NPS). */
+  looksLikeSip: boolean
+  /** The matching expense transactions (non-split), newest first — for "move the past
+   *  payments too" on a SIP. Empty for income. */
+  transactionIds: string[]
+}
+
+export interface RecurringSuggestionsPayload {
+  /** Recurring expenses that aren't a bill yet and haven't been dismissed. */
+  expenses: RecurringPattern[]
+  /** Recurring income (salary etc.), not dismissed — what the cash-flow calendar expects. */
+  income: RecurringPattern[]
+}
+
+export type CashFlowItemKind = 'bill' | 'sip' | 'income'
+
+export interface CashFlowItem {
+  kind: CashFlowItemKind
+  name: string
+  /** Positive paise; `kind` gives the direction (income in, bill/sip out). */
+  amount: number
+  /** Set for bill/sip items. */
+  billId?: string
+  /** Set for income items — the pattern key, for "not a regular income". */
+  patternKey?: string
+  /** Income: how many months the estimate is based on. */
+  basedOnMonths?: number
+  /** A bill already past due, carried onto today. */
+  overdue?: boolean
+}
+
+export interface CashFlowDay {
+  /** Zone-local `YYYY-MM-DD`. */
+  date: string
+  items: CashFlowItem[]
+  /** Projected end-of-day balance of liquid accounts, paise. */
+  balance: number
+}
+
+export interface CashFlowPayload {
+  /** Today's liquid balance (bank + cash + wallet), paise. */
+  startBalance: number
+  /** Typical non-bill spending per day subtracted from the projection, paise. */
+  dailySpend: number
+  /** Today through the last day of next month, one entry per day. */
+  days: CashFlowDay[]
+  lowest: { date: string; balance: number }
+  endBalance: number
+}
+
 // What happened, not what it looks like: copy is composed on the server, and the type is
 // what the client picks an icon and tint from, and what the preference switches gate on.
 export type NotificationType =
@@ -219,6 +287,7 @@ export type NotificationType =
   | 'weeklySummary'     // the week that just ended
   | 'monthlySummary'    // the month that just ended, sent on the 1st
   | 'revalueInvestments' // monthly nudge to update investment values
+  | 'recurringFound'     // new recurring payments spotted that aren't bills yet
 
 /** Where tapping lands. A screen name, not a URL — a stored path would be a route that
  *  has to keep working forever. */
