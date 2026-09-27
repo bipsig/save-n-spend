@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Pressable, Share, StyleSheet, View } from "react-native";
-import { router } from "expo-router";
 import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
 import { APP_VERSION, currentScreen, reportError } from "@/lib/errorReporting";
@@ -8,7 +7,10 @@ import { colors, spacing } from "@/theme";
 
 type Props = {
   error: Error;
-  retry: () => Promise<void>;
+  /** Render the screen again. */
+  onRetry: () => void;
+  /** Leave for the dashboard. */
+  onHome: () => void;
 };
 
 // What a screen that throws while rendering shows instead of the app closing. The error is
@@ -19,9 +21,10 @@ type Props = {
 // time (Try again alone would be a dead end). Share rather than Copy: the system share sheet
 // has Copy in it, and it needs no native module.
 //
-// Built from plain parts: this can render in place of the root layout, outside every provider
-// it sets up, so nothing here may need one.
-const CrashScreen = ({ error, retry }: Props) => {
+// Shown per screen (components/shell/ScreenErrorBoundary), so only the broken screen is
+// replaced and navigation keeps its history; and, as a last resort, in place of the root layout.
+// Built from plain parts because of that second case — it can render outside every provider.
+const CrashScreen = ({ error, onRetry, onHome }: Props) => {
   // Lazy initial state: reported exactly once per crash, not on every re-render.
   const [ref] = useState(() => reportError(error));
   const [screen] = useState(() => currentScreen());
@@ -31,11 +34,6 @@ const CrashScreen = ({ error, retry }: Props) => {
     void Share.share({
       message: `Save n Spend error · Ref ${ref}\n${error.message}\non ${screen} · v${APP_VERSION}`,
     });
-  };
-
-  const goHome = async () => {
-    await retry();
-    router.replace("/(tabs)");
   };
 
   return (
@@ -65,10 +63,10 @@ const CrashScreen = ({ error, retry }: Props) => {
       </View>
 
       <View style={styles.buttons}>
-        <Pressable onPress={() => { void retry(); }} style={({ pressed }) => [styles.button, styles.primary, pressed && styles.pressed]} accessibilityRole="button">
+        <Pressable onPress={onRetry} style={({ pressed }) => [styles.button, styles.primary, pressed && styles.pressed]} accessibilityRole="button">
           <AppText size="sm" weight="bold">Try again</AppText>
         </Pressable>
-        <Pressable onPress={() => { void goHome(); }} style={({ pressed }) => [styles.button, styles.secondary, pressed && styles.pressed]} accessibilityRole="button">
+        <Pressable onPress={onHome} style={({ pressed }) => [styles.button, styles.secondary, pressed && styles.pressed]} accessibilityRole="button">
           <AppText size="sm" weight="bold">Go to Home</AppText>
         </Pressable>
       </View>

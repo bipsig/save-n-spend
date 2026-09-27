@@ -3,10 +3,18 @@ import { haptics } from "@/lib/haptics";
 import { iconMap } from "@/lib/icons";
 import { MaterialIcons } from "@expo/vector-icons";
 import { Tabs } from "expo-router"
+import ScreenErrorBoundary from "@/components/shell/ScreenErrorBoundary"
 
 const TabsLayout = () => {
   return (
     <Tabs
+      // A crashed tab is replaced in place — the tab bar stays, so another tab is one tap away.
+      // "Go to Home" switches to the Home tab.
+      screenLayout={({ children, navigation }) => (
+        <ScreenErrorBoundary onHome={() => navigation.navigate("index")}>
+          {children}
+        </ScreenErrorBoundary>
+      )}
       // On the navigator so all four tabs tick identically — a per-screen listener
       // is one more thing to forget when a tab is added. `selectionAsync`, not an
       // impact: the tab bar is a set you move through, same as a chip row.

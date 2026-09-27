@@ -33,6 +33,7 @@ import { useLastOpened } from "@/store/lastOpened";
 import { useRequestLog } from "@/store/requestLog";
 import { installGlobalErrorHandler, setCurrentScreen } from "@/lib/errorReporting";
 import CrashScreen from "@/components/shell/CrashScreen";
+import ScreenErrorBoundary from "@/components/shell/ScreenErrorBoundary";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -247,6 +248,13 @@ const RootLayout = () => {
                   headerShown: false,
                   contentStyle: { backgroundColor: "#0C0A16" },
                 }}
+                // Each screen gets its own crash boundary, so a screen that throws is replaced
+                // in place and the stack keeps its history. "Go to Home" pops back to the tabs.
+                screenLayout={({ children, navigation }) => (
+                  <ScreenErrorBoundary onHome={() => (navigation as { popToTop?: () => void }).popToTop?.()}>
+                    {children}
+                  </ScreenErrorBoundary>
+                )}
                 >
                   <Stack.Screen name="add-transaction" options={{ presentation: "modal" }} />
                   <Stack.Screen name="add-goal" options={{ presentation: "modal" }} />
@@ -274,6 +282,12 @@ const RootLayout = () => {
 
 export default RootLayout;
 
-// A screen that throws while rendering lands here instead of closing the app — reported, with
-// a reference to quote and a way back. See components/shell/CrashScreen.
-export const ErrorBoundary = ({ error, retry }: ErrorBoundaryProps) => <CrashScreen error={error} retry={retry} />;
+// The last resort, for a crash in a layout itself — screens have their own boundary (see the
+// Stack's screenLayout). This replaces the whole navigator, so "Go to Home" starts it afresh.
+export const ErrorBoundary = ({ error, retry }: ErrorBoundaryProps) => (
+  <CrashScreen
+    error={error}
+    onRetry={() => { void retry(); }}
+    onHome={() => { void retry().then(() => router.replace("/(tabs)")); }}
+  />
+);
