@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import Constants from "expo-constants";
 import { router } from "expo-router";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
@@ -38,6 +38,7 @@ import { useSession } from "@/store/session";
 import { AUTO_LOCK_DELAYS, autoLockLabel, useSettings, type AutoLockSeconds } from "@/store/settings";
 import { useOutbox } from "@/store/outbox";
 import { toast } from "@/store/toast";
+import { haptics } from "@/lib/haptics";
 import { spacing } from "@/theme";
 import type { BillReminderLead } from "@save-n-spend/types";
 
@@ -183,6 +184,28 @@ const SettingsScreen = () => {
   };
 
   const version = Constants.expoConfig?.version ?? "1.0.0";
+
+  // The hidden developer switch: seven taps on Version inside a couple of seconds of each
+  // other. From the fourth, a toast counts down so the gesture is discoverable once started.
+  const diagnostics = useSettings((s) => s.diagnostics);
+  const taps = useRef({ count: 0, last: 0 });
+  const tapVersion = () => {
+    const now = Date.now();
+    taps.current.count = now - taps.current.last < 1500 ? taps.current.count + 1 : 1;
+    taps.current.last = now;
+    const left = 7 - taps.current.count;
+    if (left <= 0) {
+      taps.current.count = 0;
+      const next = !useSettings.getState().diagnostics;
+      useSettings.getState().update({ diagnostics: next });
+      haptics.success();
+      toast.info(next ? "Diagnostics on — it's at the bottom of Settings" : "Diagnostics off");
+    }
+    else if (left <= 3) {
+      haptics.tap();
+      toast.info(`${left} more tap${left === 1 ? "" : "s"}`);
+    }
+  };
 
   return (
     <ScreenScaffold
@@ -455,8 +478,20 @@ const SettingsScreen = () => {
           label="Privacy policy"
           onPress={() => router.push("/privacy-policy")}
         />
-        {/* No onPress, so no chevron — the row states a fact rather than leading anywhere. */}
-        <SettingsRow kind="value" icon="info" tint="blue" label="Version" value={version} />
+        {/* A plain press target, not SettingsRow's onPress — that would add a chevron to a row
+            that states a fact. Seven quick taps switch the hidden Diagnostics screen on or off. */}
+        <Pressable onPress={tapVersion} accessibilityRole="text" accessibilityLabel={`Version ${version}`}>
+          <SettingsRow kind="value" icon="info" tint="blue" label="Version" value={version} />
+        </Pressable>
+        {diagnostics && (
+          <SettingsRow
+            kind="nav"
+            icon="receipt"
+            tint="violet"
+            label="Diagnostics"
+            onPress={() => router.push("/diagnostics")}
+          />
+        )}
       </Card>
 
       {/* Danger card — isolated below everything, so neither row can be reached by

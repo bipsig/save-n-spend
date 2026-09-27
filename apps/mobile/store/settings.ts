@@ -39,6 +39,9 @@ export interface DeviceSettings {
    *  Marked seen the moment it's SHOWN, not only if tapped — same convention as
    *  `netWorthMilestoneSeen`. */
   lastReviewedPeriod: { week: string | null; month: string | null };
+  /** Settings → Diagnostics shown (the recent-requests log). Off by default and hidden: it's a
+   *  developer's view, switched on by tapping the version number seven times. */
+  diagnostics: boolean;
 }
 
 const DEFAULTS: DeviceSettings = {
@@ -48,6 +51,7 @@ const DEFAULTS: DeviceSettings = {
   getStartedDismissed: [],
   netWorthMilestoneSeen: 0,
   lastReviewedPeriod: { week: null, month: null },
+  diagnostics: false,
 };
 
 /** How long a peek lasts — long enough to read a screenful, short enough that putting the
