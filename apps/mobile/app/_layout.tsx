@@ -1,4 +1,5 @@
-import { Stack, router, useSegments } from "expo-router";
+import { Stack, router, usePathname, useSegments } from "expo-router";
+import type { ErrorBoundaryProps } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
@@ -29,6 +30,9 @@ import { useTitleSuggestionStore } from "@/store/titleSuggestions";
 import { useOutbox } from "@/store/outbox";
 import { usePendingDeletes } from "@/store/pendingDeletes";
 import { useLastOpened } from "@/store/lastOpened";
+import { useRequestLog } from "@/store/requestLog";
+import { installGlobalErrorHandler, setCurrentScreen } from "@/lib/errorReporting";
+import CrashScreen from "@/components/shell/CrashScreen";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -51,7 +55,13 @@ const RootLayout = () => {
   useEffect(() => {
     void useSettings.getState().hydrate();
     void useConnectivity.getState().hydrate();
+    void useRequestLog.getState().hydrate();
+    installGlobalErrorHandler();
   }, []);
+
+  // Which screen an error report names — see lib/errorReporting.
+  const pathname = usePathname();
+  useEffect(() => { setCurrentScreen(pathname); }, [pathname]);
 
   // Is the server even up? First and unconditional, so it runs in parallel with the
   // SecureStore read below. See store/wake.
@@ -262,3 +272,7 @@ const RootLayout = () => {
 }
 
 export default RootLayout;
+
+// A screen that throws while rendering lands here instead of closing the app — reported, with
+// a reference to quote and a way back. See components/shell/CrashScreen.
+export const ErrorBoundary = ({ error, retry }: ErrorBoundaryProps) => <CrashScreen error={error} retry={retry} />;

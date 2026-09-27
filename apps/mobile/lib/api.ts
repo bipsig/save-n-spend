@@ -7,6 +7,9 @@ import { useSession } from "@/store/session";
 import { useConnectivity } from "@/store/connectivity";
 import * as offlineCache from "@/lib/offlineCache";
 import { BASE_URL } from "@/lib/apiBase";
+import { makeRequestId, routePattern } from "@/lib/requestId";
+import { APP_VERSION } from "@/lib/errorReporting";
+import { useRequestLog } from "@/store/requestLog";
 
 // Re-exported so store/wake.ts's existing import path is untouched — BASE_URL/HEALTH_URL
 // moved to lib/apiBase.ts so store/connectivity.ts (imported below) can read HEALTH_URL
@@ -25,16 +28,34 @@ type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
  */
 export class ApiError extends Error {
   readonly status: number;
+  /** The request's reference — the one in the server log and the Diagnostics list. */
+  readonly requestId: string | null;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, requestId: string | null = null) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.requestId = requestId;
   }
 }
 
 const request = async <T>(method: Method, path: string, body?: unknown): Promise<T> => {
   const token = useSession.getState().token; // ← the RN swap for localStorage.getItem
+
+  // One reference per call, sent to the server (which logs under it) and kept on the phone —
+  // so the "Ref 7K2QXB" in an error message finds the same request on both sides.
+  const requestId = makeRequestId();
+  const started = Date.now();
+  const record = (status: number, message?: string) =>
+    useRequestLog.getState().add({
+      requestId,
+      method,
+      route: routePattern(path),
+      status,
+      durationMs: Date.now() - started,
+      at: new Date(started).toISOString(),
+      ...(message ? { message } : {}),
+    });
 
   let res: Response;
   try {
@@ -42,6 +63,8 @@ const request = async <T>(method: Method, path: string, body?: unknown): Promise
       method,
       headers: {
         "Content-Type": "application/json",
+        "X-Request-Id": requestId,
+        "X-App-Version": APP_VERSION,
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
@@ -53,13 +76,15 @@ const request = async <T>(method: Method, path: string, body?: unknown): Promise
     // fetch error (timeout, DNS, no route) is not useful to show, so it's dropped in
     // favor of one clean message every existing catch block in the app can display.
     useConnectivity.getState().reportOffline();
+    record(0, "No response");
     // A GET has a fallback a write does not: its last-known answer. Every hook renders
     // this exactly as if the request had succeeded — no per-hook offline handling.
     if (method === "GET") {
       const cached = await offlineCache.read<T>(path);
       if (cached) return cached.data;
     }
-    throw new ApiError("You're offline — check your connection", 0);
+    // No reference in the message: nothing reached the server to look up.
+    throw new ApiError("You're offline — check your connection", 0, requestId);
   }
 
   // Any answer at all — even a rejection — proves the server is reachable.
@@ -75,9 +100,14 @@ const request = async <T>(method: Method, path: string, body?: unknown): Promise
     if (res.status === 401 && !path.includes("/auth/")) {
       useSession.getState().signOut();
     }
-    throw new ApiError(body?.message || `Request failed: ${res.status}`, res.status);
+    const message = body?.message || `Request failed: ${res.status}`;
+    record(res.status, message);
+    // The reference rides on the message, so every screen that shows `err.message` shows it
+    // too, with no change to any of them.
+    throw new ApiError(`${message} · Ref ${requestId}`, res.status, requestId);
   }
 
+  record(res.status);
   const json = await res.json();
   if (method === "GET") void offlineCache.write(path, json.data);
   return json.data as T; // unwrap the { success, message, data } envelope
