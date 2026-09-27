@@ -190,6 +190,7 @@ const RootLayout = () => {
       // Financial data must not survive a sign-out or an account switch on this phone —
       // but the outbox FILE is deliberately untouched by this: see lib/outbox.ts.
       void offlineCache.clearAll();
+      useRequestLog.getState().clear();
       useOutbox.getState().resetMemory();
       // A confirmed delete should be honored, not silently reverted, just because the
       // session ended before its grace window finished — best-effort, doesn't block
