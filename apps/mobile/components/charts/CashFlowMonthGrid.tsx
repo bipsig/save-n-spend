@@ -17,10 +17,12 @@ type Props = {
 
 const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"];
 
-/** One colour per kind, used for the dots here and the legend and rows on the screen. */
+/** One colour per kind, used for the dots here and the legend and rows on the screen. Three
+ *  hues far apart — amber, blue, green — so the dots read at 5px. SIP was teal once, too close
+ *  to income's green; not violet either, which is the selected-day and today highlight. */
 export const KIND_COLOR: Record<CashFlowItemKind, string> = {
   bill: colors.warning,
-  sip: colors.teal,
+  sip: colors.info,
   income: colors.success,
 };
 
