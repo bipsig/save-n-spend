@@ -182,6 +182,9 @@ const DiagnosticsScreen = () => {
       ))}
 
       <View style={styles.actions}>
+        {/* Opens a screen that throws while rendering, to check the crash screen and that its
+            report reaches the Server log. */}
+        <Button label="Test the crash screen" variant="secondary" icon="info" onPress={() => router.push("/crash-test")} />
         {view === "phone" && local.length > 0 && (
           <Button label="Clear this list" variant="ghost" onPress={() => useRequestLog.getState().clear()} />
         )}
