@@ -1,3 +1,4 @@
+import { log } from "../utils/logger";
 import mongoose from "mongoose";
 import Notification, { type NotificationType } from "../models/Notification";
 import User, { type INotificationPrefs } from "../models/User";
@@ -72,8 +73,15 @@ const DUPLICATE_KEY = 11000;
  * — callers include a POST that has already committed money.
  */
 export const notify = async (user: NotifiableUser, input: NotifyInput): Promise<boolean> => {
+    // Each occasion leaves a log row, so "why didn't my digest arrive?" has an answer: switched
+    // off, sent (and whether a push went out), or failed.
+    const outcome = (message: string, stack?: string) =>
+        log({ source: "job", route: `notify:${input.type}`, userId: String(user._id), message, stack: stack ?? null });
     try {
-        if (!wantsNotification(user.prefs?.notifications, input.type)) return false;
+        if (!wantsNotification(user.prefs?.notifications, input.type)) {
+            outcome("skipped — switched off in Settings");
+            return false;
+        }
 
         await Notification.create({
             userId: user._id,
@@ -84,7 +92,10 @@ export const notify = async (user: NotifiableUser, input: NotifyInput): Promise<
             dedupeKey: input.dedupeKey,
         });
 
-        if (!user.pushToken) return true;
+        if (!user.pushToken) {
+            outcome("sent to the in-app feed (no push token on this account)");
+            return true;
+        }
 
         // The badge is the total the phone should show once this lands, not this
         // notification's own count — iOS replaces the badge rather than adding to it.
@@ -104,12 +115,15 @@ export const notify = async (user: NotifiableUser, input: NotifyInput): Promise<
                 { pushedAt: new Date() },
             );
         }
+        outcome(pushed ? "sent, and pushed" : "sent to the in-app feed (push failed)");
         return true;
     }
     catch (err) {
         // A duplicate key is the healthy outcome of evaluating the same occasion twice.
+        // Not logged: the hourly job re-evaluates every occasion, so this fires on every tick
+        // until the period rolls over. The "sent" row from the first time is the answer.
         if ((err as { code?: number }).code === DUPLICATE_KEY) return false;
-        console.error(`[notify] ${input.type} failed for user ${String(user._id)}`, err);
+        outcome(`failed: ${(err as Error).message}`, (err as Error).stack);
         return false;
     }
 };

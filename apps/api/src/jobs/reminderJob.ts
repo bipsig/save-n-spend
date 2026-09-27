@@ -9,6 +9,7 @@ import { daysUntilDue, isSettledForPeriod } from "../services/billService";
 import { getRecurringSuggestions, keysSignature } from "../services/recurringService";
 import { notify, wantsNotification, type NotifiableUser } from "../services/notificationService";
 import { formatAmount } from "../utils/money";
+import { log } from "../utils/logger";
 import {
     addDaysInZone,
     addMonthsInZone,
@@ -387,7 +388,7 @@ export const runReminders = async (now: Date = new Date()): Promise<void> => {
         }
         catch (err) {
             // One user's bad data must not stop the other users' reminders.
-            console.error(`[reminders] failed for user ${String(user._id)}`, err);
+            log({ source: "job", route: "reminders", userId: String(user._id), message: `failed: ${(err as Error).message}`, stack: (err as Error).stack ?? null });
         }
     }
 };

@@ -2,11 +2,11 @@ import 'express-async-errors';
 import express from 'express'
 import cors from 'cors';
 import helmet from 'helmet';
-import morgan from 'morgan';
 import dotenv from 'dotenv';
 import connectDB, { isConnected } from './config/db';
 import apiRouter from './routes/router';
 import { errorHandler } from './middleware/errorHandler';
+import { requestLogger } from './middleware/requestLogger';
 import { startReminderJob } from './jobs/reminderJob';
 
 dotenv.config();
@@ -17,9 +17,12 @@ const app = express();
 // express-rate-limit keys off the real client IP, not the proxy's.
 app.set('trust proxy', 1);
 
-app.use (cors());
+// Exposed so the app can read the reference off a response and put it in an error message.
+app.use (cors({ exposedHeaders: ['X-Request-Id'] }));
 app.use (helmet());
-app.use (morgan('dev'));
+// A reference per request and one structured log line when it's answered — see
+// middleware/requestLogger. Replaces morgan's coloured one-liners.
+app.use (requestLogger);
 // Raised from the unconfigured 100kb default: a full backup export/restore is one JSON
 // body carrying a lifetime of transactions. Global rather than a second per-route
 // express.json() on the restore endpoint, to avoid double-consuming the same body stream.
@@ -36,7 +39,8 @@ app.get('/health', (_, res) => res.json({ ok: true, db: isConnected() ? 'connect
 app.use ('/api', apiRouter);
 
 app.use((_req, res) => {
-  res.status(404).json({ success: false, statusCode: 404, message: 'Route not found', data: null });
+  res.locals.errorMessage = 'Route not found';
+  res.status(404).json({ success: false, statusCode: 404, message: 'Route not found', data: null, requestId: res.locals.requestId ?? null });
 });
 app.use(errorHandler);
 
