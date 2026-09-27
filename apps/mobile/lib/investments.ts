@@ -5,6 +5,8 @@ import { useAccountStore } from "@/store/accounts";
 import { useSession } from "@/store/session";
 import { chartPalette, chartOthers } from "@/theme";
 import type { DonutSlice } from "@/components/charts/DonutChart";
+import type { IconName } from "@/lib/icons";
+import { chipTintFor, type ChipTint } from "@/theme/gradients";
 
 // The Investments hub's data — same single-fetch shape as useHealthScore/useDashboardSummary.
 // `enabled` lets a screen that only sometimes needs this (add-transaction, in redeem mode)
@@ -91,3 +93,10 @@ export const deleteInvestment = async (id: string, mode: DeleteInvestmentMode): 
   await del(`/investments/${id}?mode=${mode}`);
   await useAccountStore.getState().load().catch(() => {});
 };
+
+/** A holding's own icon and colour — what every SIP bill, contribution and redemption wears,
+ *  so each one is recognisable as *that* holding rather than a generic "investment". */
+export const holdingLook = (holding?: { icon?: string; color?: string } | null): { icon: IconName; tint: ChipTint } => ({
+  icon: (holding?.icon ?? "investments") as IconName,
+  tint: chipTintFor(holding?.color),
+});

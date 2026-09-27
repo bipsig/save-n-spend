@@ -16,7 +16,7 @@ import ErrorState from "@/components/states/ErrorState";
 import SkeletonState from "@/components/states/SkeletonState";
 import EditAccountSheet from "@/components/sheets/EditAccountSheet";
 import RevalueSheet from "@/components/sheets/RevalueSheet";
-import { useInvestments, returnPct, formatAnnual } from "@/lib/investments";
+import { useInvestments, returnPct, formatAnnual, holdingLook } from "@/lib/investments";
 import { useAccounts } from "@/lib/accounts";
 import { useBills } from "@/lib/bills";
 import { formatDueLabel } from "@/lib/date";
@@ -51,12 +51,11 @@ const HoldingRow = ({ h, onPress }: { h: InvestmentHolding; onPress: () => void 
         />
         <View style={styles.holdInfo}>
           <AppText size="sm" weight="bold" numberOfLines={1}>{h.name}</AppText>
-          <AppText size="xs" color="inkDim" numberOfLines={1}>
-            Invested {formatMoney(h.invested)}
-            {h.annualReturnStatus === "ok" && h.annualReturn !== null && (
-              <AppText size="xs" weight="bold" color={gainColor(h.annualReturn)}> · {formatAnnual(h.annualReturn)}</AppText>
-            )}
-          </AppText>
+          <AppText size="xs" color="inkDim" numberOfLines={1}>Invested {formatMoney(h.invested)}</AppText>
+          {/* Its own line — sharing one with "Invested ₹2,50,000" truncated it to "·…" on a phone. */}
+          {h.annualReturnStatus === "ok" && h.annualReturn !== null && (
+            <AppText size="xs" weight="bold" color={gainColor(h.annualReturn)} numberOfLines={1}>{formatAnnual(h.annualReturn)}</AppText>
+          )}
         </View>
         <View style={styles.holdRight}>
           <Money value={h.current} weight="bold" size="sm" align="right" />
@@ -114,11 +113,17 @@ const InvestmentsScreen = () => {
   const holdings = data?.holdings ?? [];
   // Holdings whose opening amount has no date — the yearly return can't be worked out.
   const undated = holdings.filter((h) => h.annualReturnStatus === "noStartDate");
-  // Best performer: the holding with the strongest positive simple return.
-  const best = holdings
-    .map((h) => ({ h, pct: returnPct(h.invested, h.gain) }))
-    .filter((x) => x.pct !== null && x.pct > 0)
-    .sort((a, b) => (b.pct as number) - (a.pct as number))[0];
+  // Strongest holding. Ranked by yearly return when at least two holdings have one — all-time
+  // % favours whatever has been held longest (+20% over five years beats +6% in three months).
+  // Otherwise simple return, the only figure every holding has. Never a mix of the two.
+  const yearly = holdings.filter((h) => h.annualReturnStatus === "ok" && h.annualReturn !== null);
+  const byYear = yearly.length >= 2;
+  const best = (byYear
+    ? yearly.map((h) => ({ h, value: (h.annualReturn as number) * 100 }))
+    : holdings.map((h) => ({ h, value: returnPct(h.invested, h.gain) })))
+    .filter((x): x is { h: InvestmentHolding; value: number } => x.value !== null && x.value > 0)
+    .sort((a, b) => b.value - a.value)[0];
+  const bestLook = holdingLook(best?.h);
 
   // Allocation donut: by kind when there's more than one kind, otherwise by holding — so a
   // portfolio that's all one kind (e.g. two SIPs, both Mutual Fund) still gets a useful
@@ -243,14 +248,22 @@ const InvestmentsScreen = () => {
           </Card>
 
           {best && (
-            <Card style={styles.perfCard}>
-              <Icon name="investments" size={16} containerSize={38} containerRadius={12} container="square" gradient="amber" />
-              <View style={styles.holdInfo}>
-                <AppText size="sm" weight="bold" numberOfLines={1}>{best.h.name}</AppText>
-                <AppText size="xs" color="inkDim">Your strongest holding</AppText>
-              </View>
-              <AppText size="sm" weight="black" color="success">+{Math.round(best.pct as number)}%</AppText>
-            </Card>
+            <PressableScale
+              onPress={() => router.push({ pathname: "/investment-detail", params: { id: best.h.accountId } })}
+              scaleTo={0.98}
+              accessibilityRole="button"
+            >
+              <Card style={styles.perfCard}>
+                <Icon name={bestLook.icon} size={16} containerSize={38} containerRadius={12} container="square" gradient={bestLook.tint} />
+                <View style={styles.holdInfo}>
+                  <AppText size="sm" weight="bold" numberOfLines={1}>{best.h.name}</AppText>
+                  <AppText size="xs" color="inkDim">{byYear ? "Your strongest holding, per year" : "Your strongest holding"}</AppText>
+                </View>
+                <AppText size="sm" weight="black" color="success">
+                  {byYear ? `+${best.value.toFixed(1)}% a year` : `+${Math.round(best.value)}%`}
+                </AppText>
+              </Card>
+            </PressableScale>
           )}
 
           {data.allocation.map((group) => {
@@ -285,10 +298,12 @@ const InvestmentsScreen = () => {
                 <AppText size="xs" weight="bold" color="inkDim">SIPs</AppText>
               </View>
               <Card style={styles.card}>
-                {sipBills.map((b) => (
+                {sipBills.map((b) => {
+                  const look = holdingLook(holdings.find((h) => h.accountId === b.toInvestment));
+                  return (
                   <PressableScale key={b._id} onPress={() => router.push("/bills")} scaleTo={0.98}>
                     <View style={styles.holdRow}>
-                      <Icon name="investments" size={16} containerSize={38} containerRadius={12} container="square" gradient="teal" />
+                      <Icon name={look.icon} size={16} containerSize={38} containerRadius={12} container="square" gradient={look.tint} />
                       <View style={styles.holdInfo}>
                         <AppText size="sm" weight="bold" numberOfLines={1}>{b.name}</AppText>
                         <AppText size="xs" color="inkDim">
@@ -298,7 +313,8 @@ const InvestmentsScreen = () => {
                       <Money value={b.amount} weight="bold" size="sm" align="right" />
                     </View>
                   </PressableScale>
-                ))}
+                  );
+                })}
               </Card>
             </View>
           )}

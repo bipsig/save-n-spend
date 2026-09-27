@@ -11,6 +11,7 @@ import { AppText } from "@/components/ui/AppText";
 import { useCategoryById } from "@/lib/categories";
 import { useAccountById, useDefaultAccount } from "@/lib/accounts";
 import { useAccountStore } from "@/store/accounts";
+import { holdingLook } from "@/lib/investments";
 import { post } from "@/lib/api";
 import { haptics } from "@/lib/haptics";
 import { toast } from "@/store/toast";
@@ -46,6 +47,7 @@ const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
   const category = useCategoryById(bill?.category ?? null);
   const investment = useAccountById(bill?.toInvestment ?? null);
   const isSip = !!bill?.toInvestment;
+  const look = holdingLook(investment);
   const defaultAccount = useDefaultAccount();
 
   const [accountId, setAccountId] = useState<string | null>(null);
@@ -103,12 +105,12 @@ const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
         <>
           <View style={styles.identity}>
             <Icon
-              name={isSip ? "investments" : ((category?.icon ?? "bills") as IconName)}
+              name={isSip ? look.icon : ((category?.icon ?? "bills") as IconName)}
               size={30}
               container="square"
               containerSize={64}
               containerRadius={21}
-              gradient={isSip ? "green" : ((category?.color ?? "accent") as ColorToken)}
+              gradient={isSip ? look.tint : ((category?.color ?? "accent") as ColorToken)}
             />
             <AppText size="md" weight="black">
               {bill.name}

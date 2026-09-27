@@ -23,7 +23,7 @@ import { useAccountStore } from "@/store/accounts";
 import { useConnectivity } from "@/store/connectivity";
 import { pendingDeletes } from "@/store/pendingDeletes";
 import AccountPickerSheet from "@/components/sheets/AccountPickerSheet";
-import { convertToInvestment } from "@/lib/investments";
+import { convertToInvestment, holdingLook } from "@/lib/investments";
 
 // Spec .selrow — boxed glass strip: leading icon · (caps label over bold value) · optional ›
 const SelRow = ({
@@ -94,6 +94,7 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
   const fromInvestment = isTransfer && account?.type === "investment";
   const isInvestment = toInvestment || fromInvestment;
   const moveLabel = toInvestment ? "Invested" : fromInvestment ? "Redeemed" : "Transfer";
+  const look = holdingLook(toInvestment ? toAccount : fromInvestment ? account : null);
   const title = isTransfer ? moveLabel : transaction?.title ?? "Transaction";
   // Subscribes this sheet to the mask so the delete-confirm's inline amount reveals with
   // everything else. `<Money>` handles its own; a `formatMoney` in a template string can't.
@@ -193,12 +194,12 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
             {/* Spec §08 .centerid — chip · title · spaced-sign amount · tinted badge */}
             <View style={styles.identity}>
               <Icon
-                name={isInvestment ? "investments" : isTransfer ? "transfer" : ((category?.icon ?? "activity") as IconName)}
+                name={isInvestment ? look.icon : isTransfer ? "transfer" : ((category?.icon ?? "activity") as IconName)}
                 size={30}
                 containerSize={64}
                 containerRadius={21}
                 container="square"
-                gradient={isInvestment ? "green" : isTransfer ? "teal" : ((category?.color ?? "accent") as ColorToken)}
+                gradient={isInvestment ? look.tint : isTransfer ? "teal" : ((category?.color ?? "accent") as ColorToken)}
               />
               <AppText size="md" weight="black">
                 {title}

@@ -11,7 +11,7 @@ import { useAccountById } from "@/lib/accounts";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { spacing } from "@/theme";
-import { chipTintFor } from "@/theme/gradients";
+import { holdingLook } from "@/lib/investments";
 import { formatDueLabel } from "@/lib/date";
 import { isActionable } from "@/lib/bills";
 import Money from "../ui/Money";
@@ -29,6 +29,7 @@ const BillRow = ({ bill, onPress, onEdit, onDelete }: Props) => {
   // A SIP: funds an investment rather than being spending — shown with the investment look.
   const investment = useAccountById(bill.toInvestment);
   const isSip = !!bill.toInvestment;
+  const look = holdingLook(investment);
 
   // A pending bill already pushed into a future period (paid/skipped this cycle,
   // or created ahead) — shown but not yet actionable.
@@ -52,11 +53,11 @@ const BillRow = ({ bill, onPress, onEdit, onDelete }: Props) => {
     <PressableScale onPress={onPress} disabled={!onPress || bill.status === "paid"} scaleTo={0.98}>
       <Card style={[styles.container, bill.status === "overdue" && styles.overdue, scheduled && styles.scheduled]}>
       <Icon
-        name={isSip ? "investments" : ((category?.icon ?? "bills") as IconName)}
+        name={isSip ? look.icon : ((category?.icon ?? "bills") as IconName)}
         size={22}
         container="square"
         containerSize={44}
-        gradient={isSip ? chipTintFor(investment?.color) : ((category?.color ?? "accent") as ColorToken)}
+        gradient={isSip ? look.tint : ((category?.color ?? "accent") as ColorToken)}
       />
 
       {/* Capped to a line each: the trailing actions take width off this column, and a

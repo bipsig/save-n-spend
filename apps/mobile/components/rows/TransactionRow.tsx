@@ -5,6 +5,7 @@ import { useCategoryById } from "@/lib/categories"
 import type { ITransaction } from "@save-n-spend/types"
 import type { IconName } from "@/lib/icons"
 import type { ColorToken } from "@/theme"
+import { holdingLook } from "@/lib/investments"
 import { spacing } from "@/theme"
 import { formatTxnDate } from "@/lib/date"
 import formatMoney, { usePrivacyMask } from "@/lib/money"
@@ -71,6 +72,8 @@ const TransactionRow = ({ transaction, onPress, pending = false, failed = false 
   const fromInvestment = isTransfer && from?.type === "investment"
   const isInvestment = toInvestment || fromInvestment
   const moveLabel = toInvestment ? "Invested" : fromInvestment ? "Redeemed" : "Transfer"
+  // The holding's own look, so each contribution reads as *that* holding at a glance.
+  const look = holdingLook(toInvestment ? to : fromInvestment ? from : null)
 
   const description = isTransfer
     ? `${moveLabel}, ${from?.name ?? "an account"} to ${to?.name ?? "an account"}`
@@ -94,11 +97,11 @@ const TransactionRow = ({ transaction, onPress, pending = false, failed = false 
     >
       <Card style={styles.card}>
         <Icon
-          name={isInvestment ? "investments" : isTransfer ? "transfer" : ((category?.icon ?? "more") as IconName)}
+          name={isInvestment ? look.icon : isTransfer ? "transfer" : ((category?.icon ?? "more") as IconName)}
           container="square"
-          // Green for an investment (money working, not spent); teal for a plain transfer,
-          // which is neither the green of money in nor the red of money out.
-          gradient={isInvestment ? "green" : isTransfer ? "teal" : ((category?.color ?? "accent") as ColorToken)}
+          // An investment wears its holding's colour; a plain transfer is teal, neither the
+          // green of money in nor the red of money out.
+          gradient={isInvestment ? look.tint : isTransfer ? "teal" : ((category?.color ?? "accent") as ColorToken)}
           size={22}
           containerSize={44}
         />
