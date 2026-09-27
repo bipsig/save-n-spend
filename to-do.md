@@ -69,6 +69,8 @@ native work, and phases 0-2 need no Swift at all.
 - [X] Form keeps populated after adding one investment
 - [X] More screen doesnt respond. you have to come back each time.
 - [X] Invested value and actual value edit on the investments.
+- [X] On cash flow page, SIP and Income is shown with same colour.
+- [X] Every icon on investments tab is shown with the same icon.
 
 
 So now i need you to give me the feasiblity how it would look and the complete desingn plan. once thats done we can then decide on the screens on how it would look and all. 
