@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { TRIPS_SLICE_ID } from "@/lib/trips";
 import { Pressable, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import type { InsightsPeriod } from "@save-n-spend/types";
@@ -419,12 +420,16 @@ const InsightsScreen = () => {
                   key={c.id}
                   style={styles.catRow}
                   onPress={() =>
-                    router.push({
-                      pathname: "/category-insights",
-                      // The window travels with the tap: the detail screen opens on the same
-                      // month the user was looking at, not on the current one.
-                      params: { id: c.id, name: c.name, period, offset: `${offset}` },
-                    })
+                    // Trips isn't a category — its slice opens the Trips screen, where each
+                    // trip's own breakdown lives.
+                    c.id === TRIPS_SLICE_ID
+                      ? router.push("/trips")
+                      : router.push({
+                        pathname: "/category-insights",
+                        // The window travels with the tap: the detail screen opens on the same
+                        // month the user was looking at, not on the current one.
+                        params: { id: c.id, name: c.name, period, offset: `${offset}` },
+                      })
                   }
                 >
                   {body}

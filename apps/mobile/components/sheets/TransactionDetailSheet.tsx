@@ -24,6 +24,7 @@ import { useConnectivity } from "@/store/connectivity";
 import { pendingDeletes } from "@/store/pendingDeletes";
 import AccountPickerSheet from "@/components/sheets/AccountPickerSheet";
 import { convertToInvestment, holdingLook } from "@/lib/investments";
+import { useTrip } from "@/lib/trips";
 
 // Spec .selrow — boxed glass strip: leading icon · (caps label over bold value) · optional ›
 const SelRow = ({
@@ -95,6 +96,16 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
   const isInvestment = toInvestment || fromInvestment;
   const moveLabel = toInvestment ? "Invested" : fromInvestment ? "Redeemed" : "Transfer";
   const look = holdingLook(toInvestment ? toAccount : fromInvestment ? account : null);
+  // Made by a trip. A trip expense's transactions (your share, what a friend owes on it) only
+  // change through the trip, which rewrites them together; a settle-up stands alone.
+  const tripExpense = !!transaction?.tripExpenseId;
+  const { data: trip } = useTrip(transaction?.tripId ?? undefined);
+  const tripLabel = trip ? `your ${trip.trip.name} trip` : "a trip";
+  const openTrip = () => {
+    if (!transaction?.tripId) return;
+    innerRef.current?.dismiss();
+    router.push({ pathname: "/trip-detail", params: { id: transaction.tripId } });
+  };
   const title = isTransfer ? moveLabel : transaction?.title ?? "Transaction";
   // Subscribes this sheet to the mask so the delete-confirm's inline amount reveals with
   // everything else. `<Money>` handles its own; a `formatMoney` in a template string can't.
@@ -272,15 +283,32 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
               )}
             </View>
 
+            {transaction.tripId && (
+              <View style={styles.tripNote}>
+                <Icon name="flight" size={16} color="primary" />
+                <AppText size="xs" color="inkSecondary" style={styles.tripNoteText}>
+                  {tripExpense
+                    ? `Part of ${tripLabel} — add, change or remove it from the trip.`
+                    : `A settle-up on ${tripLabel}.`}
+                </AppText>
+              </View>
+            )}
+            {transaction.tripId && <Button label="Open trip" variant="secondary" icon="flight" onPress={openTrip} />}
+
+            {!tripExpense && (<>
             {/* Full width and ahead of Edit/Delete — the one action worth repeating without
                 retyping (chai, metro, coffee) shouldn't compete for space with a
                 destructive one right next to it. */}
-            <Button
-              label="Log again today"
-              variant="secondary"
-              icon="repeat"
-              onPress={() => handleRepeat()}
-            />
+            {/* Not for a settle-up either: repeating it would be a second payment outside the
+                trip, which isn't what "again" means for paying someone back. */}
+            {!transaction.tripId && (
+              <Button
+                label="Log again today"
+                variant="secondary"
+                icon="repeat"
+                onPress={() => handleRepeat()}
+              />
+            )}
 
             {/* Backward-compat: an expense that was really a SIP/investment can be moved
                 out of spending into a holding. Expense-only — income/transfers aren't it. */}
@@ -320,6 +348,7 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
                 />
               </View>
             </View>
+            </>)}
           </Animated.View>
         ) : (
           <Animated.View entering={FadeIn.duration(160)} style={styles.view}>
@@ -366,6 +395,17 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
 TransactionDetailSheet.displayName = "TransactionDetailSheet";
 
 const styles = StyleSheet.create({
+  tripNote: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: "rgba(155,140,255,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(155,140,255,0.30)",
+  },
+  tripNoteText: { flex: 1, lineHeight: 17 },
   // The fading wrapper carries the gap, since its children no longer get the sheet's.
   view: {
     gap: spacing.lg,

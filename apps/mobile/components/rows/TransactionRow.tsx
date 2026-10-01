@@ -6,6 +6,7 @@ import type { ITransaction } from "@save-n-spend/types"
 import type { IconName } from "@/lib/icons"
 import type { ColorToken } from "@/theme"
 import { holdingLook } from "@/lib/investments"
+import { useTripName } from "@/store/tripNames"
 import { spacing } from "@/theme"
 import { formatTxnDate } from "@/lib/date"
 import formatMoney, { usePrivacyMask } from "@/lib/money"
@@ -56,6 +57,7 @@ const MetaItem = ({
 // tiny meta row · signed amount 15/800 colored by type. Flat glass, no shadow.
 const TransactionRow = ({ transaction, onPress, pending = false, failed = false }: Props) => {
   const category = useCategoryById(transaction.category)
+  const trip = useTripName(transaction.tripId)
   const isIncome = transaction.type === "income"
   usePrivacyMask(); // subscribe: the accessibility label below reads formatMoney() directly
 
@@ -133,6 +135,12 @@ const TransactionRow = ({ transaction, onPress, pending = false, failed = false 
             {transaction.splitGroupId && (
               <MetaItem icon="person" label="Split" />
             )}
+            {/* Which trip — a trip's share and its settle-ups otherwise read as ordinary rows. */}
+            {trip && (
+              <View style={styles.tripTag}>
+                <MetaItem icon="flight" label={trip.name} shrink />
+              </View>
+            )}
             {/* Same shape as the Split/Receipt chips above — a synthetic row from the
                 outbox is otherwise indistinguishable from a synced one. */}
             {failed ? (
@@ -201,6 +209,12 @@ const styles = StyleSheet.create({
   },
   note: {
     marginTop: 1,
+  },
+  // Held to its own width rather than shrinking with the row, which squeezed a short name
+  // like "Goa" to "G…" beside a long date; a long name truncates within it instead.
+  tripTag: {
+    flexShrink: 0,
+    maxWidth: 110,
   },
 })
 
