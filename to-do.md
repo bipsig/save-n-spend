@@ -18,7 +18,7 @@
 - [X] Highlights, per docs/insights-engine.md — deterministic rules, no model; its own screen behind the More-tab hero rather than on the Insights tab, so insights stayed untouched
 - [X] Fixtures for the highlight snapshot — the calendar-and-rollup half is now `highlightSnapshotMath.ts`, split out of the service so it is pure, and pinned by `highlightSnapshotMath.test.ts` (25 cases: zone-local month boundaries, the January year-cross, a DST month, the averaging divisor, backdated spend landing in a closed month)
 - [X] First-run experience — a welcome tour after registration and a derived Get started checklist on the dashboard (see docs/mobile-patterns.md § First run)
-- [ ] No test runner in `apps/mobile`, so `lib/onboarding.ts` is only covered by a throwaway harness. Its runtime imports are all `import type`, so `tsc` emits a dependency-free module that `node --test` can require directly — worth making permanent if a second pure module shows up
+- [X] No test runner in `apps/mobile` — `npm test` there now runs `lib/*.test.ts` through the API's ts-node (pure modules only: `import type` and nothing else at runtime). `lib/safeToSpend.test.ts` is the first; `lib/onboarding.ts` is still only covered by a throwaway harness
 - [X] Delete account shouldn't delete the account completely. Keep everything archived — it now stamps `deactivatedAt`, and signing in again clears it and hands the account back untouched
 - [X] when we change the budget month, the previous month's rows were shown instead of the skeleton
 - [X] Same stale-window problem on the Activity feed and its summary card — the card now shows a dash rather than the previous range's money
@@ -46,6 +46,7 @@
 - [X] Need to fix empty/no transactions as screen is completely generic. For example no transactions for a days insight shouldn't show a weeks spending. Thus work on blank screens correctly.
 - [X] Now daily notifications are rightly being fired but others like bills due notification and weekly notifcations are not being fired to the mobile (its seen within the bell icon)
 - [ ] Need a filter for accounts as well on all activity page.
+- [X] Safe to spend read "Over budget · ₹35,000 over" on a ₹10,000 Food budget with nothing spent — it took every unpaid bill off the budgets, SIPs (₹25,000) and unbudgeted rent (₹20,000) included. Now only non-SIP bills in a budgeted category (or a child of one) count, and a negative figure from bills alone reads "Bills ahead" in amber; "Over budget" is kept for spending that has actually passed the budgets. 16 edge cases in `lib/safeToSpend.test.ts`
 
 ## 2.0.0 — Shortcuts, Back Tap and the Action Button
 
@@ -71,6 +72,7 @@ native work, and phases 0-2 need no Swift at all.
 - [X] Invested value and actual value edit on the investments.
 - [X] On cash flow page, SIP and Income is shown with same colour.
 - [X] Every icon on investments tab is shown with the same icon.
+- [X] Investment accounts should not show up in transactions page — left out of every "paid from" picker (Add Transaction, Mark paid, the default account), and person accounts too wherever the money has to be real
 
 
 So now i need you to give me the feasiblity how it would look and the complete desingn plan. once thats done we can then decide on the screens on how it would look and all. 
@@ -80,3 +82,65 @@ Decided against: **widgets**. Data widgets need App Groups or Keychain sharing,
 both paid-tier, and a balance on the home screen renders outside AppLockGate,
 contradicting App Lock and privacy mode. Reasoning kept in
 docs/native-shortcuts.md § Why widgets are out in case it is ever revisited.
+
+## 2.3.0 — Trip mode
+
+Group trips are tracked today on WhatsApp and in Splitwise, then added as one lump ("₹10k Goa
+trip") — wrong by category, wrong by date, and friends' balances aren't tracked. A trip keeps
+every expense as your own share, dated, with who owes whom.
+
+- [X] Trips screen (More): active and closed trips — name, dates, your share, open balances. New trip: name, dates, people (person accounts), optional budget
+- [X] Trip screen (one long page): your share / what you paid / whole-trip cost vs budget; people with balances and Settle up (which account it went to or came from, partial amounts allowed); your share by category; spend by day; then a day-by-day journal of every expense and settlement. Trips list: every trip across all years — an all-trips summary card (total share, number of trips, average, open balances, a bar per year that jumps to it), the active trip on top, then trips grouped by year with each year's subtotal
+- [X] Add an expense from inside the trip only (a dedicated sheet — Add Transaction stays unchanged): Who paid? (me from an account, or a friend) and Split (everyone equally, some, custom), each share shown live. Your share is the spending; a friend paying is charged to their person account; your own payments move money as soon as they're logged
+- [X] Splitwise CSV import (live trips only): match names once (who you are, which person account is who) → review each row as New / Matches yours (apply the split to your own entries) / Break it down (lumps) / Pick the account you paid from / Is this yours? (zero rows, off by default) / Skipped (rows you're not in, payments between others) → edit, then approve. Re-import only adds new rows. Categories suggested from the description, not Splitwise's "General"
+- [ ] Import fallbacks: match columns yourself if they look off; "Just my totals" (your share by category plus each person's balance) if the file is unusable
+- [X] Wrap up (checklist: expenses in, categories set, balances decided, then a trip summary) and close: always allowed; each leftover balance is kept (stays on the person account) or let go (default under ₹50 — into or out of your share); locks the trip and stops tagging; can be reopened
+- [X] Rest of the app: one Trips slice in Insights (tap for each trip by category); trip spending left out of category budgets (counts against the trip's budget) but in totals and savings rate; settlements never count as spending or income
+- [ ] Later: trip budget alerts; trips abroad in another currency
+
+### Trip mode — walkthrough bugs
+
+- [X] New and edited trips save a day early — the sheet sent local midnight, every trip screen reads the dates as UTC calendar days. Trip dates are now calendar days stored as UTC midnight, with `tripDayToPicker` / `pickerToTripDay` crossing to the picker's local dates
+- [X] "Day X of Y" is a day behind in India until 05:30 — counted from UTC midnight; now from today's calendar date in the app's zone
+- [X] Local reminders re-fire on every launch — `local:notifiedKeys` has a colon, which SecureStore rejects (and `writeJson` swallows), so nothing was ever marked sent. Now `sns.notifiedKeys`, like the other device keys
+- [X] No way to delete a trip from the app — the API supports it. "Delete trip" in the edit sheet, behind a hold-to-confirm, since it unwinds every expense and settle-up
+- [X] Import settle-ups show the file's names ("Friend C paid You M.") instead of the matched people — the preview titles them "Adrita paid you" from the mapping
+- [X] New trip sheet: the "Give the trip a name." error sits below every person, out of sight — now in the footer, above the button
+- [X] New trip sheet rides up under the status bar while the keyboard is open — `topInset` on AppSheet, so no sheet can pass the safe area
+
+### Trip mode — walkthrough polish
+
+- [X] Paise where a rupee figure reads better — "a day" on the trip page and wrap-up, "open" and "avg" on the Trips list. `roundToRupee` in lib/money; balances someone will settle keep their paise
+- [X] Spend by day skips quiet days — a bar for every day of the trip so far, quiet ones as a faint stub
+- [X] A settle-up-only day reads "₹0" in the journal — now "Settle-ups", dimmed
+- [X] The Trips list's year bar counts the active trip, the year group header doesn't — the header reads the bar's figures and says "incl. active"; picking a year keeps its active trip in view
+- [X] Import review dates read "2025-12-07"; rows outside the trip's dates get no warning — now "7 Dec", in amber when outside, with a count and "check this is the right trip's file" above the rows
+- [X] Approving an import is a silent ~10s spinner — a line under it says how many rows and to keep the screen open. Rows stay sequential: each moves balances the next one reads
+- [X] Name matching: the "Me" chips shift as picked names change the Person chip's width — the Person chip has a fixed slot and truncates
+- [X] "Delete expense" in the trip expense sheet should be the danger style
+- [X] Hide "Log again today" on any trip transaction, not only trip expenses
+- [X] A trip tag on Activity rows — a ✈ trip-name chip on the meta row, from a trip-name store loaded on first use (`store/tripNames.ts`)
+- [X] Insights "Where it left from" — group person accounts into "Paid by friends"
+- [X] Local reminders use bill wording for SIP bills — same copy as the reminder job
+- [X] Found while checking the fixes: a trip with nobody else read "1 people" (now "just you"); the name error stayed up after typing a name; the Activity trip tag squeezed "Goa" to "G…"; a single settle-up day read "Settle-ups"
+
+## 2.x — Warranties and returns
+
+Money lost to a missed return window or a lapsed warranty is real and invisible. One date on
+a transaction — no photos, so it stays within the free database.
+
+- [ ] Mark a purchase with a return window ("return by 12 Oct") and/or a warranty ("warranty to Mar 2028"), from Add Transaction and the transaction detail sheet
+- [ ] Nudges before each closes: return window a couple of days out, warranty a few weeks out — local notification plus the in-app feed
+- [ ] A "Warranties & returns" list (More): what's still covered, what's about to lapse, and what's expired, each linking back to its transaction
+- [ ] Mark a return done (and optionally log the refund against it) so the reminder stops
+
+## Later — Loans and EMIs
+
+Nowhere to track a home, car, or personal loan, or a card EMI today, though most households
+carry at least one. Build later.
+
+- [ ] Loan as its own kind of account (debt): principal, rate, tenure, start date — the EMI and the full amortization schedule worked out from those, interest vs principal per instalment
+- [ ] EMIs flow in on their own: each loan's EMI appears as a recurring bill and on the cash-flow calendar; paying it splits into interest (spending) and principal (debt paid down)
+- [ ] Prepayment calculator — "prepay ₹50,000 now and save ₹1.3L of interest, finishing 14 months early", with reduce-EMI vs reduce-tenure side by side
+- [ ] Credit cards: statement date, due date, amount due, and a nudge before interest would be charged; card EMIs as loans
+- [ ] Debt in the rest of the app: net worth net of outstanding loans, the health score's debt pillar, and a debt-free date on the loans screen
