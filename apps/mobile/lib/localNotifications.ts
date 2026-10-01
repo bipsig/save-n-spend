@@ -378,24 +378,27 @@ const scheduleBillReminders = async (
     const dueKey = dayKey(due, zone);
     const amount = formatMoneyExact(bill.amount);
 
-    // Same three-way branch as the reminder job's remindBills, same dedupe key shape.
+    // Same three-way branch as the reminder job's remindBills, same dedupe key shape, same
+    // copy — a SIP bill funds an investment, so it reads as investing, not paying a bill.
+    const sip = !!bill.toInvestment;
+    const on = dateLabel(calendarDate(due, zone));
     const notice
       = days < 0
         ? {
-            title: `${bill.name} is overdue`,
-            body: `${amount} was due ${plural(-days, "day")} ago.`,
+            title: sip ? `${bill.name} — SIP overdue` : `${bill.name} is overdue`,
+            body: sip ? `${amount} was due to invest ${plural(-days, "day")} ago.` : `${amount} was due ${plural(-days, "day")} ago.`,
             key: `bill:${bill._id}:overdue:${dueKey}`,
           }
         : days === 0
           ? {
-              title: `${bill.name} is due today`,
-              body: `${amount} due today.`,
+              title: sip ? `Time to invest — ${bill.name}` : `${bill.name} is due today`,
+              body: sip ? `${amount} to invest today.` : `${amount} due today.`,
               key: `bill:${bill._id}:today:${dueKey}`,
             }
           : days <= lead
             ? {
-                title: `${bill.name} due in ${plural(days, "day")}`,
-                body: `${amount} due on ${dateLabel(calendarDate(due, zone))}.`,
+                title: sip ? `${bill.name} · invest in ${plural(days, "day")}` : `${bill.name} due in ${plural(days, "day")}`,
+                body: sip ? `${amount} to invest on ${on}.` : `${amount} due on ${on}.`,
                 key: `bill:${bill._id}:due:${dueKey}`,
               }
             : null;
