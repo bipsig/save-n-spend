@@ -6,6 +6,8 @@ import Transaction from "../models/Transaction";
 import Budget from "../models/Budget";
 import Bill from "../models/Bill";
 import Goal from "../models/Goal";
+import Trip from "../models/Trip";
+import TripExpense from "../models/TripExpense";
 import { BackupPayload } from "../schemas/backupSchema";
 
 const BACKUP_VERSION = 1;
@@ -19,7 +21,7 @@ const BACKUP_VERSION = 1;
 export const exportAccountData = async (userId: string) => {
     const uid = new mongoose.Types.ObjectId(userId);
 
-    const [user, accounts, categories, transactions, budgets, bills, goals] = await Promise.all([
+    const [user, accounts, categories, transactions, budgets, bills, goals, trips, tripExpenses] = await Promise.all([
         User.findById(uid).select("currency prefs").lean(),
         Account.find({ userId: uid }).lean(),
         Category.find({ userId: uid }).lean(),
@@ -27,6 +29,8 @@ export const exportAccountData = async (userId: string) => {
         Budget.find({ userId: uid }).lean(),
         Bill.find({ userId: uid }).lean(),
         Goal.find({ userId: uid }).lean(),
+        Trip.find({ userId: uid }).lean(),
+        TripExpense.find({ userId: uid }).lean(),
     ]);
 
     return {
@@ -44,12 +48,14 @@ export const exportAccountData = async (userId: string) => {
         budgets,
         bills,
         goals,
+        trips,
+        tripExpenses,
     };
 };
 
 type Collection = [string, Model<any>, Record<string, unknown>[]];
 
-// Wipes every one of THIS user's own documents across the six collections and replaces
+// Wipes every one of THIS user's own documents across the collections and replaces
 // them with the backup's — never merges. Every document keeps its original `_id` (so
 // every cross-reference inside the backup, e.g. Transaction.account or Budget.category,
 // stays correct with no remapping table); only `userId` is rewritten here, which is what
@@ -73,6 +79,8 @@ export const restoreAccountData = async (
         Budget.deleteMany({ userId: uid }, { session }),
         Bill.deleteMany({ userId: uid }, { session }),
         Goal.deleteMany({ userId: uid }, { session }),
+        Trip.deleteMany({ userId: uid }, { session }),
+        TripExpense.deleteMany({ userId: uid }, { session }),
     ]);
 
     const collections: Collection[] = [
@@ -82,6 +90,9 @@ export const restoreAccountData = async (
         ["budgets", Budget, payload.budgets],
         ["bills", Bill, payload.bills],
         ["goals", Goal, payload.goals],
+        // Optional in the file: a backup made before trips existed restores with none.
+        ["trips", Trip, payload.trips ?? []],
+        ["tripExpenses", TripExpense, payload.tripExpenses ?? []],
     ];
 
     const counts: Record<string, number> = {};

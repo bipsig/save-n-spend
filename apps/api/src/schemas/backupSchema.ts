@@ -22,6 +22,9 @@ export const backupPayloadSchema = z.object({
     budgets: z.array(backupDoc),
     bills: z.array(backupDoc),
     goals: z.array(backupDoc),
+    // Added with trips; absent from older backups, which still restore.
+    trips: z.array(backupDoc).optional(),
+    tripExpenses: z.array(backupDoc).optional(),
 });
 
 // The server-side half of the destructive-action guard — a defense-in-depth check
