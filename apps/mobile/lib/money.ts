@@ -86,5 +86,9 @@ export const paiseToInput = (paise: number): string => {
   return paise % 100 === 0 ? String(paise/100) : String((paise/100).toFixed(2));
 }
 
+/** To the nearest rupee — for derived figures (averages, per-day, totals of totals) where
+ *  paise are noise. Balances someone will settle keep theirs. */
+export const roundToRupee = (paise: number): number => Math.round(paise / 100) * 100;
+
 
 export default formatMoney;

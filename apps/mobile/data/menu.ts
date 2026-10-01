@@ -18,6 +18,7 @@ export const moneyItems: MoreItem[] = [
   { key: "cashflow", label: "Cash Flow", icon: "date", tint: "blue", path: "/cash-flow" },
   { key: "goals",  label: "Savings Goals", icon: "savings", tint: "green",  path: "/goals" },
   { key: "investments", label: "Investments", icon: "investments", tint: "teal", path: "/investments" },
+  { key: "trips", label: "Trips", icon: "flight", tint: "orange", path: "/trips" },
   { key: "reviews", label: "Reviews", icon: "summary", tint: "indigo", path: "/review-history" },
 ];
 

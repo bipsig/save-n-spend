@@ -27,6 +27,7 @@ import { useCategoryStore } from "@/store/categories";
 import { useAccountStore } from "@/store/accounts";
 import { useNotifications } from "@/store/notifications";
 import { useTitleSuggestionStore } from "@/store/titleSuggestions";
+import { useTripNameStore } from "@/store/tripNames";
 import { useOutbox } from "@/store/outbox";
 import { usePendingDeletes } from "@/store/pendingDeletes";
 import { useLastOpened } from "@/store/lastOpened";
@@ -188,6 +189,7 @@ const RootLayout = () => {
       useAccountStore.getState().reset();
       useNotifications.getState().reset();
       useTitleSuggestionStore.getState().reset();
+      useTripNameStore.getState().reset();
       // Financial data must not survive a sign-out or an account switch on this phone —
       // but the outbox FILE is deliberately untouched by this: see lib/outbox.ts.
       void offlineCache.clearAll();
