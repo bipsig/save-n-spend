@@ -370,20 +370,28 @@ const getAccountBreakDown = async (startTime: Date, endTime: Date, req: Request)
 
     const accounts = await Account.find({
         userId: req.user?.userId
-    }).select("_id name").lean();
+    }).select("_id name type").lean();
 
-    const result = [];
+    const result: { accountId: string; name: string | undefined; total: number }[] = [];
+    // A trip share a friend paid is charged to their person account. Money left from them, not
+    // from any account of yours, so every friend is one slice rather than a slice each.
+    let byFriends = 0;
 
     for (const account of accountSpend) {
-        const name = accounts.find((a) => a._id.toString() === account._id.toString())?.name;
+        const doc = accounts.find((a) => a._id.toString() === account._id.toString());
+        if (doc?.type === "person") {
+            byFriends += account.total;
+            continue;
+        }
         result.push({
             accountId: account._id.toString(),
-            name,
+            name: doc?.name,
             total: account.total
         })
     }
+    if (byFriends > 0) result.push({ accountId: "friends", name: "Paid by friends", total: byFriends });
 
-    return result;
+    return result.sort((a, b) => b.total - a.total);
 }
 
 // Whole calendar days between two instants. Both ends floored to local midnight first, so
