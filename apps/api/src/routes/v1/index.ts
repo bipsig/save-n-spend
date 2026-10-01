@@ -17,6 +17,7 @@ import investmentRoutes from "./investmentRoutes";
 import recurringRoutes from "./recurringRoutes";
 import cashFlowRoutes from "./cashFlowRoutes";
 import diagnosticsRoutes from "./diagnosticsRoutes";
+import tripRoutes from "./tripRoutes";
 
 const router = Router();
 
@@ -38,5 +39,6 @@ router.use ('/investments', investmentRoutes);
 router.use ('/recurring', recurringRoutes);
 router.use ('/cash-flow', cashFlowRoutes);
 router.use ('/diagnostics', diagnosticsRoutes);
+router.use ('/trips', tripRoutes);
 
 export default router;
