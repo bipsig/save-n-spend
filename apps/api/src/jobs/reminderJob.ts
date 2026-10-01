@@ -256,6 +256,8 @@ const topSpendCategory = async (
                 userId,
                 type: "expense",
                 category: { $ne: null },
+                // A trip's food isn't everyday Groceries — same split as the breakdown.
+                tripId: null,
                 occurredAt: { $gte: start, $lt: end },
             },
         },

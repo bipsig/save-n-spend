@@ -44,6 +44,10 @@ export const budgetProgress = async (
                 // The aggregation pipeline does no casting of its own, unlike `find`.
                 userId: new mongoose.Types.ObjectId(String(userId)),
                 type: "expense",
+                // Trip spending counts against the trip's own budget, not the month's
+                // categories — a holiday shouldn't blow the Food budget. (It still counts in
+                // every total and the savings rate.) Matches a missing field too.
+                tripId: null,
                 occurredAt: { $gte: start, $lt: next }
             }
         },

@@ -19,7 +19,8 @@ const toOid = (id: string | mongoose.Types.ObjectId) => new mongoose.Types.Objec
 
 const loadRows = async (oid: mongoose.Types.ObjectId, since: Date): Promise<RecurringInput[]> => {
     const [txns, categories] = await Promise.all([
-        Transaction.find({ userId: oid, type: { $in: ["expense", "income"] }, occurredAt: { $gte: since } })
+        // Trip spending is one-off by nature; left out so a trip can't look like a subscription.
+        Transaction.find({ userId: oid, type: { $in: ["expense", "income"] }, tripId: null, occurredAt: { $gte: since } })
             .select("type title amount category account occurredAt splitGroupId")
             .lean(),
         Category.find({ userId: oid }).select("name").lean(),
@@ -106,7 +107,8 @@ export const typicalDailySpend = async (
     const since = addDaysInZone(startOfDayInZone(now, zone), zone, -SPEND_WINDOW_DAYS);
     const scheduled = new Set([...recurringKeys, ...billNames.map((n) => `expense:${normalizeTitle(n)}`)]);
 
-    const expenses = await Transaction.find({ userId: oid, type: "expense", occurredAt: { $gte: since, $lt: now } })
+    // Trips left out: a holiday in the last 90 days would otherwise inflate "typical" daily spend.
+    const expenses = await Transaction.find({ userId: oid, type: "expense", tripId: null, occurredAt: { $gte: since, $lt: now } })
         .select("title amount occurredAt")
         .lean();
     if (expenses.length === 0) return 0;

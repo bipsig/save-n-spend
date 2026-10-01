@@ -3,6 +3,10 @@ import { insightsQuerySchema } from "../schemas/insightsSchema";
 import * as reply from "../utils/response";
 import Category from "../models/Category";
 import Transaction from "../models/Transaction";
+import Trip from "../models/Trip";
+
+/** The breakdown's one slice for all trip spending — not a real category id. */
+export const TRIPS_SLICE_ID = "trips";
 import mongoose from "mongoose";
 import Account from "../models/Account";
 import {
@@ -95,6 +99,7 @@ export const getCategoryInsights = async (req: Request, res: Response): Promise<
                 userId: new mongoose.Types.ObjectId(req.user!.userId),
                 type: "expense",
                 category: { $in: scope },
+                tripId: null,
                 occurredAt: { $gte: startTime, $lt: endTime }
             }
         },
@@ -245,20 +250,18 @@ export const getCategoryBreakDown = async (startTime: Date, endTime: Date, req: 
     const byId = new Map(categories.map((c) => [c._id.toString(), c]));
     const nameOf = (id: string) => byId.get(id)?.name ?? "Uncategorised";
 
-    const categorySpend = await Transaction.aggregate([
-        {
-            $match: {
-                userId: new mongoose.Types.ObjectId(req.user!.userId),
-                type: "expense",
-                occurredAt: { $gte: startTime, $lt: endTime }
-            }
-        },
-        {
-            $group: {
-                _id: "$category",
-                total: { $sum: "$amount" }
-            }
-        }
+    const uid = new mongoose.Types.ObjectId(req.user!.userId);
+    // Everyday spend by category; trip spend separately, by trip. A trip's food is shown under
+    // Trips, not Food — see the Trips slice below.
+    const [categorySpend, tripSpend] = await Promise.all([
+        Transaction.aggregate([
+            { $match: { userId: uid, type: "expense", tripId: null, occurredAt: { $gte: startTime, $lt: endTime } } },
+            { $group: { _id: "$category", total: { $sum: "$amount" } } },
+        ]),
+        Transaction.aggregate<{ _id: mongoose.Types.ObjectId; total: number }>([
+            { $match: { userId: uid, type: "expense", tripId: { $ne: null }, occurredAt: { $gte: startTime, $lt: endTime } } },
+            { $group: { _id: "$tripId", total: { $sum: "$amount" } } },
+        ]),
     ]);
 
     // Keyed by the top-level id in both: `rolled` is the figure the row shows, `split` is
@@ -292,6 +295,22 @@ export const getCategoryBreakDown = async (startTime: Date, endTime: Date, req: 
             : undefined;
 
         result.push({ categoryId: id, name: nameOf(id), total, ...(children?.length ? { children } : {}) });
+    }
+
+    // Every trip as one slice, each trip a child — so "how much do I spend on trips" is one
+    // number, and trip food never inflates everyday Food. The id is not a category's; the app
+    // routes a tap on it to Trips.
+    if (tripSpend.length) {
+        const trips = await Trip.find({ _id: { $in: tripSpend.map((t) => t._id) } }).select("name").lean();
+        const tripName = new Map(trips.map((t) => [String(t._id), t.name]));
+        result.push({
+            categoryId: TRIPS_SLICE_ID,
+            name: "Trips",
+            total: tripSpend.reduce((sum, t) => sum + t.total, 0),
+            children: tripSpend
+                .map((t) => ({ categoryId: String(t._id), name: tripName.get(String(t._id)) ?? "Trip", total: t.total }))
+                .sort((a, b) => b.total - a.total),
+        });
     }
 
     result.sort((a, b) => b.total - a.total);
@@ -502,7 +521,9 @@ export const getTrend = async (
             $match: {
                 userId: new mongoose.Types.ObjectId(req.user!.userId),
                 type: "expense",
-                ...(categoryIds ? { category: { $in: categoryIds } } : {}),
+                // A category's own trend is everyday spend only, matching its row in the
+                // breakdown, where trip spending sits under Trips instead.
+                ...(categoryIds ? { category: { $in: categoryIds }, tripId: null } : {}),
                 occurredAt: { $gte: startTime, $lt: endTime }
             }
         },

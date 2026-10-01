@@ -115,8 +115,10 @@ export const buildSnapshot = async (
                     totals: [
                         { $group: { _id: { month: monthKey, type: "$type" }, total: { $sum: "$amount" } } },
                     ],
+                    // Per-category spend for the pace/spike rules leaves trips out, the same way
+                    // budgets do — a holiday isn't a Food "spike". Totals above keep them.
                     spend: [
-                        { $match: { type: "expense" } },
+                        { $match: { type: "expense", tripId: null } },
                         { $group: { _id: { month: monthKey, category: "$category" }, total: { $sum: "$amount" } } },
                     ],
                 },
