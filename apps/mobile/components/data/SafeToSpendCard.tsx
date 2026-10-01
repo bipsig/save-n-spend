@@ -14,6 +14,11 @@ type Props = {
   hasBudgets: boolean;
   /** Remaining budget minus what's still owed on unpaid bills through this month. */
   safeToSpend: number;
+  /** The budgets' own remaining — below zero only once spending has actually passed them. */
+  budgetRemaining: number;
+  /** Unpaid bills still to come out of the budgets this month (SIPs and unbudgeted
+   *  categories excluded — see lib/safeToSpend). */
+  billsOwed: number;
   dailySafeToSpend: number;
   daysLeft: number;
   /** Null when there isn't yet enough of the month to project from, or it's already
@@ -27,7 +32,7 @@ type Props = {
 // and the figure itself, not a wash across the whole thing. Leads the dashboard, above
 // HealthScoreCard: a daily "what can I spend" number is checked far more often than a
 // slower, reflective score.
-const SafeToSpendCard = ({ hasBudgets, safeToSpend, dailySafeToSpend, daysLeft, forecast, onPress, onSetBudget }: Props) => {
+const SafeToSpendCard = ({ hasBudgets, safeToSpend, budgetRemaining, billsOwed, dailySafeToSpend, daysLeft, forecast, onPress, onSetBudget }: Props) => {
   usePrivacyMask(); // subscribe: the accessibility label below reads formatMoney() directly
   // No budget set. Shown rather than hidden or faked as ₹0 — same precedent
   // HealthScoreCard's own empty state follows: honest about what it's waiting for.
@@ -54,12 +59,17 @@ const SafeToSpendCard = ({ hasBudgets, safeToSpend, dailySafeToSpend, daysLeft, 
   // Not clamped at zero — a negative figure is the honest signal this card exists to
   // give, the same way budgetTotals's own "Over Budget" status is never floored either.
   const overNow = safeToSpend < 0;
+  // Negative for one of two reasons, and they read differently. Spending already past the
+  // budgets is "Over budget". Budgets intact but the bills still due add up to more than is
+  // left is a warning about what's coming — nothing has been overspent yet.
+  const overspent = budgetRemaining < 0;
+  const billsAhead = overNow && !overspent;
   // Fine today, but the forecast says the discretionary pace runs it out before
   // month-end — worth a different tone than "on track" without being "over budget"
   // outright, since nothing has actually gone wrong yet.
   const willRunShort = !overNow && !!forecast?.goesNegativeOn;
-  const tone = overNow ? "red" : willRunShort ? "amber" : "green";
-  const verdict = overNow ? "Over budget" : willRunShort ? "Tight later this month" : "On track";
+  const tone = overspent ? "red" : billsAhead || willRunShort ? "amber" : "green";
+  const verdict = overspent ? "Over budget" : billsAhead ? "Bills ahead" : willRunShort ? "Tight later this month" : "On track";
 
   // The card answers "today", so the daily rate leads — the month's total is context
   // underneath, not the other way around. Showing a ₹1,429 hero above a "₹142.90/day"
@@ -109,7 +119,7 @@ const SafeToSpendCard = ({ hasBudgets, safeToSpend, dailySafeToSpend, daysLeft, 
               prefix={overNow ? "− " : ""}
               size="xl"
               weight="black"
-              color={overNow ? "danger" : "ink"}
+              color={overspent ? "danger" : overNow ? "warning" : "ink"}
             />
             {daysLeft > 0 && (
               <AppText size="xs" weight="semibold" color="inkDim">/day</AppText>
@@ -126,9 +136,11 @@ const SafeToSpendCard = ({ hasBudgets, safeToSpend, dailySafeToSpend, daysLeft, 
         )}
 
         <AppText size="xs" color="inkDim">
-          {daysLeft > 0
-            ? `${formatMoney(Math.abs(safeToSpend))} ${overNow ? "over" : "left"} this month · ${daysLeft} day${daysLeft === 1 ? "" : "s"} to go`
-            : "The month is over — this is what's left."}
+          {billsAhead
+            ? `${formatMoney(billsOwed)} of bills still due — ${formatMoney(Math.abs(safeToSpend))} more than your budgets have left`
+            : daysLeft > 0
+              ? `${formatMoney(Math.abs(safeToSpend))} ${overNow ? "over" : "left"} this month · ${daysLeft} day${daysLeft === 1 ? "" : "s"} to go`
+              : "The month is over — this is what's left."}
         </AppText>
       </Card>
     </PressableScale>

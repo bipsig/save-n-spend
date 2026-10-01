@@ -1,4 +1,6 @@
-import type { IBill, BillFrequency } from "@save-n-spend/types";
+import type { IBill, BillFrequency, ICategory } from "@save-n-spend/types";
+import type { BudgetSummary } from "@/lib/budgets";
+import { billsAgainstBudgets } from "@/lib/safeToSpend";
 import { useCallback, useEffect, useState } from "react";
 import { del, get, patch } from "@/lib/api";
 import { appZone, calendarDate, calendarDaysBetween, calendarToday, monthKeyOf } from "@/lib/zone";
@@ -119,16 +121,22 @@ export const outstandingTotal = (items: IBill[]) => {
   return { total, pending, overdue };
 };
 
-// What's still going to draw from `month`'s cash — unpaid bills due in that month OR
-// earlier. Not "due this month" alone: an overdue bill carried over from a prior month
-// still gets paid out of *this* month's money whenever it happens, so excluding it would
-// overstate what's actually safe to spend. Bounded at `month` rather than unbounded like
-// `outstandingTotal` above, since a bill due next month shouldn't tank this one's figure.
-export const owedThroughMonth = (items: IBill[], month: string): number => {
+/** Unpaid bills that will still draw on `month`'s budgets — see billsAgainstBudgets for
+ *  which ones count and why. In the app's zone. */
+export const owedAgainstBudgets = (
+  items: IBill[],
+  budgets: BudgetSummary[],
+  categories: Pick<ICategory, "_id" | "parent">[],
+  month: string,
+): { total: number; bills: IBill[] } => {
   const zone = appZone();
-  return items
-    .filter((b) => b.status !== "paid" && monthKeyOf(new Date(b.dueDate), zone) <= month)
-    .reduce((sum, b) => sum + b.amount, 0);
+  return billsAgainstBudgets(
+    items,
+    budgets.map((b) => ({ category: String(b.budget.category) })),
+    categories,
+    month,
+    (iso) => monthKeyOf(new Date(iso), zone),
+  );
 };
 
 /** The fixed-cost floor: what's committed every period regardless of anything else this

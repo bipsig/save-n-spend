@@ -1,13 +1,13 @@
-import type { IBill } from "@save-n-spend/types";
+import type { IBill, ICategory } from "@save-n-spend/types";
 import { budgetTotals, type BudgetSummary } from "./budgets";
-import { owedThroughMonth } from "./bills";
+import { owedAgainstBudgets } from "./bills";
 import { appZone, calendarToday } from "./zone";
 
 export type SafeToSpendForecast = {
   /** One entry per day from today (inclusive) through month-end — the running
    *  discretionary balance at the current pace. Unpaid bills are NOT re-subtracted per
    *  day here: `safeToSpend` already carves out every bill still owed this month
-   *  up front (see lib/bills's owedThroughMonth), so this only projects the erosion
+   *  up front (see lib/bills's owedAgainstBudgets), so this only projects the erosion
    *  from ongoing daily spending against what's already bill-adjusted. */
   series: number[];
   /** ISO date of the first day the series would cross zero, or null if it never does
@@ -28,6 +28,7 @@ export const MIN_FORECAST_DAYS = 3;
 export const projectSafeToSpend = (
   budgetItems: BudgetSummary[],
   bills: IBill[],
+  categories: Pick<ICategory, "_id" | "parent">[],
   month: string,
 ): SafeToSpendForecast | null => {
   const totals = budgetTotals(budgetItems, month);
@@ -36,7 +37,7 @@ export const projectSafeToSpend = (
   // rate too noisy to be honest about — both are "no forecast", not a fake-precise one.
   if (totals.closed || totals.daysElapsed < MIN_FORECAST_DAYS) return null;
 
-  const safeToSpendNow = totals.remaining - owedThroughMonth(bills, month);
+  const safeToSpendNow = totals.remaining - owedAgainstBudgets(bills, budgetItems, categories, month).total;
   const dailyBurnRate = Math.round(totals.spent / totals.daysElapsed);
 
   const today = calendarToday(appZone());

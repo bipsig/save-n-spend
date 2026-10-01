@@ -23,7 +23,8 @@ import GoalWatchSlide from "@/components/data/GoalWatchSlide";
 import NoSpendDaysSlide from "@/components/data/NoSpendDaysSlide";
 import WeekdayHeatmapSlide from "@/components/data/WeekdayHeatmapSlide";
 import { useHealthScore } from "@/lib/health";
-import { useBills, owedThroughMonth } from "@/lib/bills";
+import { useBills, owedAgainstBudgets } from "@/lib/bills";
+import { useCategories } from "@/lib/categories";
 import { useCashFlow } from "@/lib/cashFlow";
 import CashFlowGlanceCard from "@/components/data/CashFlowGlanceCard";
 import { useGoals } from "@/lib/goals";
@@ -79,6 +80,8 @@ const HomeScreen = () => {
   // Feeds both the Get started checklist and the Safe to spend card below — no month
   // param, so the server's own default (the current month) is what comes back.
   const { items: budgets, loading: budgetsLoading, refetch: budgetsRefetch } = useBudgets();
+  // Which bills a budget covers goes by category, children included.
+  const categories = useCategories();
   const accounts = useAccountStore((s) => s.list);
   const accountsLoaded = useAccountStore((s) => s.loaded);
 
@@ -201,18 +204,19 @@ const HomeScreen = () => {
   const openActivity = (type: "income" | "expense") =>
     router.push({ pathname: "/activity", params: { type, range: "month", focus: String(Date.now()) } });
 
-  // Remaining budget minus what unpaid bills are still going to draw from this month's
-  // cash — the one figure that's actually actionable "right now", so it leads the
-  // dashboard. Not clamped: a negative number is the honest signal this exists to give.
+  // Remaining budget minus what unpaid bills are still going to draw from those budgets —
+  // the one figure that's actually actionable "right now", so it leads the dashboard. Not
+  // clamped: a negative number is the honest signal this exists to give.
   const month = currentMonth();
   const budgetTotalsThisMonth = budgetTotals(budgets, month);
-  const safeToSpend = budgetTotalsThisMonth.remaining - owedThroughMonth(bills, month);
+  const billsOwed = owedAgainstBudgets(bills, budgets, categories, month).total;
+  const safeToSpend = budgetTotalsThisMonth.remaining - billsOwed;
   const dailySafeToSpend = budgetTotalsThisMonth.daysLeft > 0
     ? Math.round(safeToSpend / budgetTotalsThisMonth.daysLeft)
     : safeToSpend;
   // Null when there isn't enough of the month yet, or it's already closed — the card
   // and the week pulse below both fall back to stating today's figure alone.
-  const forecast = projectSafeToSpend(budgets, bills, month);
+  const forecast = projectSafeToSpend(budgets, bills, categories, month);
   // This MONTH's income-so-far against expenses-so-far plus the forecast's own daily
   // rate projected across the days left — not the week's figures, which the pulse row
   // states on their own. Income is never projected forward (see lib/forecast) — it's
@@ -453,6 +457,8 @@ const HomeScreen = () => {
         <SafeToSpendCard
           hasBudgets={budgets.length > 0}
           safeToSpend={safeToSpend}
+          budgetRemaining={budgetTotalsThisMonth.remaining}
+          billsOwed={billsOwed}
           dailySafeToSpend={dailySafeToSpend}
           daysLeft={budgetTotalsThisMonth.daysLeft}
           forecast={forecast}
