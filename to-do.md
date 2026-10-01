@@ -46,6 +46,8 @@
 - [X] Need to fix empty/no transactions as screen is completely generic. For example no transactions for a days insight shouldn't show a weeks spending. Thus work on blank screens correctly.
 - [X] Now daily notifications are rightly being fired but others like bills due notification and weekly notifcations are not being fired to the mobile (its seen within the bell icon)
 - [ ] Need a filter for accounts as well on all activity page.
+- [X] The account picker didn't scroll — past a screenful the rows ran off the sheet. It scrolls now, under Accounts / Investments / People headings, with people that still owe or are owed first and a search box past 8 rows
+- [X] Manage accounts got buried under trip people — grouped by kind, each with a count and total, and settled people folded behind "Show N settled". People read as "Owes you" / "You owe" instead of a signed balance. Reordering is per section but still sends the whole list (`lib/accountOrder.ts`, 6 tests)
 - [X] Safe to spend read "Over budget · ₹35,000 over" on a ₹10,000 Food budget with nothing spent — it took every unpaid bill off the budgets, SIPs (₹25,000) and unbudgeted rent (₹20,000) included. Now only non-SIP bills in a budgeted category (or a child of one) count, and a negative figure from bills alone reads "Bills ahead" in amber; "Over budget" is kept for spending that has actually passed the budgets. 16 edge cases in `lib/safeToSpend.test.ts`
 
 ## 2.0.0 — Shortcuts, Back Tap and the Action Button
