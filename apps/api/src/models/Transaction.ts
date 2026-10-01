@@ -19,6 +19,11 @@ export interface ITransaction extends Document {
     receiptUrl?: string | null;
     occurredAt: Date;
     splitGroupId?: mongoose.Types.ObjectId | null;
+    /** On every transaction a trip created or settled. Insights groups these as one Trips
+     *  slice and budgets leave them out; every total still counts them. */
+    tripId?: mongoose.Types.ObjectId | null;
+    /** On the transactions a trip expense generated — they're edited through the trip. */
+    tripExpenseId?: mongoose.Types.ObjectId | null;
     /** Set only by an offline-queued create; absent on every ordinary transaction. */
     clientId?: string | null;
 };
@@ -39,11 +44,15 @@ const TransactionSchema = new Schema<ITransaction>({
     // Shared by every member of a split expense — the expense (the user's share) and one
     // transfer per person owed. Deleting the expense deletes the group by this key.
     splitGroupId: { type: Schema.Types.ObjectId, default: null },
+    tripId: { type: Schema.Types.ObjectId, ref: "Trip", default: null },
+    tripExpenseId: { type: Schema.Types.ObjectId, ref: "TripExpense", default: null },
     clientId: { type: String }
 }, { timestamps: true });
 
 TransactionSchema.index({ userId: 1, occurredAt: -1 });
 TransactionSchema.index({ userId: 1, splitGroupId: 1 }, { sparse: true });
+TransactionSchema.index({ userId: 1, tripId: 1 }, { sparse: true });
+TransactionSchema.index({ tripExpenseId: 1 }, { sparse: true });
 // Partial (not sparse): only index queued-offline creates, so the many ordinary
 // transactions with clientId:undefined are never indexed and can't collide on unique.
 // A duplicate replay throws E11000 inside the create's own session.withTransaction,
