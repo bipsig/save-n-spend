@@ -335,7 +335,7 @@ const scheduleInvestmentReminder = async (
  * such memory, so it keeps one itself. Never pruned: a few dozen keys, a few dozen bytes
  * each, is not worth the complexity of expiring them.
  */
-const NOTIFIED_KEY = "local:notifiedKeys";
+const NOTIFIED_KEY = "sns.notifiedKeys";
 
 const alreadyNotified = async (key: string): Promise<boolean> => {
   const map = await readJson<Record<string, true>>(NOTIFIED_KEY);
