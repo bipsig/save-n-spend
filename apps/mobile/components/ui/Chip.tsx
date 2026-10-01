@@ -13,12 +13,14 @@ type Props = PressableProps & {
   active?: boolean
   grow?: boolean
   icon?: IconName
+  /** Truncate rather than wrap — for a chip in a fixed-width slot. */
+  singleLine?: boolean
 }
 
 // Spec .fchip — glass pill, hairline border, dim 600 text; selected = violet
 // gradient, white 700 text, glow. `active` = the "trail" state (a violet
 // outline, no fill) for a parent whose child is the real selection.
-const Chip = ({ label, selected = false, active = false, grow = false, icon, disabled, onPress, ...rest }: Props) => {
+const Chip = ({ label, selected = false, active = false, grow = false, icon, singleLine = false, disabled, onPress, ...rest }: Props) => {
   const tint = selected ? 'surface' : active ? 'primary' : 'inkDim'
   return (
     <Pressable
@@ -59,6 +61,7 @@ const Chip = ({ label, selected = false, active = false, grow = false, icon, dis
           size="sm"
           color={tint}
           style={styles.label}
+          numberOfLines={singleLine ? 1 : undefined}
         >
           {label}
         </AppText>
