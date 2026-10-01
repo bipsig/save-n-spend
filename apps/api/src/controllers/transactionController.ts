@@ -309,6 +309,12 @@ export const updateTransaction = async (req: Request, res: Response): Promise<vo
         throw AppError.notFound("Transaction not found");
     }
 
+    // Part of a trip expense (a share, or what a friend owes on it): changing it here would
+    // leave the rest of that expense disagreeing. The trip rewrites all of them together.
+    if (transaction.tripExpenseId) {
+        throw AppError.badRequest("This is part of a trip expense — change it from the trip");
+    }
+
     if (reqBody.account) {
         const account = await Account.findOne({
             _id: reqBody.account,
@@ -387,6 +393,12 @@ export const convertToInvestment = async (req: Request, res: Response): Promise<
     if (!transaction) {
         throw AppError.notFound("Transaction not found");
     }
+
+    // Part of a trip expense (a share, or what a friend owes on it): changing it here would
+    // leave the rest of that expense disagreeing. The trip rewrites all of them together.
+    if (transaction.tripExpenseId) {
+        throw AppError.badRequest("This is part of a trip expense — change it from the trip");
+    }
     if (transaction.type !== "expense") {
         throw AppError.badRequest("Only an expense can be converted to an investment");
     }
@@ -451,6 +463,7 @@ export const bulkConvertToInvestment = async (req: Request, res: Response): Prom
         userId: req.user?.userId,
         type: "expense",
         splitGroupId: null,
+        tripExpenseId: null,
         account: { $ne: investment._id },
     });
 
@@ -482,6 +495,12 @@ export const deleteTransaction = async (req: Request, res: Response) : Promise<v
 
     if (!transaction) {
         throw AppError.notFound("Transaction not found");
+    }
+
+    // Part of a trip expense (a share, or what a friend owes on it): changing it here would
+    // leave the rest of that expense disagreeing. The trip rewrites all of them together.
+    if (transaction.tripExpenseId) {
+        throw AppError.badRequest("This is part of a trip expense — change it from the trip");
     }
 
     const session = await mongoose.startSession();
