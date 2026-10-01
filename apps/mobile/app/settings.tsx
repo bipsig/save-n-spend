@@ -530,6 +530,9 @@ const SettingsScreen = () => {
         selectedId={prefs.defaultAccount ?? null}
         onPick={(id) => void savePrefs({ defaultAccount: id }).catch(() => {})}
         onClear={() => void savePrefs({ defaultAccount: null }).catch(() => {})}
+        // The default is what Add Transaction and Mark paid start on — money is never paid
+        // from a holding.
+        excludeTypes={["investment"]}
       />
 
       <TimeZoneSheet

@@ -933,7 +933,7 @@ const AddTransaction = () => {
         />
       </View>
 
-      <AccountPickerSheet ref={accountRef} selectedId={accountId} onPick={setAccountId} />
+      <AccountPickerSheet ref={accountRef} selectedId={accountId} onPick={setAccountId} excludeTypes={["investment"]} />
       {/* Invest filters the destination to investment accounts; a plain transfer shows all. */}
       <AccountPickerSheet
         ref={toAccountRef}

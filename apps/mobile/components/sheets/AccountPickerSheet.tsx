@@ -38,6 +38,8 @@ type Props = {
   onClear?: () => void;
   /** Restricts the list to one account type — the split rows only ever pick a person. */
   filterType?: AccountType;
+  /** Leaves these types out — a "pay from" list has no business offering an investment. */
+  excludeTypes?: AccountType[];
   /**
    * Offers a "+ New person" row that creates the account inline (name only, opening
    * balance zero) and picks it — a split is usually the first time a flatmate's
@@ -48,7 +50,7 @@ type Props = {
 };
 
 const AccountPickerSheet = forwardRef<BottomSheetModal, Props>((
-  { selectedId, title = "Pay from", onPick, onClear, filterType, allowCreate },
+  { selectedId, title = "Pay from", onPick, onClear, filterType, excludeTypes, allowCreate },
   ref
 ) => {
   // Own handle, so `dismiss` closes *this* picker. `useBottomSheetModal().dismiss()`
@@ -59,7 +61,8 @@ const AccountPickerSheet = forwardRef<BottomSheetModal, Props>((
   const dismiss = () => innerRef.current?.dismiss();
 
   const allAccounts = useAccounts();
-  const accounts = filterType ? allAccounts.filter((a) => a.type === filterType) : allAccounts;
+  const accounts = (filterType ? allAccounts.filter((a) => a.type === filterType) : allAccounts)
+    .filter((a) => !excludeTypes?.includes(a.type));
   usePrivacyMask(); // subscribe: a peek has to re-render the balances listed below
   const offline = useConnectivity((s) => s.offline);
 

@@ -187,7 +187,7 @@ const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
       )}
     </AppSheet>
 
-    <AccountPickerSheet ref={accountRef} selectedId={accountId} onPick={setAccountId} />
+    <AccountPickerSheet ref={accountRef} selectedId={accountId} onPick={setAccountId} excludeTypes={["investment"]} />
     </>
   );
 });
