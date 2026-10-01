@@ -118,6 +118,10 @@ export interface ITransaction {
   // Set on every member of a split: the expense (the user's share) and its sibling
   // transfers (what each person owes). Absent on ordinary transactions.
   splitGroupId?: string | null
+  /** Set on every transaction a trip created or settled. */
+  tripId?: string | null
+  /** Set on the transactions a trip expense generated — edit those through the trip. */
+  tripExpenseId?: string | null
   // Set only by an offline-queued create, so the mobile feed can dedupe its synthetic
   // pending row against this same transaction once it lands from the server.
   clientId?: string | null
@@ -289,6 +293,123 @@ export interface CashFlowPayload {
   days: CashFlowDay[]
   lowest: { date: string; balance: number }
   endBalance: number
+}
+
+// Types only in this package — it ships as TypeScript source and every consumer imports it
+// with `import type`, so a runtime value here would break the compiled API. The Trips slice
+// id ("trips") is therefore defined in each app.
+
+export type TripStatus = 'active' | 'closed'
+
+export interface ITrip {
+  _id: string
+  name: string
+  /** One emoji, shown on the trip's card. */
+  emoji: string
+  /** Colour token for the card's band. */
+  color: string
+  /** ISO, zone-local day starts. */
+  startDate: string
+  endDate: string
+  /** Person-account ids of the people on the trip (not you). */
+  members: string[]
+  /** Paise, or null for no budget. */
+  budget: number | null
+  status: TripStatus
+  closedAt: string | null
+  createdAt: string
+}
+
+/** One person's part of a trip expense. `account` null is you; otherwise a member's person account. */
+export interface TripShare {
+  account: string | null
+  /** Paise. */
+  amount: number
+}
+
+/** A shared expense as the group sees it — the whole cost, who paid, everyone's share. The
+ *  server turns it into ordinary transactions: your share as an expense, and when you paid,
+ *  a transfer to each friend for theirs. */
+export interface ITripExpense {
+  _id: string
+  tripId: string
+  title: string
+  occurredAt: string
+  category: string | null
+  /** Paise — the whole bill. */
+  cost: number
+  /** null = you paid, from `paidFrom`; otherwise the member's person account who paid. */
+  paidBy: string | null
+  /** Your account it came out of, when you paid. */
+  paidFrom: string | null
+  shares: TripShare[]
+  source: 'manual' | 'splitwise'
+  createdAt: string
+}
+
+/** What a trip adds up to, for your side of it. All paise. */
+export interface TripTotals {
+  /** Your share — what counts as your spending. */
+  myShare: number
+  /** What left your own accounts for the group. */
+  paid: number
+  /** Every expense's full cost. */
+  wholeTrip: number
+  /** Positive: owed to you overall; negative: you owe. */
+  balance: number
+}
+
+export interface TripMemberBalance {
+  account: string
+  name: string
+  /** Positive: they owe you; negative: you owe them. Trip-scoped. */
+  balance: number
+}
+
+export interface TripListItem extends ITrip {
+  totals: TripTotals
+  /** Members with a non-zero trip balance. */
+  openBalances: number
+}
+
+export interface TripsPayload {
+  trips: TripListItem[]
+  /** Across every trip: your total share, trip count, and what's still open. */
+  allTime: { myShare: number; trips: number; open: number; openTrips: number }
+  /** Your share per calendar year of each trip's start, newest first. */
+  byYear: { year: number; myShare: number; trips: number }[]
+}
+
+/** One entry on the trip's timeline: an expense, a settle-up, or a let-go at close. */
+export interface TripEntry {
+  kind: 'expense' | 'settlement' | 'letGo'
+  id: string
+  occurredAt: string
+  title: string
+  category: string | null
+  /** Your share for an expense; the amount moved for a settlement or let-go. Paise. */
+  amount: number
+  /** Expenses only. */
+  cost?: number
+  paidBy?: string | null
+  /** Settlements: the person, and whether money came to you or went from you. */
+  person?: string
+  direction?: 'received' | 'paid'
+  /** Settlements: your account it landed in or left from. */
+  account?: string | null
+}
+
+export interface TripDetailPayload {
+  trip: ITrip
+  totals: TripTotals
+  members: TripMemberBalance[]
+  /** Your share by category, biggest first. `category` null = uncategorised. */
+  byCategory: { category: string | null; total: number }[]
+  /** Your share per zone-local day of the trip, oldest first. */
+  byDay: { date: string; total: number }[]
+  /** Everything on the trip, newest first. */
+  entries: TripEntry[]
+  expenses: ITripExpense[]
 }
 
 // What happened, not what it looks like: copy is composed on the server, and the type is
