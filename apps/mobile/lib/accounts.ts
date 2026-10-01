@@ -4,6 +4,7 @@ import { useSession } from "@/store/session";
 import { usePendingDeletes } from "@/store/pendingDeletes";
 import { del, patch, post } from "@/lib/api";
 import { applyOrder, persistOrder } from "@/lib/reorder";
+import formatMoney from "@/lib/money";
 import type { AccountType, IAccount, InvestedHow } from "@save-n-spend/types";
 
 // Filtered here, not just at the manage-accounts screen, so a "deleted" account
@@ -12,6 +13,28 @@ import type { AccountType, IAccount, InvestedHow } from "@save-n-spend/types";
 // deliberately do NOT filter: a transaction that already points at an account being
 // deleted should keep showing its real name for the whole grace window, not fall back
 // to a placeholder for something that hasn't actually been deleted yet.
+/**
+ * A person account's balance in words. It is a receivable, not spendable funds, so "available"
+ * would read backwards — and a bare "-₹340" doesn't say who is owed. Positive = they owe you.
+ */
+export const owedLine = (balance: number): string => {
+  if (balance === 0) return "Settled up";
+  return balance > 0 ? `Owes you ${formatMoney(balance)}` : `You owe ${formatMoney(-balance)}`;
+};
+
+/**
+ * The three kinds of thing an account list holds, in the order they're shown. Money you spend
+ * from, holdings, and people you owe or who owe you are different enough to be looked for
+ * separately — and `person` accounts grow with every trip, so they sit last rather than
+ * through the middle of the list. Shared by the picker sheet and Manage accounts so the two
+ * can't drift apart.
+ */
+export const ACCOUNT_GROUPS: { label: string; types: AccountType[] }[] = [
+  { label: "Accounts", types: ["bank", "cash", "wallet", "credit_card"] },
+  { label: "Investments", types: ["investment"] },
+  { label: "People", types: ["person"] },
+];
+
 export const useAccounts = () : IAccount[] => {
   const list = useAccountStore((s) => s.list);
   const pending = usePendingDeletes((s) => s.keys);

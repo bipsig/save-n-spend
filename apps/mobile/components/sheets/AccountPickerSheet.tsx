@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { BottomSheetModal, BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";
@@ -6,23 +6,21 @@ import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
 import Button from "@/components/ui/Button";
-import { createAccount, useAccounts } from "@/lib/accounts";
+import { ACCOUNT_GROUPS, createAccount, owedLine, useAccounts } from "@/lib/accounts";
 import { useConnectivity } from "@/store/connectivity";
 import { toast } from "@/store/toast";
 import { haptics } from "@/lib/haptics";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import type { IconName } from "@/lib/icons";
-import type { AccountType } from "@save-n-spend/types";
+import type { AccountType, IAccount } from "@save-n-spend/types";
 import type { ColorToken } from "@/theme";
-import { colors, spacing } from "@/theme";
+import { colors, radius, spacing } from "@/theme";
 import { KEYBOARD_DONE_ID } from "@/components/ui/KeyboardDoneBar";
 
-// A person account's balance is a receivable, not spendable funds — "available" would
-// read backwards. Positive = they owe the user; negative = the user owes them.
-const owedLine = (balance: number): string => {
-  if (balance === 0) return "Settled up";
-  return balance > 0 ? `Owes you ${formatMoney(balance)}` : `You owe ${formatMoney(-balance)}`;
-};
+/** Past this many rows, finding one by eye stops working and the list gets a search box. */
+const SEARCH_FROM = 8;
+
+const SNAP_POINTS = ["78%"];
 
 type Props = {
   selectedId?: string | null;
@@ -61,8 +59,6 @@ const AccountPickerSheet = forwardRef<BottomSheetModal, Props>((
   const dismiss = () => innerRef.current?.dismiss();
 
   const allAccounts = useAccounts();
-  const accounts = (filterType ? allAccounts.filter((a) => a.type === filterType) : allAccounts)
-    .filter((a) => !excludeTypes?.includes(a.type));
   usePrivacyMask(); // subscribe: a peek has to re-render the balances listed below
   const offline = useConnectivity((s) => s.offline);
 
@@ -70,11 +66,45 @@ const AccountPickerSheet = forwardRef<BottomSheetModal, Props>((
   const [newName, setNewName] = useState("");
   const [creatingBusy, setCreatingBusy] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+
+  const accounts = useMemo(
+    () => (filterType ? allAccounts.filter((a) => a.type === filterType) : allAccounts)
+      .filter((a) => !excludeTypes?.includes(a.type)),
+    [allAccounts, filterType, excludeTypes],
+  );
+
+  // Searching is offered on the whole list, not per group, so a name found by typing can
+  // come from anywhere. The threshold is measured before filtering — the box must not
+  // disappear from under the term that is narrowing the list.
+  const searchable = accounts.length > SEARCH_FROM;
+  const term = search.trim().toLowerCase();
+
+  const groups = useMemo(() => {
+    const matching = term ? accounts.filter((a) => a.name.toLowerCase().includes(term)) : accounts;
+    return ACCOUNT_GROUPS
+      .map(({ label, types }) => {
+        const rows = matching.filter((a) => types.includes(a.type));
+        // Whoever there is still money between comes first: a trip leaves behind people who
+        // are settled up, and those are exactly the rows nobody is looking for.
+        if (types.includes("person")) {
+          const open = rows.filter((a) => a.balance !== 0);
+          const settled = rows.filter((a) => a.balance === 0);
+          return { label, rows: [...open, ...settled], settledFrom: open.length };
+        }
+        return { label, rows, settledFrom: -1 };
+      })
+      .filter((g) => g.rows.length > 0);
+  }, [accounts, term]);
+
+  // One group needs no heading — the sheet's own title already says what the list is.
+  const showHeadings = groups.length > 1;
 
   const reset = () => {
     setCreating(false);
     setNewName("");
     setCreateError(null);
+    setSearch("");
   };
 
   const onCreate = async () => {
@@ -101,8 +131,50 @@ const AccountPickerSheet = forwardRef<BottomSheetModal, Props>((
     }
   };
 
+  const accountRow = (account: IAccount) => {
+    const selected = account._id === selectedId;
+    return (
+      <PressableScale
+        key={account._id}
+        style={[styles.row, selected && styles.rowSelected]}
+        scaleTo={0.98}
+        haptic={false}
+        onPress={() => {
+          haptics.select();
+          onPick(account._id);
+          dismiss();
+        }}
+      >
+        <Icon
+          name={(account.icon ?? "wallet") as IconName}
+          size={20}
+          containerSize={44}
+          container="square"
+          gradient={(account.color ?? "accent") as ColorToken}
+        />
+        <View style={styles.info}>
+          <AppText size="sm" weight="bold">
+            {account.name}
+          </AppText>
+          <AppText size="xs" color="inkDim">
+            {account.type === "person" ? owedLine(account.balance) : `${formatMoney(account.balance)} available`}
+          </AppText>
+        </View>
+        {selected && <Icon name="budgetOk" size={20} color="success" />}
+      </PressableScale>
+    );
+  };
+
   return (
-    <AppSheet ref={innerRef} onDismiss={reset}>
+    <AppSheet
+      ref={innerRef}
+      onDismiss={reset}
+      // Long lists scroll instead of running off the bottom of the sheet. A fixed height
+      // only once there's a search box: filtering a dynamically sized sheet would resize it
+      // on every keystroke, with the rows jumping under the finger.
+      scrollable
+      snapPoints={searchable ? SNAP_POINTS : undefined}
+    >
       <AppText size="md" weight="black">
         {title}
       </AppText>
@@ -125,6 +197,20 @@ const AccountPickerSheet = forwardRef<BottomSheetModal, Props>((
             <Button label="Add" onPress={onCreate} loading={creatingBusy} size="sm" />
             <Button label="Cancel" variant="ghost" size="sm" onPress={() => setCreating(false)} />
           </View>
+        </View>
+      )}
+      {searchable && !creating && (
+        <View style={styles.searchBox}>
+          <Icon name="search" size={18} color="gray500" />
+          <BottomSheetTextInput
+            placeholder="Search accounts and people"
+            placeholderTextColor={colors.gray400}
+            value={search}
+            onChangeText={setSearch}
+            returnKeyType="done"
+            inputAccessoryViewID={KEYBOARD_DONE_ID}
+            style={styles.searchInput}
+          />
         </View>
       )}
       <View style={styles.list}>
@@ -160,39 +246,32 @@ const AccountPickerSheet = forwardRef<BottomSheetModal, Props>((
             {selectedId == null && <Icon name="budgetOk" size={20} color="success" />}
           </PressableScale>
         )}
-        {accounts.map((account) => {
-          const selected = account._id === selectedId;
-          return (
-            <PressableScale
-              key={account._id}
-              style={[styles.row, selected && styles.rowSelected]}
-              scaleTo={0.98}
-              haptic={false}
-              onPress={() => {
-                haptics.select();
-                onPick(account._id);
-                dismiss();
-              }}
-            >
-              <Icon
-                name={(account.icon ?? "wallet") as IconName}
-                size={20}
-                containerSize={44}
-                container="square"
-                gradient={(account.color ?? "accent") as ColorToken}
-              />
-              <View style={styles.info}>
-                <AppText size="sm" weight="bold">
-                  {account.name}
-                </AppText>
-                <AppText size="xs" color="inkDim">
-                  {account.type === "person" ? owedLine(account.balance) : `${formatMoney(account.balance)} available`}
-                </AppText>
+        {groups.map((group) => (
+          <View key={group.label} style={styles.group}>
+            {showHeadings && (
+              <AppText size="xs" weight="bold" color="inkDim" style={styles.groupLabel}>
+                {group.label.toUpperCase()}
+              </AppText>
+            )}
+            {group.rows.map((account, i) => (
+              <View key={account._id}>
+                {/* Where the people with nothing outstanding begin. Counted rather than just
+                    labelled — each row already says "Settled up" on its own. */}
+                {i === group.settledFrom && i > 0 && (
+                  <AppText size="xs" color="inkDim" style={styles.settledLabel}>
+                    {`${group.rows.length - group.settledFrom} settled up`}
+                  </AppText>
+                )}
+                {accountRow(account)}
               </View>
-              {selected && <Icon name="budgetOk" size={20} color="success" />}
-            </PressableScale>
-          );
-        })}
+            ))}
+          </View>
+        ))}
+        {term.length > 0 && groups.length === 0 && (
+          <AppText size="sm" color="inkDim">
+            {`Nothing matches “${search.trim()}”.`}
+          </AppText>
+        )}
         {allowCreate && !creating && (
           <PressableScale
             style={[styles.row, offline && styles.rowDim]}
@@ -206,6 +285,8 @@ const AccountPickerSheet = forwardRef<BottomSheetModal, Props>((
                 return;
               }
               haptics.select();
+              // Whatever was typed is almost certainly the name being looked for.
+              setNewName(search.trim());
               setCreating(true);
             }}
           >
@@ -232,6 +313,32 @@ AccountPickerSheet.displayName = "AccountPickerSheet";
 const styles = StyleSheet.create({
   list: {
     gap: spacing.sm,
+  },
+  group: {
+    gap: spacing.sm,
+  },
+  groupLabel: {
+    letterSpacing: 1.3,
+    marginTop: spacing.xs,
+  },
+  settledLabel: {
+    marginBottom: spacing.sm,
+  },
+  searchBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: radius.md,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  searchInput: {
+    flex: 1,
+    color: colors.ink,
+    fontSize: 15,
   },
   row: {
     flexDirection: "row",
