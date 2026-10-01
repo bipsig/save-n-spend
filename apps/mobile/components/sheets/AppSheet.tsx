@@ -62,7 +62,7 @@ const SheetBackground = ({ style }: BottomSheetBackgroundProps) => (
 const CLOSING_GUARD_MS = 350;
 
 const AppSheet = forwardRef<BottomSheetModal, Props>(({ children, onDismiss, scrollable, snapPoints, footer, scrollResetKey }, ref) => {
-  const { bottom } = useSafeAreaInsets();
+  const { top, bottom } = useSafeAreaInsets();
   const [footerHeight, setFooterHeight] = useState(0);
 
   const modalRef = useRef<BottomSheetModal>(null);
@@ -160,6 +160,8 @@ const AppSheet = forwardRef<BottomSheetModal, Props>(({ children, onDismiss, scr
       stackBehavior="push"
       enableDynamicSizing={!snapPoints}
       snapPoints={snapPoints}
+      // A keyboard lifting a tall sheet stops at the status bar instead of passing under it.
+      topInset={top}
       backdropComponent={renderBackdrop}
       backgroundComponent={SheetBackground}
       footerComponent={footer ? renderFooter : undefined}
