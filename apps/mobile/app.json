@@ -2,7 +2,7 @@
   "expo": {
     "name": "Save n Spend",
     "slug": "save-n-spend",
-    "version": "2.3.1",
+    "version": "2.4.0",
     "scheme": "savenspend",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.bipsig.savenspend",
-      "buildNumber": "17",
+      "buildNumber": "18",
       "infoPlist": {
         "UIApplicationSceneManifest": {
           "UIApplicationSupportsMultipleScenes": false,
