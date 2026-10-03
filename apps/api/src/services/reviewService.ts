@@ -104,7 +104,9 @@ export const buildReview = async (
         flowTotals(oid, previousStartDate, previousEndDate),
         getCategoryBreakDown(start, end, req),
         Transaction.aggregate([
-            { $match: { userId: oid, type: "expense", occurredAt: { $gte: start, $lt: end } } },
+            // Everyday spending only: a trip is one Trips line in the review's categories, and
+            // its AirBnB isn't the period's biggest purchase in the sense this answers.
+            { $match: { userId: oid, type: "expense", tripId: null, occurredAt: { $gte: start, $lt: end } } },
             { $sort: { amount: -1 } },
             { $limit: 1 },
             { $project: { title: 1, amount: 1, occurredAt: 1 } },
