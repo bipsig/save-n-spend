@@ -63,6 +63,9 @@ export const listTransactionQuerySchema = z.object({
     // pathological-backtracking risk; the cap removes the merely-expensive one. 80 is
     // far more than any transaction title is worth searching for.
     search: z.string().trim().max(80).optional(),
+    // Trip rows live in their own view: "exclude" is the everyday list, "only" the trips one.
+    // Unset means everything — what an export, a ledger, needs.
+    trips: z.enum(["exclude", "only"]).optional(),
     page: z.coerce.number().int().positive().default(1),
     limit: z.coerce.number().int().positive().max(100).default(20),
 }).refine((data) => (!!data.startDate === !!data.endDate), {
@@ -73,6 +76,8 @@ export const listTransactionQuerySchema = z.object({
 export const transactionSummaryQuerySchema = z.object({
     startDate: z.iso.date().optional(),
     endDate: z.iso.date().optional(),
+    // Same split as the list, so the card's figures add up to the rows beneath it.
+    trips: z.enum(["exclude", "only"]).optional(),
 }).refine((data) => (!!data.startDate === !!data.endDate), {
     message: "startDate and endDate must be provided together",
     path: ["endDate"]

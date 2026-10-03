@@ -119,7 +119,7 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
 }
 
 export const filterTransactions = async (req: Request, res: Response): Promise<void> => {
-    const { startDate, endDate, category, account, type, search, page, limit } = listTransactionQuerySchema.parse(req.query);
+    const { startDate, endDate, category, account, type, search, trips, page, limit } = listTransactionQuerySchema.parse(req.query);
 
     const filters: Record<string, unknown> = {
         userId: req.user?.userId
@@ -157,6 +157,19 @@ export const filterTransactions = async (req: Request, res: Response): Promise<v
         // `lib/export.ts`), because an export is a ledger rather than a narrative, and a
         // ledger whose rows do not add up to the balance is worse than a longer one.
         filters.type = { $nin: ["positiveAdjustment", "negativeAdjustment"] };
+    }
+    if (trips === "exclude") {
+        // The everyday list. A trip's rows are real money and still move balances, but they
+        // are read on the trip and under Activity's Trips view, not among daily spending.
+        // Matches a missing field too.
+        filters.tripId = null;
+    }
+    else if (trips === "only") {
+        filters.tripId = { $ne: null };
+        // One row per trip expense: its share. The transfers recording what each friend owes
+        // on it are the expense's bookkeeping — seven rows for one AirBnB said nothing more.
+        // They stay on the trip's page and on each friend's account.
+        filters.$nor = [{ type: "transfer", tripExpenseId: { $ne: null } }];
     }
     if (search) {
         filters.title = {
@@ -196,7 +209,7 @@ export const filterTransactions = async (req: Request, res: Response): Promise<v
 }
 
 export const getTransactionSummary = async (req: Request, res: Response): Promise<void> => {
-    const { startDate, endDate } = transactionSummaryQuerySchema.parse(req.query);
+    const { startDate, endDate, trips } = transactionSummaryQuerySchema.parse(req.query);
 
     const match: Record<string, unknown> = {
         userId: new mongoose.Types.ObjectId(req.user!.userId),
@@ -214,15 +227,27 @@ export const getTransactionSummary = async (req: Request, res: Response): Promis
         };
     }
 
+    // Grouped by whether the row belongs to a trip as well as by type, so one pass gives both
+    // the view's own totals and the trip spending the everyday view leaves out — which the
+    // card names, rather than letting the month look cheaper than it was.
     const sums = await Transaction.aggregate([
         { $match: match },
-        { $group: { _id: "$type", total: { $sum: "$amount" } } }
+        { $group: { _id: { type: "$type", trip: { $gt: ["$tripId", null] } }, total: { $sum: "$amount" } } }
     ]);
 
-    const income = sums.find((s) => s._id === "income")?.total ?? 0;
-    const expenses = sums.find((s) => s._id === "expense")?.total ?? 0;
+    const inView = (row: { _id: { trip: boolean } }) =>
+        trips === "exclude" ? !row._id.trip : trips === "only" ? row._id.trip : true;
+    const sum = (type: string, keep: (row: { _id: { type: string; trip: boolean } }) => boolean) =>
+        sums.filter((row) => row._id.type === type && keep(row)).reduce((total, row) => total + row.total, 0);
 
-    reply.ok(res, { income, expenses, savings: income - expenses }, "Transaction summary fetched");
+    const income = sum("income", inView);
+    const expenses = sum("expense", inView);
+    const tripExpenses = sum("expense", (row) => row._id.trip);
+    // Savings stays the real figure in every view: a trip was money spent, and leaving it out
+    // would show the month as better saved than it was. Only the expense line is narrowed.
+    const savings = sum("income", () => true) - sum("expense", () => true);
+
+    reply.ok(res, { income, expenses, savings, tripExpenses }, "Transaction summary fetched");
 }
 
 // The last 12 months only — title vocabulary drifts (old jobs, old shops), and bounding the
