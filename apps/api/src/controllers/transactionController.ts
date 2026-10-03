@@ -267,6 +267,9 @@ export const getTitleSuggestions = async (req: Request, res: Response): Promise<
                 userId: new mongoose.Types.ObjectId(req.user!.userId),
                 type: { $in: ["expense", "income"] },
                 title: { $type: "string", $ne: "" },
+                // A trip's share is a one-off ("AirBnB"), and repeating it from Quick Log
+                // would make an everyday expense out of it. Matches a missing field too.
+                tripId: null,
                 occurredAt: { $gte: since }
             }
         },
