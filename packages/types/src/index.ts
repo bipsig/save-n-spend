@@ -362,8 +362,25 @@ export interface TripTotals {
 export interface TripMemberBalance {
   account: string
   name: string
-  /** Positive: they owe you; negative: you owe them. Trip-scoped. */
+  /** Positive: they owe you; negative: you owe them. Trip-scoped. After a plan is matched,
+   *  this is what they will actually pay — `exact` plus `routed`. */
   balance: number
+  /** The balance the ledger gives between you and them, before any matching of Splitwise's
+   *  simplified debts. */
+  exact: number
+  /** `balance − exact`: what Splitwise's simplification routed to or away from them. */
+  routed: number
+}
+
+/** What each person pays you when it differs from the exact split — Splitwise's "simplify
+ *  debts" re-routes who pays whom. Typed in by the user; never fetched. */
+export interface TripPlan {
+  savedAt: string
+  /** Expenses were added, removed or changed since it was saved. */
+  stale: boolean
+  /** Per person, signed: positive = they pay you, negative = you pay them. Anyone not
+   *  listed pays nothing. */
+  entries: { account: string; amount: number }[]
 }
 
 export interface TripListItem extends ITrip {
@@ -410,6 +427,8 @@ export interface TripDetailPayload {
   /** Everything on the trip, newest first. */
   entries: TripEntry[]
   expenses: ITripExpense[]
+  /** Null on a trip nobody has matched to Splitwise. */
+  plan: TripPlan | null
 }
 
 // What happened, not what it looks like: copy is composed on the server, and the type is
