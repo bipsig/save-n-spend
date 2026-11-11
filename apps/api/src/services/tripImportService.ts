@@ -8,6 +8,7 @@ import User from "../models/User";
 import { AppError } from "../utils/AppError";
 import { SplitwiseFormatError, categoryHint, classifyRow, netBalance, parseSplitwiseCsv, rowKey, type ClassifiedRow } from "./splitwiseCsv";
 import { addTripExpense, settleUp, updateTripExpense } from "./tripService";
+import { isReroute, memberBalances, simplifyMayMatter } from "./tripLedger";
 
 // Importing a Splitwise group export into a live trip. Two steps, nothing saved in the first:
 //
@@ -223,7 +224,7 @@ const proportional = (amount: number, ratios: [string, number][]): Map<string, n
 
 export const commitImport = async (
     userId: string, tripId: string, csv: string, mapping: NameMapping, decisions: Decision[],
-): Promise<{ added: number; applied: number; settled: number }> => {
+): Promise<{ added: number; applied: number; settled: number; matchSplitwise: boolean }> => {
     const trip = await Trip.findOne({ _id: tripId, userId });
     if (!trip) throw AppError.notFound("Trip not found");
     if (trip.status === "closed") throw AppError.badRequest("This trip is closed — reopen it to import");
@@ -314,7 +315,16 @@ export const commitImport = async (
             added++;
         }
     }
-    return { added, applied, settled };
+
+    // Whether to offer "Match Splitwise" straight away: only when simplification could have
+    // changed someone's number. Measured against the ledger as it now stands, without any
+    // earlier plan's adjustments.
+    const txns = await Transaction.find({ userId, tripId: trip._id }).select("type amount account toAccount clientId").lean();
+    const exact = memberBalances(
+        txns.filter((t) => !isReroute(t)).map((t) => ({ type: t.type, amount: t.amount, account: String(t.account), toAccount: t.toAccount ? String(t.toAccount) : null })),
+        trip.members.map(String),
+    );
+    return { added, applied, settled, matchSplitwise: simplifyMayMatter(table.totals, exact, resolved) };
 };
 
 /** The same "your entries" match the preview offered, re-derived at commit time. */

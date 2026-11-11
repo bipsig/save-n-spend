@@ -34,6 +34,11 @@ export const settleSchema = z.object({
     occurredAt: z.coerce.date().optional(),
 }).strict();
 
+export const planSchema = z.object({
+    /** Per person, signed: positive = they pay you, negative = you pay them. Anyone left out pays nothing. */
+    entries: z.array(z.object({ account: id, amount: paise }).strict()).max(30),
+}).strict();
+
 export const closeTripSchema = z.object({
     /** People whose leftover balance is let go rather than kept. */
     letGo: z.array(id).max(30).default([]),

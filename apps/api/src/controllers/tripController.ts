@@ -1,11 +1,11 @@
 import { Request, Response } from "express";
 import * as reply from "../utils/response";
 import { resolveZone } from "../utils/userZone";
-import { closeTripSchema, importCommitSchema, importPreviewSchema, settleSchema, tripExpenseSchema, tripSchema, updateTripSchema } from "../schemas/tripSchema";
+import { closeTripSchema, importCommitSchema, importPreviewSchema, planSchema, settleSchema, tripExpenseSchema, tripSchema, updateTripSchema } from "../schemas/tripSchema";
 import { commitImport, previewImport } from "../services/tripImportService";
 import {
-    addTripExpense, closeTrip, createTrip, deleteTrip, deleteTripExpense, getTripDetail, listTrips,
-    reopenTrip, settleUp, updateTrip, updateTripExpense,
+    addTripExpense, clearPlan, closeTrip, createTrip, deleteTrip, deleteTripExpense, getTripDetail, listTrips,
+    reopenTrip, savePlan, settleUp, updateTrip, updateTripExpense,
 } from "../services/tripService";
 
 const uid = (req: Request) => req.user!.userId;
@@ -50,6 +50,16 @@ export const close = async (req: Request, res: Response) => {
 export const reopen = async (req: Request, res: Response) => {
     await reopenTrip(uid(req), req.params.id);
     reply.ok(res, null, "Trip reopened");
+};
+
+export const putPlan = async (req: Request, res: Response) => {
+    await savePlan(uid(req), req.params.id, planSchema.parse(req.body).entries);
+    reply.ok(res, null, "Matched to Splitwise");
+};
+
+export const removePlan = async (req: Request, res: Response) => {
+    await clearPlan(uid(req), req.params.id);
+    reply.ok(res, null, "Back to the exact amounts");
 };
 
 export const importPreview = async (req: Request, res: Response) => {

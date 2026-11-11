@@ -8,11 +8,12 @@ import { AppError } from "../utils/AppError";
 import { applyEffects } from "./transactionService";
 import { dayKeyInZone } from "../utils/timezone";
 import {
-    memberBalances, myShareOf, planLedger, planLetGo, planSettlement, validateTripExpense,
-    type LedgerRow, type TripExpenseIn,
+    expensesSignature, isReroute, memberBalances, myShareOf, planLedger, planLetGo, planReroute, planSettlement,
+    validatePlan, validateTripExpense, PLAN_PREFIX,
+    type LedgerRow, type PlanEntry, type TripExpenseIn,
 } from "./tripLedger";
 import type {
-    ITrip as TripDTO, ITripExpense as TripExpenseDTO, TripDetailPayload, TripEntry, TripListItem, TripsPayload, TripTotals,
+    ITrip as TripDTO, ITripExpense as TripExpenseDTO, TripDetailPayload, TripPlan, TripEntry, TripListItem, TripsPayload, TripTotals,
 } from "@save-n-spend/types";
 
 // Trips on top of the ordinary ledger. A trip expense is written as the transactions
@@ -267,6 +268,63 @@ export const reopenTrip = async (userId: string, tripId: string) => {
     await trip.save();
 };
 
+// ---- Matching Splitwise's simplified debts ---------------------------------------------------
+
+const toTxn = (t: { type: string; amount: number; account: unknown; toAccount?: unknown }) =>
+    ({ type: t.type, amount: t.amount, account: String(t.account), toAccount: t.toAccount ? String(t.toAccount) : null });
+
+const signatureOf = (expenses: { _id: unknown; cost: number; paidBy?: unknown; shares: { account?: unknown; amount: number }[] }[]) =>
+    expensesSignature(expenses.map((e) => ({
+        id: String(e._id),
+        cost: e.cost,
+        paidBy: e.paidBy ? String(e.paidBy) : null,
+        shares: e.shares.map((s) => ({ account: s.account ? String(s.account) : null, amount: s.amount })),
+    })));
+
+/** Takes a plan's adjustments back out, leaving every balance as the exact ledger has it. */
+const removeReroutes = async (userId: string, tripId: Oid, session: ClientSession) => {
+    const rows = await Transaction.find({ userId, tripId, clientId: { $regex: `^${PLAN_PREFIX}` } }).session(session);
+    for (const row of rows) {
+        await applyEffects(row, "revert", session);
+        await row.deleteOne({ session });
+    }
+};
+
+/** Saves what each person actually pays you. Replaces any earlier plan rather than adding to
+ *  it, and is allowed on a closed trip — balances stay open to be settled after closing. */
+export const savePlan = async (userId: string, tripId: string, entries: PlanEntry[]) => {
+    const trip = await loadTrip(userId, tripId);
+    const members = trip.members.map(String);
+    const [txns, expenses] = await Promise.all([
+        Transaction.find({ userId, tripId: trip._id }).lean(),
+        TripExpense.find({ userId, tripId: trip._id }).lean(),
+    ]);
+    // Without any earlier plan's adjustments: the plan is measured against the ledger itself.
+    const exact = memberBalances(txns.filter((t) => !isReroute(t)).map(toTxn), members);
+    const problem = validatePlan(entries, members, exact);
+    if (problem) throw AppError.badRequest(problem);
+
+    await inTransaction(async (session) => {
+        await removeReroutes(userId, trip._id as Oid, session);
+        await writeRows(userId, trip._id as Oid, null, planReroute(String(trip._id), entries, exact, new Date()), session);
+        trip.plan = {
+            savedAt: new Date(),
+            entries: entries.map((e) => ({ account: oid(e.account), amount: e.amount })),
+            signature: signatureOf(expenses),
+        };
+        await trip.save({ session });
+    });
+};
+
+/** Back to the exact amounts. */
+export const clearPlan = async (userId: string, tripId: string) => {
+    const trip = await loadTrip(userId, tripId);
+    await inTransaction(async (session) => {
+        await removeReroutes(userId, trip._id as Oid, session);
+        await Trip.updateOne({ _id: trip._id }, { $unset: { plan: 1 } }, { session });
+    });
+};
+
 // ---- Reading -------------------------------------------------------------------------------
 
 const toTripDTO = (t: ITrip | (ITrip & { createdAt?: Date })): TripDTO => ({
@@ -283,7 +341,7 @@ const toTripDTO = (t: ITrip | (ITrip & { createdAt?: Date })): TripDTO => ({
     createdAt: new Date((t as unknown as { createdAt: Date }).createdAt ?? Date.now()).toISOString(),
 });
 
-type LeanTxn = { _id: Oid; type: string; amount: number; account: Oid; toAccount?: Oid | null; category?: Oid | null; title?: string | null; note?: string | null; occurredAt: Date; tripId?: Oid | null; tripExpenseId?: Oid | null };
+type LeanTxn = { _id: Oid; clientId?: string | null; type: string; amount: number; account: Oid; toAccount?: Oid | null; category?: Oid | null; title?: string | null; note?: string | null; occurredAt: Date; tripId?: Oid | null; tripExpenseId?: Oid | null };
 
 const totalsFor = (trip: ITrip, txns: LeanTxn[], expenses: ITripExpense[]): { totals: TripTotals; balances: Map<string, number> } => {
     const balances = memberBalances(txns.map((t) => ({ type: t.type, amount: t.amount, account: String(t.account), toAccount: t.toAccount ? String(t.toAccount) : null })), trip.members.map(String));
@@ -356,6 +414,16 @@ export const getTripDetail = async (userId: string, tripId: string, zone: string
     ]);
     const { totals, balances } = totalsFor(trip, txns, expenses as unknown as ITripExpense[]);
     const nameOf = new Map(people.map((p) => [String(p._id), p.name]));
+    // A plan's adjustments are bookkeeping, not events on the trip: they show as each person's
+    // routed amount, not as journal entries.
+    const exactBalances = memberBalances(txns.filter((t) => !isReroute(t)).map(toTxn), trip.members.map(String));
+    const plan: TripPlan | null = trip.plan
+        ? {
+            savedAt: new Date(trip.plan.savedAt).toISOString(),
+            stale: trip.plan.signature !== signatureOf(expenses),
+            entries: trip.plan.entries.map((e) => ({ account: String(e.account), amount: e.amount })),
+        }
+        : null;
 
     const myExpenses = txns.filter((t) => t.type === "expense");
     const byCat = new Map<string, number>();
@@ -379,7 +447,7 @@ export const getTripDetail = async (userId: string, tripId: string, zone: string
             paidBy: e.paidBy ? String(e.paidBy) : null,
         })),
         // Anything on the trip that isn't an expense's own transaction: settle-ups and let-gos.
-        ...txns.filter((t) => !t.tripExpenseId).map((t) => {
+        ...txns.filter((t) => !t.tripExpenseId && !isReroute(t)).map((t) => {
             if (t.type === "transfer") {
                 const received = trip.members.map(String).includes(String(t.account));
                 const person = received ? String(t.account) : String(t.toAccount);
@@ -410,7 +478,11 @@ export const getTripDetail = async (userId: string, tripId: string, zone: string
     return {
         trip: toTripDTO(trip),
         totals,
-        members: trip.members.map((m) => ({ account: String(m), name: nameOf.get(String(m)) ?? "Someone", balance: balances.get(String(m)) ?? 0 })),
+        members: trip.members.map((m) => {
+            const balance = balances.get(String(m)) ?? 0;
+            const exact = exactBalances.get(String(m)) ?? 0;
+            return { account: String(m), name: nameOf.get(String(m)) ?? "Someone", balance, exact, routed: balance - exact };
+        }),
         byCategory: [...byCat].map(([category, total]) => ({ category: category || null, total })).sort((a, b) => b.total - a.total),
         byDay: [...byDay].map(([date, total]) => ({ date, total })).sort((a, b) => a.date.localeCompare(b.date)),
         entries,
@@ -427,5 +499,6 @@ export const getTripDetail = async (userId: string, tripId: string, zone: string
             source: e.source,
             createdAt: new Date((e as unknown as { createdAt: Date }).createdAt).toISOString(),
         })) as TripExpenseDTO[],
+        plan,
     };
 };

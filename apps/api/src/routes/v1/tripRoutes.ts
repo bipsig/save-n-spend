@@ -13,6 +13,8 @@ router.post("/:id/expenses", protect, trips.addExpense);
 router.patch("/:id/expenses/:expenseId", protect, trips.editExpense);
 router.delete("/:id/expenses/:expenseId", protect, trips.removeExpense);
 router.post("/:id/settle", protect, trips.settle);
+router.put("/:id/plan", protect, trips.putPlan);
+router.delete("/:id/plan", protect, trips.removePlan);
 router.post("/:id/close", protect, trips.close);
 router.post("/:id/reopen", protect, trips.reopen);
 router.post("/:id/import/preview", protect, trips.importPreview);
