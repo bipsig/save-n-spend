@@ -43,6 +43,19 @@ derives the API host from Metro's `hostUri` and hits `:7019`. That's deliberate 
 it means dev automatically talks to your local API, and only Release builds go to
 Render.
 
+Outside production the API binds to `127.0.0.1`, so only this machine can reach it —
+it holds the dev database. That has one consequence: the app finds the API at Metro's
+host, and a plain `npm start` serves from the Mac's LAN address, which a loopback-only
+server refuses. Pick one:
+
+- `npm start -- --localhost` — Metro hands out `localhost`, the simulator reaches the API
+  there. Preferred.
+- `HOST=0.0.0.0 npm run dev` — the API listens on every interface. Needed to reach it
+  from a phone on the same Wi-Fi; only do that on a network you trust.
+
+The deployed API is unaffected: `NODE_ENV=production`, or Render's own `RENDER`
+variable, keeps the bind on every interface, which Render needs to route traffic in.
+
 Seed data (`npm run seed` in `apps/api`) gives you:
 
 - `sagnik@email.com` / `sagnik123` — ~1 year of activity
