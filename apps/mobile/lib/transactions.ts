@@ -32,7 +32,7 @@ export const useTransactions = () => {
     setLoading(true);
     setError(null);
     try {
-      // Everyday rows only — a trip's are read on the trip and in Activity's Trips view.
+      // Everyday rows only — a trip's are read on the trip.
       const res = await get<Paginated<ITransaction>>("/transactions?trips=exclude");
       setItems(res.docs);
     }
@@ -66,13 +66,7 @@ export type FeedParams = {
   account?: string[];
   type?: FeedType;
   search?: string;
-  /** Which list: everyday spending, or only trips (one row per trip expense). */
-  view?: FeedView;
 };
-
-/** Activity's two lists. A trip's rows never mix into the everyday one. */
-export type FeedView = "everyday" | "trips";
-const tripsParam = (view?: FeedView) => (view === "trips" ? "only" : "exclude");
 
 // The Activity feed — server-filtered (date range / category / search) and
 // paginated for infinite scroll. Filtering and paging both live server-side per
@@ -92,7 +86,7 @@ export const useTransactionFeed = (params: FeedParams) => {
   // A monotonic id so a slow response from a stale filter can't clobber a newer one.
   const reqId = useRef(0);
   // Serialize the filter so the load callback is stable while values are unchanged.
-  const key = `${params.startDate ?? ""}|${params.endDate ?? ""}|${(params.category ?? []).join(",")}|${(params.account ?? []).join(",")}|${params.type ?? ""}|${params.search ?? ""}|${params.view ?? ""}`;
+  const key = `${params.startDate ?? ""}|${params.endDate ?? ""}|${(params.category ?? []).join(",")}|${(params.account ?? []).join(",")}|${params.type ?? ""}|${params.search ?? ""}`;
 
   const load = useCallback(async (targetPage: number, replace: boolean) => {
     if (useSession.getState().status !== "authed") return;
@@ -109,7 +103,8 @@ export const useTransactionFeed = (params: FeedParams) => {
         account: params.account?.length ? params.account.join(",") : undefined,
         type: params.type,
         search: params.search,
-        trips: tripsParam(params.view),
+        // A trip's rows are read on the trip, never among daily spending.
+        trips: "exclude",
       });
       const res = await get<Paginated<ITransaction>>(`/transactions${query}`);
       if (myId !== reqId.current) return; // superseded by a newer request
@@ -146,7 +141,7 @@ export const useTransactionFeed = (params: FeedParams) => {
   //
   // Only the range, not `key`: category and search are refinements the user can see they just
   // made, and clearing on every debounced keystroke would strobe the list while they typed.
-  const rangeKey = `${params.startDate ?? ""}|${params.endDate ?? ""}|${params.view ?? ""}`;
+  const rangeKey = `${params.startDate ?? ""}|${params.endDate ?? ""}`;
   useEffect(() => {
     setItems([]);
     setLoading(true);
@@ -177,26 +172,26 @@ export type TransactionSummary = {
   income: number;
   expenses: number;
   savings: number;
-  /** Trip spending in the range, whichever view — what the everyday card says it left out. */
+  /** Trip spending in the range — what the everyday totals leave out. */
   tripExpenses?: number;
 };
 
 // The range summary aggregate that drives the Activity card — computed server-side
 // over the whole range, independent of the visible page or category/search filters.
-export const useTransactionSummary = (params: { startDate?: string; endDate?: string; view?: FeedView }) => {
+export const useTransactionSummary = (params: { startDate?: string; endDate?: string }) => {
   const status = useSession((s) => s.status);
   const [data, setData] = useState<TransactionSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const key = `${params.startDate ?? ""}|${params.endDate ?? ""}|${params.view ?? ""}`;
+  const key = `${params.startDate ?? ""}|${params.endDate ?? ""}`;
 
   const refetch = useCallback(async () => {
     if (useSession.getState().status !== "authed") return;
     setLoading(true);
     setError(null);
     try {
-      const query = buildQuery({ startDate: params.startDate, endDate: params.endDate, trips: tripsParam(params.view) });
+      const query = buildQuery({ startDate: params.startDate, endDate: params.endDate, trips: "exclude" });
       const res = await get<TransactionSummary>(`/transactions/summary${query}`);
       setData(res);
     }
@@ -225,3 +220,30 @@ export const useTransactionSummary = (params: { startDate?: string; endDate?: st
   return { data, loading, error, refetch };
 };
 
+
+export type TripMatches = { count: number; tripIds: string[] };
+
+// What a search turns up among trip expenses, which Activity's list leaves out — so a search for
+// "AirBnB" can say where it went instead of looking like it found nothing. Same date range as the
+// list; a failure just means no hint.
+export const useTripMatches = (params: { search?: string; startDate?: string; endDate?: string }) => {
+  const status = useSession((s) => s.status);
+  const [data, setData] = useState<TripMatches | null>(null);
+  const term = params.search?.trim() ?? "";
+
+  useEffect(() => {
+    if (status !== "authed" || term.length < 2) { setData(null); return; }
+    let live = true;
+    const query = buildQuery({ search: term, startDate: params.startDate, endDate: params.endDate, trips: "only", limit: 50 });
+    get<Paginated<ITransaction>>(`/transactions${query}`)
+      .then((res) => {
+        if (!live) return;
+        const tripIds = [...new Set(res.docs.map((t) => t.tripId).filter((id): id is string => !!id))];
+        setData(res.totalDocs > 0 ? { count: res.totalDocs, tripIds } : null);
+      })
+      .catch(() => { if (live) setData(null); });
+    return () => { live = false; };
+  }, [status, term, params.startDate, params.endDate]);
+
+  return data;
+};

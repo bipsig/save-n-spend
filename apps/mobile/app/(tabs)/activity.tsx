@@ -23,7 +23,8 @@ import ErrorState from "@/components/states/ErrorState";
 import SkeletonState from "@/components/states/SkeletonState";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { useCategories } from "@/lib/categories";
-import { useTransactionFeed, useTransactionSummary, type FeedView } from "@/lib/transactions";
+import { useTransactionFeed, useTransactionSummary, useTripMatches, type TripMatches } from "@/lib/transactions";
+import { useTripName } from "@/store/tripNames";
 import { RANGES, rangeBounds, rangeLabel, rangeNavLabel, isRangeKey, type RangeKey } from "@/lib/dateRange";
 import { dayGroupLabel, monthGroupLabel } from "@/lib/date";
 import { dayKey, monthKeyOf, useAppZone } from "@/lib/zone";
@@ -56,11 +57,6 @@ const MonthDivider = ({ label }: { label: string }) => (
 
 // Spec month summary: violet-tinted glass · caps range label · 18/800 totals ·
 // hairline · net savings in pale green. Driven by the range aggregate, not the page.
-const VIEWS: { key: FeedView; label: string }[] = [
-  { key: "everyday", label: "Everyday" },
-  { key: "trips", label: "✈ Trips" },
-];
-
 const SummaryCard = ({
   label,
   income,
@@ -69,7 +65,6 @@ const SummaryCard = ({
   pending = false,
   tripExpenses,
   onOpenTrips,
-  tripsView = false,
 }: {
   label: string;
   income: number;
@@ -80,29 +75,11 @@ const SummaryCard = ({
    *  number will occupy, so nothing reflows when it lands. */
   pending?: boolean;
   /** Trip spending in the range. Named under the everyday totals, which leave it out, so the
-   *  month never reads cheaper than it was. Tapping it opens the Trips view. */
+   *  month never reads cheaper than it was. Tapping it opens the Trips page. */
   tripExpenses?: number;
   onOpenTrips?: () => void;
-  /** The Trips view: only the share figure means anything — trips have no income, so a
-   *  "Net Savings" of minus the trip would read as a loss. */
-  tripsView?: boolean;
 }) => {
   const money = (paise: number) => (pending ? "—" : formatMoney(paise));
-
-  if (tripsView) {
-    return (
-      <GradientCard gradient="brand" style={styles.summary}>
-        <AppText color="inkDim" size="xs" weight="semibold" style={styles.summaryLabel}>
-          {label} · TRIPS
-        </AppText>
-        <AppText color="inkDim" size="xs">Your share on trips</AppText>
-        <AppText size="lg" weight="black">{money(expense)}</AppText>
-        <AppText color="inkDim" size="xs">
-          One row per expense — what friends owe on each stays on the trip.
-        </AppText>
-      </GradientCard>
-    );
-  }
 
   return (
     <GradientCard gradient="brand" style={styles.summary}>
@@ -154,6 +131,23 @@ const SummaryCard = ({
   );
 };
 
+// A search that matches trip expenses, which this list leaves out. One trip → straight to it,
+// several → the Trips page. Without it a search for "AirBnB" reads as finding nothing.
+const TripMatchHint = ({ matches, onOpen }: { matches: TripMatches; onOpen: () => void }) => {
+  const single = matches.tripIds.length === 1;
+  const trip = useTripName(single ? matches.tripIds[0] : null);
+  const where = single ? (trip?.name ?? "a trip") : `${matches.tripIds.length} trips`;
+  return (
+    <PressableScale onPress={onOpen} scaleTo={0.98} style={styles.tripHint} accessibilityRole="button">
+      <Icon name="flight" size={16} color="primary" />
+      <AppText size="sm" weight="semibold" color="inkSecondary" style={styles.tripNoteText}>
+        {`${matches.count} ${matches.count === 1 ? "match" : "matches"} in ${where}`}
+      </AppText>
+      <Icon name="chevronRight" size={18} color="inkDim" />
+    </PressableScale>
+  );
+};
+
 const ActivityScreen = () => {
   usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
   const zone = useAppZone(); // subscribe: the zone decides which day each row sits under
@@ -164,9 +158,6 @@ const ActivityScreen = () => {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [activeType, setActiveType] = useState<TypeKey>("all");
-  // Everyday spending, or trips. A trip's rows are real money — they move balances the moment
-  // they're logged — but they're read as the trip, never among daily spending.
-  const [view, setView] = useState<FeedView>("everyday");
   // Single-select, like Type — one parent at a time. Sub-categories are multi-select
   // but scoped to whichever parent is active, so switching parents (or clearing back to
   // null) drops whatever sub-category picks belonged to the previous one.
@@ -255,9 +246,9 @@ const ActivityScreen = () => {
     account: activeAccounts,
     type: activeType === "all" ? undefined : activeType,
     search: debouncedQuery || undefined,
-    view,
   });
-  const summary = useTransactionSummary({ startDate: bounds.startDate, endDate: bounds.endDate, view });
+  const summary = useTransactionSummary({ startDate: bounds.startDate, endDate: bounds.endDate });
+  const tripMatches = useTripMatches({ search: debouncedQuery, startDate: bounds.startDate, endDate: bounds.endDate });
 
   const detailRef = useRef<BottomSheetModal>(null);
   const exportRef = useRef<BottomSheetModal>(null);
@@ -281,8 +272,6 @@ const ActivityScreen = () => {
     [feed.items]
   );
   const pendingTransactions = useMemo(() => pendingItems
-    // Queued rows come from Add Transaction, which never makes a trip row.
-    .filter(() => view === "everyday")
     .filter((item) => !syncedClientIds.has(item.clientId))
     // Same criteria the server-side feed already applies, so a queued transaction only
     // shows up where its synced twin eventually will.
@@ -310,7 +299,7 @@ const ActivityScreen = () => {
       return true;
     })
     .map((item) => ({ ...item.payload, _id: item.clientId, clientId: item.clientId }) as unknown as ITransaction),
-  [pendingItems, syncedClientIds, activeType, activeCategory, activeSubCategories, categories, activeAccounts, bounds, zone, debouncedQuery, view]);
+  [pendingItems, syncedClientIds, activeType, activeCategory, activeSubCategories, categories, activeAccounts, bounds, zone, debouncedQuery]);
 
   // Hidden the instant delete is confirmed — the real DELETE only fires if the undo
   // grace window elapses undisturbed (see store/pendingDeletes.ts). `syncedClientIds`
@@ -418,7 +407,6 @@ const ActivityScreen = () => {
       }
       floating={<Fab onPress={() => router.push("/add-transaction")} />}
     >
-      <SegmentedControl segments={VIEWS} value={view} onChange={setView} />
       <SegmentedControl segments={RANGES} value={range} onChange={changeRange} />
 
       {range !== "all" && (
@@ -497,6 +485,7 @@ const ActivityScreen = () => {
             />
           }
           ListHeaderComponent={
+            <>
             <SummaryCard
               label={rangeLabel(range, offset)}
               income={summary.data?.income ?? 0}
@@ -504,9 +493,19 @@ const ActivityScreen = () => {
               savings={summary.data?.savings ?? 0}
               pending={!summary.data}
               tripExpenses={summary.data?.tripExpenses}
-              onOpenTrips={() => setView("trips")}
-              tripsView={view === "trips"}
+              onOpenTrips={() => router.push("/trips")}
             />
+            {tripMatches && (
+              <TripMatchHint
+                matches={tripMatches}
+                onOpen={() => router.push(
+                  tripMatches.tripIds.length === 1
+                    ? { pathname: "/trip-detail", params: { id: tripMatches.tripIds[0] } }
+                    : "/trips",
+                )}
+              />
+            )}
+            </>
           }
           ListFooterComponent={
             feed.loadingMore ? <ActivityIndicator color={colors.primary} style={styles.footer} /> : null
@@ -519,15 +518,6 @@ const ActivityScreen = () => {
                 ))}
               </View>
             ) : (
-              view === "trips" && !narrowed ? (
-                <EmptyState
-                  icon="flight"
-                  title="No trip spending here"
-                  subtitle="Expenses you add to a trip show up in this view — one row each, your share."
-                  actionLabel="Open Trips"
-                  onAction={() => router.push("/trips")}
-                />
-              ) : (
               <EmptyState
                 title={narrowed ? "No matching transactions" : "No transactions yet"}
                 subtitle={
@@ -547,7 +537,6 @@ const ActivityScreen = () => {
                   onAction: () => router.push("/add-transaction"),
                 })}
               />
-              )
             )
           }
           style={styles.list}
@@ -678,6 +667,18 @@ const styles = StyleSheet.create({
   },
   tripNoteText: {
     flex: 1,
+  },
+  tripHint: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: "rgba(155,140,255,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(155,140,255,0.35)",
   },
   summaryDivider: {
     height: 1,
