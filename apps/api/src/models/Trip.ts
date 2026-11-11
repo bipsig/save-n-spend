@@ -16,6 +16,15 @@ export interface ITrip extends Document {
     budget: number | null;
     status: "active" | "closed";
     closedAt: Date | null;
+    /** What each person actually pays you, when it differs from the exact split — see
+     *  tripLedger's planReroute. Absent on a trip nobody has matched. */
+    plan?: {
+        savedAt: Date;
+        /** Per person, signed paise: positive = they pay you, negative = you pay them. */
+        entries: { account: mongoose.Types.ObjectId; amount: number }[];
+        /** Fingerprint of the trip's expenses when it was saved; a change means it's stale. */
+        signature: string;
+    } | null;
 }
 
 const TripSchema = new Schema<ITrip>({
@@ -29,6 +38,18 @@ const TripSchema = new Schema<ITrip>({
     budget: { type: Number, default: null, min: 0 },
     status: { type: String, enum: ["active", "closed"], default: "active" },
     closedAt: { type: Date, default: null },
+    plan: {
+        type: new Schema({
+            savedAt: { type: Date, required: true },
+            entries: [{
+                _id: false,
+                account: { type: Schema.Types.ObjectId, ref: "Account", required: true },
+                amount: { type: Number, required: true },
+            }],
+            signature: { type: String, required: true },
+        }, { _id: false }),
+        default: undefined,
+    },
 }, { timestamps: true });
 
 TripSchema.index({ userId: 1, startDate: -1 });

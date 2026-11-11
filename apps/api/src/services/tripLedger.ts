@@ -12,6 +12,8 @@
 // Every one of these carries the trip's id. A friend's balance on the trip is then simply what
 // the trip's transactions did to their person account.
 
+import { createHash } from "crypto";
+
 export type Id = string;
 
 export type ShareIn = { account: Id | null; amount: number };
@@ -136,4 +138,92 @@ export const planLetGo = (person: Id, name: string, balance: number, occurredAt:
     if (balance > 0) return { type: "expense", amount: balance, account: person, category: null, title: `Let go: ${name}`, occurredAt };
     if (balance < 0) return { type: "positiveAdjustment", amount: -balance, account: person, note: `Let go: ${name}`, occurredAt };
     return null;
+};
+
+// ---- Matching what Splitwise tells people to pay -------------------------------------------
+//
+// With "simplify debts" on, Splitwise re-routes who pays whom: Jai's debt to you can become
+// Phani paying you more, with Jai paying someone else instead. Each person's EXACT balance (what
+// the ledger says between you and them) then differs from what they will actually pay. The
+// plan is that second set of numbers, typed in from Splitwise. It re-routes balances between
+// the people on the trip and never changes the total — so it is stored as paired balance
+// adjustments on the person accounts, which adds up to zero.
+
+/** Keys the plan's adjustment rows, so saving again replaces them rather than stacking. */
+export const PLAN_PREFIX = "plan:";
+export const rerouteKey = (tripId: Id, person: Id): string => `${PLAN_PREFIX}${tripId}:${person}`;
+export const isReroute = (t: { clientId?: string | null }): boolean => !!t.clientId?.startsWith(PLAN_PREFIX);
+
+export type PlanEntry = { account: Id; amount: number };
+
+/** What's wrong with a plan, or null. `exact` is each member's balance without any re-routing.
+ *  Anyone left out of `entries` pays ₹0, as Splitwise lists only the people who still owe. */
+export const validatePlan = (entries: PlanEntry[], members: Id[], exact: Map<Id, number>): string | null => {
+    const memberSet = new Set(members);
+    const seen = new Set<Id>();
+    for (const e of entries) {
+        if (!memberSet.has(e.account)) return "Everyone in the plan must be on the trip";
+        if (seen.has(e.account)) return "Someone is in the plan twice";
+        seen.add(e.account);
+        if (!Number.isInteger(e.amount)) return "Amounts must be whole paise";
+    }
+    const entered = entries.reduce((sum, e) => sum + e.amount, 0);
+    const total = [...exact.values()].reduce((sum, v) => sum + v, 0);
+    if (entered !== total) return "The amounts must add up to what you're owed overall";
+    return null;
+};
+
+/** The adjustments that move each person's balance from exact to the plan. A person owing
+ *  more than their exact share gets a positive one, owing less a negative one; together they
+ *  net to zero. */
+export const planReroute = (
+    tripId: Id, entries: PlanEntry[], exact: Map<Id, number>, occurredAt: Date,
+): LedgerRow[] => {
+    const target = new Map(entries.map((e) => [e.account, e.amount]));
+    const rows: LedgerRow[] = [];
+    for (const [person, was] of exact) {
+        const delta = (target.get(person) ?? 0) - was;
+        if (delta === 0) continue;
+        rows.push({
+            type: delta > 0 ? "positiveAdjustment" : "negativeAdjustment",
+            amount: Math.abs(delta),
+            account: person,
+            note: "Matched to Splitwise",
+            occurredAt,
+            clientId: rerouteKey(tripId, person),
+        });
+    }
+    return rows;
+};
+
+/** A fingerprint of a trip's expenses. A plan saved against one fingerprint is stale once
+ *  expenses are added, removed or changed. Settle-ups are deliberately not part of it — they
+ *  move the exact and the planned balance by the same amount. */
+export const expensesSignature = (
+    expenses: { id: Id; cost: number; paidBy: Id | null; shares: ShareIn[] }[],
+): string => {
+    const lines = expenses
+        .map((e) => `${e.id}|${e.cost}|${e.paidBy ?? "me"}|${e.shares.map((s) => `${s.account ?? "me"}:${s.amount}`).sort().join(",")}`)
+        .sort();
+    return createHash("sha1").update(lines.join("\n")).digest("hex");
+};
+
+/** Whether Splitwise's simplification could have changed anything after an import: some
+ *  person's exact balance differs from what they owe the group overall (the file's own
+ *  "Total balance" line). If every one matches, the plan would equal the exact numbers and
+ *  there's nothing to ask. Without that line there's no way to tell, so no prompt — the
+ *  button on the trip page is still there. */
+export const simplifyMayMatter = (
+    totals: Record<string, number> | null,
+    exact: Map<Id, number>,
+    accountOf: Record<string, Id | null>,
+    tolerance = 100,
+): boolean => {
+    if (!totals) return false;
+    for (const [name, account] of Object.entries(accountOf)) {
+        if (!account || !(name in totals) || !exact.has(account)) continue;
+        // In the file a negative total is a debt to the group; for you that is a positive balance.
+        if (Math.abs((exact.get(account) as number) - -totals[name]) > tolerance) return true;
+    }
+    return false;
 };
