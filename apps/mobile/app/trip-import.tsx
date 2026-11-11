@@ -133,7 +133,10 @@ const TripImportScreen = () => {
       const res = await commitImport(id, csv, mapping, decisions);
       haptics.success();
       toast.success(`Imported ${res.added + res.applied} ${res.added + res.applied === 1 ? "expense" : "expenses"}${res.settled ? ` and ${res.settled} settle-up${res.settled === 1 ? "" : "s"}` : ""}`);
-      router.back();
+      // Back to the trip — asking it to open "Match Splitwise" when simplification could have
+      // changed anyone's number.
+      if (res.matchSplitwise) router.dismissTo({ pathname: "/trip-detail", params: { id, match: "1" } });
+      else router.back();
     }
     catch (err) {
       haptics.error();
@@ -189,7 +192,9 @@ const TripImportScreen = () => {
             const v = mapping[n];
             return (
               <View key={n} style={styles.nameRow}>
-                <AppText size="sm" weight="bold" style={styles.grow} numberOfLines={1}>{n}</AppText>
+                {/* The file's name on its own line, whole, so it can be told apart from the chips. */}
+                <AppText size="sm" weight="bold" numberOfLines={1}>{n}</AppText>
+                <View style={styles.chipRow}>
                 <Chip label="Me" selected={v === "me"} onPress={() => setMapping((m) => ({ ...Object.fromEntries(Object.entries(m).map(([k, x]) => [k, x === "me" ? "new" : x])), [n]: "me" }))} />
                 {/* A fixed slot, so picking a long name doesn't push the other chips about. */}
                 <View style={styles.personSlot}>
@@ -202,6 +207,7 @@ const TripImportScreen = () => {
                   />
                 </View>
                 <Chip label="New" selected={v === "new"} onPress={() => setMapping((m) => ({ ...m, [n]: "new" }))} />
+                </View>
               </View>
             );
           })}
@@ -361,8 +367,9 @@ const styles = StyleSheet.create({
   list: { paddingVertical: 2 },
   summary: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   warn: { gap: 4, borderColor: colors.warning },
-  personSlot: { width: 112, flexDirection: "row" },
-  nameRow: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.06)" },
+  personSlot: { flex: 1, flexDirection: "row" },
+  chipRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  nameRow: { gap: 6, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.06)" },
   reviewRow: { gap: 4, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.06)" },
   rowTop: { flexDirection: "row", alignItems: "center" },
   tag: { borderWidth: 1, borderRadius: 7, paddingHorizontal: 6, paddingVertical: 2 },

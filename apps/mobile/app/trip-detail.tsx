@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
@@ -16,6 +16,7 @@ import SkeletonState from "@/components/states/SkeletonState";
 import TripSheet from "@/components/sheets/TripSheet";
 import TripExpenseSheet from "@/components/sheets/TripExpenseSheet";
 import SettleSheet from "@/components/sheets/SettleSheet";
+import MatchSplitwiseSheet from "@/components/sheets/MatchSplitwiseSheet";
 import { useCategoryById } from "@/lib/categories";
 import { useAccountById } from "@/lib/accounts";
 import { reopenTrip, tripDates, tripDayNumber, tripDays, useTrip } from "@/lib/trips";
@@ -75,6 +76,13 @@ const EntryLine = ({ entry, nameOf, onPress }: { entry: TripEntry; nameOf: (id?:
   return onPress ? <PressableScale onPress={onPress} scaleTo={0.98}>{body}</PressableScale> : body;
 };
 
+/** "₹6,465.43 yours + ₹3,080.43 via Splitwise" — what makes up a person's matched amount. */
+const routedNote = (m: { exact: number; routed: number }): string => {
+  if (m.exact >= 0 && m.routed >= 0) return `${formatMoney(m.exact)} yours + ${formatMoney(m.routed)} via Splitwise`;
+  const signed = (v: number) => `${v < 0 ? "−" : "+"}${formatMoney(Math.abs(v))}`;
+  return `Exact ${signed(m.exact)} · Splitwise ${signed(m.routed)}`;
+};
+
 const dayTitle = (key: string) =>
   new Date(`${key}T00:00:00Z`).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
 
@@ -83,19 +91,36 @@ const dayTitle = (key: string) =>
 const TripDetailScreen = () => {
   usePrivacyMask();
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, match } = useLocalSearchParams<{ id: string; match?: string }>();
   const { data, loading, error, refetch } = useTrip(id);
   const [refreshing, setRefreshing] = useState(false);
 
   const editTripRef = useRef<BottomSheetModal>(null);
   const expenseRef = useRef<BottomSheetModal>(null);
   const settleRef = useRef<BottomSheetModal>(null);
+  const matchRef = useRef<BottomSheetModal>(null);
   const [editing, setEditing] = useState<ITripExpense | null>(null);
   const [settling, setSettling] = useState<TripMemberBalance | null>(null);
   const [openDay, setOpenDay] = useState<string | null>(null);
   const [showAllDays, setShowAllDays] = useState(false);
 
   useFocusEffect(useCallback(() => { void refetch(); }, [refetch]));
+
+  // An import that could have changed someone's number sends us here asking to match Splitwise.
+  // Refetched first, so the sheet opens on the balances the import just wrote.
+  const [openMatch, setOpenMatch] = useState(false);
+  useEffect(() => {
+    if (match !== "1") return;
+    router.setParams({ match: undefined });
+    void refetch().then(() => setOpenMatch(true));
+  }, [match, refetch, router]);
+  // The sheet is only mounted once the trip has loaded, so it opens from here rather than
+  // straight after the fetch.
+  useEffect(() => {
+    if (!openMatch || !data) return;
+    setOpenMatch(false);
+    matchRef.current?.present();
+  }, [openMatch, data]);
 
   const zone = appZone();
   const days = useMemo(() => {
@@ -114,7 +139,7 @@ const TripDetailScreen = () => {
   if (error) return <ScreenScaffold header={<BackButton />}><ErrorState message={error} onRetry={refetch} /></ScreenScaffold>;
   if (!data) return <ScreenScaffold header={<BackButton />}>{loading && <SkeletonState height={220} borderRadius={radius.lg} />}</ScreenScaffold>;
 
-  const { trip, totals, members, byCategory, byDay } = data;
+  const { trip, totals, members, byCategory, byDay, plan } = data;
   const active = trip.status === "active";
   const dayNo = active ? tripDayNumber(trip.startDate, trip.endDate) : null;
   const length = tripDays(trip.startDate, trip.endDate);
@@ -213,26 +238,52 @@ const TripDetailScreen = () => {
 
       {members.length > 0 && (
         <>
-          <AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>People</AppText>
+          <View style={styles.between}>
+            <AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>People</AppText>
+            {plan ? (
+              <PressableScale onPress={() => matchRef.current?.present()} scaleTo={0.95} hitSlop={8} accessibilityRole="button" accessibilityLabel="Edit the Splitwise match">
+                <AppText size="xs" weight="black" color={plan.stale ? "warning" : "success"}>
+                  {plan.stale ? "Splitwise numbers may be out of date · Update" : `Matches Splitwise · ${new Date(plan.savedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`}
+                </AppText>
+              </PressableScale>
+            ) : members.length > 1 && (
+              <PressableScale onPress={() => matchRef.current?.present()} scaleTo={0.95} hitSlop={8} accessibilityRole="button" accessibilityLabel="Match Splitwise's simplified debts">
+                <AppText size="xs" weight="black" color="primary">Match Splitwise</AppText>
+              </PressableScale>
+            )}
+          </View>
           <Card style={styles.list}>
-            {members.map((m) => (
-              <View key={m.account} style={styles.personRow}>
-                <Icon name="person" size={14} containerSize={30} containerRadius={15} container="square" gradient="violet" />
-                <AppText size="sm" weight="bold" style={styles.grow}>{m.name}</AppText>
-                {m.balance === 0 ? (
-                  <AppText size="xs" color="inkDim">settled</AppText>
-                ) : (
-                  <>
-                    <AppText size="sm" weight="bold" color={m.balance > 0 ? "success" : "warning"}>
-                      {m.balance > 0 ? `owes ${formatMoney(m.balance)}` : `you owe ${formatMoney(-m.balance)}`}
-                    </AppText>
-                    <PressableScale onPress={() => { setSettling(m); settleRef.current?.present(); }} scaleTo={0.95} style={styles.settleBtn}>
-                      <AppText size="xs" weight="bold">Settle</AppText>
-                    </PressableScale>
-                  </>
-                )}
-              </View>
-            ))}
+            {members.map((m) => {
+              // Splitwise routes this person's debt through others: nothing for them to pay you,
+              // but not "settled" either — said so, so nobody wonders where it went.
+              const routedAway = !!plan && m.balance === 0 && m.exact !== 0;
+              return (
+                <View key={m.account} style={[styles.personBlock, routedAway && styles.dim]}>
+                  <View style={styles.personLine}>
+                    <Icon name="person" size={14} containerSize={30} containerRadius={15} container="square" gradient="violet" />
+                    <AppText size="sm" weight="bold" style={styles.grow}>{m.name}</AppText>
+                    {m.balance === 0 ? (
+                      <AppText size="xs" color="inkDim">{routedAway ? "₹0" : "settled"}</AppText>
+                    ) : (
+                      <>
+                        <AppText size="sm" weight="bold" color={m.balance > 0 ? "success" : "warning"}>
+                          {m.balance > 0 ? `owes ${formatMoney(m.balance)}` : `you owe ${formatMoney(-m.balance)}`}
+                        </AppText>
+                        <PressableScale onPress={() => { setSettling(m); settleRef.current?.present(); }} scaleTo={0.95} style={styles.settleBtn}>
+                          <AppText size="xs" weight="bold">Settle</AppText>
+                        </PressableScale>
+                      </>
+                    )}
+                  </View>
+                  {/* Under the row, full width: beside the amount and Settle it wrapped into a sliver. */}
+                  {routedAway ? (
+                    <AppText size="xs" color="inkDim" style={styles.personNote}>{formatMoney(Math.abs(m.exact))} routed through others</AppText>
+                  ) : m.routed !== 0 ? (
+                    <AppText size="xs" color="inkDim" style={styles.personNote}>{routedNote(m)}</AppText>
+                  ) : null}
+                </View>
+              );
+            })}
           </Card>
         </>
       )}
@@ -300,6 +351,7 @@ const TripDetailScreen = () => {
 
       <TripSheet ref={editTripRef} trip={trip} onSaved={() => { void refetch(); }} onDeleted={() => router.back()} />
       <TripExpenseSheet ref={expenseRef} tripId={trip._id} members={members} expense={editing} defaultDate={defaultDate} onSaved={() => { void refetch(); }} />
+      <MatchSplitwiseSheet ref={matchRef} tripId={trip._id} members={members} plan={plan} onSaved={() => { void refetch(); }} />
       <SettleSheet ref={settleRef} tripId={trip._id} member={settling} onSaved={() => { void refetch(); }} />
     </ScreenScaffold>
   );
@@ -320,7 +372,10 @@ const styles = StyleSheet.create({
   bar: { height: 7, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.08)", overflow: "hidden" },
   barFill: { height: "100%", borderRadius: 4 },
   actions: { flexDirection: "row", gap: spacing.sm },
-  personRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.06)" },
+  dim: { opacity: 0.5 },
+  personBlock: { paddingVertical: 9, gap: 4, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.06)" },
+  personLine: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  personNote: { marginLeft: 30 + spacing.md },
   settleBtn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.13)" },
   catRow: { gap: 4 },
   chart: { flexDirection: "row", alignItems: "flex-end", gap: 3, height: 64 },

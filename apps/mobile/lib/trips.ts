@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { TripDetailPayload, TripsPayload } from "@save-n-spend/types";
-import { del, get, patch, post } from "@/lib/api";
+import { del, get, patch, post, put } from "@/lib/api";
 import { useAccountStore } from "@/store/accounts";
 import { useSession } from "@/store/session";
 import { useTripNameStore } from "@/store/tripNames";
@@ -108,6 +108,19 @@ export const closeTrip = async (tripId: string, letGo: string[]) => {
 };
 export const reopenTrip = (tripId: string) => post(`/trips/${tripId}/reopen`);
 
+/** Saves what each person pays you after Splitwise's "simplify debts" — signed paise, positive
+ *  = they pay you. Anyone left out pays nothing. Replaces any earlier plan. */
+export const savePlan = async (tripId: string, entries: { account: string; amount: number }[]) => {
+  await put(`/trips/${tripId}/plan`, { entries });
+  await reloadAccounts();
+};
+
+/** Back to the exact amounts. */
+export const clearPlan = async (tripId: string) => {
+  await del(`/trips/${tripId}/plan`);
+  await reloadAccounts();
+};
+
 /** Evenly, to the paisa — the first few absorb the remainder so the shares always add up.
  *  Mirrors the API's splitEvenly. */
 export const splitEvenly = (cost: number, count: number): number[] => {
@@ -206,7 +219,7 @@ export const previewImport = (tripId: string, csv: string, mapping?: NameMapping
   post<ImportPreview>(`/trips/${tripId}/import/preview`, { csv, ...(mapping ? { mapping } : {}) });
 
 export const commitImport = async (tripId: string, csv: string, mapping: NameMapping, decisions: ImportDecision[]) => {
-  const result = await post<{ added: number; applied: number; settled: number }>(`/trips/${tripId}/import/commit`, { csv, mapping, decisions });
+  const result = await post<{ added: number; applied: number; settled: number; matchSplitwise: boolean }>(`/trips/${tripId}/import/commit`, { csv, mapping, decisions });
   await reloadAccounts();
   return result;
 };
