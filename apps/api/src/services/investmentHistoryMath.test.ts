@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { holdingTrend, portfolioTrend, type HoldingRecords } from "./investmentHistoryMath";
+import { holdingLedger, holdingTrend, portfolioTrend, type HoldingRecords } from "./investmentHistoryMath";
 
 const IST = "Asia/Kolkata";
 const at = (iso: string) => new Date(iso);
@@ -217,5 +217,42 @@ describe("portfolioTrend", () => {
         const t = portfolioTrend(ALL, IST, NOW);
         assert.deepEqual(t.holdings.map((h) => h.id), ["icici", "ppf", "franklin"]);
         assert.deepEqual(t.holdings[0], holdingTrend(ICICI, IST, NOW));
+    });
+});
+
+describe("holdingLedger", () => {
+    it("starts with the day it was added, at the value it was typed in at", () => {
+        const l = holdingLedger(ICICI);
+        assert.equal(l[0].kind, "added");
+        assert.equal(l[0].amount, 6_354_381);
+        assert.equal(l[0].valueAfter, 6_354_381);
+    });
+
+    it("lists money in, out and value updates in order, each with the value after it", () => {
+        const l = holdingLedger(ICICI);
+        assert.deepEqual(l.map((e) => e.kind), ["added", "in", "update"]);
+        assert.deepEqual(l.map((e) => e.valueAfter), [6_354_381, 6_854_381, 6_586_000]);
+        assert.equal(l[l.length - 1].valueAfter, ICICI.balance);
+    });
+
+    it("always ends on today's balance", () => {
+        for (const h of ALL) {
+            const l = holdingLedger(h);
+            assert.equal(l[l.length - 1].valueAfter, h.balance, h.name);
+        }
+    });
+
+    it("calls a negative flow a redemption", () => {
+        const h: HoldingRecords = { id: "r", name: "R", startingBalance: 100_000, balance: 70_000, createdAt: at("2026-09-01T10:00:00+05:30"), flows: [{ at: at("2026-10-01T10:00:00+05:30"), amount: -30_000 }], updates: [] };
+        const l = holdingLedger(h);
+        assert.equal(l[1].kind, "out");
+        assert.equal(l[1].amount, -30_000);
+        assert.equal(l[1].valueAfter, 70_000);
+    });
+
+    it("puts the add before an update made the same instant", () => {
+        const t = at("2026-09-01T10:00:00+05:30");
+        const h: HoldingRecords = { id: "s", name: "S", startingBalance: 100_000, balance: 110_000, createdAt: t, flows: [], updates: [{ at: t, amount: 10_000 }] };
+        assert.deepEqual(holdingLedger(h).map((e) => e.kind), ["added", "update"]);
     });
 });

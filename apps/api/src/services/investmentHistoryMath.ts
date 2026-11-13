@@ -1,4 +1,4 @@
-import type { MonthPoint, GrowthPoint, UpdateEntry, HoldingTrend, PortfolioPoint, PortfolioGrowth, PortfolioTrend } from "@save-n-spend/types";
+import type { LedgerEntry, MonthPoint, GrowthPoint, UpdateEntry, HoldingTrend, PortfolioPoint, PortfolioGrowth, PortfolioTrend } from "@save-n-spend/types";
 import { addMonthsInZone, partsInZone, startOfMonthInZone } from "../utils/timezone";
 
 // A holding's value at the end of each month, worked out from records the app already keeps —
@@ -34,7 +34,7 @@ export type HoldingRecords = {
     updates: { at: Date; amount: number }[];
 };
 
-export type { MonthPoint, GrowthPoint, UpdateEntry, HoldingTrend, PortfolioPoint, PortfolioGrowth, PortfolioTrend };
+export type { LedgerEntry, MonthPoint, GrowthPoint, UpdateEntry, HoldingTrend, PortfolioPoint, PortfolioGrowth, PortfolioTrend };
 
 const monthKey = (instant: Date, zone: string): string => {
     const { year, month } = partsInZone(instant, zone);
@@ -186,3 +186,32 @@ export const portfolioTrend = (records: HoldingRecords[], zone: string, now: Dat
 
 /** The money that was working in a holding in month `idx`: last month's value plus what was added. */
 const workingMoney = (h: HoldingTrend, idx: number): number => h.points[idx - 1].value + h.points[idx].contrib;
+
+const KIND_ORDER = { added: 0, in: 1, out: 1, update: 2 } as const;
+
+/** Every entry on a holding, oldest first, with the value it left the holding at. */
+export const holdingLedger = (h: HoldingRecords): LedgerEntry[] => {
+    const opening = h.balance - (h.startingBalance + sum(h.flows) + sum(h.updates));
+    type Event = { at: Date; kind: LedgerEntry["kind"]; amount: number };
+    const events = ([
+        { at: h.createdAt, kind: "added", amount: 0 } as Event,
+        ...h.flows.map((f): Event => ({ at: f.at, kind: f.amount >= 0 ? "in" : "out", amount: f.amount })),
+        ...h.updates.map((u): Event => ({ at: u.at, kind: "update", amount: u.amount })),
+    ] as Event[]).sort((a, b) => a.at.getTime() - b.at.getTime() || KIND_ORDER[a.kind] - KIND_ORDER[b.kind]);
+
+    let invested = h.startingBalance;
+    let gain = opening;
+    return events.map((e) => {
+        if (e.kind === "in" || e.kind === "out") invested += e.amount;
+        else if (e.kind === "update") gain += e.amount;
+        const value = invested + gain;
+        return {
+            at: e.at.toISOString(),
+            holdingId: h.id,
+            holdingName: h.name,
+            kind: e.kind,
+            amount: e.kind === "added" ? value : e.amount,
+            valueAfter: value,
+        };
+    });
+};

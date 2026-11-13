@@ -2,8 +2,8 @@ import mongoose from "mongoose";
 import Account from "../models/Account";
 import Transaction from "../models/Transaction";
 import { monthRange } from "../utils/monthRange";
-import type { InvestmentsPayload, InvestmentHolding, PortfolioTrend } from "@save-n-spend/types";
-import { portfolioTrend, type HoldingRecords } from "./investmentHistoryMath";
+import type { InvestmentsPayload, InvestmentHolding, InvestmentReport, PortfolioTrend } from "@save-n-spend/types";
+import { holdingLedger, portfolioTrend, type HoldingRecords } from "./investmentHistoryMath";
 import { annualReturnOf, holdingFlows, type Flow } from "./investmentMath";
 
 // Everything the Investments hub needs, in one place. An investment is an account of type
@@ -149,14 +149,13 @@ export const getInvestmentHistory = async (userId: string, accountId: string) =>
         .lean();
 };
 
-// Month-end history of every holding, worked out on read from the transfers and value updates
-// already stored — nothing is saved for it.
-export const getInvestmentTrend = async (userId: string, zone: string): Promise<PortfolioTrend> => {
+// What the history maths reads: each holding with its dated money moves and value updates.
+const loadHoldingRecords = async (userId: string): Promise<HoldingRecords[]> => {
     const oid = new mongoose.Types.ObjectId(userId);
     const accounts = await Account.find({ userId: oid, type: "investment", isArchived: false })
         .sort({ order: 1, createdAt: 1 })
         .lean();
-    if (accounts.length === 0) return { points: [], growth: [], holdings: [] };
+    if (accounts.length === 0) return [];
 
     const ids = accounts.map((a) => a._id);
     const txns = await Transaction.find({
@@ -187,5 +186,24 @@ export const getInvestmentTrend = async (userId: string, zone: string): Promise<
             records.get(String(t.account))?.updates.push({ at, amount: t.type === "positiveAdjustment" ? t.amount : -t.amount });
         }
     }
-    return portfolioTrend([...records.values()], zone, new Date());
+    return [...records.values()];
+};
+
+// Month-end history of every holding, worked out on read from the transfers and value updates
+// already stored — nothing is saved for it.
+export const getInvestmentTrend = async (userId: string, zone: string): Promise<PortfolioTrend> =>
+    portfolioTrend(await loadHoldingRecords(userId), zone, new Date());
+
+// The exported statement's data in one read: the hub's figures, the month-end history, and every
+// entry on every holding. The app picks the scope and period; it never needs a second request.
+export const getInvestmentReport = async (userId: string, zone: string): Promise<InvestmentReport> => {
+    const [summary, records] = await Promise.all([getInvestments(userId, zone), loadHoldingRecords(userId)]);
+    return {
+        asOf: new Date().toISOString(),
+        holdings: summary.holdings,
+        totals: summary.totals,
+        allocation: summary.allocation,
+        trend: portfolioTrend(records, zone, new Date()),
+        ledger: records.flatMap(holdingLedger).sort((a, b) => a.at.localeCompare(b.at)),
+    };
 };

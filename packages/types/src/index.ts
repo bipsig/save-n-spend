@@ -866,3 +866,26 @@ export type PortfolioTrend = {
     growth: PortfolioGrowth[];
     holdings: HoldingTrend[];
 };
+
+/** One line of a holding's record, oldest first when listed. `amount` is its effect on the value
+ *  (+ money in or value up, − money out or value down); `added` carries the value it started at. */
+export type LedgerEntry = {
+  at: string;
+  holdingId: string;
+  holdingName: string;
+  kind: 'added' | 'in' | 'out' | 'update';
+  amount: number;
+  /** The holding's value once this entry was applied. */
+  valueAfter: number;
+};
+
+// GET /investments/report — everything the exported statement needs, in one read.
+export interface InvestmentReport {
+  asOf: string;
+  holdings: InvestmentHolding[];
+  totals: InvestmentsPayload['totals'];
+  allocation: InvestmentAllocationSlice[];
+  trend: PortfolioTrend;
+  ledger: LedgerEntry[];
+}
+

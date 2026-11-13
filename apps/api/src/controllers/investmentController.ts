@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 import * as reply from "../utils/response";
 import { AppError } from "../utils/AppError";
 import { resolveZone } from "../utils/userZone";
-import { getInvestments, getInvestmentHistory, getInvestmentTrend } from "../services/investmentService";
+import { getInvestments, getInvestmentHistory, getInvestmentTrend, getInvestmentReport } from "../services/investmentService";
 import Account from "../models/Account";
 import Transaction from "../models/Transaction";
 import { deleteInvestmentQuerySchema, investmentBasisSchema } from "../schemas/accountSchema";
@@ -21,6 +21,11 @@ export const listInvestments = async (req: Request, res: Response): Promise<void
 export const investmentTrend = async (req: Request, res: Response): Promise<void> => {
     const zone = await resolveZone(req);
     reply.ok(res, await getInvestmentTrend(req.user!.userId, zone), "Investment trend fetched");
+};
+
+export const investmentReport = async (req: Request, res: Response): Promise<void> => {
+    const zone = await resolveZone(req);
+    reply.ok(res, await getInvestmentReport(req.user!.userId, zone), "Investment report fetched");
 };
 
 export const investmentHistory = async (req: Request, res: Response): Promise<void> => {
