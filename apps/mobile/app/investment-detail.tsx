@@ -24,6 +24,7 @@ import { get } from "@/lib/api";
 import { formatTxnDate } from "@/lib/date";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { formatAnnual, returnPct, useInvestments, useInvestmentTrend } from "@/lib/investments";
+import InvestmentsExportSheet, { type InvestmentsExportHandle } from "@/components/sheets/InvestmentsExportSheet";
 import OverviewTrendsTabs, { type InvestTab } from "@/components/investments/OverviewTrendsTabs";
 import TrendsView from "@/components/investments/TrendsView";
 import type { IconName } from "@/lib/icons";
@@ -56,6 +57,7 @@ const InvestmentDetailScreen = () => {
   const [txns, setTxns] = useState<ITransaction[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const revalueRef = useRef<BottomSheetModal>(null);
+  const exportRef = useRef<InvestmentsExportHandle>(null);
   const editRef = useRef<BottomSheetModal>(null);
   const deleteRef = useRef<BottomSheetModal>(null);
   const { items: bills } = useBills();
@@ -101,6 +103,11 @@ const InvestmentDetailScreen = () => {
     <View style={styles.head}>
       <BackButton />
       <AppText size="xl" weight="black" numberOfLines={1} style={styles.headTitle}>{account?.name ?? "Investment"}</AppText>
+      {account && (
+        <PressableScale onPress={() => exportRef.current?.present()} scaleTo={0.9} hitSlop={8} accessibilityRole="button" accessibilityLabel="Export investment">
+          <Icon name="download" size={20} color="inkDim" />
+        </PressableScale>
+      )}
       {account && (
         <PressableScale onPress={() => editRef.current?.present()} scaleTo={0.9} hitSlop={8} accessibilityRole="button" accessibilityLabel="Edit investment">
           <Icon name="edit" size={20} color="inkDim" />
@@ -255,6 +262,8 @@ const InvestmentDetailScreen = () => {
       <Button label="Delete investment" variant="ghost" icon="delete" onPress={() => deleteRef.current?.present()} />
         </>
       )}
+
+      <InvestmentsExportSheet ref={exportRef} holdingId={id} />
 
       <RevalueSheet
         ref={revalueRef}

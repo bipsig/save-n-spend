@@ -16,6 +16,7 @@ import ErrorState from "@/components/states/ErrorState";
 import SkeletonState from "@/components/states/SkeletonState";
 import EditAccountSheet from "@/components/sheets/EditAccountSheet";
 import RevalueSheet from "@/components/sheets/RevalueSheet";
+import InvestmentsExportSheet, { type InvestmentsExportHandle } from "@/components/sheets/InvestmentsExportSheet";
 import OverviewTrendsTabs, { type InvestTab } from "@/components/investments/OverviewTrendsTabs";
 import TrendsView from "@/components/investments/TrendsView";
 import { useInvestments, useInvestmentTrend, returnPct, formatAnnual, holdingLook } from "@/lib/investments";
@@ -83,6 +84,7 @@ const InvestmentsScreen = () => {
 
   const newRef = useRef<BottomSheetModal>(null);
   const revalueRef = useRef<BottomSheetModal>(null);
+  const exportRef = useRef<InvestmentsExportHandle>(null);
 
   useFocusEffect(useCallback(() => { void refetch(); void refetchTrend(); void refetchBills(); }, [refetch, refetchTrend, refetchBills]));
 
@@ -105,7 +107,14 @@ const InvestmentsScreen = () => {
   const header = (
     <View style={styles.head}>
       <BackButton />
-      <AppText size="xl" weight="black" style={styles.headTitle}>Investments</AppText>
+      <AppText size="xl" weight="black" numberOfLines={1} style={styles.headTitle}>Investments</AppText>
+      {(data?.holdings.length ?? 0) > 0 && (
+        <PressableScale onPress={() => exportRef.current?.present()} scaleTo={0.94} hitSlop={8} accessibilityRole="button" accessibilityLabel="Export">
+          <View style={styles.iconBtn}>
+            <Icon name="download" size={17} color="ink" />
+          </View>
+        </PressableScale>
+      )}
       <PressableScale onPress={() => newRef.current?.present()} scaleTo={0.94} hitSlop={8}>
         <View style={styles.newBtn}>
           <Icon name="add" size={15} color="ink" />
@@ -342,6 +351,7 @@ const InvestmentsScreen = () => {
       )}
 
       <EditAccountSheet ref={newRef} account={null} defaultType="investment" onSaved={afterChange} />
+      <InvestmentsExportSheet ref={exportRef} />
       <RevalueSheet ref={revalueRef} holdings={holdings} onSaved={afterChange} />
     </ScreenScaffold>
   );
@@ -350,6 +360,10 @@ const InvestmentsScreen = () => {
 const styles = StyleSheet.create({
   head: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   headTitle: { flex: 1 },
+  iconBtn: {
+    width: 34, height: 34, borderRadius: radius.full, alignItems: "center", justifyContent: "center",
+    backgroundColor: colors.glass, borderWidth: 1, borderColor: colors.glassBorder,
+  },
   newBtn: {
     flexDirection: "row", alignItems: "center", gap: 4,
     height: 34, paddingHorizontal: 12, borderRadius: radius.full,
