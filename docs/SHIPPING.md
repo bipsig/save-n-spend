@@ -13,7 +13,7 @@ that constraint.
 
 | Piece | Where it runs | Notes |
 | --- | --- | --- |
-| API (`apps/api`) | Render — `https://save-n-spend.onrender.com/api/v1` | Free tier, so the first request after idle takes ~35 s to cold-start. Not a bug — the app shows a waking screen for it. See [Cold-start gate](architecture.md#cold-start-gate). |
+| API (`apps/api`) | Render — `https://save-n-spend.onrender.com/api/v1` | Free tier, so the first request after idle takes about 35 s to cold-start, and up to ~50 s on a bad day. Not a bug — the app shows a waking screen for it. See [Cold-start gate](architecture.md#cold-start-gate). |
 | Database | MongoDB Atlas, one cluster, two databases | `save-n-spend-dev` and `save-n-spend-prod`. See §5. |
 | Mobile app (`apps/mobile`) | iPhone, sideloaded via SideStore | Also runs in the iOS Simulator and Expo Go. |
 | Shared types (`packages/types`) | Compile-time only | npm workspace, `@save-n-spend/types`. |
@@ -35,7 +35,7 @@ turnaround is seconds:
 cd apps/api && npm run dev            # :7019, NODE_ENV=development -> save-n-spend-dev
 
 # terminal 2 — app
-cd apps/mobile && npm start           # then press `i` for the simulator
+cd apps/mobile && npm start -- --localhost   # then press `i` for the simulator
 ```
 
 With no `.env.development` present, [`lib/api.ts`](../apps/mobile/lib/api.ts)
@@ -49,12 +49,16 @@ host, and a plain `npm start` serves from the Mac's LAN address, which a loopbac
 server refuses. Pick one:
 
 - `npm start -- --localhost` — Metro hands out `localhost`, the simulator reaches the API
-  there. Preferred.
+  there. Preferred, and the form used above.
 - `HOST=0.0.0.0 npm run dev` — the API listens on every interface. Needed to reach it
   from a phone on the same Wi-Fi; only do that on a network you trust.
 
 The deployed API is unaffected: `NODE_ENV=production`, or Render's own `RENDER`
 variable, keeps the bind on every interface, which Render needs to route traffic in.
+
+**Simulator runtime.** The iOS 27.0 simulator runtime is not always installed. If Metro's `i`
+cannot boot a device, boot one from the iOS 26.5 runtime instead
+(`xcrun simctl list devices available`, then `xcrun simctl boot <udid>`) and press `i` again.
 
 Seed data (`npm run seed` in `apps/api`) gives you:
 
@@ -67,6 +71,13 @@ The seed is **destructive** and refuses to run against a production database.
 
 ## 3. Shipping a change to the phone
 
+**Push first, so Render deploys the API before you install.** The sideloaded app talks to the
+deployed API, and a build that expects an endpoint or a field the API does not have yet fails in
+ways that look like an app bug. Render deploys from the pushed branch, so get the API change onto
+it, wait for the deploy to finish (the first request after it can take ~50 s, see
+[Cold-start gate](architecture.md#cold-start-gate)), and only then build and install the `.ipa`.
+An API change that is not pushed cannot be seen by the phone, whatever the local build contains.
+
 ```bash
 cd apps/mobile
 npm run ipa
@@ -78,6 +89,31 @@ wraps the `.app` in `Payload/`, zips it to
 `~/Desktop/savenspend-<version>.ipa`, then prints the baked `scheme` and API URL
 so you can eyeball them before installing. Override the destination with
 `IPA_OUT=/some/dir`.
+
+### Version and build number
+
+Two fields in [`app.json`](../apps/mobile/app.json) carry them, and a release bumps both in one
+commit titled `chore(mobile): bump version to X.Y.Z`:
+
+| Field | Now | Used by |
+|---|---|---|
+| `expo.version` | `2.5.0` | The `.ipa` filename (`build-ipa.sh` reads it with `node -p`), the app's own `X-App-Version` header and error reports (`Constants.expoConfig.version`, in `lib/errorReporting.ts`), and the iOS marketing version. |
+| `expo.ios.buildNumber` | `19` | The iOS `CFBundleVersion`. The script does not read it; it is bumped by hand, by one per release. |
+
+`eas.json` is not part of this flow: the sideload route never uses EAS builds, and its
+`appVersionSource: "remote"` and `autoIncrement` apply only to a cloud `production` build.
+
+**The version in the filename is not proof of the version inside.** `build-ipa.sh` runs
+`expo prebuild` only when `ios/` is missing, and `ios/SavenSpend/Info.plist` holds the version
+and build number as literal values written at prebuild. Bumping `app.json` and running
+`npm run ipa` renames the file; whether the native `CFBundleShortVersionString` and
+`CFBundleVersion` follow depends on `ios/` being regenerated. After a bump, check the two keys in
+`ios/SavenSpend/Info.plist`, or re-run `npx expo prebuild --platform ios` (with Node 24 active, see
+below) before `npm run ipa`.
+
+`build-ipa.sh` does not regenerate `ios/`, so a version bump in `app.json` does not reach `ios/SavenSpend/Info.plist` on its own. After bumping, write the same values into it (`CFBundleShortVersionString` and `CFBundleVersion`, for example with `/usr/libexec/PlistBuddy`) or run a fresh prebuild, then verify the built `.ipa` reports the new version.
+
+The API deploys to Render from the pushed branch. Render is configured in its dashboard (there is no `render.yaml`), so the trigger is not visible from the repo — confirm the deploy finished in the dashboard before installing a build that needs a new endpoint.
 
 ### The Node version reaches further than the shell
 
@@ -117,7 +153,7 @@ restore, or if the pairing file goes stale — and the Mac can do both jobs too.
 
 | Flavour | Config loaded | API target |
 | --- | --- | --- |
-| `npm start` / Expo Go | none | Metro's LAN host, `:7019` |
+| `npm start -- --localhost` / Expo Go | none | Metro's host (`localhost` with `--localhost`), `:7019` |
 | Simulator Release | `.env.production` | Render |
 | Device `.ipa` | `.env.production` | Render |
 
@@ -249,8 +285,9 @@ dedupe key that belongs to the deployed instance.
   matches `.env` and `*.env` but **not** `.env.production` — so a future
   `apps/api/.env.production` would be tracked. Add an explicit rule if you
   create one.
-- Bump `expo.version` in `app.json` when you want the `.ipa` filename to change;
-  the script reads it.
+- Bump `expo.version` **and** `expo.ios.buildNumber` in `app.json` for a release; the script reads
+  only the version, for the `.ipa` filename. See [Version and build number](#version-and-build-number).
+- Push before you build: the phone talks to the deployed API. See §3.
 
 ---
 

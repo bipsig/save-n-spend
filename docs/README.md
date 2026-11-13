@@ -12,13 +12,14 @@ assumes you are comfortable with TypeScript, React Native, and Express.
 
 | Document | Read it when you want to |
 |---|---|
-| [Architecture](architecture.md) | Understand how the repository, the API, and the app fit together, and which invariants you must not break. |
+| [Architecture](architecture.md) | Understand how the repository, the API, and the app fit together, and which invariants you must not break — including trips, the derived investment history, the exports, the shared types and the known issues. |
 | [API reference](api-reference.md) | Call an endpoint: its path, request body, query parameters, and response shape. |
 | [Design system](design-system.md) | Style a screen with the correct tokens, or add a component that matches the rest of the app. |
 | [Mobile patterns](mobile-patterns.md) | Add a screen, a bottom sheet, or a period selector, and follow the conventions the existing screens already use. |
-| [Insights engine](insights-engine.md) | Highlights — the rule set, the ranking, the cold-start gate, and why there is no LLM. |
+| [Insights engine](insights-engine.md) | Highlights — the fifteen rules, the ranking, the cold-start gate, the permanent history, and why there is no LLM. |
 | [Shortcuts and Back Tap](native-shortcuts.md) | Reach the app from outside it — Back Tap, the Action Button, Siri — and why widgets are out. |
-| [Shipping](SHIPPING.md) | Build an `.ipa` and get it onto a physical iPhone. |
+| [Shipping](SHIPPING.md) | Build an `.ipa` and get it onto a physical iPhone, and run the app on the simulator against a local API. |
+| [To-do](../to-do.md) | See what has shipped, what is open, and the consistency audit of confirmed problems. |
 
 ## Prerequisites
 
@@ -62,6 +63,10 @@ Before you start, install the following.
    locally. See
    [Configuration reference](architecture.md#configuration-reference).
 
+   In development the API listens on `127.0.0.1` only (set `HOST=0.0.0.0` to
+   open it to your LAN), so it is reachable from the simulator but not from a
+   phone. See [Shipping](SHIPPING.md) for how the app finds it.
+
    `DISABLE_REMINDERS=true` keeps the hourly reminder job from scheduling. Leave
    it on unless you are working on the job itself. The job writes notifications
    and sends push for real, and because it claims a dedupe key when it does, a
@@ -79,8 +84,13 @@ Before you start, install the following.
 4. Start the mobile app in a second terminal.
 
    ```bash
-   npm run dev:mobile
+   npm start --workspace=apps/mobile -- --localhost
    ```
+
+   The API binds to loopback, and a plain `npm run dev:mobile` makes Metro hand
+   the app your Mac's LAN address, which a loopback-only server refuses.
+   `--localhost` makes Metro hand out `localhost` instead. This is the same
+   choice [Shipping](SHIPPING.md) lays out, along with the simulator workflow.
 
 5. (Optional) Seed the development database with sample data.
 
@@ -97,28 +107,43 @@ Before you start, install the following.
 
 ## Verify a change
 
-Run the type checker for each workspace you touched, and the API's tests.
+Run the type checker for each workspace you touched, and the tests.
 
 ```bash
 npx tsc --noEmit --project apps/mobile
 npx tsc --noEmit --project apps/api
 npm test --workspace=apps/api
+npm test --workspace=apps/mobile
 ```
 
-The suite is `node:test` and `node:assert/strict` — standard library, **zero
+The suites are `node:test` and `node:assert/strict` — standard library, **zero
 dependencies**, which on a free-tier deploy matters more than nicer matchers.
 `tsconfig.build.json` keeps test files out of `dist/`, so nothing test-related
 ships to Render.
 
-It covers the two pure halves of the highlights engine: `highlightRules.test.ts`
-(the sentences, the thresholds, the ranking) and `highlightSnapshotMath.test.ts`
-(the calendar window and the category rollup). Both are fixtures in, assertions
-out — no database, no network, no clock. See
-[Testing](insights-engine.md#testing).
+**API** (`npm test --workspace=apps/api`): the `test` script lists 14 files
+explicitly, so a new test file has to be added to it by hand. 188 tests today.
 
-`apps/mobile` has no runner. Anything genuinely testable there should be a pure
-module with `import type`-only runtime imports, which `tsc` emits as something
-`node --test` can require directly.
+| Area | Files |
+|---|---|
+| Highlights | `highlightRules.test.ts`, `highlightSnapshotMath.test.ts` |
+| Money and history math | `netWorthMath`, `paceMath`, `streakMath`, `reviewMath`, `recurringMath`, `cashFlowMath`, `investmentMath`, `investmentHistoryMath` |
+| Bills | `billService.test.ts` |
+| Trips | `tripLedger.test.ts`, `splitwiseCsv.test.ts` |
+| Logging | `utils/logger.test.ts` |
+
+All are fixtures in, assertions out — no database, no network, no clock. The
+rules behind the highlights are described in
+[Testing](insights-engine.md#testing). What is **not** covered is anything that
+needs a database: controllers, `tripService`, `investmentService` and the Mongo
+aggregations are untested.
+
+**Mobile** (`npm test --workspace=apps/mobile`): runs `apps/mobile/lib/*.test.ts`
+through the API's `ts-node`, from `apps/api`. 35 tests across three files:
+`accountOrder.test.ts`, `investmentsReportMath.test.ts` and `safeToSpend.test.ts`.
+Anything genuinely testable there should be a pure module whose runtime imports
+are `import type` only, so `ts-node` can load it without Expo; a module that
+imports React Native, `lib/api.ts` or an Expo package cannot be run this way.
 
 A release build hides JavaScript errors behind a bare `EXC_CRASH`/`SIGABRT`
 with no message, so reproduce runtime problems in a release configuration

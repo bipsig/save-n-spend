@@ -12,3 +12,11 @@ forms, and sheets are put together.
 
 This file used to duplicate those tables and had drifted out of date. Keeping a
 single copy is the reason it no longer does.
+
+The primitives in this directory: `AmountHeroInput`, `AppText`, `Avatar`, `Badge`, `Button`,
+`CategoryForm`, `CategoryName`, `Chip`, `ColorPicker`, `DateField`, `Divider`, `DragList`, `Fab`,
+`GhostTitleInput`, `HoldButton`, `Icon`, `IconPicker`, `Input`, `KeyboardDoneBar`, `Money`,
+`PasswordMeter`, `PeriodNav`, `PressableScale`, `Search`, `SectionHeader`, `SegmentedControl`,
+`Toggle`. Charts are not primitives: they live in `components/charts/`, and their colour,
+axis and tooltip rules are in
+[Chart conventions](../../../../docs/design-system.md#chart-conventions).

@@ -20,6 +20,7 @@ and hairlines inside a component's own `StyleSheet`.
 - [Gradients](#gradients)
 - [Shadows](#shadows)
 - [Chart palette](#chart-palette)
+- [Chart conventions](#chart-conventions)
 - [Component reference](#component-reference)
 - [Styling conventions](#styling-conventions)
 
@@ -50,7 +51,7 @@ Defined in `apps/mobile/theme/colors.ts`.
 
 | Token | Value | Use for |
 |---|---|---|
-| `bg` | `#0C0A16` | The app ground. |
+| `bg` | `#0C0A16` | The app ground. `darkBg` is the same value, kept as a separate name. |
 | `surface` | `#FFFFFF` | Opaque **foreground** on a colored or gradient surface — not a background. |
 | `surface2` | `rgba(255,255,255,0.06)` | Subtle glass: inputs, chips, search. |
 | `glass` | `rgba(255,255,255,0.10)` | Card glass fill. |
@@ -180,6 +181,72 @@ pass either to `Icon`'s `gradient` prop:
 distinguishable under the common forms of color vision deficiency. Take series
 colors from it in order rather than picking your own.
 
+| Export | Value |
+|---|---|
+| `chartPalette` | `#0FA873` · `#8E7DE3` · `#C98500` · `#3572D9` · `#E65A64` |
+| `chartOthers` | `#767489`, a neutral grey where the tail beyond five folds into "Others" |
+| `incomeColor` | `#0FA873` |
+| `expenseColor` | `#E65A64` |
+
+The palette is for chart **marks** only, assigned by rank. Values and labels stay in `ink`.
+`allocationSlices` in `lib/investments.ts` and the category donut on Insights both assign
+`chartPalette[i]`, falling back to `chartOthers`, so a slice keeps its colour whichever screen
+shows it.
+
+## Chart conventions
+
+These hold for every chart in `components/charts/`. For how a chart is wired into a screen, see
+[Charts](mobile-patterns.md#charts).
+
+**Colour**
+
+- **Categorical series** come from `chartPalette`, in order, then `chartOthers`.
+- **Income and expense** are `incomeColor` and `expenseColor` (paired columns, legends, the PDF
+  reports). They are the palette's green and red, tuned to be told apart.
+- **Profit and loss** on the Investments charts use the **role tokens** `colors.success` and
+  `colors.danger`: green above zero, red below, per segment. Text beside them uses
+  `color="success"` / `"danger"`, and `inkDim` for zero or "no change". Do not use red and
+  green for anything that is not a gain or a loss.
+- **Value against invested** on Investments: value is the brand violet (`#B0A2FF`), money put in
+  is `colors.teal`, drawn as a step. Both appear in a legend under the chart.
+- **Gridlines** are `colors.line`; a zero or baseline rule is `colors.inkDim` at 40-50% opacity.
+- **Selected state** is carried by size and a cursor line, not by a new hue: the touched dot grows
+  (r 3 to 5), unselected bars dim to about 60%, and a dashed `colors.ink` line at 25% opacity marks
+  the slot.
+
+**Axis**
+
+- Tick labels are `size="xs"`, `color="inkDim"`, one line. On the Investments charts they sit
+  on the right of the plot in a fixed 46 px gutter, and amounts use `compactMoney` (`₹1.2L`,
+  `₹3.4Cr`, `₹850`), never the full figure.
+- Time labels run under the plot. The Investments charts label every month; `AreaChart` samples a
+  long series to first, quarters and last (`sampleTicks`) so it does not crowd.
+- **Last-value tag.** A small filled tag on the right edge at the latest value, in the series
+  colour with `colors.bg` text (`LastTag` in `InvestmentCharts`): how a price chart shows "now".
+- Wrap a section title above a chart in the uppercase label idiom: `size="xs"
+  weight="semibold" color="inkDim"` with `letterSpacing: 1`.
+
+**Tooltip**
+
+- A floating bubble beside the touched point, width about 108-124, clamped inside the plot.
+- Dark violet plate (`#241E42`, or `rgba(32,28,60,0.96)` on the Investments charts), a 1 px
+  `glassBorder`, radius 10-12, padding 6 by 9-10.
+- A title line in `xs` bold `inkDim` (the month or day), then one line per figure in `xs` black, toned
+  `success` / `danger` / `inkDim` where the figure is a gain, loss or nothing.
+- A figure line takes a role token (`success`, `danger`, `warning`, `inkDim`), as everywhere else.
+- It stays open after release and closes on an outside tap. See the contract in
+  [Charts](mobile-patterns.md#scrubbing-and-the-tooltip).
+
+**Privacy**
+
+Any chart that prints an amount calls `usePrivacyMask()` and prints `••` for tick labels, tags and
+tooltip figures while masked.
+
+**Carried values**
+
+A month nobody updated is drawn like any other: its value is carried forward and the profit chart
+shows no change bar. Charts carry no "not updated" or "stale" warnings.
+
 ## Component reference
 
 Import primitives from `@/components/ui/<Name>`. All are **default** exports
@@ -297,17 +364,27 @@ ends up hidden behind the keyboard.
 | `Search` | Pill search field with a leading magnifier. |
 | `SectionHeader` | Section title with an optional trailing action. |
 | `SegmentedControl` | Mutually exclusive segments (Expense / Income / Transfer). |
+| `Money` | An amount that honours privacy mode and is a tap target while masked. See [Mobile patterns](mobile-patterns.md#show-an-amount). |
+| `PressableScale` | The press affordance for anything tappable that is not a `Button`: a spring squeeze and a light tick. `scaleTo` for how deep, `haptic={false}` where the action ticks itself. |
+| `Toggle` | The native switch in Midnight Glass colours; buzzes on every flip. |
+| `HoldButton` | A tap-and-hold CTA for the one action that cannot be undone; used through `ConfirmSheet hold`. |
+| `DragList` | Long-press-to-reorder list, used with `ReorderToggle` on Manage accounts and categories. |
+| `GhostTitleInput` | A title field with an inline suggestion suffix (`lib/titleSuggestions.ts`). |
+| `PasswordMeter` | The 0-4 strength bar under any new-password field. |
+| `KeyboardDoneBar` | One instance mounted at the root; a field opts in through `inputAccessoryViewID`. |
+| `CategoryName`, `CategoryForm` | How a category is named outside a tree, and the shared create/edit form. |
 
 ### Composites
 
 | Directory | Contents |
 |---|---|
-| `components/shell/` | `ScreenScaffold`, `AppHeader`, `GradientCard`, `GlowBackground`. |
-| `components/data/` | `Card`, `SummaryCard`, `HealthScoreCard`, `ProgressBar`, `ShareBar`. |
-| `components/rows/` | `TransactionRow`, `BudgetCategoryRow`, `BillRow`, `GoalCard`. |
-| `components/charts/` | `AreaChart`, `PairedColumns` (react-native-svg). |
+| `components/shell/` | `ScreenScaffold`, `BackButton`, `AppHeader` (the Home greeting row), `PeekButton`, `PeekBar`, `OfflineBanner`, `Toast`, `GradientCard`, `GlowBackground`, `ReorderToggle`, plus the gates and boundaries (`AppLockGate`, `WakeGate`, `ScreenErrorBoundary`, `CrashScreen`). |
+| `components/data/` | `Card`, `SummaryCard`, `HealthScoreCard`, `ProgressBar`, `ShareBar`, and the Home and Insights cards and slides (`PaceCard`, `SafeToSpendCard`, `HighlightCard`, `ForYouCarousel`, `GetStartedCard`, and others). |
+| `components/rows/` | `TransactionRow`, `BudgetCategoryRow`, `BillRow`, `GoalCard`, `ManageRow`, `NotificationRow`, `SettingsRow`, `RowActions`. |
+| `components/charts/` | `AreaChart`, `DualLineChart`, `PairedColumns`, `DonutChart`, `CompareBars`, `ForecastLine`, `Sparkline`, `SpendHeatmap`, `WeekdayHeatmap`, `HourlyRhythm`, `CashFlowMonthGrid`, `InvestmentCharts` (react-native-svg). See [Chart conventions](#chart-conventions). |
+| `components/investments/` | `OverviewTrendsTabs`, `TrendsView`. See [Investments screens](mobile-patterns.md#investments-screens). |
 | `components/states/` | `EmptyState`, `ErrorState`, `SkeletonState`, `ComingSoon`. |
-| `components/sheets/` | `AppSheet` and the bottom sheets built on it. See [Mobile patterns](mobile-patterns.md#add-a-bottom-sheet). |
+| `components/sheets/` | `AppSheet` and the bottom sheets built on it, including `ConfirmSheet`, `OptionSheet`, `ExportSheet` and `InvestmentsExportSheet`. See [Mobile patterns](mobile-patterns.md#add-a-bottom-sheet). |
 
 ## Styling conventions
 
