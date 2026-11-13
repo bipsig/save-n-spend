@@ -1,8 +1,10 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { TRIPS_SLICE_ID } from "@/lib/trips";
 import { Pressable, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
+import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { InsightsPeriod } from "@save-n-spend/types";
+import ExportSheet from "@/components/sheets/ExportSheet";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import GradientCard from "@/components/shell/GradientCard";
 import Card from "@/components/data/Card";
@@ -43,9 +45,7 @@ import {
   prevLabel,
 } from "@/lib/insights";
 import { useHighlights } from "@/lib/highlights";
-import { exportInsights } from "@/lib/insightsExport";
 import { useAppZone } from "@/lib/zone";
-import { toast } from "@/store/toast";
 import { colors, radius, spacing, incomeColor, expenseColor } from "@/theme";
 
 const SEGMENTS: { key: InsightsPeriod; label: string }[] = [
@@ -135,7 +135,7 @@ const InsightsScreen = () => {
   // strip's is an hour number for the same reason.
   const [heatDay, setHeatDay] = useState<string | null>(null);
   const [heatHour, setHeatHour] = useState<number | null>(null);
-  const [exporting, setExporting] = useState(false);
+  const exportRef = useRef<BottomSheetModal>(null);
   const { data, loading, error, refetch } = useInsights(period, offset);
   // Always about THIS month, independent of whatever period/offset is selected below —
   // see docs/insights-engine.md. Its own fetch, not threaded through useInsights.
@@ -167,23 +167,6 @@ const InsightsScreen = () => {
     clearTips();
   };
 
-
-  // The window in view as a PDF. The data is already in hand, so build and share at once.
-  const onExport = async () => {
-    if (!data || exporting) return;
-    setExporting(true);
-    const label = windowLabel(period, offset);
-    try {
-      await exportInsights(data, period, offset);
-      // Names the window: the export is of what's on screen, which may not be this month.
-      toast.success(`Insights for ${label} exported`);
-    } catch (err) {
-      // A toast, not an OS Alert: the same failure the rest of the app reports inline.
-      toast.fromError(err, "Couldn't export your insights. Try again.");
-    } finally {
-      setExporting(false);
-    }
-  };
 
   useFocusEffect(useCallback(() => {
     refetch();
@@ -542,9 +525,8 @@ const InsightsScreen = () => {
           pill
           size="sm"
           variant="secondary"
-          loading={exporting}
           disabled={!hasData}
-          onPress={onExport}
+          onPress={() => exportRef.current?.present()}
         />
       }
     >
@@ -572,6 +554,7 @@ const InsightsScreen = () => {
         />
         {renderBody()}
       </Pressable>
+      <ExportSheet ref={exportRef} kind="insights" defaultRange={period} defaultOffset={offset} insightsData={data} />
     </ScreenScaffold>
   );
 };
