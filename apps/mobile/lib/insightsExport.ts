@@ -1,5 +1,7 @@
 import type { InsightsSummary, InsightsPeriod } from "@save-n-spend/types";
-import { deliver, htmlEscape, dayStamp } from "@/lib/export";
+import { deliver, dayStamp, type ExportResult } from "@/lib/export";
+import { get } from "@/lib/api";
+import { htmlEscape, kpiCard, kpiRow, pdfDocument } from "@/lib/pdfShell";
 import {
   buildTrend,
   foldCategories,
@@ -324,8 +326,7 @@ const buildHtml = (data: InsightsSummary, period: InsightsPeriod, offset: number
     : null;
   const dayProjection = offset === 0 && period === "day" ? projectDay(data.trend) : null;
 
-  const kpi = (k: string, v: string, cls = "", sub = "") =>
-    `<div class="card"><div class="k">${k}</div><div class="v ${cls}">${v}</div>${sub ? `<div class="sub">${sub}</div>` : ""}</div>`;
+  const kpi = kpiCard;
 
   // Each category, then its sub-categories indented beneath it. The children are already
   // counted in the parent's figure, so they carry no bar and no share — a second set of
@@ -351,90 +352,26 @@ const buildHtml = (data: InsightsSummary, period: InsightsPeriod, offset: number
   const stack = accts.map((a) => `<span style="flex:${Math.max(a.pct, 0.5)};background:${a.color}"></span>`).join("");
   const acctLegend = accts.map((a) => legendDot(a.color, `${a.name} · ${Math.round(a.pct)}%`)).join("");
 
-  return `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <style>
-    * { box-sizing: border-box; }
-    body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; color: #1a1730; margin: 0; padding: 32px 28px; }
-    .head { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid #6D5CFF; padding-bottom: 14px; }
-    .brand { font-size: 22px; font-weight: 800; letter-spacing: -0.4px; }
-    .brand span { color: #6D5CFF; }
-    .range { font-size: 12px; color: #6b6880; text-transform: uppercase; letter-spacing: 1px; text-align: right; }
-    h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1.2px; color: #6b6880; margin: 26px 0 8px; }
-    .cards { display: flex; flex-wrap: wrap; gap: 12px; margin: 20px 0 4px; }
-    .card { flex: 1 1 22%; border: 1px solid #e7e5f0; border-radius: 12px; padding: 12px 14px; }
-    .card .k { font-size: 10px; color: #6b6880; text-transform: uppercase; letter-spacing: 1px; }
-    .card .v { font-size: 17px; font-weight: 800; margin-top: 4px; }
-    .card .sub { font-size: 10px; color: #9995ad; margin-top: 3px; }
-    .v.pos { color: #0f9d63; } .v.neg { color: #d64550; }
-    .legend { display: flex; flex-wrap: wrap; gap: 16px; margin: 6px 0 2px; font-size: 11px; color: #6b6880; }
-    .ld { display: inline-flex; align-items: center; gap: 6px; }
-    .dot { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
-    .dashline { display: inline-flex; gap: 3px; width: 14px; }
-    .dashline span { width: 5px; height: 3px; border-radius: 2px; display: inline-block; }
-    .stack { display: flex; height: 16px; border-radius: 8px; overflow: hidden; gap: 2px; margin: 10px 0; }
-    .stack span { display: block; }
-    table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    td { padding: 8px; border-bottom: 1px solid #f1f0f6; vertical-align: middle; }
-    .desc { font-weight: 600; }
-    td.amt { text-align: right; font-weight: 700; white-space: nowrap; }
-    td.barcell { width: 42%; }
-    .bar { width: 100%; height: 8px; border-radius: 4px; background: #eeecf6; overflow: hidden; }
-    .bar span { display: block; height: 100%; }
-    td.sh { text-align: right; color: #6b6880; width: 46px; }
-    tr.sub td { border-bottom: none; padding-top: 2px; padding-bottom: 2px; color: #6b6880; font-size: 11px; }
-    tr.sub .desc { font-weight: 400; padding-left: 22px; }
-    tr.sub td.amt { font-weight: 600; }
-    .donut-wrap { display: flex; align-items: center; gap: 24px; margin: 8px 0 4px; }
-    .donut-center .k { font-size: 10px; color: #6b6880; text-transform: uppercase; letter-spacing: 1px; }
-    .donut-center .v { font-size: 20px; font-weight: 800; margin-top: 3px; }
-    .heat { margin: 8px 0 2px; }
-    .hrow { display: flex; gap: 4px; margin-bottom: 4px; }
-    .hlabel { width: 26px; text-align: center; font-size: 9px; color: #9995ad; font-weight: 600; }
-    .hcell { width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; }
-    .hcell.empty { visibility: hidden; }
-    .heat-note { font-size: 11px; color: #6b6880; margin-top: 4px; }
-    .strip { display: flex; gap: 2px; height: 34px; margin: 8px 0 2px; }
-    .sbar { flex: 1; border-radius: 3px; }
-    .mover { margin-bottom: 14px; }
-    .mover:last-child { margin-bottom: 0; }
-    .mrow-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; margin-bottom: 4px; }
-    .mbar { width: 100%; height: 8px; border-radius: 4px; background: #eeecf6; overflow: hidden; margin-bottom: 3px; }
-    .mbar span { display: block; height: 100%; }
-    .mbar.prev span { opacity: .4; }
-    .mprev { font-size: 10px; color: #9995ad; }
-    .foot { margin-top: 24px; font-size: 10px; color: #9995ad; text-align: center; }
-  </style></head><body>
-    <div class="head">
-      <div class="brand">Save n <span>Spend</span> · Insights</div>
-      <div class="range">${htmlEscape(label)}<br/>${data.txnCount} transactions</div>
-    </div>
-
-    <div class="cards">
-      ${kpi("Income", htmlEscape(formatMoney(income)), "pos")}
-      ${kpi("Expenses", htmlEscape(formatMoney(expense)), "neg")}
-      ${kpi("Net", htmlEscape(formatMoney(net)), net >= 0 ? "pos" : "neg")}
-      ${kpi("Savings Rate", `${savings}%`)}
-      ${period === "day"
+  return pdfDocument({
+    section: "Insights",
+    rangeLabel: label,
+    meta: `${data.txnCount} transactions`,
+    body: `${kpiRow([
+      kpi("Income", htmlEscape(formatMoney(income)), "pos"),
+      kpi("Expenses", htmlEscape(formatMoney(expense)), "neg"),
+      kpi("Net", htmlEscape(formatMoney(net)), net >= 0 ? "pos" : "neg"),
+      kpi("Savings Rate", `${savings}%`),
+      period === "day"
         ? kpi("Avg Hourly Spend", htmlEscape(formatMoney(dayProjection?.avgPerHour ?? 0)), "", "so far today")
-        : kpi("Avg Daily Spend", htmlEscape(formatMoney(data.avgDailySpendCurrent)))}
-      ${kpi("Top Category", htmlEscape(data.topCategory ?? "—"))}
-      ${projection
-        ? kpi(
-            `Projected ${htmlEscape(windowLabel(period, 0))}`,
-            htmlEscape(formatMoney(projection.total)),
-            "",
-            `${projection.daysRemaining} day${projection.daysRemaining === 1 ? "" : "s"} left`,
-          )
-        : ""}
-      ${dayProjection
-        ? kpi(
-            "Projected Today",
-            htmlEscape(formatMoney(dayProjection.total)),
-            "",
-            `${dayProjection.hoursRemaining} hour${dayProjection.hoursRemaining === 1 ? "" : "s"} left`,
-          )
-        : ""}
-    </div>
+        : kpi("Avg Daily Spend", htmlEscape(formatMoney(data.avgDailySpendCurrent))),
+      kpi("Top Category", htmlEscape(data.topCategory ?? "—")),
+      ...(projection
+        ? [kpi(`Projected ${windowLabel(period, 0)}`, htmlEscape(formatMoney(projection.total)), "", `${projection.daysRemaining} day${projection.daysRemaining === 1 ? "" : "s"} left`)]
+        : []),
+      ...(dayProjection
+        ? [kpi("Projected Today", htmlEscape(formatMoney(dayProjection.total)), "", `${dayProjection.hoursRemaining} hour${dayProjection.hoursRemaining === 1 ? "" : "s"} left`)]
+        : []),
+    ])}
 
     <h2>Spending trend</h2>
     ${areaSvg(trend.values, trend.axis)}
@@ -460,10 +397,44 @@ const buildHtml = (data: InsightsSummary, period: InsightsPeriod, offset: number
 
     <h2>Where it left from</h2>
     <div class="stack">${stack}</div>
-    <div class="legend">${acctLegend}</div>
-
-    <div class="foot">Generated by Save n Spend · ${dayStamp(new Date())}</div>
-  </body></html>`;
+    <div class="legend">${acctLegend}</div>`,
+    css: `
+    .legend { display: flex; flex-wrap: wrap; gap: 16px; margin: 6px 0 2px; font-size: 11px; color: #6b6880; }
+    .ld { display: inline-flex; align-items: center; gap: 6px; }
+    .dot { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
+    .dashline { display: inline-flex; gap: 3px; width: 14px; }
+    .dashline span { width: 5px; height: 3px; border-radius: 2px; display: inline-block; }
+    .stack { display: flex; height: 16px; border-radius: 8px; overflow: hidden; gap: 2px; margin: 10px 0; }
+    .stack span { display: block; }
+    td { vertical-align: middle; }
+    .desc { font-weight: 600; }
+    td.amt { font-weight: 700; white-space: nowrap; }
+    td.barcell { width: 42%; }
+    .bar { width: 100%; height: 8px; border-radius: 4px; background: #eeecf6; overflow: hidden; }
+    .bar span { display: block; height: 100%; }
+    td.sh { text-align: right; color: #6b6880; width: 46px; }
+    tr.sub td { border-bottom: none; padding-top: 2px; padding-bottom: 2px; color: #6b6880; font-size: 11px; }
+    tr.sub .desc { font-weight: 400; padding-left: 22px; }
+    tr.sub td.amt { font-weight: 600; }
+    .donut-wrap { display: flex; align-items: center; gap: 24px; margin: 8px 0 4px; }
+    .donut-center .k { font-size: 10px; color: #6b6880; text-transform: uppercase; letter-spacing: 1px; }
+    .donut-center .v { font-size: 20px; font-weight: 800; margin-top: 3px; }
+    .heat { margin: 8px 0 2px; }
+    .hrow { display: flex; gap: 4px; margin-bottom: 4px; }
+    .hlabel { width: 26px; text-align: center; font-size: 9px; color: #9995ad; font-weight: 600; }
+    .hcell { width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; }
+    .hcell.empty { visibility: hidden; }
+    .heat-note { font-size: 11px; color: #6b6880; margin-top: 4px; }
+    .strip { display: flex; gap: 2px; height: 34px; margin: 8px 0 2px; }
+    .sbar { flex: 1; border-radius: 3px; }
+    .mover { margin-bottom: 14px; }
+    .mover:last-child { margin-bottom: 0; }
+    .mrow-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; margin-bottom: 4px; }
+    .mbar { width: 100%; height: 8px; border-radius: 4px; background: #eeecf6; overflow: hidden; margin-bottom: 3px; }
+    .mbar span { display: block; height: 100%; }
+    .mbar.prev span { opacity: .4; }
+    .mprev { font-size: 10px; color: #9995ad; }`,
+  });
 };
 
 // Entry point.
@@ -477,4 +448,16 @@ export const exportInsights = async (
 ): Promise<void> => {
   const base = `save-n-spend-insights-${period}-${dayStamp(new Date())}`;
   await deliver("pdf", base, buildHtml(data, period, offset));
+};
+
+/** The insights window as a PDF — from the summary already on screen when it is the same window, otherwise fetched. */
+export const exportInsightsWindow = async (
+  period: InsightsPeriod,
+  offset: number,
+  inHand?: InsightsSummary | null,
+): Promise<ExportResult> => {
+  const data = inHand ?? (await get<InsightsSummary>(`/insights?period=${period}&offset=${offset}`));
+  if (data.txnCount === 0) return { shared: false, count: 0 };
+  await exportInsights(data, period, offset);
+  return { shared: true, count: data.txnCount };
 };
