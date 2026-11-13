@@ -211,14 +211,18 @@ if (process.env.DB_NAME) return process.env.DB_NAME;
 return process.env.NODE_ENV === 'production' ? 'save-n-spend-prod' : 'save-n-spend-dev';
 ```
 
-Render sets `NODE_ENV=production`, so it would use `save-n-spend-prod` — which
-has never been seeded and is empty. Correct credentials get
-`401 Invalid credentials!` there, which looks like a broken server but isn't.
+Render sets `NODE_ENV=production` and no `DB_NAME`, so the deployed API — and
+therefore the sideloaded app — uses `save-n-spend-prod`, which holds the real
+data. Local runs use `save-n-spend-dev`.
 
-**Currently `DB_NAME=save-n-spend-dev` is set in Render's environment** so the
-sideloaded app sees the seed data. Delete that variable to go back to prod. The
-Render service is configured in the dashboard — there is no `render.yaml`, so
-this is a manual change.
+**Important**
+Never write to `save-n-spend-prod`. Experiment on dev; when you need realistic
+data, copy prod into dev with a read-only pass over prod and work on the copy.
+The seed script wipes whichever database it reaches, which is why it refuses
+anything named `prod`.
+
+The Render service is configured in the dashboard — there is no `render.yaml`,
+so its environment is not visible from the repo.
 
 To confirm which database the deployed API is on, check the Render logs for
 `MongoDB connected: ... (db: <name>)`.
