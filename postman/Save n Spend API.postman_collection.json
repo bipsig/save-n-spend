@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "a7c1f2e4-savnspend-api-v1",
     "name": "Save n Spend API",
-    "description": "Local API for the Save n Spend app (Express + Mongo, port 7019).\n\n## Setup\n1. Start the API: `cd apps/api && npm run dev`\n2. (Optional) seed test data: `npm run seed` — creates **sagnik@email.com / sagnik123** and **bipasha@email.com / bipasha123**\n3. Run **Auth → Login (Sagnik)** once — its test script stores `accessToken` as a collection variable and every other request inherits it via Bearer auth.\n\n## Conventions\n- Every response uses the envelope `{ success, statusCode, message, data }`.\n- **Money is integer paise** (₹1 = 100 paise). `amount` is always positive; `type` gives the sign.\n- All `/:id` routes are ownership-scoped: another user's id returns 404, leaking nothing.\n- Create/POST helper scripts store `accountId` / `categoryId` / `transactionId` collection variables so the `/:id` requests chain without copy-pasting ids.",
+    "description": "Local API for the Save n Spend app (Express + Mongo, port 7019).\n\n## Setup\n1. Start the API: `cd apps/api && npm run dev`\n2. (Optional) seed test data: `npm run seed` — creates **sagnik@email.com / sagnik123** and **bipasha@email.com / bipasha123**\n3. Run **Auth → Login (Sagnik)** once — its test script stores `accessToken` as a collection variable and every other request inherits it via Bearer auth.\n\n## Conventions\n- Every response uses the envelope `{ success, statusCode, message, data }`.\n- **Money is integer paise** (₹1 = 100 paise). `amount` is always positive; `type` gives the sign.\n- All `/:id` routes are ownership-scoped: another user's id returns 404, leaking nothing.\n- Create/POST helper scripts store `accountId` / `categoryId` / `transactionId` collection variables so the `/:id` requests chain without copy-pasting ids.\n- The same applies to the later folders: creating a person, investment, budget, bill, goal, trip or trip expense stores `personId` / `investmentId` / `budgetId` / `billId` / `goalId` / `tripId` / `tripExpenseId`. `notificationId` is the one you set by hand, from an item in **Notifications → List**.\n- Run **Accounts → Create person account** and **Create investment account** before the Trips and Investments folders; they need those ids.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -15,7 +15,15 @@
     { "key": "accessToken", "value": "", "type": "string" },
     { "key": "accountId", "value": "", "type": "string" },
     { "key": "categoryId", "value": "", "type": "string" },
-    { "key": "transactionId", "value": "", "type": "string" }
+    { "key": "transactionId", "value": "", "type": "string" },
+    { "key": "personId", "value": "", "type": "string" },
+    { "key": "investmentId", "value": "", "type": "string" },
+    { "key": "budgetId", "value": "", "type": "string" },
+    { "key": "billId", "value": "", "type": "string" },
+    { "key": "goalId", "value": "", "type": "string" },
+    { "key": "tripId", "value": "", "type": "string" },
+    { "key": "tripExpenseId", "value": "", "type": "string" },
+    { "key": "notificationId", "value": "", "type": "string" }
   ],
   "item": [
     {
@@ -196,6 +204,19 @@
               "body": "{\n  \"success\": false,\n  \"statusCode\": 401,\n  \"message\": \"Not authorized, token failed\",\n  \"data\": null\n}"
             }
           ]
+        },
+        {
+          "name": "Change password",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"currentPassword\": \"sagnik123\",\n  \"newPassword\": \"sagnik456\"\n}" },
+            "url": { "raw": "{{BASE_URL}}/auth/change-password", "host": ["{{BASE_URL}}"], "path": ["auth", "change-password"] },
+            "description": "Body: `currentPassword` (any non-empty string) and `newPassword` (min 8 chars). Strict-by-schema, but the check is against the current password rather than the token alone, so a picked-up unlocked phone cannot rotate it.\n\nRate limited with the same 10-per-15-minutes limiter as login and register.\n\nThis changes the seeded user's password: change it back afterwards, or the **Login (Sagnik)** request will stop working."
+          },
+          "response": []
         }
       ]
     },
@@ -226,6 +247,26 @@
               "body": "{\n  \"success\": true,\n  \"statusCode\": 200,\n  \"message\": \"Profile Updated\",\n  \"data\": {\n    \"_id\": \"6a568001927536ee5cba3c9d\",\n    \"name\": \"Sagnik\",\n    \"email\": \"sagnik@email.com\",\n    \"prefs\": {\n      \"defaultAccount\": \"6a568002927536ee5cba3cbd\",\n      \"budgetCycleDay\": 1,\n      \"notifications\": {\n        \"enabled\": true,\n        \"billReminderLead\": 3,\n        \"budgetAlerts\": true,\n        \"goalMilestones\": true,\n        \"weeklySummary\": false\n      }\n    }\n  }\n}"
             }
           ]
+        },
+        {
+          "name": "Get me",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/users/me", "host": ["{{BASE_URL}}"], "path": ["users", "me"] },
+            "description": "The signed-in user's profile and prefs (`prefs.timeZone`, `prefs.notifications`, `prefs.defaultAccount`). `/auth/me` returns the same document and is what the app boots from."
+          },
+          "response": []
+        },
+        {
+          "name": "Deactivate me",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/users/me", "host": ["{{BASE_URL}}"], "path": ["users", "me"] },
+            "description": "Soft-deletes the account: stamps `deactivatedAt` (which locks it out of `/auth/me`, and so out of the app), drops it from the reminder job and clears `pushToken`. Data is kept. Responds `200` with `message: \"Account deactivated\"` and `data: null`.\n\n**Destructive for the session** — the token stops working afterwards. Do not run against a user you still need."
+          },
+          "response": []
         }
       ]
     },
@@ -335,6 +376,94 @@
             "description": "Soft delete: sets `isArchived: true`. Archived accounts drop out of List but historical transactions keep referencing them."
           },
           "response": []
+        },
+        {
+          "name": "Create person account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if ((pm.response.code === 201 || pm.response.code === 200) && json?.data?._id) {",
+                  "  pm.collectionVariables.set('personId', json.data._id);",
+                  "  console.log('personId saved:', json.data._id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Priya\",\n  \"type\": \"person\",\n  \"startingBalance\": 0,\n  \"icon\": \"person\",\n  \"color\": \"pink\"\n}"
+            },
+            "url": { "raw": "{{BASE_URL}}/accounts", "host": ["{{BASE_URL}}"], "path": ["accounts"] },
+            "description": "An account of `type: \"person\"` — someone who owes you or is owed. People are what a trip's `members` and a split's `owedBy` point at. Test script saves `data._id` → `{{personId}}`."
+          },
+          "response": []
+        },
+        {
+          "name": "Create investment account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if ((pm.response.code === 201 || pm.response.code === 200) && json?.data?._id) {",
+                  "  pm.collectionVariables.set('investmentId', json.data._id);",
+                  "  console.log('investmentId saved:', json.data._id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nifty 50 Index Fund\",\n  \"type\": \"investment\",\n  \"startingBalance\": 5000000,\n  \"currentValue\": 5400000,\n  \"investmentKind\": \"Mutual Fund\",\n  \"investedSince\": \"2025-09-01\",\n  \"investedHow\": \"sip\",\n  \"icon\": \"investments\",\n  \"color\": \"teal\"\n}"
+            },
+            "url": { "raw": "{{BASE_URL}}/accounts", "host": ["{{BASE_URL}}"], "path": ["accounts"] },
+            "description": "An account of `type: \"investment\"` — a holding. For investments `startingBalance` is what has been invested so far (the cost basis), `currentValue` is what it is worth today (omit it and it is worth exactly what went in), `investedSince` cannot be in the future, and `investedHow` is `sip` or `lump`. `investmentKind` is a free label up to 40 chars.\n\nTest script saves `data._id` → `{{investmentId}}`, used by the Investments folder."
+          },
+          "response": []
+        },
+        {
+          "name": "Reorder accounts",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"ids\": [\n    \"{{accountId}}\",\n    \"{{personId}}\",\n    \"{{investmentId}}\"\n  ]\n}" },
+            "url": { "raw": "{{BASE_URL}}/accounts/reorder", "host": ["{{BASE_URL}}"], "path": ["accounts", "reorder"] },
+            "description": "Strict body: `ids` — the user's **whole** list of active account ids, in the order the user left it, front to back (a whole-list write, so two rows can never claim one slot). Every id must be the caller's own, non-archived, and listed once, otherwise `400`.\n\nResponds `{ reordered: <count> }`.\n\nDeclared above `PATCH /accounts/:id`, which would otherwise match `reorder` as an id."
+          },
+          "response": []
+        },
+        {
+          "name": "Sync account balance",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"balance\": 1250000,\n  \"note\": \"Matched to bank statement\"\n}" },
+            "url": { "raw": "{{BASE_URL}}/accounts/{{accountId}}/balance", "host": ["{{BASE_URL}}"], "path": ["accounts", "{{accountId}}", "balance"] },
+            "description": "Reconcile an account against what the bank says it holds. `balance` is the **target** balance in integer paise, not a delta, and is signed and unbounded (a credit card is negative as it is used). Optional `note` (1-120 chars).\n\nThe server writes the *difference* as an adjustment transaction, which keeps the balance invariant: it moves the balance but stays out of income and expense totals. Strict body."
+          },
+          "response": []
         }
       ]
     },
@@ -431,6 +560,19 @@
             "header": [],
             "url": { "raw": "{{BASE_URL}}/categories/{{categoryId}}", "host": ["{{BASE_URL}}"], "path": ["categories", "{{categoryId}}"] },
             "description": "Soft delete (`isArchived: true`). Historical transactions keep the reference."
+          },
+          "response": []
+        },
+        {
+          "name": "Reorder categories",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"ids\": [\n    \"{{categoryId}}\"\n  ]\n}" },
+            "url": { "raw": "{{BASE_URL}}/categories/reorder", "host": ["{{BASE_URL}}"], "path": ["categories", "reorder"] },
+            "description": "Strict body: `ids` — one **sibling set** (the top-level categories, or the children of one parent) in the order the user left it, front to back. A whole-set write, so two rows can never claim one slot."
           },
           "response": []
         }
@@ -626,6 +768,974 @@
               "body": "{\n  \"success\": true,\n  \"statusCode\": 200,\n  \"message\": \"Transaction Deleted\",\n  \"data\": null\n}"
             }
           ]
+        },
+        {
+          "name": "Transaction summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/transactions/summary?startDate=2026-07-01&endDate=2026-07-31",
+              "host": ["{{BASE_URL}}"],
+              "path": ["transactions", "summary"],
+              "query": [
+                { "key": "startDate", "value": "2026-07-01", "description": "ISO date — pair with endDate" },
+                { "key": "endDate", "value": "2026-07-31", "description": "ISO date — pair with startDate" },
+                { "key": "trips", "value": "exclude", "description": "exclude | only", "disabled": true }
+              ]
+            },
+            "description": "Income, expense and net for a range, computed server-side so the Activity summary card adds up to the rows beneath it. `startDate` and `endDate` (ISO dates) must be given together, or both omitted for all time. `trips=exclude` keeps trip rows out (the everyday list); `trips=only` is the trips view; unset means everything."
+          },
+          "response": []
+        },
+        {
+          "name": "Title suggestions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/transactions/title-suggestions", "host": ["{{BASE_URL}}"], "path": ["transactions", "title-suggestions"] },
+            "description": "Up to 150 recent titles (last 12 months, expenses and income, trip rows excluded) ranked by how often they recur. Each carries `type`, `category`, `count`, `lastAmount` and `lastTransactionId`, so a quick-log chip can prefill and repeat a habitual transaction without another round trip."
+          },
+          "response": []
+        },
+        {
+          "name": "Convert expense to investment",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"toAccount\": \"{{investmentId}}\"\n}" },
+            "url": {
+              "raw": "{{BASE_URL}}/transactions/{{transactionId}}/convert-to-investment",
+              "host": ["{{BASE_URL}}"],
+              "path": ["transactions", "{{transactionId}}", "convert-to-investment"]
+            },
+            "description": "Reclassifies an existing **expense** as a contribution: it becomes a transfer into `toAccount` (an investment account) and loses its category. Strict body with `toAccount` only. Balances move accordingly.\n\nUses `{{transactionId}}` (saved by the Create expense request) and `{{investmentId}}`."
+          },
+          "response": []
+        },
+        {
+          "name": "Bulk convert expenses to investment",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"transactionIds\": [\n    \"{{transactionId}}\"\n  ],\n  \"toAccount\": \"{{investmentId}}\"\n}" },
+            "url": { "raw": "{{BASE_URL}}/transactions/convert-to-investment", "host": ["{{BASE_URL}}"], "path": ["transactions", "convert-to-investment"] },
+            "description": "The same reclassification over a batch, in one database transaction — \"move the past payments too\" after setting up a SIP from a suggestion. `transactionIds`: 1-60 ids. `toAccount`: the investment account. Strict body."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "description": "The Home tab's data. All three are read-only and bucketed in the user's stored time zone.",
+      "item": [
+        {
+          "name": "Dashboard summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/dashboard/summary",
+              "host": ["{{BASE_URL}}"],
+              "path": ["dashboard", "summary"],
+              "query": [
+                { "key": "month", "value": "2026-07", "description": "YYYY-MM — default: this month", "disabled": true },
+                { "key": "since", "value": "2026-07-20T09:00:00.000Z", "description": "ISO datetime of the device's last open", "disabled": true }
+              ]
+            },
+            "description": "The month's income, expense and net, this week's figures, net worth and its trend, streak, biggest expense, and the \"since you last opened\" digest.\n\n- `month`: `YYYY-MM`, defaults to the current month in the user's zone.\n- `since`: ISO datetime of **this device's** last open, so the digest is relative to this phone's last visit rather than a server-side session."
+          },
+          "response": []
+        },
+        {
+          "name": "Health score",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/dashboard/health", "host": ["{{BASE_URL}}"], "path": ["dashboard", "health"] },
+            "description": "The finance health score with its pillars, band and hints, as shown on the Health screen."
+          },
+          "response": []
+        },
+        {
+          "name": "Dashboard insights",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/dashboard/insights", "host": ["{{BASE_URL}}"], "path": ["dashboard", "insights"] },
+            "description": "The Home tab's insight cards for the current month: goal progress, no-spend days, pace against the average, and the weekday pattern. No query parameters."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Budgets",
+      "description": "Monthly limits per category. `month` is `YYYY-MM`. `limit` is integer paise.",
+      "item": [
+        {
+          "name": "List budgets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/budgets",
+              "host": ["{{BASE_URL}}"],
+              "path": ["budgets"],
+              "query": [
+                { "key": "month", "value": "2026-07", "description": "YYYY-MM — default: this month", "disabled": true }
+              ]
+            },
+            "description": "Budgets for a month with spend against each, in the user's zone. `month` defaults to the current month."
+          },
+          "response": []
+        },
+        {
+          "name": "Create budget",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if ((pm.response.code === 201 || pm.response.code === 200) && json?.data?._id) {",
+                  "  pm.collectionVariables.set('budgetId', json.data._id);",
+                  "  console.log('budgetId saved:', json.data._id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"category\": \"{{categoryId}}\",\n  \"month\": \"2026-07\",\n  \"limit\": 1500000\n}" },
+            "url": { "raw": "{{BASE_URL}}/budgets", "host": ["{{BASE_URL}}"], "path": ["budgets"] },
+            "description": "Strict body: `category` (a category id), `month` (`YYYY-MM`), `limit` (positive integer paise). Test script saves `data._id` → `{{budgetId}}`."
+          },
+          "response": []
+        },
+        {
+          "name": "Update budget",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"limit\": 1800000\n}" },
+            "url": { "raw": "{{BASE_URL}}/budgets/{{budgetId}}", "host": ["{{BASE_URL}}"], "path": ["budgets", "{{budgetId}}"] },
+            "description": "Only the `limit` can change (strict, positive integer paise)."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete budget",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/budgets/{{budgetId}}", "host": ["{{BASE_URL}}"], "path": ["budgets", "{{budgetId}}"] },
+            "description": "Removes the budget for that category and month."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Bills",
+      "description": "Bills and SIPs. A bill with `toInvestment` set is a SIP — paying it moves money into that holding instead of spending it.",
+      "item": [
+        {
+          "name": "List bills",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/bills",
+              "host": ["{{BASE_URL}}"],
+              "path": ["bills"],
+              "query": [
+                { "key": "status", "value": "pending", "description": "pending | paid", "disabled": true }
+              ]
+            },
+            "description": "All bills, or only one status."
+          },
+          "response": []
+        },
+        {
+          "name": "Create bill",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if ((pm.response.code === 201 || pm.response.code === 200) && json?.data?._id) {",
+                  "  pm.collectionVariables.set('billId', json.data._id);",
+                  "  console.log('billId saved:', json.data._id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Netflix\",\n  \"amount\": 64900,\n  \"category\": \"{{categoryId}}\",\n  \"account\": \"{{accountId}}\",\n  \"dueDate\": \"2026-08-05\",\n  \"recurring\": true,\n  \"frequency\": \"monthly\",\n  \"reminderDays\": 3,\n  \"toInvestment\": null\n}"
+            },
+            "url": { "raw": "{{BASE_URL}}/bills", "host": ["{{BASE_URL}}"], "path": ["bills"] },
+            "description": "Strict body.\n- `name`, `amount` (positive integer paise), `dueDate` required.\n- `recurring` + `frequency` (`monthly` | `yearly`) for a repeating bill.\n- `reminderDays`: whole days before the due date, 0 or more.\n- `category` / `account`: ids; `category` may be null.\n- `toInvestment`: an investment account id (or null) — makes this a SIP.\n\nTest script saves `data._id` → `{{billId}}`."
+          },
+          "response": []
+        },
+        {
+          "name": "Create SIP bill",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nifty 50 SIP\",\n  \"amount\": 500000,\n  \"account\": \"{{accountId}}\",\n  \"dueDate\": \"2026-08-07\",\n  \"recurring\": true,\n  \"frequency\": \"monthly\",\n  \"reminderDays\": 1,\n  \"toInvestment\": \"{{investmentId}}\"\n}"
+            },
+            "url": { "raw": "{{BASE_URL}}/bills", "host": ["{{BASE_URL}}"], "path": ["bills"] },
+            "description": "A bill that funds a holding. Paying it records a transfer from `account` into `toInvestment` rather than an expense."
+          },
+          "response": []
+        },
+        {
+          "name": "Update bill",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"amount\": 79900,\n  \"reminderDays\": 5\n}" },
+            "url": { "raw": "{{BASE_URL}}/bills/{{billId}}", "host": ["{{BASE_URL}}"], "path": ["bills", "{{billId}}"] },
+            "description": "Any create field, all optional, strict."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete bill",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/bills/{{billId}}", "host": ["{{BASE_URL}}"], "path": ["bills", "{{billId}}"] },
+            "description": "Removes the bill."
+          },
+          "response": []
+        },
+        {
+          "name": "Pay bill",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"account\": \"{{accountId}}\"\n}" },
+            "url": { "raw": "{{BASE_URL}}/bills/{{billId}}/pay", "host": ["{{BASE_URL}}"], "path": ["bills", "{{billId}}", "pay"] },
+            "description": "Marks the bill paid and records the transaction (or the SIP transfer). Optional body `account` picks the account to charge; otherwise the bill's own account, then the user's `prefs.defaultAccount`. `400` if none of those resolves. A SIP bill moves the money into its holding as a transfer, not an expense.\n\n`400` when the bill is already paid, or when a recurring bill is already handled for the current period. A recurring bill rolls its `dueDate` forward after payment."
+          },
+          "response": []
+        },
+        {
+          "name": "Skip bill",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/bills/{{billId}}/skip", "host": ["{{BASE_URL}}"], "path": ["bills", "{{billId}}", "skip"] },
+            "description": "Advances a **recurring** bill's due date by one period without paying it. `400` for a non-recurring bill, or when this period is already handled. No body."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Goals",
+      "description": "Savings goals. `target` and `saved` are integer paise.",
+      "item": [
+        {
+          "name": "List goals",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/goals", "host": ["{{BASE_URL}}"], "path": ["goals"] },
+            "description": "The user's goals, oldest first."
+          },
+          "response": []
+        },
+        {
+          "name": "Create goal",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if ((pm.response.code === 201 || pm.response.code === 200) && json?.data?._id) {",
+                  "  pm.collectionVariables.set('goalId', json.data._id);",
+                  "  console.log('goalId saved:', json.data._id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Goa trip\",\n  \"target\": 5000000,\n  \"icon\": \"flight\",\n  \"color\": \"info\",\n  \"deadline\": \"2027-03-04\"\n}"
+            },
+            "url": { "raw": "{{BASE_URL}}/goals", "host": ["{{BASE_URL}}"], "path": ["goals"] },
+            "description": "Strict body: `name` (1-60 chars), `target` (positive integer paise); optional `icon`, `color`, `deadline`. Test script saves `data._id` → `{{goalId}}`."
+          },
+          "response": []
+        },
+        {
+          "name": "Update goal",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"target\": 6000000,\n  \"deadline\": null\n}" },
+            "url": { "raw": "{{BASE_URL}}/goals/{{goalId}}", "host": ["{{BASE_URL}}"], "path": ["goals", "{{goalId}}"] },
+            "description": "Any create field, all optional, strict. `deadline` can be set to `null` to clear it."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete goal",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/goals/{{goalId}}", "host": ["{{BASE_URL}}"], "path": ["goals", "{{goalId}}"] },
+            "description": "Removes the goal."
+          },
+          "response": []
+        },
+        {
+          "name": "Contribute to goal",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"amount\": 250000\n}" },
+            "url": { "raw": "{{BASE_URL}}/goals/{{goalId}}/contribute", "host": ["{{BASE_URL}}"], "path": ["goals", "{{goalId}}", "contribute"] },
+            "description": "Adds `amount` (positive integer paise) to `saved`, then checks for a goal milestone notification. Strict body."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Insights",
+      "description": "The Insights tab. Windows are whole periods in the user's zone; the future is not allowed.",
+      "item": [
+        {
+          "name": "Insights summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/insights?period=month&offset=0",
+              "host": ["{{BASE_URL}}"],
+              "path": ["insights"],
+              "query": [
+                { "key": "period", "value": "month", "description": "day | week | month | year" },
+                { "key": "offset", "value": "0", "description": "0 = current, -1 = previous … never positive" }
+              ]
+            },
+            "description": "Trend, income vs expense series, category breakdown, accounts, heatmaps, movers and totals for one window.\n\n- `period`: `day` | `week` | `month` | `year` (default `month`).\n- `offset`: whole periods back from the current one; `0` = current, `-1` = previous. Never positive."
+          },
+          "response": []
+        },
+        {
+          "name": "Category insights",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/insights/category/{{categoryId}}?period=month&offset=0",
+              "host": ["{{BASE_URL}}"],
+              "path": ["insights", "category", "{{categoryId}}"],
+              "query": [
+                { "key": "period", "value": "month", "description": "day | week | month | year" },
+                { "key": "offset", "value": "0", "description": "0 = current, -1 = previous" }
+              ]
+            },
+            "description": "One category over one window: its total, children, day-by-day trend and recent rows. Same `period` / `offset` as the summary. `404` for another user's category."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "description": "The in-app feed behind the bell. It is the source of truth for what was sent — push is best-effort.",
+      "item": [
+        {
+          "name": "List notifications",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/notifications?page=1&limit=20",
+              "host": ["{{BASE_URL}}"],
+              "path": ["notifications"],
+              "query": [
+                { "key": "page", "value": "1", "description": "Default 1" },
+                { "key": "limit", "value": "20", "description": "Default 20, max 50" }
+              ]
+            },
+            "description": "Newest first. `data` is `{ items, unread, page, hasNextPage }`; `unread` counts the whole feed, not the page. `limit` max is 50 (default 20)."
+          },
+          "response": []
+        },
+        {
+          "name": "Mark notification read",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/notifications/{{notificationId}}/read",
+              "host": ["{{BASE_URL}}"],
+              "path": ["notifications", "{{notificationId}}", "read"]
+            },
+            "description": "Idempotent: the first read's timestamp is kept and a repeat still answers `200`. Set `{{notificationId}}` from an item in the list above."
+          },
+          "response": []
+        },
+        {
+          "name": "Mark all notifications read",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/notifications/read-all", "host": ["{{BASE_URL}}"], "path": ["notifications", "read-all"] },
+            "description": "Marks every unread notification read. No body."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Highlights",
+      "description": "Sentences the server computes from the account's own numbers — what the charts don't say out loud.",
+      "item": [
+        {
+          "name": "List highlights",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/highlights", "host": ["{{BASE_URL}}"], "path": ["highlights"] },
+            "description": "The current highlights, materiality-ranked and capped. See the Insights engine doc for the rules."
+          },
+          "response": []
+        },
+        {
+          "name": "Highlight history",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/highlights/history?page=1&limit=20",
+              "host": ["{{BASE_URL}}"],
+              "path": ["highlights", "history"],
+              "query": [
+                { "key": "page", "value": "1", "description": "Default 1" },
+                { "key": "limit", "value": "20", "description": "Default 20, max 100" }
+              ]
+            },
+            "description": "Past highlights, newest first, paginated. `limit` max is 100."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Recurring",
+      "description": "Detected repeating payments that could become bills.",
+      "item": [
+        {
+          "name": "List recurring suggestions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/recurring", "host": ["{{BASE_URL}}"], "path": ["recurring"] },
+            "description": "Suggestions found in the transaction history that look like a bill or SIP. Each has a `key`."
+          },
+          "response": []
+        },
+        {
+          "name": "Dismiss recurring suggestion",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"key\": \"expense:netflix\"\n}" },
+            "url": { "raw": "{{BASE_URL}}/recurring/dismiss", "host": ["{{BASE_URL}}"], "path": ["recurring", "dismiss"] },
+            "description": "Strict body: `key` (1-200 chars), taken from a suggestion in the list. A dismissed suggestion is not offered again."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Reviews",
+      "description": "Month and week reviews of a closed period.",
+      "item": [
+        {
+          "name": "Get review",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/reviews?period=month&offset=-1",
+              "host": ["{{BASE_URL}}"],
+              "path": ["reviews"],
+              "query": [
+                { "key": "period", "value": "month", "description": "week | month" },
+                { "key": "offset", "value": "-1", "description": "-1 = the one that just closed; must be negative" }
+              ]
+            },
+            "description": "A computed review of a **closed** period.\n\n- `period`: `week` | `month` (default `month`).\n- `offset`: whole periods back, **negative**: `-1` (default) is the one that just closed. `0`, the period containing today, is rejected."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Cash Flow",
+      "description": "A forward look at the bank balance.",
+      "item": [
+        {
+          "name": "Cash flow forecast",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/cash-flow", "host": ["{{BASE_URL}}"], "path": ["cash-flow"] },
+            "description": "What is coming in and going out between now and the end of next month, and what that leaves in the bank each day: bills and SIPs on their due dates, income on the day it usually arrives, and typical everyday spending in between. No query parameters."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Investments",
+      "description": "Holdings are accounts of `type: investment`. Create one under Accounts → Create investment account, which saves `{{investmentId}}`.",
+      "item": [
+        {
+          "name": "List investments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/investments", "host": ["{{BASE_URL}}"], "path": ["investments"] },
+            "description": "Totals, per-holding invested / current / gain and yearly return (`annualReturn`, `annualReturnStatus`), allocation by kind, and this month's contributions."
+          },
+          "response": []
+        },
+        {
+          "name": "Investment trend",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/investments/trend", "host": ["{{BASE_URL}}"], "path": ["investments", "trend"] },
+            "description": "Month-end history of the portfolio and of every holding: `points` (value, invested, contributions), `growth` (monthly change from value updates) and per-holding series. Drives the Trends tab."
+          },
+          "response": []
+        },
+        {
+          "name": "Investment report",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/investments/report", "host": ["{{BASE_URL}}"], "path": ["investments", "report"] },
+            "description": "Everything the Investments statement needs in one response: holdings, totals, the trend and the full `ledger` of contributions, redemptions and value updates. Period and scope are applied on the client."
+          },
+          "response": []
+        },
+        {
+          "name": "Investment history",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/investments/{{investmentId}}/history",
+              "host": ["{{BASE_URL}}"],
+              "path": ["investments", "{{investmentId}}", "history"]
+            },
+            "description": "Transactions on one holding, including value updates (adjustments). `400` for an invalid id, `404` if it is not the caller's investment."
+          },
+          "response": []
+        },
+        {
+          "name": "Update investment basis",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"invested\": 5500000,\n  \"investedSince\": \"2025-09-01\",\n  \"investedHow\": \"sip\"\n}" },
+            "url": { "raw": "{{BASE_URL}}/investments/{{investmentId}}/basis", "host": ["{{BASE_URL}}"], "path": ["investments", "{{investmentId}}", "basis"] },
+            "description": "Corrects what was invested, since when and how, without touching today's value. Strict body, all optional:\n- `invested`: the **total** invested, integer paise (min 0). The server works out the opening amount after the contributions and redemptions already recorded; `400` if it would be negative.\n- `investedSince`: date, not in the future, or null.\n- `investedHow`: `sip` | `lump` | null."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete investment",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/investments/{{investmentId}}?mode=undo",
+              "host": ["{{BASE_URL}}"],
+              "path": ["investments", "{{investmentId}}"],
+              "query": [
+                { "key": "mode", "value": "undo", "description": "undo | keep — required" }
+              ]
+            },
+            "description": "Removes the holding and everything on it, in one database transaction. Archiving (`DELETE /accounts/:id`) keeps history; this does not.\n\nRequired query `mode`:\n- `undo` — every money move into and out of it is reversed and deleted; the money goes back where it came from.\n- `keep` — each transfer becomes a balance correction on the other account, so that account's balance does not move.\n\nSIP bills funding it are deleted too. **Destructive.**"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Backup",
+      "description": "Whole-account export and restore.",
+      "item": [
+        {
+          "name": "Export backup",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/backup", "host": ["{{BASE_URL}}"], "path": ["backup"] },
+            "description": "Everything the account holds as one JSON document (`version: 1`): preferences, accounts, categories, transactions, budgets, bills, goals, and trips with their expenses. Save the response as a file."
+          },
+          "response": []
+        },
+        {
+          "name": "Restore backup",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": 1,\n  \"exportedAt\": \"2026-07-24T10:00:00.000Z\",\n  \"preferences\": {\n    \"currency\": \"INR\",\n    \"timeZone\": \"Asia/Kolkata\",\n    \"notifications\": {},\n    \"defaultAccount\": null\n  },\n  \"accounts\": [],\n  \"categories\": [],\n  \"transactions\": [],\n  \"budgets\": [],\n  \"bills\": [],\n  \"goals\": [],\n  \"trips\": [],\n  \"tripExpenses\": [],\n  \"confirm\": true\n}"
+            },
+            "url": { "raw": "{{BASE_URL}}/backup/restore", "host": ["{{BASE_URL}}"], "path": ["backup", "restore"] },
+            "description": "**Replaces the account's data** with a backup, in one database transaction. The body is a backup document (the Export response's `data`) plus `\"confirm\": true`, the server-side half of the hold-to-confirm guard. `trips` and `tripExpenses` are optional, so a backup from before trips still restores.\n\nRate limited to 5 per hour. Responds `{ counts, user }` — the fresh `user` so the client picks up the restored time zone.\n\nThe body below is an empty-account skeleton; paste a real export in its place."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Diagnostics",
+      "description": "Support tooling behind Settings → Diagnostics.",
+      "item": [
+        {
+          "name": "Report client error",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Cannot read properties of undefined (reading 'name')\",\n  \"stack\": \"TypeError: Cannot read properties of undefined\\n    at InvestmentDetail (app/investment-detail.tsx:120)\",\n  \"screen\": \"/investment-detail\",\n  \"requestId\": \"7K2QXB\",\n  \"appVersion\": \"2.5.0\"\n}"
+            },
+            "url": { "raw": "{{BASE_URL}}/diagnostics/client-errors", "host": ["{{BASE_URL}}"], "path": ["diagnostics", "client-errors"] },
+            "description": "Records an error the phone hit, under the phone's own `requestId` if it is a valid reference. Strict body: `message` (1-500 chars) required; optional `stack` (max 4000), `screen`, `requestId` (max 12), `appVersion` (max 20).\n\nNo login required, because the error can come from the login screen; the collection's Bearer token is still sent, so a signed-in report is attributed to the account. Own, stricter rate limit than the rest of the API."
+          },
+          "response": []
+        },
+        {
+          "name": "Recent requests",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/diagnostics/requests", "host": ["{{BASE_URL}}"], "path": ["diagnostics", "requests"] },
+            "description": "The caller's own last 50 request log rows, newest first. Never anyone else's."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Trips",
+      "description": "A trip groups expenses split with people (`type: person` accounts) and their settle-ups. `members` and every person id are person-account ids; create them under Accounts → Create person account (saves `{{personId}}`). Amounts are integer paise. Most writes are `400` on a **closed** trip until it is reopened.",
+      "item": [
+        {
+          "name": "List trips",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/trips", "host": ["{{BASE_URL}}"], "path": ["trips"] },
+            "description": "Trips (active first, then newest) with totals and open balances, plus the all-trips summary with a figure per year."
+          },
+          "response": []
+        },
+        {
+          "name": "Create trip",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if ((pm.response.code === 201 || pm.response.code === 200) && json?.data?._id) {",
+                  "  pm.collectionVariables.set('tripId', json.data._id);",
+                  "  console.log('tripId saved:', json.data._id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Goa\",\n  \"emoji\": \"🏖️\",\n  \"color\": \"info\",\n  \"startDate\": \"2026-12-20\",\n  \"endDate\": \"2026-12-27\",\n  \"members\": [\n    \"{{personId}}\"\n  ],\n  \"budget\": 5000000\n}"
+            },
+            "url": { "raw": "{{BASE_URL}}/trips", "host": ["{{BASE_URL}}"], "path": ["trips"] },
+            "description": "Strict body. `name` (1-60), `startDate`, `endDate` (not before the start), `members` (up to 30 person-account ids; **every one must be a live person account**), optional `emoji`, `color`, `budget` (paise, min 0, or null). Test script saves `data._id` → `{{tripId}}`."
+          },
+          "response": []
+        },
+        {
+          "name": "Get trip",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/trips/{{tripId}}", "host": ["{{BASE_URL}}"], "path": ["trips", "{{tripId}}"] },
+            "description": "One trip in full: what it cost you, who owes whom, where your share went, the day-by-day figures and every expense and settle-up."
+          },
+          "response": []
+        },
+        {
+          "name": "Update trip",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"budget\": 6000000,\n  \"endDate\": \"2026-12-28\"\n}" },
+            "url": { "raw": "{{BASE_URL}}/trips/{{tripId}}", "host": ["{{BASE_URL}}"], "path": ["trips", "{{tripId}}"] },
+            "description": "Any create field, all optional, strict. Removing a member who is already in an expense or settle-up is `400`."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete trip",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/trips/{{tripId}}", "host": ["{{BASE_URL}}"], "path": ["trips", "{{tripId}}"] },
+            "description": "Deletes the trip. `data` is null."
+          },
+          "response": []
+        },
+        {
+          "name": "Add trip expense",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if ((pm.response.code === 201 || pm.response.code === 200) && json?.data?._id) {",
+                  "  pm.collectionVariables.set('tripExpenseId', json.data._id);",
+                  "  console.log('tripExpenseId saved:', json.data._id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Beach shack lunch\",\n  \"occurredAt\": \"2026-12-21T13:30:00.000Z\",\n  \"category\": \"{{categoryId}}\",\n  \"cost\": 360000,\n  \"paidBy\": null,\n  \"paidFrom\": \"{{accountId}}\",\n  \"shares\": [\n    {\n      \"account\": null,\n      \"amount\": 180000\n    },\n    {\n      \"account\": \"{{personId}}\",\n      \"amount\": 180000\n    }\n  ]\n}"
+            },
+            "url": { "raw": "{{BASE_URL}}/trips/{{tripId}}/expenses", "host": ["{{BASE_URL}}"], "path": ["trips", "{{tripId}}", "expenses"] },
+            "description": "Strict body.\n- `title` (1-80), `occurredAt`, `cost` (positive paise), optional `category` (an expense-category id or null).\n- `paidBy`: a member id, or **null for you**.\n- `paidFrom`: required when `paidBy` is null — one of your own accounts (bank, cash, wallet or credit card).\n- `shares`: 1-31 rows of `{ account, amount }`; `account` is a member id or **null for your own share**; each person once; the amounts **must add up to `cost`** (`400` otherwise).\n\nYour share becomes your spending; the rest becomes money owed. Test script saves `data._id` → `{{tripExpenseId}}`."
+          },
+          "response": []
+        },
+        {
+          "name": "Edit trip expense",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Beach shack lunch\",\n  \"occurredAt\": \"2026-12-21T13:30:00.000Z\",\n  \"category\": \"{{categoryId}}\",\n  \"cost\": 400000,\n  \"paidBy\": null,\n  \"paidFrom\": \"{{accountId}}\",\n  \"shares\": [\n    {\n      \"account\": null,\n      \"amount\": 200000\n    },\n    {\n      \"account\": \"{{personId}}\",\n      \"amount\": 200000\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/trips/{{tripId}}/expenses/{{tripExpenseId}}",
+              "host": ["{{BASE_URL}}"],
+              "path": ["trips", "{{tripId}}", "expenses", "{{tripExpenseId}}"]
+            },
+            "description": "Replaces the expense: the body is the **same full shape** as Add trip expense (not a partial). The ledger rows it stood for are reverted and rewritten."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete trip expense",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/trips/{{tripId}}/expenses/{{tripExpenseId}}",
+              "host": ["{{BASE_URL}}"],
+              "path": ["trips", "{{tripId}}", "expenses", "{{tripExpenseId}}"]
+            },
+            "description": "Reverts the expense's ledger rows and removes it."
+          },
+          "response": []
+        },
+        {
+          "name": "Settle up",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"person\": \"{{personId}}\",\n  \"account\": \"{{accountId}}\",\n  \"amount\": 180000,\n  \"direction\": \"received\",\n  \"occurredAt\": \"2026-12-28T10:00:00.000Z\"\n}"
+            },
+            "url": { "raw": "{{BASE_URL}}/trips/{{tripId}}/settle", "host": ["{{BASE_URL}}"], "path": ["trips", "{{tripId}}", "settle"] },
+            "description": "Records a repayment. Strict body: `person` (a member id), `account` (one of your own accounts), `amount` (positive paise), `direction` (`received` = they paid you, `paid` = you paid them), optional `occurredAt`."
+          },
+          "response": []
+        },
+        {
+          "name": "Match to Splitwise (save plan)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"entries\": [\n    {\n      \"account\": \"{{personId}}\",\n      \"amount\": 180000\n    }\n  ]\n}" },
+            "url": { "raw": "{{BASE_URL}}/trips/{{tripId}}/plan", "host": ["{{BASE_URL}}"], "path": ["trips", "{{tripId}}", "plan"] },
+            "description": "Sets what each person is expected to pay, per person and signed: positive = they pay you, negative = you pay them. Anyone left out pays nothing. The server validates the plan against the ledger (`400` with the reason if it does not fit). Response message: `Matched to Splitwise`."
+          },
+          "response": []
+        },
+        {
+          "name": "Clear plan",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/trips/{{tripId}}/plan", "host": ["{{BASE_URL}}"], "path": ["trips", "{{tripId}}", "plan"] },
+            "description": "Goes back to the exact amounts from the expenses. Response message: `Back to the exact amounts`."
+          },
+          "response": []
+        },
+        {
+          "name": "Close trip",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"letGo\": []\n}" },
+            "url": { "raw": "{{BASE_URL}}/trips/{{tripId}}/close", "host": ["{{BASE_URL}}"], "path": ["trips", "{{tripId}}", "close"] },
+            "description": "Closes the trip; always allowed. Optional body `letGo`: person ids whose leftover balance is written off rather than kept (default none). Kept balances stay on each person's account to be settled later."
+          },
+          "response": []
+        },
+        {
+          "name": "Reopen trip",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{BASE_URL}}/trips/{{tripId}}/reopen", "host": ["{{BASE_URL}}"], "path": ["trips", "{{tripId}}", "reopen"] },
+            "description": "Reopens a closed trip for changes. No body."
+          },
+          "response": []
+        },
+        {
+          "name": "Import preview (step 1: who is who)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"csv\": \"Date,Description,Category,Cost,Currency,Sagnik,Priya\\n2026-12-21,Beach shack lunch,Dining out,3600.00,INR,1800.00,-1800.00\\n\"\n}"
+            },
+            "url": { "raw": "{{BASE_URL}}/trips/{{tripId}}/import/preview", "host": ["{{BASE_URL}}"], "path": ["trips", "{{tripId}}", "import", "preview"] },
+            "description": "Splitwise group export as CSV text. With **no `mapping`**, answers `{ needsMapping: true, people, suggested }`: the names found in the file and a best guess at who each is. `csv` is 1 byte to 2 MB.\n\nExpected columns: `Date,Description,Category,Cost,Currency,<Person A>,<Person B>,…`. Rows each person's effect on their balance; `Payment` rows are settle-ups; the last row is `Total balance`."
+          },
+          "response": []
+        },
+        {
+          "name": "Import preview (step 2: review rows)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"csv\": \"Date,Description,Category,Cost,Currency,Sagnik,Priya\\n2026-12-21,Beach shack lunch,Dining out,3600.00,INR,1800.00,-1800.00\\n\",\n  \"mapping\": {\n    \"Sagnik\": \"me\",\n    \"Priya\": \"{{personId}}\"\n  }\n}"
+            },
+            "url": { "raw": "{{BASE_URL}}/trips/{{tripId}}/import/preview", "host": ["{{BASE_URL}}"], "path": ["trips", "{{tripId}}", "import", "preview"] },
+            "description": "Same CSV with a `mapping` from each name in the file to `\"me\"`, one of your person-account ids, or `\"new\"` (create them). Exactly one name must map to `me` (`400` otherwise). Answers the review rows, each with a `key`, a `status` and your share, plus `myShare`, `balance` and whether it `matchesFile`. A closed trip is `400`."
+          },
+          "response": []
+        },
+        {
+          "name": "Import commit",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"csv\": \"Date,Description,Category,Cost,Currency,Sagnik,Priya\\n2026-12-21,Beach shack lunch,Dining out,3600.00,INR,1800.00,-1800.00\\n\",\n  \"mapping\": {\n    \"Sagnik\": \"me\",\n    \"Priya\": \"{{personId}}\"\n  },\n  \"decisions\": [\n    {\n      \"key\": \"<key from the preview row>\",\n      \"action\": \"import\",\n      \"category\": \"{{categoryId}}\",\n      \"title\": \"Beach shack lunch\",\n      \"account\": \"{{accountId}}\"\n    }\n  ]\n}"
+            },
+            "url": { "raw": "{{BASE_URL}}/trips/{{tripId}}/import/commit", "host": ["{{BASE_URL}}"], "path": ["trips", "{{tripId}}", "import", "commit"] },
+            "description": "Commits the reviewed rows. Strict body: the same `csv` and `mapping`, plus `decisions` (up to 1000), one per row to act on:\n- `key`: the row's `key` from the preview.\n- `action`: `import` | `skip` | `apply` (apply a split to an expense you already logged).\n- optional `category`, `title` (max 80), `account` (which of your accounts paid, for a row you paid), and `parts` (split one row into up to 20 parts, each `{ title, category, cost }`).\n\nRe-importing the same file adds only rows not already in, by fingerprint."
+          },
+          "response": []
         }
       ]
     }
