@@ -2,7 +2,8 @@ import mongoose from "mongoose";
 import Account from "../models/Account";
 import Transaction from "../models/Transaction";
 import { monthRange } from "../utils/monthRange";
-import type { InvestmentsPayload, InvestmentHolding } from "@save-n-spend/types";
+import type { InvestmentsPayload, InvestmentHolding, PortfolioTrend } from "@save-n-spend/types";
+import { portfolioTrend, type HoldingRecords } from "./investmentHistoryMath";
 import { annualReturnOf, holdingFlows, type Flow } from "./investmentMath";
 
 // Everything the Investments hub needs, in one place. An investment is an account of type
@@ -146,4 +147,45 @@ export const getInvestmentHistory = async (userId: string, accountId: string) =>
         .sort({ occurredAt: -1 })
         .limit(200)
         .lean();
+};
+
+// Month-end history of every holding, worked out on read from the transfers and value updates
+// already stored — nothing is saved for it.
+export const getInvestmentTrend = async (userId: string, zone: string): Promise<PortfolioTrend> => {
+    const oid = new mongoose.Types.ObjectId(userId);
+    const accounts = await Account.find({ userId: oid, type: "investment", isArchived: false })
+        .sort({ order: 1, createdAt: 1 })
+        .lean();
+    if (accounts.length === 0) return { points: [], growth: [], holdings: [] };
+
+    const ids = accounts.map((a) => a._id);
+    const txns = await Transaction.find({
+        userId: oid,
+        $or: [
+            { type: "transfer", $or: [{ toAccount: { $in: ids } }, { account: { $in: ids } }] },
+            { type: { $in: ["positiveAdjustment", "negativeAdjustment"] }, account: { $in: ids } },
+        ],
+    }).select("type amount account toAccount occurredAt").lean();
+
+    const records = new Map<string, HoldingRecords>(accounts.map((a) => [String(a._id), {
+        id: String(a._id),
+        name: a.name,
+        icon: a.icon,
+        color: a.color,
+        startingBalance: a.startingBalance,
+        balance: a.balance,
+        createdAt: new Date((a as unknown as { createdAt: Date }).createdAt),
+        flows: [],
+        updates: [],
+    }]));
+    for (const t of txns) {
+        const at = new Date(t.occurredAt);
+        if (t.type === "transfer") {
+            records.get(String(t.toAccount))?.flows.push({ at, amount: t.amount });
+            records.get(String(t.account))?.flows.push({ at, amount: -t.amount });
+        } else {
+            records.get(String(t.account))?.updates.push({ at, amount: t.type === "positiveAdjustment" ? t.amount : -t.amount });
+        }
+    }
+    return portfolioTrend([...records.values()], zone, new Date());
 };

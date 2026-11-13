@@ -802,3 +802,67 @@ export interface ReviewPayload {
   /** Null when the user has no investment accounts at all. */
   investments: ReviewInvestments | null
 }
+
+// GET /investments/trend — month-end history derived from records the app already keeps.
+export type MonthPoint = {
+    /** `YYYY-MM` in the user's zone. */
+    month: string;
+    label: string;
+    value: number;
+    invested: number;
+    /** Someone told the app the value this month (the first month counts: the value typed when
+     *  adding it). False means the gain is carried forward. */
+    upd: boolean;
+    /** Money added net of money taken out this month. */
+    contrib: number;
+    /** The current month, up to now — not a finished month. */
+    partial?: boolean;
+};
+
+export type GrowthPoint = {
+    month: string;
+    label: string;
+    /** Change in gain since the previous month. Null for the first month: the opening gain is
+     *  not growth, it is where the history starts. */
+    growth: number | null;
+    /** Growth over the money working that month (last month's value plus what was added). */
+    pct: number | null;
+    upd: boolean;
+    /** For an updated month: how many months the change covers (1 = no gap). 0 otherwise. */
+    cover: number;
+    opening?: boolean;
+};
+
+export type UpdateEntry = { at: string; value: number; change: number };
+
+export type HoldingTrend = {
+    id: string;
+    name: string;
+    icon?: string;
+    color?: string;
+    startedAt: string;
+    lastUpdatedAt: string | null;
+    /** Whole months since the value was last given (0 = this month; the day it was added counts). */
+    monthsSinceUpdate: number;
+    points: MonthPoint[];
+    growth: GrowthPoint[];
+    /** Newest first. */
+    updates: UpdateEntry[];
+};
+
+export type PortfolioPoint = MonthPoint & {
+    /** How many of the holdings that existed had their value given this month. */
+    updated: number;
+    existing: number;
+    parts: { id: string; value: number }[];
+};
+
+export type PortfolioGrowth = GrowthPoint & {
+    parts: { id: string; growth: number; upd: boolean; cover: number }[];
+};
+
+export type PortfolioTrend = {
+    points: PortfolioPoint[];
+    growth: PortfolioGrowth[];
+    holdings: HoldingTrend[];
+};
