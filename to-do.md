@@ -12,7 +12,7 @@
 - [X] Keyboard auto opens when creating new category
 - [X] Update Add Goals Screen with designed Screen
 - [X] Catgory Modal auto opens sometimes when other modals are opened
-- [X] Manual account balance sync — `PATCH /accounts/:id/balance` takes the figure the bank shows and records the difference as an adjustment, so the stored balance stays the sum of its history (see docs/architecture.md § The stored balance)
+- [X] Manual account balance sync — `PATCH /accounts/:id/balance` takes the figure the bank shows and records the difference as an adjustment, so the stored balance stays the sum of its history (see docs/architecture.md § The account balance invariant)
 - [X] Add App Icon — piggy bank with a rupee coin; sources are `apps/mobile/assets/icon.svg` and `glyph.svg`, rendered by `npm run icons` (see docs/SHIPPING.md §8)
 - [X] Escape and length-cap the Activity search term — it goes straight into `$regex` (transactionController.ts:89, transactionSchema.ts:42), so `(` 500s and `(a+)+b` backtracks on the database
 - [X] Highlights, per docs/insights-engine.md — deterministic rules, no model; its own screen behind the More-tab hero rather than on the Insights tab, so insights stayed untouched
@@ -45,7 +45,7 @@
 - [X] Transfers read as transfers — "Transfer", "From → To", an unsigned teal amount, and a detail sheet naming both accounts, instead of a blank title over "Uncategorised" with a red minus
 - [X] Need to fix empty/no transactions as screen is completely generic. For example no transactions for a days insight shouldn't show a weeks spending. Thus work on blank screens correctly.
 - [X] Now daily notifications are rightly being fired but others like bills due notification and weekly notifcations are not being fired to the mobile (its seen within the bell icon)
-- [ ] Need a filter for accounts as well on all activity page.
+- [X] Need a filter for accounts as well on all activity page — multi-select accounts and sub-categories in the Activity filter sheet; a transfer matches on either leg
 - [X] The account picker didn't scroll — past a screenful the rows ran off the sheet. It scrolls now, under Accounts / Investments / People headings, with people that still owe or are owed first and a search box past 8 rows
 - [X] Manage accounts got buried under trip people — grouped by kind, each with a count and total, and settled people folded behind "Show N settled". People read as "Owes you" / "You owe" instead of a signed balance. Reordering is per section but still sends the whole list (`lib/accountOrder.ts`, 6 tests)
 - [X] Splitwise's "simplify debts" re-routes who pays whom, so the exact per-person balances (correct to the paisa, and adding up to the same total) no longer matched what each person will actually pay — on Udupi, Bipasha showed ₹6,465.43 where Splitwise says ₹9,545.86, and three people showed owing ₹10,656.23 that they pay someone else. "Match Splitwise" on a trip: type what Splitwise says each person pays you (the amounts must add up to what you're owed overall; anyone left out is ₹0). Stored as paired balance adjustments between person accounts, keyed per trip so saving again replaces them — your bank and net worth never move. People who end at ₹0 are greyed out as "routed through others". Offered straight after an import when it could matter (the file's own "Total balance" line disagrees with someone's exact balance) and always from the People header, so existing trips like Udupi can be matched in place. "Back to exact amounts" undoes it; adding or changing expenses flags it stale. No dependency on Splitwise — Splitwise's API does expose `simplified_debts`, kept as an optional later prefill. Old data untouched: every new field is optional
@@ -77,9 +77,6 @@ native work, and phases 0-2 need no Swift at all.
 - [X] On cash flow page, SIP and Income is shown with same colour.
 - [X] Every icon on investments tab is shown with the same icon.
 - [X] Investment accounts should not show up in transactions page — left out of every "paid from" picker (Add Transaction, Mark paid, the default account), and person accounts too wherever the money has to be real
-
-
-So now i need you to give me the feasiblity how it would look and the complete desingn plan. once thats done we can then decide on the screens on how it would look and all. 
 
 
 Decided against: **widgets**. Data widgets need App Groups or Keychain sharing,
@@ -129,6 +126,19 @@ every expense as your own share, dated, with who owes whom.
 - [X] Local reminders use bill wording for SIP bills — same copy as the reminder job
 - [X] Found while checking the fixes: a trip with nobody else read "1 people" (now "just you"); the name error stayed up after typing a name; the Activity trip tag squeezed "Goa" to "G…"; a single settle-up day read "Settle-ups"
 
+## 2.1 to 2.5 — shipped, and after
+
+Versions are the app's own (`apps/mobile/app.json`, now 2.5.0); the last group is newer than 2.5.0 and not yet bumped.
+
+- [X] 2.1.0 — Recurring payments: detected from history and offered as bills or SIPs (`recurringService`); a "new recurring payments" highlight and reminder; a cash-flow calendar that projects balances through the end of next month, with SIPs in their own colour
+- [X] 2.2.0 — Investments hold their own invested and current value and a start date, show yearly returns, and can be deleted whole (undo or keep the money moves). A recurring bill can fund a holding (SIP) and counts as invested, not spent
+- [X] Diagnostics — every API request gets a reference (`Ref 7K2QXB`) shown in error messages and kept for a week; the app reports its own crashes; a hidden Diagnostics screen with a request log and a crash-screen test; crashes are caught per screen so navigation keeps its history
+- [X] 2.3.0 — Trip mode (below), and Safe to spend counting only budgeted, non-SIP bills
+- [X] 2.4.0 — Activity split into Everyday and Trips views (`trips=exclude` / `trips=only` on the list and summary), with Quick Log and the review's headline biggest expense skipping trip rows
+- [X] 2.5.0 — Match Splitwise's simplified debts on a trip; Activity drops its Trips view altogether (the summary names the trip spend it leaves out, a search that matches a trip says so); a dev API that binds to loopback unless `HOST` says otherwise
+- [X] Investments history — month-end value, invested and growth worked out from records already kept, nothing stored (`GET /investments/trend`); an Overview | Trends switch with scope pills, a value chart and a profit/loss chart you can scrub (see docs/architecture.md § Investments)
+- [X] Exports — one shared PDF shell (`lib/pdfShell.ts`); Insights exported through the same sheet as Activity; an Investments statement as a PDF with chosen sections, or its ledger as a CSV (`GET /investments/report`); exports refuse to run offline and print exact, unmasked amounts (see docs/architecture.md § Exports)
+
 ## 2.x — Warranties and returns
 
 Money lost to a missed return window or a lapsed warranty is real and invisible. One date on
@@ -149,3 +159,35 @@ carry at least one. Build later.
 - [ ] Prepayment calculator — "prepay ₹50,000 now and save ₹1.3L of interest, finishing 14 months early", with reduce-EMI vs reduce-tenure side by side
 - [ ] Credit cards: statement date, due date, amount due, and a nudge before interest would be charged; card EMIs as loans
 - [ ] Debt in the rest of the app: net worth net of outstanding loans, the health score's debt pillar, and a debt-free date on the loans screen
+
+## Consistency audit
+
+Found by scanning the code, and open. The cross-referenced detail is in docs/architecture.md § Known issues and § Where trip rows are counted.
+
+### API
+
+- [ ] Validation errors from `zod/v4` schemas return 500 instead of 400. `errorHandler` tests `instanceof ZodError` from `zod` (v3); the backup, dashboard, notification and transaction schemas import `zod/v4`, whose errors are a different class. A bad transaction body, for one, answers "Something went wrong" and the real message is only in the log
+- [ ] Home and Activity disagree on "spent this month" when there are trips. Home reads `/dashboard/summary`, which counts trip rows; Activity's summary leaves them out of `expenses`
+- [ ] Review's biggest expense differs between the headline (leaves trip rows out) and the timeline moment (counts them)
+- [ ] The category share-of-spend denominator includes trips: `GET /insights/category/:id` takes trips out of the category total but divides by every expense
+- [ ] Net-worth history includes archived accounts: it walks back from the non-archived total using every transaction, including those on archived accounts
+- [ ] Transaction create and update don't validate the category (exists, belongs to the user, matches the kind), unlike trip expenses
+- [ ] Activity export excludes trip rows, matching the screen, but the ledger won't reconcile to account balances. Product decision pending: keep, or add a trips section or an include-trips option
+- [ ] The Activity export also leaves out balance adjustments (the default listing hides them) although a comment in `transactionController.filterTransactions` says exports carry them. Decide which is meant, then fix the code or the comment
+
+### Mobile
+
+- [ ] The Review screen is missing `usePrivacyMask`, so amounts show with privacy mode on
+- [ ] Local notifications leak amounts when privacy mode is on: the stale-owed nudge, goal milestone, and probably the bill reminder and goal deadline (`lib/localNotifications.ts` formats with `formatMoneyExact`)
+- [ ] Several dates are printed without the account's time zone: `GoalWatchSlide`, `SafeToSpendCard`, `TrendsView`'s lastUpdated, the investment detail's investedSince, trip-wrapup and trip-detail. `lib/greeting.ts` uses the device clock
+- [ ] No offline guard on most writes
+- [ ] The offline cache fallback covers a failed request but not a 5xx
+- [ ] The offline banner shows when the app was last online, not how old the data on screen is
+- [ ] The export sheets refuse offline, but the export functions don't: a request that fails mid-export can still be answered from the cache
+- [ ] Home swallows widget errors instead of showing them
+- [ ] Pull-to-refresh is on 6 screens only
+- [ ] About 14 screens hand-build their headers instead of using the shared one
+- [ ] Caps, Stat, Legend and Pill components are duplicated across screens
+- [ ] Charts have no accessibility labels
+- [ ] Roughly 60% of touchables have no accessibility label (an estimate; count before fixing)
+- [ ] Tooltip clearing is missing on the category-insights screen
