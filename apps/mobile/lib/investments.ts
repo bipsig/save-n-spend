@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { InvestedHow, InvestmentsPayload, ITransaction } from "@save-n-spend/types";
+import type { InvestedHow, InvestmentsPayload, ITransaction, PortfolioTrend } from "@save-n-spend/types";
 import { del, get, patch, post } from "@/lib/api";
 import { useAccountStore } from "@/store/accounts";
 import { useSession } from "@/store/session";
@@ -100,3 +100,44 @@ export const holdingLook = (holding?: { icon?: string; color?: string } | null):
   icon: (holding?.icon ?? "investments") as IconName,
   tint: chipTintFor(holding?.color),
 });
+
+/** Month-end history of every holding, derived on the server from records already kept. */
+export const useInvestmentTrend = (enabled = true) => {
+  const status = useSession((s) => s.status);
+  const [data, setData] = useState<PortfolioTrend | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const refetch = useCallback(async () => {
+    if (useSession.getState().status !== "authed") return;
+    setError(null);
+    try {
+      setData(await get<PortfolioTrend>("/investments/trend"));
+    }
+    catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (enabled && status === "authed") void refetch();
+  }, [enabled, status, refetch]);
+
+  return { data, error, refetch };
+};
+
+/** Compact money for a chart label: ₹1.2L, ₹3.4Cr, ₹850. Sign kept when `signed`. */
+export const compactMoney = (paise: number, signed = false): string => {
+  const rupees = Math.abs(paise) / 100;
+  const body = rupees >= 1e7 ? `${(rupees / 1e7).toFixed(1)}Cr`
+    : rupees >= 1e5 ? `${(rupees / 1e5).toFixed(1)}L`
+    : rupees >= 1e3 ? `${(rupees / 1e3).toFixed(1)}k`
+    : `${Math.round(rupees)}`;
+  const sign = paise < 0 ? "−" : signed && paise > 0 ? "+" : "";
+  return `${sign}₹${body.replace(".0", "")}`;
+};
+
+/** "Updated this month" / "Not updated for 2 months". */
+export const freshness = (monthsSinceUpdate: number): { text: string; stale: boolean } =>
+  monthsSinceUpdate <= 0
+    ? { text: "Updated this month", stale: false }
+    : { text: `Not updated for ${monthsSinceUpdate} month${monthsSinceUpdate === 1 ? "" : "s"}`, stale: true };

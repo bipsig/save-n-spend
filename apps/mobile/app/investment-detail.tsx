@@ -23,7 +23,9 @@ import { useAccountStore } from "@/store/accounts";
 import { get } from "@/lib/api";
 import { formatTxnDate } from "@/lib/date";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
-import { formatAnnual, returnPct, useInvestments } from "@/lib/investments";
+import { formatAnnual, returnPct, useInvestments, useInvestmentTrend } from "@/lib/investments";
+import OverviewTrendsTabs, { type InvestTab } from "@/components/investments/OverviewTrendsTabs";
+import TrendsView from "@/components/investments/TrendsView";
 import type { IconName } from "@/lib/icons";
 import { colors, spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
@@ -60,6 +62,8 @@ const InvestmentDetailScreen = () => {
   // The server's figures for this holding — the yearly return is worked out there.
   const { data: portfolio, refetch: refetchPortfolio } = useInvestments();
   const holding = portfolio?.holdings.find((h) => h.accountId === id) ?? null;
+  const { data: trendData, refetch: refetchTrend } = useInvestmentTrend();
+  const [tab, setTab] = useState<InvestTab>("overview");
 
   // Arriving from the hub's "add when it started" nudge opens the editor straight away.
   const [autoEdited, setAutoEdited] = useState(false);
@@ -84,11 +88,12 @@ const InvestmentDetailScreen = () => {
     }
   }, [id]);
 
-  useFocusEffect(useCallback(() => { void load(); void refetchPortfolio(); }, [load, refetchPortfolio]));
+  useFocusEffect(useCallback(() => { void load(); void refetchPortfolio(); void refetchTrend(); }, [load, refetchPortfolio, refetchTrend]));
 
   const afterChange = () => {
     void load();
     void refetchPortfolio();
+    void refetchTrend();
     void useAccountStore.getState().load();
   };
 
@@ -167,6 +172,11 @@ const InvestmentDetailScreen = () => {
 
   return (
     <ScreenScaffold header={header}>
+      {trendData && trendData.points.length > 0 && <OverviewTrendsTabs tab={tab} onChange={setTab} />}
+      {tab === "trends" && trendData && trendData.points.length > 0 ? (
+        <TrendsView trend={trendData} initialScope={id} locked />
+      ) : (
+        <>
       <Card style={styles.card}>
         <AppText size="xs" weight="semibold" color="inkDim" style={styles.caps}>
           {account.investmentKind ?? "Investment"}
@@ -243,6 +253,8 @@ const InvestmentDetailScreen = () => {
       {error && <AppText size="sm" color="danger">{error}</AppText>}
 
       <Button label="Delete investment" variant="ghost" icon="delete" onPress={() => deleteRef.current?.present()} />
+        </>
+      )}
 
       <RevalueSheet
         ref={revalueRef}

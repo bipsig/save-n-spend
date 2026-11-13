@@ -16,7 +16,9 @@ import ErrorState from "@/components/states/ErrorState";
 import SkeletonState from "@/components/states/SkeletonState";
 import EditAccountSheet from "@/components/sheets/EditAccountSheet";
 import RevalueSheet from "@/components/sheets/RevalueSheet";
-import { useInvestments, returnPct, formatAnnual, holdingLook } from "@/lib/investments";
+import OverviewTrendsTabs, { type InvestTab } from "@/components/investments/OverviewTrendsTabs";
+import TrendsView from "@/components/investments/TrendsView";
+import { useInvestments, useInvestmentTrend, returnPct, formatAnnual, holdingLook } from "@/lib/investments";
 import { useAccounts } from "@/lib/accounts";
 import { useBills } from "@/lib/bills";
 import { formatDueLabel } from "@/lib/date";
@@ -73,6 +75,8 @@ const InvestmentsScreen = () => {
   const router = useRouter();
   const { revalue } = useLocalSearchParams<{ revalue?: string }>();
   const { data, loading, error, refetch } = useInvestments();
+  const { data: trend, refetch: refetchTrend } = useInvestmentTrend();
+  const [tab, setTab] = useState<InvestTab>("overview");
   const investmentAccounts = useAccounts().filter((a) => a.type === "investment");
   const { items: bills, refetch: refetchBills } = useBills();
   const sipBills = bills.filter((b) => b.toInvestment);
@@ -80,7 +84,7 @@ const InvestmentsScreen = () => {
   const newRef = useRef<BottomSheetModal>(null);
   const revalueRef = useRef<BottomSheetModal>(null);
 
-  useFocusEffect(useCallback(() => { void refetch(); void refetchBills(); }, [refetch, refetchBills]));
+  useFocusEffect(useCallback(() => { void refetch(); void refetchTrend(); void refetchBills(); }, [refetch, refetchTrend, refetchBills]));
 
   // Arriving from the monthly reminder ("your investment values are due") opens the
   // revalue sheet straight away. Guarded so it only fires once per arrival.
@@ -94,6 +98,7 @@ const InvestmentsScreen = () => {
 
   const afterChange = () => {
     void refetch();
+    void refetchTrend();
     void useAccountStore.getState().load();
   };
 
@@ -158,7 +163,13 @@ const InvestmentsScreen = () => {
         />
       )}
 
-      {!error && data && holdings.length > 0 && (
+      {!error && data && holdings.length > 0 && trend && trend.points.length > 0 && <OverviewTrendsTabs tab={tab} onChange={setTab} />}
+
+      {!error && data && holdings.length > 0 && tab === "trends" && trend && trend.points.length > 0 && (
+        <TrendsView trend={trend} />
+      )}
+
+      {!error && data && holdings.length > 0 && tab === "overview" && (
         <>
           <Card style={styles.card}>
             <AppText size="xs" weight="semibold" color="inkDim" style={styles.caps}>TOTAL VALUE</AppText>
