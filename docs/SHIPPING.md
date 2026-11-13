@@ -97,8 +97,8 @@ commit titled `chore(mobile): bump version to X.Y.Z`:
 
 | Field | Now | Used by |
 |---|---|---|
-| `expo.version` | `2.5.0` | The `.ipa` filename (`build-ipa.sh` reads it with `node -p`), the app's own `X-App-Version` header and error reports (`Constants.expoConfig.version`, in `lib/errorReporting.ts`), and the iOS marketing version. |
-| `expo.ios.buildNumber` | `19` | The iOS `CFBundleVersion`. The script does not read it; it is bumped by hand, by one per release. |
+| `expo.version` | `2.6.0` | The `.ipa` filename (`build-ipa.sh` reads it with `node -p`), the app's own `X-App-Version` header and error reports (`Constants.expoConfig.version`, in `lib/errorReporting.ts`), and the iOS marketing version. |
+| `expo.ios.buildNumber` | `20` | The iOS `CFBundleVersion`. The script does not read it; it is bumped by hand, by one per release. |
 
 `eas.json` is not part of this flow: the sideload route never uses EAS builds, and its
 `appVersionSource: "remote"` and `autoIncrement` apply only to a cloud `production` build.
