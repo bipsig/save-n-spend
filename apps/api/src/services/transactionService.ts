@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { ITransaction } from "../models/Transaction";
 import Account from "../models/Account";
+import { AppError } from "../utils/AppError";
 
 type Effect = {
     account: mongoose.Types.ObjectId,
@@ -38,10 +39,16 @@ export const applyEffects = async (
     
     const effects = getEffectOf(transaction);
     for (const { account, delta } of effects) {
-        await Account.updateOne(
-            { _id: account },
+        const { matchedCount } = await Account.updateOne(
+            { _id: account, userId: transaction.userId },
             { $inc: { balance: direction*delta }},
             { session }
         );
+        if (matchedCount === 1) continue;
+        // Taking a row off an account that no longer exists has no balance to undo, so it
+        // stays allowed (older data holds such rows). Anything else — a new effect on a
+        // missing account, or any effect on another user's — rolls the whole write back.
+        if (action === "revert" && !(await Account.exists({ _id: account }).session(session))) continue;
+        throw AppError.notFound("Account not found");
     }
 }

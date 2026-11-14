@@ -125,7 +125,9 @@ export const deleteInvestment = async (req: Request, res: Response): Promise<voi
                         category: null,
                         note: `${contribution ? "Moved into" : "Redeemed from"} ${account.name} (deleted)`,
                     });
-                    await applyEffects(t, "add", session);
+                    // The other side may already be gone (older data); its row is kept as before,
+                    // with nothing to re-post.
+                    if (await Account.exists({ _id: other, userId }).session(session)) await applyEffects(t, "add", session);
                     await t.save({ session });
                     continue;
                 }

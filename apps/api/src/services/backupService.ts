@@ -9,6 +9,8 @@ import Goal from "../models/Goal";
 import Trip from "../models/Trip";
 import TripExpense from "../models/TripExpense";
 import { BackupPayload } from "../schemas/backupSchema";
+import { AppError } from "../utils/AppError";
+import { unresolvedReferences, type Reference, type Target } from "./backupReferences";
 
 const BACKUP_VERSION = 1;
 
@@ -55,6 +57,23 @@ export const exportAccountData = async (userId: string) => {
 
 type Collection = [string, Model<any>, Record<string, unknown>[]];
 
+const REFERENCED: Record<Target, Model<any>> = { accounts: Account, categories: Category, trips: Trip, tripExpenses: TripExpense };
+const OBJECT_ID = /^[a-f0-9]{24}$/i;
+
+// A reference that names nothing anywhere is left alone (older data has such rows, and they
+// restore exactly as before); one that names another user's document is refused.
+const firstForeignReference = async (uid: mongoose.Types.ObjectId, payload: BackupPayload, session: ClientSession): Promise<Reference | null> => {
+    const refs = unresolvedReferences(payload);
+    const foreign = new Set<string>();
+    for (const [target, DocModel] of Object.entries(REFERENCED) as [Target, Model<any>][]) {
+        const ids = [...new Set(refs.filter((r) => r.target === target).map((r) => r.id.toLowerCase()))].filter((id) => OBJECT_ID.test(id));
+        if (ids.length === 0) continue;
+        const hits = await DocModel.find({ _id: { $in: ids }, userId: { $ne: uid } }).select("_id").session(session).lean();
+        for (const hit of hits) foreign.add(`${target}:${String(hit._id)}`);
+    }
+    return refs.find((r) => foreign.has(`${r.target}:${r.id.toLowerCase()}`)) ?? null;
+};
+
 // Wipes every one of THIS user's own documents across the collections and replaces
 // them with the backup's — never merges. Every document keeps its original `_id` (so
 // every cross-reference inside the backup, e.g. Transaction.account or Budget.category,
@@ -71,6 +90,11 @@ export const restoreAccountData = async (
     session: ClientSession
 ): Promise<Record<string, number>> => {
     const uid = new mongoose.Types.ObjectId(userId);
+
+    const foreign = await firstForeignReference(uid, payload, session);
+    if (foreign) {
+        throw AppError.badRequest(`This backup refers to data that isn't yours (${foreign.collection}.${foreign.field} ${foreign.id})`);
+    }
 
     await Promise.all([
         Account.deleteMany({ userId: uid }, { session }),

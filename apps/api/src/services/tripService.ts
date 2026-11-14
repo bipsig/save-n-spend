@@ -6,6 +6,7 @@ import Trip, { type ITrip } from "../models/Trip";
 import TripExpense, { type ITripExpense } from "../models/TripExpense";
 import { AppError } from "../utils/AppError";
 import { applyEffects } from "./transactionService";
+import { requireOwnedAccounts } from "./ownership";
 import { dayKeyInZone } from "../utils/timezone";
 import {
     expensesSignature, isReroute, memberBalances, myShareOf, planLedger, planLetGo, planReroute, planSettlement,
@@ -233,7 +234,7 @@ export const settleUp = async (
     const trip = await loadTrip(userId, tripId);
     if (!trip.members.map(String).includes(body.person)) throw AppError.badRequest("They aren't on this trip");
     await requireOwnAccount(userId, body.account);
-    const person = await Account.findById(body.person).select("name").lean();
+    const person = (await requireOwnedAccounts(userId, [body.person], { types: ["person"] })).get(body.person.toLowerCase());
     const note = body.direction === "received" ? `${person?.name ?? "They"} paid you back` : `You paid ${person?.name ?? "them"} back`;
     const row = { ...planSettlement(body.person, body.account, body.amount, body.direction, body.occurredAt ?? new Date(), note), ...(clientId ? { clientId } : {}) };
     await inTransaction((session) => writeRows(userId, trip._id as Oid, null, [row], session));
@@ -246,7 +247,7 @@ export const closeTrip = async (userId: string, tripId: string, letGo: string[])
     requireOpen(trip);
     const txns = await Transaction.find({ userId, tripId: trip._id }).select("type amount account toAccount").lean();
     const balances = memberBalances(txns.map((t) => ({ type: t.type, amount: t.amount, account: String(t.account), toAccount: t.toAccount ? String(t.toAccount) : null })), trip.members.map(String));
-    const people = await Account.find({ _id: { $in: letGo } }).select("name").lean();
+    const people = await Account.find({ _id: { $in: letGo }, userId }).select("name").lean();
     const nameOf = new Map(people.map((p) => [String(p._id), p.name]));
     await inTransaction(async (session) => {
         const rows: LedgerRow[] = [];
@@ -410,7 +411,7 @@ export const getTripDetail = async (userId: string, tripId: string, zone: string
     const [txns, expenses, people] = await Promise.all([
         Transaction.find({ userId, tripId: trip._id }).lean() as unknown as Promise<LeanTxn[]>,
         TripExpense.find({ userId, tripId: trip._id }).sort({ occurredAt: -1 }).lean(),
-        Account.find({ _id: { $in: trip.members } }).select("name").lean(),
+        Account.find({ _id: { $in: trip.members }, userId }).select("name").lean(),
     ]);
     const { totals, balances } = totalsFor(trip, txns, expenses as unknown as ITripExpense[]);
     const nameOf = new Map(people.map((p) => [String(p._id), p.name]));

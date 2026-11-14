@@ -9,6 +9,7 @@ import { AppError } from "../utils/AppError";
 import { SplitwiseFormatError, categoryHint, classifyRow, netBalance, parseSplitwiseCsv, rowKey, type ClassifiedRow } from "./splitwiseCsv";
 import { addTripExpense, settleUp, updateTripExpense } from "./tripService";
 import { isReroute, memberBalances, simplifyMayMatter } from "./tripLedger";
+import { requireOwnedAccounts } from "./ownership";
 
 // Importing a Splitwise group export into a live trip. Two steps, nothing saved in the first:
 //
@@ -231,6 +232,8 @@ export const commitImport = async (
     const table = readFile(csv);
     const me = Object.entries(mapping).find(([, v]) => v === "me")?.[0];
     if (!me) throw AppError.badRequest("Pick which name is you");
+    // Before any write: everyone mapped to an existing account must be one of your live people.
+    await requireOwnedAccounts(userId, Object.values(mapping).filter((v) => v !== "me" && v !== "new"), { types: ["person"], live: true });
 
     // Names mapped to "new" become person accounts, and everyone mapped joins the trip.
     const resolved: Record<string, string | null> = {};

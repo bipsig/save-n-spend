@@ -486,7 +486,7 @@ export const bulkConvertToInvestment = async (req: Request, res: Response): Prom
         throw AppError.badRequest("Choose an investment account");
     }
 
-    const transactions = await Transaction.find({
+    const found = await Transaction.find({
         _id: { $in: transactionIds },
         userId: req.user?.userId,
         type: "expense",
@@ -494,6 +494,10 @@ export const bulkConvertToInvestment = async (req: Request, res: Response): Prom
         tripExpenseId: null,
         account: { $ne: investment._id },
     });
+    // A row whose account no longer exists (older data) is skipped too: there is no source
+    // balance to move it out of.
+    const live = new Set((await Account.find({ _id: { $in: found.map((t) => t.account) }, userId: req.user?.userId }).select("_id").lean()).map((a) => String(a._id)));
+    const transactions = found.filter((t) => live.has(String(t.account)));
 
     const session = await mongoose.startSession();
     try {
