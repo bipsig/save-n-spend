@@ -48,11 +48,18 @@ Pushed and modal routes, by area:
 | Detail | `investment-detail` (`?id=`), `trip-detail`, `trip-import`, `trip-wrapup`, `category-insights` |
 | Reviews and insight | `review` (a month or week), `assistant` (Highlights), `health` (score breakdown) |
 | Manage | `manage-accounts`, `manage-categories`, `notifications` |
-| Settings and support | `settings`, `help`, `privacy-policy`, `diagnostics` (unlocked in Settings by tapping Version seven times), `crash-test` (reached from Diagnostics) |
+| Settings and support | `settings`, `whats-new` (version history, from Settings › What's new), `whats-new/[version]` (one version's notes), `help`, `privacy-policy`, `diagnostics` (unlocked by tapping "You're on" in What's new seven times), `crash-test` (reached from Diagnostics) |
 
 `investments` also accepts `?revalue=1`, which opens the revalue sheet on arrival;
 `investment-detail` accepts `?edit=1` to open the editor. Both are how a
 notification or a nudge deep-links in (`routeFor` in `lib/notifications.ts`).
+
+Release-note links use three more params. `investments?tab=trends` opens the
+Trends tab, and `investments?export=1` opens the Investments export sheet.
+`insights?export=1` opens the Insights export sheet. Each one acts once its data
+has loaded, and only where the screen's own control would work: Trends needs
+some history, and an export needs something to export. The screen then clears
+the param with `router.setParams`, so coming back doesn't open it again.
 
 Every screen is wrapped in its own `ScreenErrorBoundary` through the Stack's
 `screenLayout` (the tabs have the same on the Tabs navigator), so a screen that

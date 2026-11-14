@@ -100,6 +100,19 @@ commit titled `chore(mobile): bump version to X.Y.Z`:
 | `expo.version` | `2.6.0` | The `.ipa` filename (`build-ipa.sh` reads it with `node -p`), the app's own `X-App-Version` header and error reports (`Constants.expoConfig.version`, in `lib/errorReporting.ts`), and the iOS marketing version. |
 | `expo.ios.buildNumber` | `20` | The iOS `CFBundleVersion`. The script does not read it; it is bumped by hand, by one per release. |
 
+A bump, in order:
+
+1. **Write the release notes.** Add the version to the top of `RELEASES` in
+   [`data/releaseNotes.ts`](../apps/mobile/data/releaseNotes.ts) with the same version, build
+   number and today's date. The app reads only that file. See
+   [Release notes](#release-notes).
+2. Set `expo.version` and `expo.ios.buildNumber` in `app.json`.
+3. Write the same two values into `ios/SavenSpend/Info.plist` (below).
+4. `npm test` in `apps/mobile`: it checks the notes (order, highlights, links, no amounts).
+5. Commit as `chore(mobile): bump version to X.Y.Z`.
+
+A version with no entry in `RELEASES` still runs; it just shows no sheet and no NEW tag.
+
 `eas.json` is not part of this flow: the sideload route never uses EAS builds, and its
 `appVersionSource: "remote"` and `autoIncrement` apply only to a cloud `production` build.
 
@@ -114,6 +127,27 @@ below) before `npm run ipa`.
 `build-ipa.sh` does not regenerate `ios/`, so a version bump in `app.json` does not reach `ios/SavenSpend/Info.plist` on its own. After bumping, write the same values into it (`CFBundleShortVersionString` and `CFBundleVersion`, for example with `/usr/libexec/PlistBuddy`) or run a fresh prebuild, then verify the built `.ipa` reports the new version.
 
 The API deploys to Render from the pushed branch. Render is configured in its dashboard (there is no `render.yaml`), so the trigger is not visible from the repo — confirm the deploy finished in the dashboard before installing a build that needs a new endpoint.
+
+### Release notes
+
+Settings › What's new lists every version, and the first open after an update shows a
+sheet with the new version's highlights. Both read `RELEASES` in
+[`data/releaseNotes.ts`](../apps/mobile/data/releaseNotes.ts), bundled with the app, newest
+first.
+
+- **Group by what the user sees:** `new`, `improved`, `fixed`. Order within a release is the
+  order shown.
+- **Split each note** into `title`, its first sentence with its full stop or colon, and
+  `detail`, the rest. The sheet and the timeline show only the title.
+- **No amounts.** No ₹ figures, examples or thresholds. A masked "₹ ••••" is fine.
+- **No times.** Name the period ("daily", "each month"), never the hour something runs.
+- **`highlight: true` on at most 3 notes.** Unmarked, a release shows its first three new notes.
+- **`link` only to a screen that exists today**, as an expo-router href (`/trips`,
+  `/bills?suggestions=1`). The test fails on a link with no file under `app/`.
+- **`quiet: true`** for a version that only changed things behind the scenes. It keeps its
+  timeline entry, with no highlights, no NEW tag and no sheet.
+- **Leave out what users can't notice**, such as server-side checks they could never reach
+  from the app.
 
 ### The Node version reaches further than the shell
 
@@ -291,6 +325,7 @@ dedupe key that belongs to the deployed instance.
   create one.
 - Bump `expo.version` **and** `expo.ios.buildNumber` in `app.json` for a release; the script reads
   only the version, for the `.ipa` filename. See [Version and build number](#version-and-build-number).
+- Write the version's release notes before the bump. See [Release notes](#release-notes).
 - Push before you build: the phone talks to the deployed API. See §3.
 
 ---
