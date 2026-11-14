@@ -97,8 +97,8 @@ commit titled `chore(mobile): bump version to X.Y.Z`:
 
 | Field | Now | Used by |
 |---|---|---|
-| `expo.version` | `2.6.0` | The `.ipa` filename (`build-ipa.sh` reads it with `node -p`), the app's own `X-App-Version` header and error reports (`Constants.expoConfig.version`, in `lib/errorReporting.ts`), and the iOS marketing version. |
-| `expo.ios.buildNumber` | `20` | The iOS `CFBundleVersion`. The script does not read it; it is bumped by hand, by one per release. |
+| `expo.version` | `2.7.0` | The `.ipa` filename (`build-ipa.sh` reads it with `node -p`), the app's own `X-App-Version` header and error reports (`Constants.expoConfig.version`, in `lib/errorReporting.ts`), and the iOS marketing version. |
+| `expo.ios.buildNumber` | `21` | The iOS `CFBundleVersion`. The script does not read it; it is bumped by hand, by one per release. |
 
 A bump, in order:
 
