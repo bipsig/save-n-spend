@@ -83,6 +83,12 @@ export const iconMap = {
   privacy: 'privacy-tip',
   policy: 'policy',
   info: 'info-outline',
+  sparkles: 'auto-awesome',
+  // Release-note glyphs with no closer existing key.
+  people: 'people',
+  touch: 'touch-app',
+  share: 'ios-share',
+  undo: 'undo',
   notificationsOn: 'notifications-active',
   alarm: 'alarm',
   flag: 'flag',

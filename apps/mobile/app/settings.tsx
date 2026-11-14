@@ -1,6 +1,5 @@
 import { useRef, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
-import Constants from "expo-constants";
+import { StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import BackButton from "@/components/shell/BackButton";
@@ -18,6 +17,7 @@ import TimeZoneSheet from "@/components/sheets/TimeZoneSheet";
 import { AppText } from "@/components/ui/AppText";
 import Avatar from "@/components/ui/Avatar";
 import PressableScale from "@/components/ui/PressableScale";
+import Tag from "@/components/whatsNew/Tag";
 import { useAccounts, useDefaultAccount } from "@/lib/accounts";
 import { exportBackup, pickBackupFile, restoreBackup, type PickedBackup } from "@/lib/backup";
 import { useCategories } from "@/lib/categories";
@@ -37,8 +37,8 @@ import { useCategoryStore } from "@/store/categories";
 import { useSession } from "@/store/session";
 import { AUTO_LOCK_DELAYS, autoLockLabel, useSettings, type AutoLockSeconds } from "@/store/settings";
 import { useOutbox } from "@/store/outbox";
+import { APP_VERSION, useWhatsNewState } from "@/store/whatsNew";
 import { toast } from "@/store/toast";
-import { haptics } from "@/lib/haptics";
 import { spacing } from "@/theme";
 import type { BillReminderLead } from "@save-n-spend/types";
 
@@ -183,29 +183,10 @@ const SettingsScreen = () => {
     router.replace("/(tabs)");
   };
 
-  const version = Constants.expoConfig?.version ?? "1.0.0";
-
-  // The hidden developer switch: seven taps on Version inside a couple of seconds of each
-  // other. From the fourth, a toast counts down so the gesture is discoverable once started.
+  // The NEW tag clears once this version's notes are seen: by opening What's new or
+  // dismissing the post-update sheet.
+  const { showNewTag } = useWhatsNewState(APP_VERSION);
   const diagnostics = useSettings((s) => s.diagnostics);
-  const taps = useRef({ count: 0, last: 0 });
-  const tapVersion = () => {
-    const now = Date.now();
-    taps.current.count = now - taps.current.last < 1500 ? taps.current.count + 1 : 1;
-    taps.current.last = now;
-    const left = 7 - taps.current.count;
-    if (left <= 0) {
-      taps.current.count = 0;
-      const next = !useSettings.getState().diagnostics;
-      useSettings.getState().update({ diagnostics: next });
-      haptics.success();
-      toast.info(next ? "Diagnostics on — it's at the bottom of Settings" : "Diagnostics off");
-    }
-    else if (left <= 3) {
-      haptics.tap();
-      toast.info(`${left} more tap${left === 1 ? "" : "s"}`);
-    }
-  };
 
   return (
     <ScreenScaffold
@@ -478,11 +459,15 @@ const SettingsScreen = () => {
           label="Privacy policy"
           onPress={() => router.push("/privacy-policy")}
         />
-        {/* A plain press target, not SettingsRow's onPress — that would add a chevron to a row
-            that states a fact. Seven quick taps switch the hidden Diagnostics screen on or off. */}
-        <Pressable onPress={tapVersion} accessibilityRole="text" accessibilityLabel={`Version ${version}`}>
-          <SettingsRow kind="value" icon="info" tint="blue" label="Version" value={version} />
-        </Pressable>
+        <SettingsRow
+          kind="value"
+          icon="sparkles"
+          tint="violet"
+          label="What's new"
+          value={APP_VERSION}
+          tag={showNewTag ? <Tag label="NEW" /> : undefined}
+          onPress={() => router.push("/whats-new")}
+        />
         {diagnostics && (
           <SettingsRow
             kind="nav"

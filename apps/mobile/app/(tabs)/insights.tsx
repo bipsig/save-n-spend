@@ -1,7 +1,7 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { TRIPS_SLICE_ID } from "@/lib/trips";
 import { Pressable, StyleSheet, View } from "react-native";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { InsightsPeriod } from "@save-n-spend/types";
 import ExportSheet from "@/components/sheets/ExportSheet";
@@ -171,6 +171,15 @@ const InsightsScreen = () => {
   useFocusEffect(useCallback(() => {
     refetch();
   }, [refetch]));
+
+  // A What's new link opens the export once the period has loaded; the param is cleared so
+  // coming back to this tab doesn't open it again.
+  const { export: exportParam } = useLocalSearchParams<{ export?: string }>();
+  useEffect(() => {
+    if (exportParam !== "1" || loading) return;
+    if (data && data.txnCount > 0) exportRef.current?.present();
+    router.setParams({ export: undefined });
+  }, [exportParam, loading, data, router]);
 
   const renderBody = () => {
     if (error) return <ErrorState message={error} onRetry={refetch} />;

@@ -19,7 +19,7 @@ import { useSettings } from "@/store/settings";
 import { toast } from "@/store/toast";
 import { colors, spacing } from "@/theme";
 
-// Settings → Diagnostics, switched on by tapping Version seven times. A developer's view of
+// Settings → Diagnostics, switched on by tapping "You're on" in What's new seven times. A developer's view of
 // what the app has been doing: today's summary, filters, then every call in plain words —
 // failures open up to show the error and the reference that finds it in the server log.
 //

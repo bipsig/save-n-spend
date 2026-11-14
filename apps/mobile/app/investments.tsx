@@ -74,7 +74,7 @@ const HoldingRow = ({ h, onPress }: { h: InvestmentHolding; onPress: () => void 
 const InvestmentsScreen = () => {
   usePrivacyMask();
   const router = useRouter();
-  const { revalue } = useLocalSearchParams<{ revalue?: string }>();
+  const { revalue, tab: tabParam, export: exportParam } = useLocalSearchParams<{ revalue?: string; tab?: string; export?: string }>();
   const { data, loading, error, refetch } = useInvestments();
   const { data: trend, refetch: refetchTrend } = useInvestmentTrend();
   const [tab, setTab] = useState<InvestTab>("overview");
@@ -97,6 +97,20 @@ const InvestmentsScreen = () => {
       revalueRef.current?.present();
     }
   }, [revalue, autoRevalued, investmentAccounts.length]);
+
+  // A What's new link can open Trends or the export. Each opens once, when there's
+  // something to show, and the param is cleared so coming back doesn't open it again.
+  useEffect(() => {
+    if (tabParam !== "trends" || !trend) return;
+    if (trend.points.length > 0) setTab("trends");
+    router.setParams({ tab: undefined });
+  }, [tabParam, trend, router]);
+
+  useEffect(() => {
+    if (exportParam !== "1" || !data) return;
+    if (data.holdings.length > 0) exportRef.current?.present();
+    router.setParams({ export: undefined });
+  }, [exportParam, data, router]);
 
   const afterChange = () => {
     void refetch();

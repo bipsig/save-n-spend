@@ -25,6 +25,8 @@ type Base = {
   locked?: boolean;
   /** Temporarily inapplicable — e.g. the four rows under a master switch that is off. */
   dimmed?: boolean;
+  /** A small tag just before the value, such as What's new's NEW. */
+  tag?: React.ReactNode;
 };
 
 // Four row shapes, and TypeScript narrows the props to exactly one of them: a
@@ -40,7 +42,7 @@ export type SettingsRowProps = Nav | Value | Toggleable | Danger;
 // Spec .srow — 34px gradient chip · 14/700 label (+ optional dim sub-line) ·
 // the kind-specific control on the right.
 const SettingsRow = (props: SettingsRowProps) => {
-  const { label, icon, tint = "blue", sub, first = false, locked = false, dimmed = false } = props;
+  const { label, icon, tint = "blue", sub, first = false, locked = false, dimmed = false, tag } = props;
 
   const danger = props.kind === "danger";
   // A locked row is never pressable; a dimmed one still is, because a master
@@ -81,6 +83,8 @@ const SettingsRow = (props: SettingsRowProps) => {
           </AppText>
         )}
       </View>
+
+      {tag}
 
       {props.kind === "toggle" && (
         <Toggle value={props.on} onValueChange={props.onToggle} disabled={locked} />

@@ -18,6 +18,7 @@ import PeekBar from "@/components/shell/PeekBar";
 import Toast from "@/components/shell/Toast";
 import KeyboardDoneBar from "@/components/ui/KeyboardDoneBar";
 import WakeGate from "@/components/shell/WakeGate";
+import WhatsNewHost from "@/components/whatsNew/WhatsNewHost";
 import { ping, useWake } from "@/store/wake";
 import * as offlineCache from "@/lib/offlineCache";
 import { useSession } from "@/store/session";
@@ -32,6 +33,7 @@ import { useOutbox } from "@/store/outbox";
 import { usePendingDeletes } from "@/store/pendingDeletes";
 import { useLastOpened } from "@/store/lastOpened";
 import { useRequestLog } from "@/store/requestLog";
+import { APP_VERSION, useWhatsNew } from "@/store/whatsNew";
 import { installGlobalErrorHandler, setCurrentScreen } from "@/lib/errorReporting";
 import CrashScreen from "@/components/shell/CrashScreen";
 import ScreenErrorBoundary from "@/components/shell/ScreenErrorBoundary";
@@ -58,6 +60,7 @@ const RootLayout = () => {
     void useSettings.getState().hydrate();
     void useConnectivity.getState().hydrate();
     void useRequestLog.getState().hydrate();
+    void useWhatsNew.getState().hydrate(APP_VERSION);
     installGlobalErrorHandler();
   }, []);
 
@@ -263,6 +266,8 @@ const RootLayout = () => {
                 </Stack>
               </WakeGate>
             </AppLockGate>
+            {/* Inside the sheet provider, since all it draws is a sheet. */}
+            <WhatsNewHost />
           </BottomSheetModalProvider>
           {/* Outside BottomSheetModalProvider on purpose: gorhom renders its portal host
               after that provider's children, so anything inside sits under an open sheet —
