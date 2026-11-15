@@ -24,7 +24,10 @@ export interface ITransaction extends Document {
     tripId?: mongoose.Types.ObjectId | null;
     /** On the transactions a trip expense generated — they're edited through the trip. */
     tripExpenseId?: mongoose.Types.ObjectId | null;
-    /** Set only by an offline-queued create; absent on every ordinary transaction. */
+    /** A key that makes a row once only, unique per user (partial index below). Add Transaction
+     *  sends one on every create, and a replay of it answers with the saved row. Trips use it
+     *  too: `sw:<trip>:<key>` on imported settle-ups, `plan:<trip>:<person>` on plan reroutes.
+     *  Absent on rows made any other way. */
     clientId?: string | null;
 };
 
@@ -53,10 +56,9 @@ TransactionSchema.index({ userId: 1, occurredAt: -1 });
 TransactionSchema.index({ userId: 1, splitGroupId: 1 }, { sparse: true });
 TransactionSchema.index({ userId: 1, tripId: 1 }, { sparse: true });
 TransactionSchema.index({ tripExpenseId: 1 }, { sparse: true });
-// Partial (not sparse): only index queued-offline creates, so the many ordinary
-// transactions with clientId:undefined are never indexed and can't collide on unique.
-// A duplicate replay throws E11000 inside the create's own session.withTransaction,
-// which errorHandler.ts already turns into a 409 the client reads as "already applied".
+// Partial (not sparse): only rows with a key are indexed, so the many ordinary transactions
+// with clientId:undefined can't collide on unique. A replay of a saved key throws E11000
+// inside the create's transaction; createTransaction answers it with the saved row (200).
 TransactionSchema.index(
     { userId: 1, clientId: 1 },
     { unique: true, partialFilterExpression: { clientId: { $type: 'string' } } }

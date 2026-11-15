@@ -1,11 +1,15 @@
 import { Request, Response } from "express"
-import mongoose from "mongoose";
+import type { Valid } from "../middleware/validate";
 import { AppError } from "../utils/AppError";
 import Account from "../models/Account";
 import Transaction from "../models/Transaction";
-import { applyEffects } from "../services/transactionService";
 import * as reply from "../utils/response";
-import { createAccountSchema, reorderSchema, syncAccountBalanceSchema, updateAccountSchema } from "../schemas/accountSchema";
+import { inTransaction } from "../utils/inTransaction";
+import { conflict, notFound } from "../utils/messages";
+import { toDTO, toDTOs } from "../utils/dto";
+import { accountIdRequest, createAccountRequest, reorderAccountsRequest, syncAccountBalanceRequest, updateAccountRequest } from "../schemas/accountSchema";
+
+const missing = () => AppError.notFound(notFound("account"));
 
 export const listAccounts = async (req: Request, res: Response): Promise<void> => {
     // createdAt breaks the ties every account starts on, keeping a list nobody has reordered
@@ -15,11 +19,11 @@ export const listAccounts = async (req: Request, res: Response): Promise<void> =
         isArchived: false
     }).sort({ order: 1, createdAt: 1 });
 
-    reply.ok(res, accounts, "Accounts fetched successfully");
+    reply.ok(res, toDTOs(accounts), "Accounts fetched");
 }
 
 export const createAccount = async (req: Request, res: Response): Promise<void> => {
-    const reqBody = createAccountSchema.parse(req.body);
+    const { body } = req.valid as Valid<typeof createAccountRequest>;
 
     // Lands last rather than at 0, which on a list the user has already ordered would put
     // their newest account at the top.
@@ -32,21 +36,21 @@ export const createAccount = async (req: Request, res: Response): Promise<void> 
     // made before it was tracked here. `startingBalance` stays the cost basis and `balance`
     // is today's value; the gap is that pre-tracking gain, not a movement this month, so
     // it's stored directly rather than as a value-update.
-    const investment = reqBody.type === "investment";
+    const investment = body.type === "investment";
     const savedAccount = await Account.create({
         userId: req.user?.userId,
-        name: reqBody.name,
-        type: reqBody.type,
-        balance: investment && reqBody.currentValue !== undefined ? reqBody.currentValue : reqBody.startingBalance,
-        startingBalance: reqBody.startingBalance,
-        icon: reqBody.icon ?? "wallet",
-        color: reqBody.color ?? "success",
-        investmentKind: reqBody.investmentKind,
-        ...(investment ? { investedSince: reqBody.investedSince ?? null, investedHow: reqBody.investedHow ?? null } : {}),
+        name: body.name,
+        type: body.type,
+        balance: investment && body.currentValue !== undefined ? body.currentValue : body.startingBalance,
+        startingBalance: body.startingBalance,
+        icon: body.icon ?? "wallet",
+        color: body.color ?? "success",
+        investmentKind: body.investmentKind,
+        ...(investment ? { investedSince: body.investedSince ?? null, investedHow: body.investedHow ?? null } : {}),
         order: existing
     });
 
-    reply.created(res, savedAccount, "Account created successfully");
+    reply.created(res, toDTO(savedAccount), "Account created");
 }
 
 /**
@@ -56,10 +60,10 @@ export const createAccount = async (req: Request, res: Response): Promise<void> 
  * just did.
  */
 export const reorderAccounts = async (req: Request, res: Response): Promise<void> => {
-    const { ids } = reorderSchema.parse(req.body);
+    const { ids } = (req.valid as Valid<typeof reorderAccountsRequest>).body;
 
-    if (new Set(ids).size !== ids.length) {
-        throw AppError.badRequest("The same account was listed twice");
+    if (new Set(ids.map((id) => id.toLowerCase())).size !== ids.length) {
+        throw AppError.badRequest("An account is in the list twice");
     }
 
     const owned = await Account.countDocuments({
@@ -69,7 +73,7 @@ export const reorderAccounts = async (req: Request, res: Response): Promise<void
     });
 
     if (owned !== ids.length) {
-        throw AppError.badRequest("Some of those accounts no longer exist");
+        throw AppError.invalidReference("ids", "An account in the list", "accounts");
     }
 
     await Account.bulkWrite(ids.map((id, index) => ({
@@ -83,40 +87,40 @@ export const reorderAccounts = async (req: Request, res: Response): Promise<void
 }
 
 export const getAccount = async (req: Request, res: Response): Promise<void> => {
-    const { id: accountId } = req.params;
+    const { id } = (req.valid as Valid<typeof accountIdRequest>).params;
 
     const account = await Account.findOne({
-        _id: accountId,
+        _id: id,
         userId: req.user?.userId,
         isArchived: false
     });
 
-    if (!account) {
-        throw AppError.notFound("Account not found");
-    }
+    if (!account) throw missing();
 
-    reply.ok(res, account, "Account fetched successfully");
+    reply.ok(res, toDTO(account), "Account fetched");
 }
 
 export const updateAccount = async (req: Request, res: Response): Promise<void> => {
-    const { id: accountId } = req.params;
-    const reqBody = updateAccountSchema.parse(req.body);
+    const { params: { id }, body } = req.valid as Valid<typeof updateAccountRequest>;
 
     const account = await Account.findOne({
-        _id: accountId,
+        _id: id,
         userId: req.user?.userId,
         isArchived: false
     });
 
-    if (!account) {
-        throw AppError.notFound("Account not found");
+    if (!account) throw missing();
+
+    // Gaps row 194: only a holding has an investment type. The edit sheet sends it only for one.
+    if (body.investmentKind !== undefined && (body.type ?? account.type) !== "investment") {
+        throw new AppError(400, "Investment type is only for investments", { issues: [{ path: "investmentKind", message: "Investment type is only for investments" }] });
     }
 
-    Object.assign(account, reqBody);
+    Object.assign(account, body);
 
     const updatedAccount = await account.save();
 
-    reply.ok(res, updatedAccount, "Account details updated");
+    reply.ok(res, toDTO(updatedAccount), "Account updated");
 }
 
 // Reconcile an account against the balance the bank actually reports.
@@ -126,86 +130,62 @@ export const updateAccount = async (req: Request, res: Response): Promise<void> 
 // of the rows that produced it, and every later transaction `$inc`s from a figure with no
 // history behind it.
 //
-// So a sync writes the DIFFERENCE as an adjustment transaction and lets the existing balance
-// machinery apply it. Adjustments exist for exactly this — they move a balance and are excluded
-// from income and expense everywhere those are computed, because correcting a figure is
-// bookkeeping. The invariant survives, and the correction is dated and revertible.
+// So a sync writes the DIFFERENCE as an adjustment transaction and moves the balance by it.
+// Adjustments exist for exactly this — they move a balance and are excluded from income and
+// expense everywhere those are computed, because correcting a figure is bookkeeping. The
+// invariant survives, and the correction is dated and revertible.
+//
+// The difference is worked out from a balance read inside the transaction, and the write only
+// lands if the balance is still that figure, so two syncs at once both end AT the target: the
+// second is retried from the first one's result and finds nothing left to correct.
 export const syncAccountBalance = async (req: Request, res: Response): Promise<void> => {
-    const { id: accountId } = req.params;
-    const reqBody = syncAccountBalanceSchema.parse(req.body);
+    const { params: { id }, body } = req.valid as Valid<typeof syncAccountBalanceRequest>;
+    const userId = req.user!.userId;
 
-    const account = await Account.findOne({
-        _id: accountId,
-        userId: req.user?.userId,
-        isArchived: false
-    });
+    const { account, matched } = await inTransaction(async (session) => {
+        const current = await Account.findOne({ _id: id, userId, isArchived: false }).session(session);
+        if (!current) throw missing();
 
-    if (!account) {
-        throw AppError.notFound("Account not found");
-    }
+        const delta = body.balance - current.balance;
+        const now = new Date();
 
-    const delta = reqBody.balance - account.balance;
-    const now = new Date();
-
-    // Already correct. Writing a zero-amount adjustment would put a row in the ledger
-    // that says nothing, so only the timestamp moves — the user still checked, and that
-    // is what the timestamp records.
-    if (delta === 0) {
-        account.lastSyncedAt = now;
-        const stamped = await account.save();
-        reply.ok(res, stamped, "Balance already matched");
-        return;
-    }
-
-    let syncedAccount;
-    const session = await mongoose.startSession();
-    try {
-        await session.withTransaction(async () => {
-            const [adjustment] = await Transaction.create([{
-                userId: req.user?.userId,
+        // Already correct. A zero-amount adjustment would put a row in the ledger that says
+        // nothing, so only the timestamp moves — the user still checked, and that is what the
+        // timestamp records.
+        if (delta !== 0) {
+            await Transaction.create([{
+                userId,
                 type: delta > 0 ? "positiveAdjustment" : "negativeAdjustment",
                 // Signed intent lives in the type; the amount is always a magnitude,
                 // which is what the model's `min: 0` requires.
                 amount: Math.abs(delta),
-                account: account._id,
-                title: reqBody.note ?? "Balance correction",
+                account: current._id,
+                title: body.note ?? "Balance correction",
                 occurredAt: now
             }], { session });
+        }
 
-            await applyEffects(adjustment, "add", session);
+        const synced = await Account.findOneAndUpdate(
+            { _id: current._id, userId, balance: current.balance },
+            { $inc: { balance: delta }, $set: { lastSyncedAt: now } },
+            { session, new: true },
+        );
+        if (!synced) throw AppError.conflict(conflict("This balance was just changed", "Check it and try again"));
+        return { account: synced, matched: delta === 0 };
+    });
 
-            // Read back inside the session, after the $inc, so the response carries the
-            // balance the user asked for rather than the one this request started with.
-            syncedAccount = await Account.findOneAndUpdate(
-                { _id: account._id },
-                { $set: { lastSyncedAt: now } },
-                { session, new: true }
-            );
-        });
-    }
-    finally {
-        session.endSession();
-    }
-
-    reply.ok(res, syncedAccount, "Balance updated");
+    reply.ok(res, toDTO(account), matched ? "Balance confirmed" : "Balance updated");
 }
 
 export const archiveAccount = async (req: Request, res: Response): Promise<void> => {
-    const { id: accountId } = req.params;
+    const { id } = (req.valid as Valid<typeof accountIdRequest>).params;
 
-    const account = await Account.findOne({
-        _id: accountId,
-        userId: req.user?.userId,
-        isArchived: false
-    });
+    const archived = await Account.findOneAndUpdate(
+        { _id: id, userId: req.user?.userId, isArchived: false },
+        { $set: { isArchived: true } },
+    );
 
-    if (!account) {
-        throw AppError.notFound("Account not found");
-    }
+    if (!archived) throw missing();
 
-    account.isArchived = true;
-
-    await account.save();
-
-    reply.ok(res, null, "Account deleted successfully");
+    reply.ok(res, null, "Account archived");
 }
