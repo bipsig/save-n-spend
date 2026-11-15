@@ -8,7 +8,7 @@ import Button from "@/components/ui/Button";
 import Icon from "@/components/ui/Icon";
 import Input from "@/components/ui/Input";
 import PressableScale from "@/components/ui/PressableScale";
-import { useCategories } from "@/lib/categories";
+import { useCategoryStore } from "@/store/categories";
 import formatMoney, { parseMoney, paiseToInput, usePrivacyMask } from "@/lib/money";
 import { spacing } from "@/theme";
 
@@ -31,7 +31,8 @@ const BreakdownSheet = forwardRef<BottomSheetModal, Props>(({ row, initial, onSa
   const innerRef = useRef<BottomSheetModal>(null);
   useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
   const pickerRef = useRef<BottomSheetModal>(null);
-  const categories = useCategories();
+  // Live and archived, so a saved part filed under a since-archived category still names it.
+  const categories = useCategoryStore((s) => s.all);
   const [parts, setParts] = useState<Draft[]>([]);
   const [picking, setPicking] = useState<number | null>(null);
 

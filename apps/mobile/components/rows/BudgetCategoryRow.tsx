@@ -6,6 +6,7 @@ import ProgressBar from "../data/ProgressBar";
 import Icon from "../ui/Icon";
 import PressableScale from "../ui/PressableScale";
 import CategoryName from "../ui/CategoryName";
+import { ArchivedChip } from "../ui/ArchivedMark";
 import { useCategoryById, useCategoryLabel } from "@/lib/categories";
 import { budgetPace } from "@/lib/budgets";
 import type { IconName } from "@/lib/icons";
@@ -63,13 +64,15 @@ const BudgetCategoryRow = ({ budget, spent, daysElapsed, daysInMonth, onPress }:
     <PressableScale onPress={onPress} disabled={!onPress} scaleTo={0.98}>
       <Card style={[styles.card, over && styles.overCard]}>
         <View style={styles.header}>
-          <Icon
-            name={(category?.icon ?? "more") as IconName}
-            size={22}
-            containerSize={44}
-            container="square"
-            gradient={(category?.color ?? "accent") as ColorToken}
-          />
+          <ArchivedChip archived={!!category?.isArchived} chipSize={44}>
+            <Icon
+              name={(category?.icon ?? "more") as IconName}
+              size={22}
+              containerSize={44}
+              container="square"
+              gradient={(category?.color ?? "accent") as ColorToken}
+            />
+          </ArchivedChip>
           <View style={styles.info}>
             <CategoryName categoryId={budget.category} size="md" weight="bold" />
             <AppText size="sm" color="inkDim">

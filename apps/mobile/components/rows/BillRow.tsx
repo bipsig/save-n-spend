@@ -3,6 +3,7 @@ import { StyleSheet, View } from "react-native";
 import Card from "../data/Card";
 import { AppText } from "../ui/AppText";
 import Icon from "../ui/Icon";
+import { ArchivedChip } from "../ui/ArchivedMark";
 import Badge from "../ui/Badge";
 import PressableScale from "../ui/PressableScale";
 import RowActions from "./RowActions";
@@ -52,13 +53,15 @@ const BillRow = ({ bill, onPress, onEdit, onDelete }: Props) => {
     // response is the answer.
     <PressableScale onPress={onPress} disabled={!onPress || bill.status === "paid"} scaleTo={0.98}>
       <Card style={[styles.container, bill.status === "overdue" && styles.overdue, scheduled && styles.scheduled]}>
-      <Icon
-        name={isSip ? look.icon : ((category?.icon ?? "bills") as IconName)}
-        size={22}
-        container="square"
-        containerSize={44}
-        gradient={isSip ? look.tint : ((category?.color ?? "accent") as ColorToken)}
-      />
+      <ArchivedChip archived={!isSip && !!category?.isArchived} chipSize={44}>
+        <Icon
+          name={isSip ? look.icon : ((category?.icon ?? "bills") as IconName)}
+          size={22}
+          container="square"
+          containerSize={44}
+          gradient={isSip ? look.tint : ((category?.color ?? "accent") as ColorToken)}
+        />
+      </ArchivedChip>
 
       {/* Capped to a line each: the trailing actions take width off this column, and a
           long bill name wrapping would grow the row past its neighbours'. */}

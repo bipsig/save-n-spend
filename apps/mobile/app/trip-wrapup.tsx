@@ -9,6 +9,7 @@ import Card from "@/components/data/Card";
 import Button from "@/components/ui/Button";
 import Chip from "@/components/ui/Chip";
 import Icon from "@/components/ui/Icon";
+import { NameWithArchived } from "@/components/ui/ArchivedMark";
 import Money from "@/components/ui/Money";
 import { AppText } from "@/components/ui/AppText";
 import SkeletonState from "@/components/states/SkeletonState";
@@ -37,7 +38,9 @@ const TopCategory = ({ id, pct }: { id: string | null; pct: number }) => {
   return (
     <View style={styles.grow}>
       <AppText size="md" weight="black">{pct}%</AppText>
-      <AppText size="xs" color="inkDim" numberOfLines={1}>on {(cat?.name ?? "one category").toLowerCase()}</AppText>
+      <NameWithArchived archived={!!cat?.isArchived}>
+        <AppText size="xs" color="inkDim" numberOfLines={1} style={styles.shrink}>on {(cat?.name ?? "one category").toLowerCase()}</AppText>
+      </NameWithArchived>
     </View>
   );
 };
@@ -145,6 +148,7 @@ const TripWrapUpScreen = () => {
 const styles = StyleSheet.create({
   head: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   grow: { flex: 1, minWidth: 0 },
+  shrink: { flexShrink: 1, minWidth: 0 },
   caps: { letterSpacing: 1.2, textTransform: "uppercase" },
   lh: { lineHeight: 17 },
   card: { gap: spacing.md },

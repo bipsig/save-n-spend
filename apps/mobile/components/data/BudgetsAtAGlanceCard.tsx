@@ -2,6 +2,7 @@ import { StyleSheet, View } from "react-native";
 import Card from "./Card";
 import { AppText } from "../ui/AppText";
 import PressableScale from "../ui/PressableScale";
+import { NameWithArchived } from "../ui/ArchivedMark";
 import { useCategoryById } from "@/lib/categories";
 import { budgetPace, budgetTotals, currentMonth, type BudgetSummary } from "@/lib/budgets";
 import { colors } from "@/theme";
@@ -19,9 +20,13 @@ const Row = ({ item, daysElapsed, daysInMonth }: { item: BudgetSummary; daysElap
   return (
     <View style={styles.row}>
       <View style={[styles.dot, { backgroundColor: DOT_COLOR[pace.color] }]} />
-      <AppText size="sm" weight="semibold" color="inkSecondary" numberOfLines={1} style={styles.name}>
-        {category?.name ?? "Category"}
-      </AppText>
+      <View style={styles.name}>
+        <NameWithArchived archived={!!category?.isArchived}>
+          <AppText size="sm" weight="semibold" color="inkSecondary" numberOfLines={1} style={styles.shrink}>
+            {category?.name ?? "Category"}
+          </AppText>
+        </NameWithArchived>
+      </View>
       <AppText size="xs" weight="bold" color="inkDim">
         {Math.round(pace.ratio * 100)}%
       </AppText>
@@ -81,6 +86,10 @@ const styles = StyleSheet.create({
   },
   name: {
     flex: 1,
+    minWidth: 0,
+  },
+  shrink: {
+    flexShrink: 1,
   },
 });
 

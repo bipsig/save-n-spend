@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import type { ITitleSuggestion } from "@save-n-spend/types";
 import { AppText } from "../ui/AppText";
 import Icon from "../ui/Icon";
+import { ArchivedChip } from "../ui/ArchivedMark";
 import PressableScale from "../ui/PressableScale";
 import SectionHeader from "../ui/SectionHeader";
 import { useCategoryById } from "@/lib/categories";
@@ -29,14 +30,16 @@ const QuickLogChip = ({ suggestion }: { suggestion: ITitleSuggestion }) => {
       accessibilityLabel={`Log ${suggestion.title}, ${amountLabel}`}
       accessibilityHint="Prefills a new transaction for this amount and category."
     >
-      <Icon
-        name={(category?.icon ?? "more") as IconName}
-        size={15}
-        containerSize={30}
-        containerRadius={9}
-        container="square"
-        gradient={(category?.color ?? "accent") as ColorToken}
-      />
+      <ArchivedChip archived={!!category?.isArchived} chipSize={30}>
+        <Icon
+          name={(category?.icon ?? "more") as IconName}
+          size={15}
+          containerSize={30}
+          containerRadius={9}
+          container="square"
+          gradient={(category?.color ?? "accent") as ColorToken}
+        />
+      </ArchivedChip>
       <AppText size="xs" weight="bold" numberOfLines={1} style={styles.title}>
         {suggestion.title}
       </AppText>

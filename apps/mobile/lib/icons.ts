@@ -28,6 +28,8 @@ export const iconMap = {
   trophy: 'emoji-events',
   streak: 'whatshot',
   delete: 'delete',
+  // An archived category's mark (components/ui/ArchivedMark.tsx).
+  archive: 'archive',
   edit: 'edit',
   download: 'file-download',
   repeat: 'replay', // "log again" on a past transaction

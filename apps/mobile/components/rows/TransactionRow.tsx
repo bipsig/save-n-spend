@@ -12,6 +12,7 @@ import { formatTxnDate } from "@/lib/date"
 import formatMoney, { usePrivacyMask } from "@/lib/money"
 import Icon from "../ui/Icon"
 import CategoryName from "../ui/CategoryName"
+import { ArchivedChip } from "../ui/ArchivedMark"
 import { AppText } from "../ui/AppText"
 import Card from "../data/Card"
 import Money from "../ui/Money"
@@ -79,7 +80,7 @@ const TransactionRow = ({ transaction, onPress, pending = false, failed = false 
 
   const description = isTransfer
     ? `${moveLabel}, ${from?.name ?? "an account"} to ${to?.name ?? "an account"}`
-    : `${transaction.title}, ${category?.name ?? "uncategorised"}`;
+    : `${transaction.title}, ${category?.name ?? "uncategorised"}${category?.isArchived ? ", archived" : ""}`;
   const statusNote = failed ? ", couldn't sync" : pending ? ", pending sync" : "";
   const amountNote = isTransfer
     ? formatMoney(transaction.amount)
@@ -98,15 +99,17 @@ const TransactionRow = ({ transaction, onPress, pending = false, failed = false 
       accessibilityHint={onPress ? "Opens more detail" : undefined}
     >
       <Card style={styles.card}>
-        <Icon
-          name={isInvestment ? look.icon : isTransfer ? "transfer" : ((category?.icon ?? "more") as IconName)}
-          container="square"
-          // An investment wears its holding's colour; a plain transfer is teal, neither the
-          // green of money in nor the red of money out.
-          gradient={isInvestment ? look.tint : isTransfer ? "teal" : ((category?.color ?? "accent") as ColorToken)}
-          size={22}
-          containerSize={44}
-        />
+        <ArchivedChip archived={!isTransfer && !!category?.isArchived} chipSize={44}>
+          <Icon
+            name={isInvestment ? look.icon : isTransfer ? "transfer" : ((category?.icon ?? "more") as IconName)}
+            container="square"
+            // An investment wears its holding's colour; a plain transfer is teal, neither the
+            // green of money in nor the red of money out.
+            gradient={isInvestment ? look.tint : isTransfer ? "teal" : ((category?.color ?? "accent") as ColorToken)}
+            size={22}
+            containerSize={44}
+          />
+        </ArchivedChip>
 
         <View style={styles.details}>
           <AppText size="md" weight="bold">

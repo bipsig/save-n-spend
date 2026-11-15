@@ -9,6 +9,7 @@ import BackButton from "@/components/shell/BackButton";
 import Card from "@/components/data/Card";
 import Money from "@/components/ui/Money";
 import Icon from "@/components/ui/Icon";
+import { ArchivedChip, NameWithArchived } from "@/components/ui/ArchivedMark";
 import Button from "@/components/ui/Button";
 import PressableScale from "@/components/ui/PressableScale";
 import { AppText } from "@/components/ui/AppText";
@@ -35,9 +36,11 @@ const CategoryBar = ({ category, total, max, index }: { category: string | null;
   return (
     <View style={styles.catRow}>
       <View style={styles.between}>
-        <View style={styles.inline}>
+        <View style={[styles.inline, styles.shrink]}>
           <Icon name={(cat?.icon ?? "category") as IconName} size={13} color="inkDim" />
-          <AppText size="sm" weight="bold">{cat?.name ?? "Uncategorised"}</AppText>
+          <NameWithArchived archived={!!cat?.isArchived}>
+            <AppText size="sm" weight="bold" numberOfLines={1} style={styles.shrink}>{cat?.name ?? "Uncategorised"}</AppText>
+          </NameWithArchived>
         </View>
         <Money value={total} size="sm" weight="bold" />
       </View>
@@ -59,11 +62,13 @@ const EntryLine = ({ entry, nameOf, onPress }: { entry: TripEntry; nameOf: (id?:
     : entry.title;
   const body = (
     <View style={styles.entry}>
-      <Icon
-        name={entry.kind === "settlement" ? "transfer" : ((cat?.icon ?? "receipt") as IconName)}
-        size={14} containerSize={30} containerRadius={10} container="square"
-        gradient={entry.kind === "settlement" ? "green" : ((cat?.color ?? "accent") as ColorToken)}
-      />
+      <ArchivedChip archived={entry.kind !== "settlement" && !!cat?.isArchived} chipSize={30}>
+        <Icon
+          name={entry.kind === "settlement" ? "transfer" : ((cat?.icon ?? "receipt") as IconName)}
+          size={14} containerSize={30} containerRadius={10} container="square"
+          gradient={entry.kind === "settlement" ? "green" : ((cat?.color ?? "accent") as ColorToken)}
+        />
+      </ArchivedChip>
       <View style={styles.grow}>
         <AppText size="sm" weight="bold" numberOfLines={1}>{title}</AppText>
         <AppText size="xs" color="inkDim" numberOfLines={1}>{meta}</AppText>
@@ -361,6 +366,7 @@ const TripDetailScreen = () => {
 const styles = StyleSheet.create({
   head: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   grow: { flex: 1, minWidth: 0 },
+  shrink: { flexShrink: 1, minWidth: 0 },
   between: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   inline: { flexDirection: "row", alignItems: "center", gap: 6 },
   right: { alignItems: "flex-end" },

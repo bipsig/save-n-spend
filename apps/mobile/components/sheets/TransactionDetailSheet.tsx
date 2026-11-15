@@ -7,6 +7,7 @@ import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { useCategoryById, useCategoryLabel } from "@/lib/categories";
 import Icon from "../ui/Icon";
+import { ArchivedBadgeSegment, ArchivedChip } from "../ui/ArchivedMark";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { colors, spacing } from "@/theme";
@@ -204,14 +205,16 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
           <Animated.View entering={FadeIn.duration(160)} style={styles.view}>
             {/* Spec §08 .centerid — chip · title · spaced-sign amount · tinted badge */}
             <View style={styles.identity}>
-              <Icon
-                name={isInvestment ? look.icon : isTransfer ? "transfer" : ((category?.icon ?? "activity") as IconName)}
-                size={30}
-                containerSize={64}
-                containerRadius={21}
-                container="square"
-                gradient={isInvestment ? look.tint : isTransfer ? "teal" : ((category?.color ?? "accent") as ColorToken)}
-              />
+              <ArchivedChip archived={!isTransfer && categoryLabel.isArchived} chipSize={64}>
+                <Icon
+                  name={isInvestment ? look.icon : isTransfer ? "transfer" : ((category?.icon ?? "activity") as IconName)}
+                  size={30}
+                  containerSize={64}
+                  containerRadius={21}
+                  container="square"
+                  gradient={isInvestment ? look.tint : isTransfer ? "teal" : ((category?.color ?? "accent") as ColorToken)}
+                />
+              </ArchivedChip>
               <AppText size="md" weight="black">
                 {title}
               </AppText>
@@ -236,16 +239,20 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
                 </AppText>
               ) : (
                 <>
-                  <View
-                    style={[styles.badge, { backgroundColor: colors[categoryBg(category?.color)] }]}
-                  >
-                    <AppText
-                      weight="black"
-                      color={(category?.color ?? "accent") as ColorToken}
-                      style={styles.badgeText}
+                  <View style={styles.badgeRow}>
+                    <View
+                      style={[styles.badge, categoryLabel.isArchived && styles.badgeSplit, { backgroundColor: colors[categoryBg(category?.color)] }]}
                     >
-                      {categoryLabel.name.toUpperCase()}
-                    </AppText>
+                      <AppText
+                        weight="black"
+                        color={(category?.color ?? "accent") as ColorToken}
+                        numberOfLines={1}
+                        style={[styles.badgeText, categoryLabel.isArchived && styles.badgeTextSplit]}
+                      >
+                        {categoryLabel.name.toUpperCase()}
+                      </AppText>
+                      {categoryLabel.isArchived && <ArchivedBadgeSegment />}
+                    </View>
                   </View>
                   {/* Under the badge rather than inside it: the badge is tinted with the
                       category's own colour and sized to one word, and stuffing a parent
@@ -416,14 +423,36 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   // Spec .badge — tinted pill; bg = category soft tint, text = category color
+  // Caps the badge at the column's width, so a long name truncates instead of running
+  // off both edges of the sheet.
+  badgeRow: {
+    alignSelf: "stretch",
+    flexDirection: "row",
+    justifyContent: "center",
+  },
   badge: {
     paddingVertical: 4,
     paddingHorizontal: 12,
     borderRadius: 999,
+    flexShrink: 1,
   },
   badgeText: {
     fontSize: 11,
     letterSpacing: 1, // spec .08em caps tracking
+  },
+  // Archived: the badge becomes two segments, the name and ArchivedBadgeSegment.
+  badgeSplit: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    overflow: "hidden",
+  },
+  badgeTextSplit: {
+    flexShrink: 1,
+    paddingVertical: 4,
+    paddingLeft: 12,
+    paddingRight: 10,
   },
   rows: {
     gap: spacing.md,

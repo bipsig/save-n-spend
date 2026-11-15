@@ -1,5 +1,6 @@
 import { StyleSheet, View } from "react-native";
 import { AppText } from "@/components/ui/AppText";
+import { NameWithArchived } from "@/components/ui/ArchivedMark";
 import { useCategoryLabel } from "@/lib/categories";
 import type { ColorToken, FontSizeToken, FontWeightToken } from "@/theme";
 
@@ -28,6 +29,8 @@ type Props = {
 // A breadcrumb rather than "Groceries (sub-category)", because the useful fact is not that it
 // is a child but whose — that is what says where the money lands. A top-level category prints
 // its name alone, which is itself the signal that nothing rolls up past it.
+//
+// An archived category is followed by the "Archived" pill, on the leaf's line.
 const CategoryName = ({
   categoryId,
   size = "sm",
@@ -48,11 +51,15 @@ const CategoryName = ({
     );
   }
 
+  const shrink = label.isArchived ? styles.shrink : undefined;
+
   if (!label.isChild) {
     return (
-      <AppText size={size} weight={weight} color={color} numberOfLines={1}>
-        {label.name}
-      </AppText>
+      <NameWithArchived archived={label.isArchived}>
+        <AppText size={size} weight={weight} color={color} numberOfLines={1} style={shrink}>
+          {label.name}
+        </AppText>
+      </NameWithArchived>
     );
   }
 
@@ -60,13 +67,15 @@ const CategoryName = ({
     // One Text, two spans: RN lays nested <AppText> out as a single run, so the breadcrumb
     // wraps and truncates as one string rather than two views fighting over the width.
     return (
-      <AppText size={size} weight={weight} color={color} numberOfLines={1}>
-        <AppText size={size} weight="regular" color="inkDim">
-          {label.parentName}
-          {" › "}
+      <NameWithArchived archived={label.isArchived}>
+        <AppText size={size} weight={weight} color={color} numberOfLines={1} style={shrink}>
+          <AppText size={size} weight="regular" color="inkDim">
+            {label.parentName}
+            {" › "}
+          </AppText>
+          {label.name}
         </AppText>
-        {label.name}
-      </AppText>
+      </NameWithArchived>
     );
   }
 
@@ -77,9 +86,11 @@ const CategoryName = ({
       <AppText size="xs" weight="bold" color="inkDim" numberOfLines={1}>
         {label.parentName} ›
       </AppText>
-      <AppText size={size} weight={weight} color={color} numberOfLines={1}>
-        {label.name}
-      </AppText>
+      <NameWithArchived archived={label.isArchived}>
+        <AppText size={size} weight={weight} color={color} numberOfLines={1} style={shrink}>
+          {label.name}
+        </AppText>
+      </NameWithArchived>
     </View>
   );
 };
@@ -87,6 +98,9 @@ const CategoryName = ({
 const styles = StyleSheet.create({
   stack: {
     gap: 1,
+  },
+  shrink: {
+    flexShrink: 1,
   },
 });
 
