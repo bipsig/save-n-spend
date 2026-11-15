@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { InvestedHow, InvestmentsPayload, ITransaction, PortfolioTrend } from "@save-n-spend/types";
-import { del, get, patch, post } from "@/lib/api";
+import { del, get, patch, post, type RequestOptions } from "@/lib/api";
 import { useAccountStore } from "@/store/accounts";
 import { useSession } from "@/store/session";
 import { chartPalette, chartOthers } from "@/theme";
@@ -59,8 +59,8 @@ export const returnPct = (invested: number, gain: number): number | null =>
 
 /** Reclassify an existing expense as an investment contribution (transfer into the chosen
  *  investment account). Reloads the account store, since a balance moved. */
-export const convertToInvestment = async (transactionId: string, toAccount: string): Promise<void> => {
-  await post<ITransaction>(`/transactions/${transactionId}/convert-to-investment`, { toAccount });
+export const convertToInvestment = async (transactionId: string, toAccount: string, opts?: RequestOptions): Promise<void> => {
+  await post<ITransaction>(`/transactions/${transactionId}/convert-to-investment`, { toAccount }, opts);
   await useAccountStore.getState().load().catch(() => {});
 };
 

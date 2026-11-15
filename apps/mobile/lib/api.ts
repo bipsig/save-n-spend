@@ -20,7 +20,13 @@ export { ApiError };
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
-const request = async <T>(method: Method, path: string, body?: unknown): Promise<T> => {
+export type RequestOptions = {
+  /** Same key on every retry of one intent; the server answers a repeat with the first reply.
+   *  See lib/idempotency.ts. */
+  idempotencyKey?: string;
+};
+
+const request = async <T>(method: Method, path: string, body?: unknown, opts: RequestOptions = {}): Promise<T> => {
   const token = useSession.getState().token; // ← the RN swap for localStorage.getItem
 
   // One reference per call, sent to the server (which logs under it) and kept on the phone —
@@ -62,6 +68,7 @@ const request = async <T>(method: Method, path: string, body?: unknown): Promise
         "X-Request-Id": requestId,
         "X-App-Version": APP_VERSION,
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(opts.idempotencyKey ? { "Idempotency-Key": opts.idempotencyKey } : {}),
       },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
@@ -94,7 +101,7 @@ const request = async <T>(method: Method, path: string, body?: unknown): Promise
 
 // Pass a type to get a typed result: post<{ accessToken: string }>("/auth/login", v).
 export const get = <T>(path: string) => request<T>("GET", path);
-export const post = <T>(path: string, body?: unknown) => request<T>("POST", path, body);
-export const put = <T>(path: string, body?: unknown) => request<T>("PUT", path, body);
-export const patch = <T>(path: string, body?: unknown) => request<T>("PATCH", path, body);
-export const del = <T>(path: string) => request<T>("DELETE", path);
+export const post = <T>(path: string, body?: unknown, opts?: RequestOptions) => request<T>("POST", path, body, opts);
+export const put = <T>(path: string, body?: unknown, opts?: RequestOptions) => request<T>("PUT", path, body, opts);
+export const patch = <T>(path: string, body?: unknown, opts?: RequestOptions) => request<T>("PATCH", path, body, opts);
+export const del = <T>(path: string, opts?: RequestOptions) => request<T>("DELETE", path, undefined, opts);

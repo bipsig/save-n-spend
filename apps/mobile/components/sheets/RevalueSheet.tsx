@@ -7,6 +7,7 @@ import Button from "@/components/ui/Button";
 import Icon from "@/components/ui/Icon";
 import { syncAccountBalance } from "@/lib/accounts";
 import { haptics } from "@/lib/haptics";
+import { holderFor } from "@/lib/idempotency";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { toast } from "@/store/toast";
 import { spacing } from "@/theme";
@@ -82,7 +83,12 @@ const RevalueSheet = forwardRef<BottomSheetModal, Props>(({ holdings, onSaved },
       // Sequential: each sync writes an adjustment and reloads the account store, and
       // overlapping reloads would thrash it.
       for (const change of changes) {
-        await syncAccountBalance(change.id, change.paise);
+        // Per holding, and shared with the account sheet's balance sync: the same target.
+        const idem = holderFor(`account:${change.id}:balance`);
+        await syncAccountBalance(change.id, change.paise, undefined, {
+          idempotencyKey: idem.keyFor("PATCH", `/accounts/${change.id}/balance`, { balance: change.paise }),
+        });
+        idem.reset();
       }
       onSaved?.();
       dismiss();

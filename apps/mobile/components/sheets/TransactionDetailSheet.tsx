@@ -25,6 +25,7 @@ import { useConnectivity } from "@/store/connectivity";
 import { pendingDeletes } from "@/store/pendingDeletes";
 import AccountPickerSheet from "@/components/sheets/AccountPickerSheet";
 import { convertToInvestment, holdingLook } from "@/lib/investments";
+import { holderFor } from "@/lib/idempotency";
 import { useTrip } from "@/lib/trips";
 
 // Spec .selrow — boxed glass strip: leading icon · (caps label over bold value) · optional ›
@@ -145,7 +146,10 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
   const handleConvert = async (toAccountId: string) => {
     if (!transaction) return;
     try {
-      await convertToInvestment(transaction._id, toAccountId);
+      const idem = holderFor(`transaction:${transaction._id}:convert`);
+      const path = `/transactions/${transaction._id}/convert-to-investment`;
+      await convertToInvestment(transaction._id, toAccountId, { idempotencyKey: idem.keyFor("POST", path, { toAccount: toAccountId }) });
+      idem.reset();
       dismiss();
       toast.success("Moved to your investments");
       onCommitted?.();

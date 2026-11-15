@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { TripDetailPayload, TripsPayload } from "@save-n-spend/types";
-import { del, get, patch, post, put } from "@/lib/api";
+import { del, get, patch, post, put, type RequestOptions } from "@/lib/api";
 import { useAccountStore } from "@/store/accounts";
 import { useSession } from "@/store/session";
 import { useTripNameStore } from "@/store/tripNames";
@@ -69,10 +69,11 @@ const reloadAccounts = () => useAccountStore.getState().load().catch(() => {});
 // The names Activity tags rows with.
 const reloadTripNames = () => useTripNameStore.getState().load().catch(() => {});
 
-export const createTrip = async (draft: TripDraft) => {
-  const trip = await post<{ _id: string }>("/trips", draft);
+/** Null when the reply had no record (see lib/replayed.ts). */
+export const createTrip = async (draft: TripDraft, opts?: RequestOptions): Promise<{ _id: string } | null> => {
+  const trip = await post<{ _id: string } | null>("/trips", draft, opts);
   void reloadTripNames();
-  return trip;
+  return trip ?? null;
 };
 export const updateTrip = async (id: string, draft: Partial<TripDraft>) => {
   await patch(`/trips/${id}`, draft);
@@ -84,12 +85,12 @@ export const deleteTrip = async (id: string) => {
   void reloadTripNames();
 };
 
-export const addTripExpense = async (tripId: string, draft: TripExpenseDraft) => {
-  await post(`/trips/${tripId}/expenses`, draft);
+export const addTripExpense = async (tripId: string, draft: TripExpenseDraft, opts?: RequestOptions) => {
+  await post(`/trips/${tripId}/expenses`, draft, opts);
   await reloadAccounts();
 };
-export const updateTripExpense = async (tripId: string, expenseId: string, draft: TripExpenseDraft) => {
-  await patch(`/trips/${tripId}/expenses/${expenseId}`, draft);
+export const updateTripExpense = async (tripId: string, expenseId: string, draft: TripExpenseDraft, opts?: RequestOptions) => {
+  await patch(`/trips/${tripId}/expenses/${expenseId}`, draft, opts);
   await reloadAccounts();
 };
 export const deleteTripExpense = async (tripId: string, expenseId: string) => {
@@ -97,21 +98,21 @@ export const deleteTripExpense = async (tripId: string, expenseId: string) => {
   await reloadAccounts();
 };
 
-export const settleTrip = async (tripId: string, body: { person: string; account: string; amount: number; direction: "received" | "paid" }) => {
-  await post(`/trips/${tripId}/settle`, body);
+export const settleTrip = async (tripId: string, body: { person: string; account: string; amount: number; direction: "received" | "paid" }, opts?: RequestOptions) => {
+  await post(`/trips/${tripId}/settle`, body, opts);
   await reloadAccounts();
 };
 
-export const closeTrip = async (tripId: string, letGo: string[]) => {
-  await post(`/trips/${tripId}/close`, { letGo });
+export const closeTrip = async (tripId: string, letGo: string[], opts?: RequestOptions) => {
+  await post(`/trips/${tripId}/close`, { letGo }, opts);
   await reloadAccounts();
 };
 export const reopenTrip = (tripId: string) => post(`/trips/${tripId}/reopen`);
 
 /** Saves what each person pays you after Splitwise's "simplify debts" — signed paise, positive
  *  = they pay you. Anyone left out pays nothing. Replaces any earlier plan. */
-export const savePlan = async (tripId: string, entries: { account: string; amount: number }[]) => {
-  await put(`/trips/${tripId}/plan`, { entries });
+export const savePlan = async (tripId: string, entries: { account: string; amount: number }[], opts?: RequestOptions) => {
+  await put(`/trips/${tripId}/plan`, { entries }, opts);
   await reloadAccounts();
 };
 
@@ -218,8 +219,9 @@ export type ImportDecision = {
 export const previewImport = (tripId: string, csv: string, mapping?: NameMapping) =>
   post<ImportPreview>(`/trips/${tripId}/import/preview`, { csv, ...(mapping ? { mapping } : {}) });
 
-export const commitImport = async (tripId: string, csv: string, mapping: NameMapping, decisions: ImportDecision[]) => {
-  const result = await post<{ added: number; applied: number; settled: number; matchSplitwise: boolean }>(`/trips/${tripId}/import/commit`, { csv, mapping, decisions });
+export const commitImport = async (tripId: string, csv: string, mapping: NameMapping, decisions: ImportDecision[], opts?: RequestOptions) => {
+  const result = await post<{ added: number; applied: number; settled: number; matchSplitwise: boolean } | null>(`/trips/${tripId}/import/commit`, { csv, mapping, decisions }, opts);
   await reloadAccounts();
-  return result;
+  // Null when the reply had no counts (see lib/replayed.ts): imported, but how many is unknown.
+  return result ?? null;
 };

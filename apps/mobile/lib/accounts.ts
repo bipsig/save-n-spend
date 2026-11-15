@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useAccountStore } from "@/store/accounts";
 import { useSession } from "@/store/session";
 import { usePendingDeletes } from "@/store/pendingDeletes";
-import { del, patch, post } from "@/lib/api";
+import { del, patch, post, type RequestOptions } from "@/lib/api";
 import { applyOrder, persistOrder } from "@/lib/reorder";
 import formatMoney from "@/lib/money";
 import type { AccountType, IAccount, InvestedHow } from "@save-n-spend/types";
@@ -76,10 +76,12 @@ export type AccountDraft = {
   investedHow?: InvestedHow;
 };
 
-export const createAccount = async (draft: AccountDraft): Promise<IAccount> => {
-  const created = await post<IAccount>("/accounts", draft);
+/** Null when the reply had no record (see lib/replayed.ts): the account exists, and the store
+ *  this reloads holds it. */
+export const createAccount = async (draft: AccountDraft, opts?: RequestOptions): Promise<IAccount | null> => {
+  const created = await post<IAccount | null>("/accounts", draft, opts);
   await useAccountStore.getState().load();
-  return created;
+  return created ?? null;
 };
 
 // Deliberately no `startingBalance`: it is a term in the balance the server
@@ -103,9 +105,10 @@ export const updateAccount = async (
 export const syncAccountBalance = async (
   id: string,
   balance: number,
-  note?: string
+  note?: string,
+  opts?: RequestOptions
 ): Promise<void> => {
-  await patch<IAccount>(`/accounts/${id}/balance`, note ? { balance, note } : { balance });
+  await patch<IAccount>(`/accounts/${id}/balance`, note ? { balance, note } : { balance }, opts);
   await useAccountStore.getState().load();
 };
 

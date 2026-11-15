@@ -20,6 +20,7 @@ import { updateInvestmentBasis, type InvestmentBasis } from "@/lib/investments";
 import { haptics } from "@/lib/haptics";
 import type { IconName } from "@/lib/icons";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { holderFor } from "@/lib/idempotency";
 import { toast } from "@/store/toast";
 import type { ColorToken } from "@/theme";
 import { spacing } from "@/theme";
@@ -219,11 +220,17 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
         // sends anything that could move money. The server records the difference as an
         // adjustment; see `syncAccountBalance`.
         if (target !== null) {
-          await syncAccountBalance(account._id, target, note.trim() || undefined);
+          const path = `/accounts/${account._id}/balance`;
+          const noteText = note.trim() || undefined;
+          const idem = holderFor(`account:${account._id}:balance`);
+          await syncAccountBalance(account._id, target, noteText, {
+            idempotencyKey: idem.keyFor("PATCH", path, noteText ? { balance: target, note: noteText } : { balance: target }),
+          });
+          idem.reset();
         }
       }
       else {
-        await createAccount({
+        const draft = {
           name: trimmed,
           type,
           startingBalance,
@@ -232,7 +239,10 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
           investmentKind: kind,
           ...(isInvestment && worthPaise !== null ? { currentValue: worthPaise } : {}),
           ...(isInvestment && startingBalance > 0 ? { investedSince: startDate.toISOString(), investedHow: how } : {}),
-        });
+        };
+        const idem = holderFor("account:new");
+        await createAccount(draft, { idempotencyKey: idem.keyFor("POST", "/accounts", draft) });
+        idem.reset();
       }
       onSaved?.();
       dismiss();

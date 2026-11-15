@@ -33,10 +33,12 @@ import RevalueSheet from "@/components/sheets/RevalueSheet";
 import { useInvestments } from "@/lib/investments";
 import { ApiError, get, patch, post } from "@/lib/api";
 import { splitIssues } from "@/lib/apiError";
+import { useIdempotencyKey } from "@/lib/useIdempotencyKey";
+import { holderFor } from "@/lib/idempotency";
 import { useAccountStore } from "@/store/accounts";
 import { useTitleSuggestionStore } from "@/store/titleSuggestions";
 import { useTitleMatches } from "@/lib/titleSuggestions";
-import { makeClientId, useOutbox } from "@/store/outbox";
+import { useOutbox } from "@/store/outbox";
 import type { ITransaction } from "@save-n-spend/types";
 
 const schema = z.object({
@@ -133,6 +135,10 @@ const AddTransaction = () => {
     resolver: zodResolver(schema),
     defaultValues: { title: "", amount: "", category: "", type: "expense", note: "", location: "" }
   })
+  const mountKeys = useIdempotencyKey();
+  // A new entry starts blank (and dated now), so its key lives with this mount. An edit, or a
+  // failed queued entry being fixed, reopens with the same values, so its key outlives the screen.
+  const idem = id ? holderFor(`transaction:${id}`) : draftFrom ? holderFor(`transaction:draft:${draftFrom}`) : mountKeys;
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -493,18 +499,12 @@ const AddTransaction = () => {
     }
     const share = owedBy ? entered - owedBy.reduce((sum, row) => sum + row.amount, 0) : parseMoney(data.amount);
 
-    // Generated unconditionally, on every send, not only once a failure is detected —
-    // otherwise the FIRST attempt (the one that may have actually reached the server,
-    // with only its response lost) would go out with no clientId at all, and a queued
-    // retry would create a genuine duplicate rather than hit the dedupe index.
-    const clientId = makeClientId();
-
     // A spend carries title + category; a transfer/invest carries toAccount and neither.
     // Amount is positive paise; `type` gives the direction. Invest posts as a transfer —
     // the destination being an investment account is what makes it an investment (nothing
     // in the ledger distinguishes it; Activity/reviews read the destination's type).
-    const payload = move
-      ? { type: "transfer", amount: parseMoney(data.amount), account: account._id, toAccount: toAccount!._id, occurredAt: occurredAt.toISOString(), clientId, ...extras }
+    const fields = move
+      ? { type: "transfer", amount: parseMoney(data.amount), account: account._id, toAccount: toAccount!._id, occurredAt: occurredAt.toISOString(), ...extras }
       : {
           type: data.type,
           amount: share,
@@ -513,9 +513,14 @@ const AddTransaction = () => {
           title: data.title,
           occurredAt: occurredAt.toISOString(),
           ...(owedBy ? { owedBy } : {}),
-          clientId,
           ...extras,
         };
+    // One key per intent, made when the form opened and kept across double taps and re-taps
+    // after an error, so a first attempt that landed with only its reply lost can't be
+    // saved twice. It doubles as the body clientId, which the server and the outbox already
+    // dedupe on. A changed value is a new intent and gets a new key.
+    const clientId = idem.keyFor("POST", "/transactions", fields);
+    const payload = { ...fields, clientId };
 
     setSubmitting(true);
     setSubmitError(null);
@@ -525,11 +530,12 @@ const AddTransaction = () => {
         const editPayload = data.type === "transfer"
           ? { amount: parseMoney(data.amount), occurredAt: occurredAt.toISOString(), ...extras }
           : { title: data.title, amount: parseMoney(data.amount), category: data.category, occurredAt: occurredAt.toISOString(), ...extras };
-        await patch(`/transactions/${id}`, editPayload);
+        await patch(`/transactions/${id}`, editPayload, { idempotencyKey: idem.keyFor("PATCH", `/transactions/${id}`, editPayload) });
       }
       else {
-        await post("/transactions", payload);
+        await post("/transactions", payload, { idempotencyKey: clientId });
       }
+      idem.reset();
       // Every save here moves a balance — a plain edit's amount, a split's transfers, an
       // ordinary expense's account. The list held elsewhere (Net Worth, the account
       // picker) is stale until this reloads it. Caught rather than awaited-and-thrown: a

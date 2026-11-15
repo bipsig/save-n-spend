@@ -23,6 +23,7 @@ import { useCategories } from "@/lib/categories";
 import { haptics } from "@/lib/haptics";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { commitImport, previewImport, tripDates, useTrip, type ImportDecision, type ImportRow, type NameMapping } from "@/lib/trips";
+import { useIdempotencyKey } from "@/lib/useIdempotencyKey";
 import { calendarFromKey } from "@/lib/zone";
 import { toast } from "@/store/toast";
 import { colors, spacing } from "@/theme";
@@ -54,6 +55,7 @@ const TripImportScreen = () => {
   const categories = useCategories();
   const defaultAccount = useDefaultAccount();
   const trip = useTrip(id).data?.trip;
+  const idem = useIdempotencyKey();
 
   const [csv, setCsv] = useState<string | null>(null);
   const [names, setNames] = useState<string[]>([]);
@@ -131,12 +133,18 @@ const TripImportScreen = () => {
     });
     setBusy(true);
     try {
-      const res = await commitImport(id, csv, mapping, decisions);
+      const res = await commitImport(id, csv, mapping, decisions, {
+        idempotencyKey: idem.keyFor("POST", `/trips/${id}/import/commit`, { csv, mapping, decisions }),
+      });
+      idem.reset();
       haptics.success();
-      toast.success(`Imported ${res.added + res.applied} ${res.added + res.applied === 1 ? "expense" : "expenses"}${res.settled ? ` and ${res.settled} settle-up${res.settled === 1 ? "" : "s"}` : ""}`);
+      // No counts when the reply had none (see lib/replayed.ts); the trip page reloads on focus.
+      toast.success(res
+        ? `Imported ${res.added + res.applied} ${res.added + res.applied === 1 ? "expense" : "expenses"}${res.settled ? ` and ${res.settled} settle-up${res.settled === 1 ? "" : "s"}` : ""}`
+        : "Import saved");
       // Back to the trip — asking it to open "Match Splitwise" when simplification could have
       // changed anyone's number.
-      if (res.matchSplitwise) router.dismissTo({ pathname: "/trip-detail", params: { id, match: "1" } });
+      if (res?.matchSplitwise) router.dismissTo({ pathname: "/trip-detail", params: { id, match: "1" } });
       else goBackOrHome();
     }
     catch (err) {

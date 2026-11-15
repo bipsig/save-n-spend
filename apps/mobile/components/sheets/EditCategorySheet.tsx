@@ -5,7 +5,8 @@ import { NAME_MIN } from "@save-n-spend/types";
 import AppSheet from "./AppSheet";
 import Button from "@/components/ui/Button";
 import CategoryForm, { categoryCtaLabel, type CategoryFormValue } from "@/components/ui/CategoryForm";
-import { createCategory, updateCategory, useCategoryById } from "@/lib/categories";
+import { categoryCreateBody, createCategory, updateCategory, useCategoryById } from "@/lib/categories";
+import { holderFor } from "@/lib/idempotency";
 import { haptics } from "@/lib/haptics";
 import type { IconName } from "@/lib/icons";
 import { toast } from "@/store/toast";
@@ -84,13 +85,16 @@ const EditCategorySheet = forwardRef<BottomSheetModal, Props>(({ category, paren
     try {
       if (editing) await updateCategory(category._id, { name: trimmed, icon: form.icon, color: form.color });
       else {
-        await createCategory({
+        const draft = {
           name: trimmed,
           kind: form.kind,
           icon: form.icon,
           color: form.color,
           parent: parent?._id ?? null,
-        });
+        };
+        const idem = holderFor("category:new");
+        await createCategory(draft, { idempotencyKey: idem.keyFor("POST", "/categories", categoryCreateBody(draft)) });
+        idem.reset();
       }
       onSaved?.();
       dismiss();

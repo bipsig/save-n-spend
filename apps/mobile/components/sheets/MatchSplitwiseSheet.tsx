@@ -9,6 +9,7 @@ import PressableScale from "@/components/ui/PressableScale";
 import { haptics } from "@/lib/haptics";
 import formatMoney, { parseMoney, paiseToInput, usePrivacyMask } from "@/lib/money";
 import { clearPlan, savePlan } from "@/lib/trips";
+import { holderFor } from "@/lib/idempotency";
 import { toast } from "@/store/toast";
 import { colors, spacing } from "@/theme";
 
@@ -64,7 +65,10 @@ const MatchSplitwiseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, membe
     setBusy(true);
     setError(null);
     try {
-      await savePlan(tripId, members.filter((m) => signed(m) !== 0).map((m) => ({ account: m.account, amount: signed(m) })));
+      const entries = members.filter((m) => signed(m) !== 0).map((m) => ({ account: m.account, amount: signed(m) }));
+      const idem = holderFor(`trip:${tripId}:plan`);
+      await savePlan(tripId, entries, { idempotencyKey: idem.keyFor("PUT", `/trips/${tripId}/plan`, { entries }) });
+      idem.reset();
       haptics.success();
       innerRef.current?.dismiss();
       onSaved();

@@ -16,6 +16,7 @@ import { useCategoryById } from "@/lib/categories";
 import CategoryName from "@/components/ui/CategoryName";
 import { post, patch, del } from "@/lib/api";
 import { splitIssues } from "@/lib/apiError";
+import { holderFor } from "@/lib/idempotency";
 import { haptics } from "@/lib/haptics";
 import { isMonthClosed, monthTitle, type BudgetSummary } from "@/lib/budgets";
 import { toast } from "@/store/toast";
@@ -103,7 +104,10 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
         await patch(`/budgets/${summary.budget._id}`, { limit: parseMoney(data.limit) });
       }
       else {
-        await post("/budgets", { category: categoryId, month, limit: parseMoney(data.limit) });
+        const body = { category: categoryId, month, limit: parseMoney(data.limit) };
+        const idem = holderFor("budget:new");
+        await post("/budgets", body, { idempotencyKey: idem.keyFor("POST", "/budgets", body) });
+        idem.reset();
       }
       dismiss();
       onChanged();

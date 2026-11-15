@@ -13,6 +13,7 @@ import { useAccountById, useDefaultAccount } from "@/lib/accounts";
 import { useAccountStore } from "@/store/accounts";
 import { holdingLook } from "@/lib/investments";
 import { post } from "@/lib/api";
+import { holderFor } from "@/lib/idempotency";
 import { haptics } from "@/lib/haptics";
 import { toast } from "@/store/toast";
 import type { IconName } from "@/lib/icons";
@@ -65,7 +66,11 @@ const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
     setBusy(action);
     setError(null);
     try {
-      await post(`/bills/${bill._id}/${action}`, action === "pay" && accountId ? { account: accountId } : undefined);
+      const path = `/bills/${bill._id}/${action}`;
+      const body = action === "pay" && accountId ? { account: accountId } : undefined;
+      const idem = holderFor(`bill:${bill._id}`);
+      await post(path, body, { idempotencyKey: idem.keyFor("POST", path, body) });
+      idem.reset();
       // Paying moves money (an expense, or a transfer into a holding). The account store
       // backs Net Worth's per-account rows and Add-Transaction's "available" line, and the
       // dashboard doesn't reload accounts on focus — so without this they'd read stale until

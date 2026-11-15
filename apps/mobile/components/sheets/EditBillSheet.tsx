@@ -27,6 +27,7 @@ import { parseMoney } from "@/lib/money";
 import { startOfToday, toZonedDayISO } from "@/lib/date";
 import { post } from "@/lib/api";
 import { splitIssues } from "@/lib/apiError";
+import { holderFor } from "@/lib/idempotency";
 import { toast } from "@/store/toast";
 import { NAME_MAX, NAME_MIN } from "@save-n-spend/types";
 import type { IconName } from "@/lib/icons";
@@ -57,7 +58,8 @@ type Props = {
   draft?: BillDraft | null;
   onChanged: () => void;
   /** The bill as saved — for a caller that has a follow-up step (moving past payments). */
-  onSaved?: (bill: IBill) => void;
+  /** Null when the reply had no record (see lib/replayed.ts); `onChanged` still refetches. */
+  onSaved?: (bill: IBill | null) => void;
 };
 
 const schema = z.object({
@@ -181,10 +183,14 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, draft, onChan
     setSubmitting(true);
     setError(null);
     try {
-      const saved = bill ? await updateBill(bill._id, body) : await post<IBill>("/bills", body);
+      const idem = holderFor("bill:new");
+      const saved = bill
+        ? await updateBill(bill._id, body)
+        : await post<IBill | null>("/bills", body, { idempotencyKey: idem.keyFor("POST", "/bills", body) });
+      if (!bill) idem.reset();
       dismiss();
       onChanged();
-      onSaved?.(saved);
+      onSaved?.(saved ?? null);
       // Named, not just "Bill added": the sheet closes onto a list the row may have
       // scrolled out of, and the name is what makes it findable.
       toast.success(editing ? `${name} updated` : `${name} added to your bills`);

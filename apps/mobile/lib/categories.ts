@@ -3,7 +3,7 @@ import type { CategoryKind, ICategory } from "@save-n-spend/types";
 import type { ColorToken } from "@/theme";
 import { useCategoryStore } from "@/store/categories";
 import { usePendingDeletes } from "@/store/pendingDeletes";
-import { del, patch, post } from "@/lib/api";
+import { del, patch, post, type RequestOptions } from "@/lib/api";
 import { applyOrder, persistOrder } from "@/lib/reorder";
 import { labelFrom, type CategoryLabel } from "@/lib/categoryLabel";
 
@@ -111,11 +111,16 @@ export type CategoryDraft = {
   color?: string;
 };
 
-export const createCategory = async (draft: CategoryDraft): Promise<void> => {
-  // `parent: null` is how the form says "top level", but the API's create schema is
-  // `.strict()` and takes only a string — so drop the key rather than send null.
+/** The body `createCategory` posts, so a form can key the exact request. `parent: null` is
+ *  how the form says "top level", but the API's create schema is `.strict()` and takes only a
+ *  string, so the key is dropped rather than sent as null. */
+export const categoryCreateBody = (draft: CategoryDraft) => {
   const { parent, ...rest } = draft;
-  await post<ICategory>("/categories", parent ? { ...rest, parent } : rest);
+  return parent ? { ...rest, parent } : rest;
+};
+
+export const createCategory = async (draft: CategoryDraft, opts?: RequestOptions): Promise<void> => {
+  await post<ICategory>("/categories", categoryCreateBody(draft), opts);
   await useCategoryStore.getState().load();
 };
 

@@ -15,6 +15,10 @@ import { haptics } from "@/lib/haptics";
 import { parseMoney, paiseToInput } from "@/lib/money";
 import { startOfToday } from "@/lib/date";
 import { TRIP_EMOJIS, TRIP_GRADIENTS, createTrip, deleteTrip, pickerToTripDay, tripDayToPicker, updateTrip } from "@/lib/trips";
+import { holderFor } from "@/lib/idempotency";
+import { recoverCreated, sameName } from "@/lib/replayed";
+import { useAccountStore } from "@/store/accounts";
+import { useTripNameStore } from "@/store/tripNames";
 import { toast } from "@/store/toast";
 import { colors, spacing } from "@/theme";
 
@@ -69,8 +73,13 @@ const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDelete
     const trimmed = newPerson.trim();
     if (trimmed.length < 1) return;
     try {
-      const created = await createAccount({ name: trimmed, type: "person", startingBalance: 0 });
-      setMembers((m) => [...m, created._id]);
+      const personDraft = { name: trimmed, type: "person" as const, startingBalance: 0 };
+      const idem = holderFor("person:new");
+      const reply = await createAccount(personDraft, { idempotencyKey: idem.keyFor("POST", "/accounts", personDraft) });
+      idem.reset();
+      const created = recoverCreated(reply, useAccountStore.getState().list, (a) => a.type === "person" && !a.isArchived && sameName(a.name, trimmed));
+      // Not found (two people with that name): saved, and they're in the list below to tick.
+      if (created) setMembers((m) => [...m, created._id]);
       setNewPerson("");
     }
     catch (err) {
@@ -100,7 +109,15 @@ const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDelete
       };
       let id = trip?._id ?? "";
       if (trip) await updateTrip(trip._id, draft);
-      else id = (await createTrip(draft))._id;
+      else {
+        const idem = holderFor("trip:new");
+        const reply = await createTrip(draft, { idempotencyKey: idem.keyFor("POST", "/trips", draft) });
+        idem.reset();
+        if (!reply) await useTripNameStore.getState().load().catch(() => {});
+        const trips = Object.entries(useTripNameStore.getState().byId).map(([_id, t]) => ({ _id, name: t.name }));
+        // Empty when it can't be found: the caller then refreshes its list instead of opening it.
+        id = reply?._id ?? recoverCreated(null, trips, (t) => sameName(t.name, draft.name))?._id ?? "";
+      }
       innerRef.current?.dismiss();
       onSaved(id);
       toast.success(trip ? `${draft.name} updated` : `${draft.name} started`);

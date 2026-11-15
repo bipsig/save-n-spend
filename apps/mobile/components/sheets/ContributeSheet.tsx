@@ -17,6 +17,7 @@ import { parseMoney, usePrivacyMask } from "@/lib/money";
 import formatMoney from "@/lib/money";
 import { post } from "@/lib/api";
 import { splitIssues } from "@/lib/apiError";
+import { holderFor } from "@/lib/idempotency";
 import { fireGoalMilestone } from "@/lib/localNotifications";
 import { useSession } from "@/store/session";
 import { toast } from "@/store/toast";
@@ -90,7 +91,11 @@ const ContributeSheet = forwardRef<BottomSheetModal, Props>(({ goal, onChanged }
     setError(null);
     try {
       const added = parseMoney(data.amount);
-      await post(`/goals/${goal._id}/contribute`, { amount: added });
+      const path = `/goals/${goal._id}/contribute`;
+      const body = { amount: added };
+      const idem = holderFor(`goal:${goal._id}:contribute`);
+      await post(path, body, { idempotencyKey: idem.keyFor("POST", path, body) });
+      idem.reset();
       // Fire-and-forget: the server's own push has nowhere to land on this build (see
       // lib/localNotifications.ts), so this is the only copy of the milestone alert that
       // reaches the lock screen — but it must never hold up the contribution itself.

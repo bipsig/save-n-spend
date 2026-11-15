@@ -26,6 +26,7 @@ import { useAccountById } from "@/lib/accounts";
 import { startOfToday } from "@/lib/date";
 import { toast } from "@/store/toast";
 import { pendingDeletes, usePendingDeletes } from "@/store/pendingDeletes";
+import { holderFor } from "@/lib/idempotency";
 import { radius, spacing } from "@/theme";
 
 type SectionProps = {
@@ -130,14 +131,14 @@ const BillsScreen = () => {
     }
   };
 
-  const afterSave = (bill: IBill) => {
+  const afterSave = (bill: IBill | null) => {
     void refetchSuggestions();
     const pattern = draftPattern;
     setDraft(null);
     setDraftPattern(null);
     // Set up as a SIP from a suggestion, with past payments still logged as spending —
     // offer to move them into the holding too.
-    if (pattern && bill.toInvestment && pattern.transactionIds.length > 0) {
+    if (pattern && bill?.toInvestment && pattern.transactionIds.length > 0) {
       setConvert({ pattern, toInvestment: bill.toInvestment });
       convertRef.current?.present();
     }
@@ -265,8 +266,15 @@ const BillsScreen = () => {
         cancelLabel="Not now"
         onConfirm={async () => {
           if (!convert) return;
-          const moved = await bulkConvertToInvestment(convert.pattern.transactionIds, convert.toInvestment);
-          toast.success(`${moved} payment${moved === 1 ? "" : "s"} moved to ${convertHolding?.name ?? "the holding"}`);
+          const body = { transactionIds: convert.pattern.transactionIds, toAccount: convert.toInvestment };
+          const convertKey = holderFor(`account:${convert.toInvestment}:convert`);
+          const moved = await bulkConvertToInvestment(body.transactionIds, body.toAccount, {
+            idempotencyKey: convertKey.keyFor("POST", "/transactions/convert-to-investment", body),
+          });
+          convertKey.reset();
+          toast.success(moved === null
+            ? `Payments moved to ${convertHolding?.name ?? "the holding"}`
+            : `${moved} payment${moved === 1 ? "" : "s"} moved to ${convertHolding?.name ?? "the holding"}`);
           setConvert(null);
         }}
       />

@@ -19,6 +19,7 @@ import { useCategoryById } from "@/lib/categories";
 import { haptics } from "@/lib/haptics";
 import formatMoney, { parseMoney, paiseToInput, usePrivacyMask } from "@/lib/money";
 import { addTripExpense, deleteTripExpense, splitEvenly, updateTripExpense } from "@/lib/trips";
+import { holderFor } from "@/lib/idempotency";
 import { toast } from "@/store/toast";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
@@ -147,8 +148,14 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
     setBusy(true);
     setError(null);
     try {
-      if (expense) await updateTripExpense(tripId, expense._id, draft);
-      else await addTripExpense(tripId, draft);
+      const idem = holderFor(`trip:${tripId}:expense:${expense?._id ?? "new"}`);
+      if (expense) {
+        await updateTripExpense(tripId, expense._id, draft, {
+          idempotencyKey: idem.keyFor("PATCH", `/trips/${tripId}/expenses/${expense._id}`, draft),
+        });
+      }
+      else await addTripExpense(tripId, draft, { idempotencyKey: idem.keyFor("POST", `/trips/${tripId}/expenses`, draft) });
+      idem.reset();
       innerRef.current?.dismiss();
       onSaved();
       toast.success(expense ? `${draft.title} updated` : `${draft.title} added · your share ${formatMoney(myShare)}`);

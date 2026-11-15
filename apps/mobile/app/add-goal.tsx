@@ -24,6 +24,7 @@ import { haptics } from "@/lib/haptics";
 import { fetchGoal, updateGoal } from "@/lib/goals";
 import { post } from "@/lib/api";
 import { splitIssues } from "@/lib/apiError";
+import { useIdempotencyKey } from "@/lib/useIdempotencyKey";
 import { toast } from "@/store/toast";
 import { NAME_MAX, NAME_MIN } from "@save-n-spend/types";
 import type { IconName } from "@/lib/icons";
@@ -108,6 +109,7 @@ const AddGoal = () => {
     mode: "onChange",
     defaultValues: { name: "", amount: "", icon: "savings", color: "accent" },
   });
+  const idem = useIdempotencyKey();
 
   // Loaded rather than passed through params, so the route also works from a deep link
   // or after the list behind it has gone. Nothing is rendered until it lands, so there
@@ -202,7 +204,11 @@ const AddGoal = () => {
       // Explicitly null on a PATCH, so switching the deadline off clears the one stored —
       // a PATCH ignores what it isn't sent. Create has nothing to clear and rejects null.
       if (id) await updateGoal(id, { ...fields, deadline: iso });
-      else await post("/goals", { ...fields, ...(iso ? { deadline: iso } : {}) });
+      else {
+        const body = { ...fields, ...(iso ? { deadline: iso } : {}) };
+        await post("/goals", body, { idempotencyKey: idem.keyFor("POST", "/goals", body) });
+      }
+      idem.reset();
       goBackOrHome();
       // The receipt repeats the pace: the screen that worked it out is gone by now.
       toast.success(

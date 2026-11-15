@@ -17,6 +17,7 @@ import { useCategoryById } from "@/lib/categories";
 import { haptics } from "@/lib/haptics";
 import formatMoney, { roundToRupee, usePrivacyMask } from "@/lib/money";
 import { closeTrip, tripDays, useTrip } from "@/lib/trips";
+import { holderFor } from "@/lib/idempotency";
 import { toast } from "@/store/toast";
 import { radius, spacing } from "@/theme";
 
@@ -75,7 +76,11 @@ const TripWrapUpScreen = () => {
   const close = async () => {
     setBusy(true);
     try {
-      await closeTrip(trip._id, open.filter((m) => choice[m.account] === "letGo").map((m) => m.account));
+      const letGo = open.filter((m) => choice[m.account] === "letGo").map((m) => m.account);
+      // The choices start from the same balances on every open, so the key outlives the screen.
+      const idem = holderFor(`trip:${trip._id}:close`);
+      await closeTrip(trip._id, letGo, { idempotencyKey: idem.keyFor("POST", `/trips/${trip._id}/close`, { letGo }) });
+      idem.reset();
       haptics.success();
       toast.success(`${trip.name} closed · your share ${formatMoney(totals.myShare)}`);
       goBackOrHome();

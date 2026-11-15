@@ -13,6 +13,7 @@ import { useAccountById, useDefaultAccount } from "@/lib/accounts";
 import { haptics } from "@/lib/haptics";
 import formatMoney, { parseMoney, paiseToInput, usePrivacyMask } from "@/lib/money";
 import { settleTrip } from "@/lib/trips";
+import { holderFor } from "@/lib/idempotency";
 import { toast } from "@/store/toast";
 import { spacing } from "@/theme";
 
@@ -58,7 +59,10 @@ const SettleSheet = forwardRef<BottomSheetModal, Props>(({ tripId, member, onSav
     setBusy(true);
     setError(null);
     try {
-      await settleTrip(tripId, { person: member.account, account: account._id, amount: value, direction: theyOwe ? "received" : "paid" });
+      const body = { person: member.account, account: account._id, amount: value, direction: theyOwe ? "received" as const : "paid" as const };
+      const idem = holderFor(`trip:${tripId}:settle:${member.account}`);
+      await settleTrip(tripId, body, { idempotencyKey: idem.keyFor("POST", `/trips/${tripId}/settle`, body) });
+      idem.reset();
       innerRef.current?.dismiss();
       onSaved();
       toast.success(theyOwe ? `${member.name} paid you ${formatMoney(value)}` : `You paid ${member.name} ${formatMoney(value)}`);

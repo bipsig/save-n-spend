@@ -173,7 +173,7 @@ const TripsScreen = () => {
         </>
       )}
 
-      <TripSheet ref={newRef} trip={null} onSaved={(id) => { void refetch(); open(id); }} />
+      <TripSheet ref={newRef} trip={null} onSaved={(id) => { void refetch(); if (id) open(id); }} />
     </ScreenScaffold>
   );
 };

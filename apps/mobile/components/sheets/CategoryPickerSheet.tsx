@@ -12,6 +12,8 @@ import PressableScale from "@/components/ui/PressableScale";
 import { buildCategoryTree, useCategories } from "@/lib/categories";
 import { useCategoryStore } from "@/store/categories";
 import { post } from "@/lib/api";
+import { holderFor } from "@/lib/idempotency";
+import { recoverCreated, sameName } from "@/lib/replayed";
 import { NAME_MIN } from "@save-n-spend/types";
 import { useConnectivity } from "@/store/connectivity";
 import { toast } from "@/store/toast";
@@ -195,16 +197,21 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
     setSaving(true);
     setError(null);
     try {
-      const created = await post<ICategory>("/categories", {
+      const body = {
         name: trimmed,
         // The picker's kind, never the draft's — the transaction decides it.
         kind,
         icon: draft.icon,
         color: draft.color,
         ...(draft.parent ? { parent: draft.parent } : {}),
-      });
+      };
+      const idem = holderFor("category:new");
+      const reply = await post<ICategory | null>("/categories", body, { idempotencyKey: idem.keyFor("POST", "/categories", body) });
+      idem.reset();
       await useCategoryStore.getState().load();
-      onPick(created._id);
+      // One live name per user (server rule), so a reply without the record still finds it.
+      const created = recoverCreated(reply, useCategoryStore.getState().list, (c) => c.kind === kind && sameName(c.name, trimmed));
+      if (created) onPick(created._id);
       dismiss();
     }
     catch (err) {

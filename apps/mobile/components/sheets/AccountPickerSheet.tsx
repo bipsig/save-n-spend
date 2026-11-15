@@ -10,6 +10,9 @@ import { ACCOUNT_GROUPS, createAccount, owedLine, useAccounts } from "@/lib/acco
 import { useConnectivity } from "@/store/connectivity";
 import { toast } from "@/store/toast";
 import { haptics } from "@/lib/haptics";
+import { holderFor } from "@/lib/idempotency";
+import { recoverCreated, sameName } from "@/lib/replayed";
+import { useAccountStore } from "@/store/accounts";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import type { IconName } from "@/lib/icons";
 import type { AccountType, IAccount } from "@save-n-spend/types";
@@ -117,9 +120,14 @@ const AccountPickerSheet = forwardRef<BottomSheetModal, Props>((
     setCreatingBusy(true);
     setCreateError(null);
     try {
-      const created = await createAccount({ name: trimmed, type: "person", startingBalance: 0 });
+      const draft = { name: trimmed, type: "person" as const, startingBalance: 0 };
+      const idem = holderFor("person:new");
+      const reply = await createAccount(draft, { idempotencyKey: idem.keyFor("POST", "/accounts", draft) });
+      idem.reset();
+      const created = recoverCreated(reply, useAccountStore.getState().list, (a) => a.type === "person" && !a.isArchived && sameName(a.name, trimmed));
       haptics.select();
-      onPick(created._id);
+      // Not found (two people with that name): saved, and the list now shows them to pick.
+      if (created) onPick(created._id);
       dismiss();
     }
     catch (err) {
