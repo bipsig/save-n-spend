@@ -8,6 +8,7 @@ import Bill from "../models/Bill";
 import Goal from "../models/Goal";
 import Trip from "../models/Trip";
 import TripExpense from "../models/TripExpense";
+import GoalContributionLog from "../models/GoalContributionLog";
 import { BackupPayload } from "../schemas/backupSchema";
 import { AppError } from "../utils/AppError";
 import { unresolvedReferences, type Reference, type Target } from "./backupReferences";
@@ -24,7 +25,7 @@ const FOREIGN_REFERENCE = "This backup refers to data that isn't yours";
 export const exportAccountData = async (userId: string) => {
     const uid = new mongoose.Types.ObjectId(userId);
 
-    const [user, accounts, categories, transactions, budgets, bills, goals, trips, tripExpenses] = await Promise.all([
+    const [user, accounts, categories, transactions, budgets, bills, goals, trips, tripExpenses, goalContributionLogs] = await Promise.all([
         User.findById(uid).select("currency prefs").lean(),
         Account.find({ userId: uid }).lean(),
         Category.find({ userId: uid }).lean(),
@@ -34,6 +35,7 @@ export const exportAccountData = async (userId: string) => {
         Goal.find({ userId: uid }).lean(),
         Trip.find({ userId: uid }).lean(),
         TripExpense.find({ userId: uid }).lean(),
+        GoalContributionLog.find({ userId: uid }).lean(),
     ]);
 
     return {
@@ -53,12 +55,13 @@ export const exportAccountData = async (userId: string) => {
         goals,
         trips,
         tripExpenses,
+        goalContributionLogs,
     };
 };
 
 type Collection = [string, Model<any>, Record<string, unknown>[]];
 
-const REFERENCED: Record<Target, Model<any>> = { accounts: Account, categories: Category, trips: Trip, tripExpenses: TripExpense };
+const REFERENCED: Record<Target, Model<any>> = { accounts: Account, categories: Category, trips: Trip, tripExpenses: TripExpense, goals: Goal };
 const OBJECT_ID = /^[a-f0-9]{24}$/i;
 
 // A reference that names nothing anywhere is left alone (older data has such rows, and they
@@ -101,7 +104,10 @@ export const restoreAccountData = async (
         });
     }
 
-    const replaced = [Account, Category, Transaction, Budget, Bill, Goal, Trip, TripExpense] as Model<any>[];
+    // Contribution logs are replaced only by a backup that carries them; an older one (made
+    // before they were exported) leaves the logs as they are.
+    const logs = payload.goalContributionLogs;
+    const replaced = [Account, Category, Transaction, Budget, Bill, Goal, Trip, TripExpense, ...(logs ? [GoalContributionLog] : [])] as Model<any>[];
     // One after another: MongoDB doesn't support parallel operations in one transaction.
     for (const DocModel of replaced) {
         await DocModel.deleteMany({ userId: uid }, { session });
@@ -117,6 +123,7 @@ export const restoreAccountData = async (
         // Optional in the file: a backup made before trips existed restores with none.
         ["trips", Trip, payload.trips ?? []],
         ["tripExpenses", TripExpense, payload.tripExpenses ?? []],
+        ...(logs ? [["goalContributionLogs", GoalContributionLog, logs] as Collection] : []),
     ];
 
     const counts: Record<string, number> = {};

@@ -26,6 +26,8 @@ export const backupPayloadSchema = z.object({
     // Added with trips; absent from older backups, which still restore.
     trips: z.array(backupDoc).optional(),
     tripExpenses: z.array(backupDoc).optional(),
+    // Added in 2.8.0. When absent (any older backup), restore leaves the logs as they are.
+    goalContributionLogs: z.array(backupDoc).optional(),
 });
 
 // The server-side half of the destructive-action guard — a defense-in-depth check

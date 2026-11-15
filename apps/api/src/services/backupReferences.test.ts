@@ -39,6 +39,11 @@ describe("unresolvedReferences", () => {
         assert.deepEqual(unresolvedReferences(old), []);
     });
 
+    it("resolves contribution logs against the backup's goals, and allows a file without them", () => {
+        assert.deepEqual(unresolvedReferences(backup({ goalContributionLogs: [{ _id: id(50), goalId: id(40), amount: 100 }] })), []);
+        assert.deepEqual(unresolvedReferences(backup({ goalContributionLogs: [] })), []);
+    });
+
     it("compares ids without regard to case", () =>
         assert.deepEqual(unresolvedReferences(backup({ preferences: { defaultAccount: BANK.toUpperCase() } })), []));
 
@@ -61,6 +66,7 @@ describe("unresolvedReferences", () => {
         ["tripExpenses.paidFrom", { tripExpenses: [{ _id: EXPENSE, tripId: TRIP, paidFrom: OUTSIDE, shares: [] }] }, "accounts"],
         ["tripExpenses.shares.account", { tripExpenses: [{ _id: EXPENSE, tripId: TRIP, shares: [{ account: null, amount: 1 }, { account: OUTSIDE, amount: 1 }] }] }, "accounts"],
         ["preferences.defaultAccount", { preferences: { defaultAccount: OUTSIDE } }, "accounts"],
+        ["goalContributionLogs.goalId", { goalContributionLogs: [{ _id: id(50), goalId: OUTSIDE, amount: 1 }] }, "goals"],
     ];
     for (const [where, over, target] of cases) {
         it(`reports ${where}`, () => {

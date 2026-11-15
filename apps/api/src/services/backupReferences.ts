@@ -15,10 +15,11 @@ export type BackupDocs = {
     goals: Doc[];
     trips?: Doc[];
     tripExpenses?: Doc[];
+    goalContributionLogs?: Doc[];
 };
 
-export type Target = "accounts" | "categories" | "trips" | "tripExpenses";
-type Source = "transactions" | "bills" | "budgets" | "categories" | "trips" | "tripExpenses";
+export type Target = "accounts" | "categories" | "trips" | "tripExpenses" | "goals";
+type Source = "transactions" | "bills" | "budgets" | "categories" | "trips" | "tripExpenses" | "goalContributionLogs";
 
 /** [collection, dotted path (arrays are walked at any step), collection it must name] */
 export const REFERENCES: [Source, string, Target][] = [
@@ -39,6 +40,7 @@ export const REFERENCES: [Source, string, Target][] = [
     ["tripExpenses", "paidBy", "accounts"],
     ["tripExpenses", "paidFrom", "accounts"],
     ["tripExpenses", "shares.account", "accounts"],
+    ["goalContributionLogs", "goalId", "goals"],
 ];
 
 export type Reference = { collection: string; field: string; id: string; target: Target };
@@ -61,6 +63,7 @@ export const unresolvedReferences = (backup: BackupDocs): Reference[] => {
         categories: new Set(docsOf("categories").map((d) => key(d._id))),
         trips: new Set(docsOf("trips").map((d) => key(d._id))),
         tripExpenses: new Set(docsOf("tripExpenses").map((d) => key(d._id))),
+        goals: new Set(docsOf("goals").map((d) => key(d._id))),
     };
 
     const out: Reference[] = [];
