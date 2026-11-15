@@ -11,9 +11,7 @@ import Transaction, { type ITransaction } from "../models/Transaction";
 import { applyEffects, changes, editedFields, requireCategory, requireLiveAccounts, resplit } from "../services/transactionService";
 import { checkBudgetAlerts } from "../services/budgetAlertService";
 import * as reply from "../utils/response";
-import Category from "../models/Category";
-import { dayBoundsFromKeyInZone } from "../utils/timezone";
-import { resolveZone } from "../utils/userZone";
+import { resolveTransactionFilter, summaryTotals, type SummaryGroup } from "../services/transactionFilter";
 import { inTransaction } from "../utils/inTransaction";
 import { conflict, notFound } from "../utils/messages";
 import { toDTO, toDTOs } from "../utils/dto";
@@ -31,10 +29,6 @@ const missing = () => AppError.notFound(notFound("transaction"));
 const unchangedSince = (row: ITransaction) => ({ updatedAt: (row as unknown as { updatedAt?: Date }).updatedAt ?? null });
 
 const isDuplicateKey = (e: unknown): boolean => (e as { code?: number } | null)?.code === 11000;
-
-// Neutralise every regex metacharacter so a search term can only ever match itself.
-// `$&` is the whole match, so each special character comes back escaped.
-const escapeRegex = (term: string): string => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 // POST /transactions never answers 409. The 2.6.0 app's outbox drops a queued item on ANY 409
 // from here as "already saved", so a 409 for another reason would lose a transaction. A
@@ -132,127 +126,27 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
 }
 
 export const filterTransactions = async (req: Request, res: Response): Promise<void> => {
-    const { startDate, endDate, category, account, type, search, trips, page, limit } = (req.valid as Valid<typeof listTransactionsRequest>).query;
+    const { page, limit, ...filters } = (req.valid as Valid<typeof listTransactionsRequest>).query;
 
-    const filters: Record<string, unknown> = {
-        userId: req.user?.userId
-    };
-
-    if (account) {
-        // Comma-separated, so the filter picks up any number of accounts — the mobile
-        // filter sheet multi-selects. A transfer into one of them has it as `toAccount`,
-        // not `account` — matching only the source side would silently drop every
-        // transfer these accounts received.
-        const accountIds = account.split(",").filter(Boolean);
-        filters.$or = [{ account: { $in: accountIds } }, { toAccount: { $in: accountIds } }];
-    }
-    if (category) {
-        // Same comma-separated multi-select as account. Each selected id can be a parent
-        // or a child — only parents have children to expand, so this just adds none for
-        // an id that's already a leaf.
-        const categoryIds = category.split(",").filter(Boolean);
-        const children = await Category.find({
-            parent: { $in: categoryIds },
-            userId: req.user?.userId
-        }, { _id: 1 });
-
-        const reqCategories = [...categoryIds, ...children.map((child) => child._id.toString())];
-
-        filters.category = { $in: reqCategories };
-    }
-    if (type) {
-        filters.type = type;
-    }
-    else {
-        // Balance corrections move an account's balance but are not money coming in or
-        // going out, and Activity reads as a history of what the user actually did with
-        // their money. They stay out of it, and so out of exports too: `lib/export.ts` asks
-        // for this same list, so an export matches the Activity screen.
-        filters.type = { $nin: ["positiveAdjustment", "negativeAdjustment"] };
-    }
-    if (trips === "exclude") {
-        // The everyday list. A trip's rows are real money and still move balances, but they
-        // are read on the trip and under Activity's Trips view, not among daily spending.
-        // Matches a missing field too.
-        filters.tripId = null;
-    }
-    else if (trips === "only") {
-        filters.tripId = { $ne: null };
-        // One row per trip expense: its share. The transfers recording what each friend owes
-        // on it are the expense's bookkeeping — seven rows for one AirBnB said nothing more.
-        // They stay on the trip's page and on each friend's account.
-        filters.$nor = [{ type: "transfer", tripExpenseId: { $ne: null } }];
-    }
-    if (search) {
-        filters.title = {
-            // Escaped, not interpolated. The term reaches `$regex` as a pattern, so a
-            // lone `(` is an invalid expression the driver rejects with a 500, and
-            // `(a+)+b` backtracks catastrophically inside the database rather than in
-            // our process. Escaping every metacharacter makes it a literal substring —
-            // which is the only thing a search box ever meant. The length cap lives in
-            // the schema.
-            $regex: escapeRegex(search),
-            $options: "i"
-        }
-    }
-    if (startDate && endDate) {
-        // `startDate`/`endDate` are calendar days the user picked, so their bounds
-        // are the user's midnights — not UTC's. Getting this wrong shifted the edge
-        // of every filtered range by the zone offset, which is how a purchase made
-        // late last night went missing from "Today".
-        const zone = await resolveZone(req);
-
-        filters.occurredAt = {
-            $gte: dayBoundsFromKeyInZone(startDate, zone).start,
-            $lte: dayBoundsFromKeyInZone(endDate, zone).end
-        };
-    }
-
-    const found = await paginate(Transaction, filters, { page, limit, sort: { occurredAt: -1 } });
+    const found = await paginate(Transaction, await resolveTransactionFilter(req, filters), { page, limit, sort: { occurredAt: -1 } });
 
     reply.ok(res, withOldPageFields({ ...found, items: toDTOs(found.items) }, req.header("x-app-version")), "Transactions fetched");
 }
 
+// The list's own filter, so the card sits on exactly the rows beneath it. `trips` is applied
+// after the sums rather than in the match: the trip line and savings count the trip rows the
+// same filters pick. Transfers and adjustments never add to any figure.
 export const getTransactionSummary = async (req: Request, res: Response): Promise<void> => {
-    const { startDate, endDate, trips } = (req.valid as Valid<typeof transactionSummaryRequest>).query;
+    const { trips, ...filters } = (req.valid as Valid<typeof transactionSummaryRequest>).query;
 
-    const match: Record<string, unknown> = {
-        userId: new mongoose.Types.ObjectId(req.user!.userId),
-        type: { $in: ["income", "expense"] }
-    };
-
-    if (startDate && endDate) {
-        // Same zone-local day bounds as the list above — the summary card sits on top
-        // of that list, so a total computed over a differently-clamped window would
-        // not add up to the rows underneath it.
-        const zone = await resolveZone(req);
-        match.occurredAt = {
-            $gte: dayBoundsFromKeyInZone(startDate, zone).start,
-            $lte: dayBoundsFromKeyInZone(endDate, zone).end
-        };
-    }
-
-    // Grouped by whether the row belongs to a trip as well as by type, so one pass gives both
-    // the view's own totals and the trip spending the everyday view leaves out — which the
-    // card names, rather than letting the month look cheaper than it was.
-    const sums = await Transaction.aggregate([
-        { $match: match },
+    // `aggregate` doesn't cast the way `find` does; this casts the filter exactly as the list's query would.
+    const match = Transaction.find().cast(Transaction, await resolveTransactionFilter(req, filters));
+    const sums = await Transaction.aggregate<SummaryGroup>([
+        { $match: { $and: [match, { type: { $in: ["income", "expense"] } }] } },
         { $group: { _id: { type: "$type", trip: { $gt: ["$tripId", null] } }, total: { $sum: "$amount" } } }
     ]);
 
-    const inView = (row: { _id: { trip: boolean } }) =>
-        trips === "exclude" ? !row._id.trip : trips === "only" ? row._id.trip : true;
-    const sum = (type: string, keep: (row: { _id: { type: string; trip: boolean } }) => boolean) =>
-        sums.filter((row) => row._id.type === type && keep(row)).reduce((total, row) => total + row.total, 0);
-
-    const income = sum("income", inView);
-    const expenses = sum("expense", inView);
-    const tripExpenses = sum("expense", (row) => row._id.trip);
-    // Savings stays the real figure in every view: a trip was money spent, and leaving it out
-    // would show the month as better saved than it was. Only the expense line is narrowed.
-    const savings = sum("income", () => true) - sum("expense", () => true);
-
-    reply.ok(res, { income, expenses, savings, tripExpenses }, "Transaction summary fetched");
+    reply.ok(res, summaryTotals(sums, trips), "Transaction summary fetched");
 }
 
 // The last 12 months only — title vocabulary drifts (old jobs, old shops), and bounding the
