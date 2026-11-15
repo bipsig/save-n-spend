@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
+import { goBackOrHome } from "@/lib/navigation";
 import { LinearGradient } from "expo-linear-gradient";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import BackButton from "@/components/shell/BackButton";
@@ -46,7 +47,6 @@ const TopCategory = ({ id, pct }: { id: string | null; pct: number }) => {
 // each person, to settle whenever.
 const TripWrapUpScreen = () => {
   usePrivacyMask();
-  const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data } = useTrip(id);
   const [choice, setChoice] = useState<Record<string, "keep" | "letGo">>({});
@@ -75,7 +75,7 @@ const TripWrapUpScreen = () => {
       await closeTrip(trip._id, open.filter((m) => choice[m.account] === "letGo").map((m) => m.account));
       haptics.success();
       toast.success(`${trip.name} closed · your share ${formatMoney(totals.myShare)}`);
-      router.back();
+      goBackOrHome();
     }
     catch (err) {
       haptics.error();
@@ -137,7 +137,7 @@ const TripWrapUpScreen = () => {
       </LinearGradient>
 
       <Button label="Close trip" loading={busy} onPress={close} />
-      <Button label="Not yet" variant="ghost" onPress={() => router.back()} />
+      <Button label="Not yet" variant="ghost" onPress={goBackOrHome} />
     </ScreenScaffold>
   );
 };

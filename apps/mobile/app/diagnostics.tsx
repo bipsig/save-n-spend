@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
+import { goBackOrHome } from "@/lib/navigation";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import BackButton from "@/components/shell/BackButton";
 import Card from "@/components/data/Card";
@@ -194,7 +195,7 @@ const DiagnosticsScreen = () => {
           onPress={() => {
             useSettings.getState().update({ diagnostics: false });
             toast.info("Diagnostics off");
-            router.back();
+            goBackOrHome();
           }}
         />
       </View>

@@ -256,7 +256,10 @@ const RootLayout = () => {
                 // Each screen gets its own crash boundary, so a screen that throws is replaced
                 // in place and the stack keeps its history. "Go to Home" pops back to the tabs.
                 screenLayout={({ children, navigation }) => (
-                  <ScreenErrorBoundary onHome={() => (navigation as { popToTop?: () => void }).popToTop?.()}>
+                  <ScreenErrorBoundary onHome={() => {
+                    if (navigation.canGoBack()) (navigation as { popToTop?: () => void }).popToTop?.();
+                    else router.replace("/(tabs)");
+                  }}>
                     {children}
                   </ScreenErrorBoundary>
                 )}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { goBackOrHome } from "@/lib/navigation";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { ITransaction } from "@save-n-spend/types";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
@@ -277,7 +278,7 @@ const InvestmentDetailScreen = () => {
         ref={deleteRef}
         summary={deleteSummary}
         onDeleted={() => {
-          router.back();
+          goBackOrHome();
           toast.success(`${account.name} deleted`);
         }}
       />

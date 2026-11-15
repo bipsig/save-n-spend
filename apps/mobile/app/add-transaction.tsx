@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
+import { goBackOrHome } from "@/lib/navigation";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
@@ -123,7 +124,6 @@ const SuggestionChip = ({
 
 const AddTransaction = () => {
   usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
-  const router = useRouter();
   const { id, repeatId, settleAccount, draftFrom, mode, redeemFrom } = useLocalSearchParams<{ id?: string; repeatId?: string; settleAccount?: string; draftFrom?: string; mode?: string; redeemFrom?: string }>();
   const isEdit = !!id;
 
@@ -540,7 +540,7 @@ const AddTransaction = () => {
       // waiting for the next launch. Not awaited: nothing on this screen depends on it.
       if (!isEdit && !move) void useTitleSuggestionStore.getState().load();
       if (draftFrom) useOutbox.getState().discard(draftFrom);
-      router.back();
+      goBackOrHome();
       // The screen is already gone by the time this shows, so it is the only receipt —
       // hence naming the amount and direction rather than just "Saved".
       const amount = formatMoney(parseMoney(data.amount));
@@ -562,7 +562,7 @@ const AddTransaction = () => {
       if (!isEdit && err instanceof ApiError && err.status === 0) {
         await useOutbox.getState().enqueue(clientId, payload);
         if (draftFrom) useOutbox.getState().discard(draftFrom);
-        router.back();
+        goBackOrHome();
         toast.info(`${formatMoney(parseMoney(data.amount))} saved offline — will sync once you're back online`);
         return;
       }

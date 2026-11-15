@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { goBackOrHome } from "@/lib/navigation";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
@@ -136,7 +137,7 @@ const TripImportScreen = () => {
       // Back to the trip — asking it to open "Match Splitwise" when simplification could have
       // changed anyone's number.
       if (res.matchSplitwise) router.dismissTo({ pathname: "/trip-detail", params: { id, match: "1" } });
-      else router.back();
+      else goBackOrHome();
     }
     catch (err) {
       haptics.error();

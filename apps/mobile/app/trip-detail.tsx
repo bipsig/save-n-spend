@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { goBackOrHome } from "@/lib/navigation";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { ITripExpense, TripEntry, TripMemberBalance } from "@save-n-spend/types";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
@@ -349,7 +350,7 @@ const TripDetailScreen = () => {
         <Button label="Wrap up this trip" variant="secondary" onPress={() => router.push({ pathname: "/trip-wrapup", params: { id: trip._id } })} />
       )}
 
-      <TripSheet ref={editTripRef} trip={trip} onSaved={() => { void refetch(); }} onDeleted={() => router.back()} />
+      <TripSheet ref={editTripRef} trip={trip} onSaved={() => { void refetch(); }} onDeleted={goBackOrHome} />
       <TripExpenseSheet ref={expenseRef} tripId={trip._id} members={members} expense={editing} defaultDate={defaultDate} onSaved={() => { void refetch(); }} />
       <MatchSplitwiseSheet ref={matchRef} tripId={trip._id} members={members} plan={plan} onSaved={() => { void refetch(); }} />
       <SettleSheet ref={settleRef} tripId={trip._id} member={settling} onSaved={() => { void refetch(); }} />

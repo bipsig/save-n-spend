@@ -1,4 +1,4 @@
-import { router } from "expo-router";
+import { goBackOrHome } from "@/lib/navigation";
 import PressableScale from "@/components/ui/PressableScale";
 import Icon from "@/components/ui/Icon";
 
@@ -8,7 +8,7 @@ type Props = {
    * that slid up from the bottom has no "back" to go to, only a way out.
    */
   variant?: "back" | "close";
-  /** Defaults to `router.back()`. Override where leaving needs a confirm first. */
+  /** Defaults to `goBackOrHome`. Override where leaving needs a confirm first. */
   onPress?: () => void;
 };
 
@@ -18,7 +18,7 @@ type Props = {
 // re-tuned in one place.
 const BackButton = ({ variant = "back", onPress }: Props) => (
   <PressableScale
-    onPress={onPress ?? (() => router.back())}
+    onPress={onPress ?? goBackOrHome}
     // Deeper than a row's: a bare glyph has no surface to shrink, so the movement
     // has to be obvious enough to read on the icon alone.
     scaleTo={0.86}

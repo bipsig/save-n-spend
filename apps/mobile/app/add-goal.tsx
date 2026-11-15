@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
+import { goBackOrHome } from "@/lib/navigation";
 import { z } from "zod/v4";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -81,7 +82,6 @@ const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "back"] as 
 // colour grids at full height, so a sheet would have to be a cut-down copy of this.
 const AddGoal = () => {
   usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
-  const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const editing = Boolean(id);
 
@@ -200,7 +200,7 @@ const AddGoal = () => {
       // a PATCH ignores what it isn't sent. Create has nothing to clear and rejects null.
       if (id) await updateGoal(id, { ...fields, deadline: iso });
       else await post("/goals", { ...fields, ...(iso ? { deadline: iso } : {}) });
-      router.back();
+      goBackOrHome();
       // The receipt repeats the pace: the screen that worked it out is gone by now.
       toast.success(
         editing
@@ -241,7 +241,7 @@ const AddGoal = () => {
   if (loadError) {
     return (
       <ScreenScaffold header={header}>
-        <ErrorState message={loadError} onRetry={() => router.back()} />
+        <ErrorState message={loadError} onRetry={goBackOrHome} />
       </ScreenScaffold>
     );
   }
