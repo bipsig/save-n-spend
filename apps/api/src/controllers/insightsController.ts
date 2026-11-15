@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
-import { insightsQuerySchema } from "../schemas/insightsSchema";
+import type { Valid } from "../middleware/validate";
+import { categoryInsightsSchemas, insightsSchemas } from "../schemas/insightsSchema";
 import * as reply from "../utils/response";
 import Category from "../models/Category";
 import Transaction from "../models/Transaction";
@@ -25,6 +26,7 @@ import {
 } from "../utils/timezone";
 import { resolveZone } from "../utils/userZone";
 import { AppError } from "../utils/AppError";
+import { notFound } from "../utils/messages";
 
 // GET /insights?period=week|month|year
 //
@@ -34,7 +36,7 @@ import { AppError } from "../utils/AppError";
 
 export const getInsights = async (req: Request, res: Response): Promise<void> => {
 
-    const { period, offset } = insightsQuerySchema.parse(req.query);
+    const { query: { period, offset } } = req.valid as Valid<typeof insightsSchemas>;
     const zone = await resolveZone(req);
 
     const { currentStartDate, currentEndDate, previousStartDate, previousEndDate } = parsePeriod(period, offset, zone);
@@ -57,7 +59,7 @@ export const getInsights = async (req: Request, res: Response): Promise<void> =>
         occurredAt: { $gte: currentStartDate, $lt: currentEndDate }
     })
 
-    reply.ok(res, { period, timeZone: zone, periodStart: currentStartDate, periodEnd: currentEndDate, trend, previousTrend, incomeVsExpense, byCategory, categoryCompare, byAccount, avgDailySpendCurrent, avgDailySpendPrevious, topCategory, txnCount }, "Insights fetched successfully");
+    reply.ok(res, { period, timeZone: zone, periodStart: currentStartDate, periodEnd: currentEndDate, trend, previousTrend, incomeVsExpense, byCategory, categoryCompare, byAccount, avgDailySpendCurrent, avgDailySpendPrevious, topCategory, txnCount }, "Insights fetched");
 }
 
 /**
@@ -68,8 +70,7 @@ export const getInsights = async (req: Request, res: Response): Promise<void> =>
  * `children` is the split behind it.
  */
 export const getCategoryInsights = async (req: Request, res: Response): Promise<void> => {
-    const { id: categoryId } = req.params;
-    const { period, offset } = insightsQuerySchema.parse(req.query);
+    const { params: { id: categoryId }, query: { period, offset } } = req.valid as Valid<typeof categoryInsightsSchemas>;
     const zone = await resolveZone(req);
 
     const { currentStartDate, currentEndDate, previousStartDate, previousEndDate } = parsePeriod(period, offset, zone);
@@ -82,7 +83,7 @@ export const getCategoryInsights = async (req: Request, res: Response): Promise<
     }).select("_id name parent").lean();
 
     if (!category) {
-        throw AppError.notFound("Category not found");
+        throw AppError.notFound(notFound("category"));
     }
 
     const children = category.parent
@@ -160,7 +161,7 @@ export const getCategoryInsights = async (req: Request, res: Response): Promise<
         txnCount,
         trend,
         children: childSlices
-    }, "Category insights fetched successfully");
+    }, "Category insights fetched");
 }
 
 type periodType = {

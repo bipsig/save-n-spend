@@ -3,31 +3,43 @@ import bcrypt from "bcryptjs";
 import User from '../models/User';
 import { AppError } from '../utils/AppError';
 import * as reply from '../utils/response';
-import { changePasswordSchema, loginSchema, registerSchema } from '../schemas/authSchema';
+import type { Valid } from '../middleware/validate';
+import { AUTH_MESSAGES } from '../middleware/authMiddleware';
+import { changePasswordSchemas, loginSchemas, registerSchemas } from '../schemas/authSchema';
 import { generateAccessToken } from '../utils/generateAccessToken';
-import mongoose from 'mongoose';
+import { inTransaction } from '../utils/inTransaction';
+import { toDTO } from '../utils/dto';
 import Account from '../models/Account';
 import { defaultCategories } from '../data/defaultCategories';
 import Category from '../models/Category';
 
+const EMAIL_TAKEN = "An account with this email already exists. Sign in instead";
+const WRONG_CREDENTIALS = "That email and password don't match";
+
+const emailTaken = () => new AppError(409, EMAIL_TAKEN, { code: "duplicate" });
+const wrongCredentials = () => new AppError(401, WRONG_CREDENTIALS, { code: "invalid_credentials" });
+// The token was fine a moment ago (protect let it through) but its user is gone.
+const signInAgain = () => new AppError(401, AUTH_MESSAGES.signIn, { code: "unauthenticated" });
+
+const isDuplicateKey = (err: unknown) => (err as { code?: number } | null)?.code === 11000;
+
 export const register = async (req: Request, res: Response): Promise<void> => {
-  const { name, email, password, timeZone } = registerSchema.parse(req.body);
+  const { body: { name, email, password, timeZone } } = req.valid as Valid<typeof registerSchemas>;
 
   const existingUser = await User.findOne({
     email
   });
 
   if (existingUser) {
-    throw AppError.conflict("Email is already in use");
+    throw emailTaken();
   }
 
   const saltRounds: number = Number(process.env.SALT_ROUNDS) || 12;
   const hashedPassword: string = await bcrypt.hash(password, saltRounds);
 
   let createdUser;
-  const session = await mongoose.startSession();
   try {
-    (await session.withTransaction(async () => {
+    createdUser = await inTransaction(async (session) => {
       // Transaction 1: Initial Registration of User
       const [newUser] = await User.create([{
         name,
@@ -38,8 +50,6 @@ export const register = async (req: Request, res: Response): Promise<void> => {
         // treats an explicit undefined as "no default" for nested paths.
         ...(timeZone ? { prefs: { timeZone } } : {})
       }], { session });
-
-      createdUser = newUser; 
 
       // Transaction 2: Default Account Creation
       const [newAccount] = await Account.create([{
@@ -79,35 +89,33 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
       // Transaction 4: Setting Default Account
       newUser.prefs.defaultAccount = newAccount._id;
-      createdUser = await newUser.save({ session });
-    }))
+      return newUser.save({ session });
+    });
   }
-  finally {
-    session.endSession();
+  catch (err) {
+    // Two sign-ups with the same email at once: the unique index stops the second.
+    if (isDuplicateKey(err)) throw emailTaken();
+    throw err;
   }
 
-  reply.created(res, createdUser, 'User registered successfully!');
+  reply.created(res, toDTO(createdUser), 'User registered');
 }
 
 export const login = async (req: Request, res: Response): Promise<void> => {
-  const { email, password } = loginSchema.parse(req.body);
+  const { body: { email, password } } = req.valid as Valid<typeof loginSchemas>;
 
   const user = await User.findOne({
     email
   });
 
-  if (!user) {
-    throw AppError.unauthorized("Invalid credentials!");
-  }
-
-  if (!user.password) {
-    throw AppError.unauthorized("Invalid credentials!");
+  if (!user || !user.password) {
+    throw wrongCredentials();
   }
 
   const isMatch = await bcrypt.compare(password, user.password);
 
   if (!isMatch) {
-    throw AppError.unauthorized("Invalid credentials!");
+    throw wrongCredentials();
   }
 
   // Signing in IS the undo for a deleted account (see userController.deleteMe): correct
@@ -128,38 +136,28 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     }
   };
 
-  reply.ok(res, responseData, "User logged in successfully!");
+  reply.ok(res, responseData, "User signed in");
 }
 
+// A closed account never gets here: `protect` turns it away on every route, this one
+// included, which is what lands it back at login, where reactivation starts.
 export const me = async (req: Request, res: Response): Promise<void> => {
   const user = await User.findById(req.user?.userId);
 
   if (!user) {
-    throw AppError.notFound("User not found");
+    throw signInAgain();
   }
 
-  // The one place a deactivated account is turned away. `protect` only verifies the
-  // signature and never reads the database, and a user lookup on every request would tax
-  // thousands of calls to guard one. This endpoint is what the app asks on launch, so a 401
-  // here is enough to land a deactivated account back at login, where reactivation starts.
-  //
-  // A token issued before the deactivation therefore still reaches other endpoints until it
-  // expires — it belongs to the person who deactivated the account moments earlier on that
-  // same device, so all it can reach is their own untouched data.
-  if (user.deactivatedAt) {
-    throw AppError.unauthorized("Account is deactivated");
-  }
-
-  reply.ok(res, user, "User fetched successfully");
+  reply.ok(res, toDTO(user), "User fetched");
 }
 
 export const changePassword = async (req: Request, res: Response): Promise<void> => {
-  const { currentPassword, newPassword } = changePasswordSchema.parse(req.body);
+  const { body: { currentPassword, newPassword } } = req.valid as Valid<typeof changePasswordSchemas>;
 
   const user = await User.findById(req.user?.userId);
 
   if (!user) {
-    throw AppError.notFound("User not found");
+    throw signInAgain();
   }
 
   if (!user.password) {
@@ -168,8 +166,9 @@ export const changePassword = async (req: Request, res: Response): Promise<void>
 
   const isMatch = await bcrypt.compare(currentPassword, user.password);
 
+  // 400, not 401: the session is fine, only the password typed into the form is wrong.
   if (!isMatch) {
-    throw AppError.unauthorized("Current password is incorrect");
+    throw new AppError(400, "Your current password isn't right", { code: "wrong_password" });
   }
 
   if (currentPassword === newPassword) {
@@ -183,5 +182,5 @@ export const changePassword = async (req: Request, res: Response): Promise<void>
   // sessions on other devices survive the change.
   await user.save();
 
-  reply.ok(res, null, "Password changed successfully");
+  reply.ok(res, null, "Password changed");
 }

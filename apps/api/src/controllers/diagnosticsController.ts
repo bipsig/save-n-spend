@@ -1,7 +1,8 @@
 import { Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import RequestLog from "../models/RequestLog";
-import { clientErrorSchema } from "../schemas/diagnosticsSchema";
+import type { Valid } from "../middleware/validate";
+import { clientErrorSchemas } from "../schemas/diagnosticsSchema";
 import { isRequestId } from "../utils/requestId";
 import { log } from "../utils/logger";
 import * as reply from "../utils/response";
@@ -22,7 +23,7 @@ const optionalUserId = (req: Request): string | null => {
 };
 
 export const reportClientError = async (req: Request, res: Response): Promise<void> => {
-    const body = clientErrorSchema.parse(req.body);
+    const { body } = req.valid as Valid<typeof clientErrorSchemas>;
     log({
         source: "app",
         route: body.screen ?? "unknown screen",
@@ -32,15 +33,16 @@ export const reportClientError = async (req: Request, res: Response): Promise<vo
         stack: body.stack ?? null,
         appVersion: body.appVersion ?? req.header("x-app-version") ?? null,
     });
-    reply.ok(res, { requestId: res.locals.requestId }, "Reported");
+    reply.ok(res, { requestId: res.locals.requestId }, "Report received");
 };
 
-/** The caller's own last 50 log rows, newest first — never anyone else's. */
+/** The caller's own last 50 log rows, newest first — never anyone else's. Without `stack`:
+ *  the stack lines are for whoever reads the server log, and the phone never shows them. */
 export const recentRequests = async (req: Request, res: Response): Promise<void> => {
     const rows = await RequestLog.find({ userId: req.user!.userId })
         .sort({ createdAt: -1 })
         .limit(50)
-        .select("-_id -userId")
+        .select("-_id -userId -stack")
         .lean();
-    reply.ok(res, rows, "Recent requests");
+    reply.ok(res, rows, "Requests fetched");
 };

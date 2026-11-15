@@ -1,6 +1,6 @@
-import z from "zod";
+import { z } from "./z";
+import { limit, page } from "./fields";
 
-export const highlightHistoryQuerySchema = z.object({
-    page: z.coerce.number().int().positive().default(1),
-    limit: z.coerce.number().int().positive().max(100).default(20),
-});
+export const highlightHistorySchemas = {
+    query: z.object({ page, limit: limit(100, 20) }),
+};

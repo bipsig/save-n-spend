@@ -1,76 +1,82 @@
-import { updateMeSchema } from "../schemas/userSchema"
 import { Request, Response } from 'express';
+import type { Valid } from "../middleware/validate";
+import { AUTH_MESSAGES } from "../middleware/authMiddleware";
+import { updateMeSchemas } from "../schemas/userSchema";
 import * as reply from '../utils/response';
 import User from "../models/User";
 import Account from "../models/Account";
 import { AppError } from "../utils/AppError";
+import { toDTO } from "../utils/dto";
+
+// `protect` has already checked the user exists and isn't closed; this covers the moment
+// between that check and the handler.
+const signInAgain = () => new AppError(401, AUTH_MESSAGES.signIn, { code: "unauthenticated" });
 
 export const getMe = async (req: Request, res: Response): Promise<void> => {
   const user = await User.findById(req.user?.userId);
 
   if (!user) {
-    throw AppError.notFound("User not found");
+    throw signInAgain();
   }
 
-  reply.ok(res, user, "Profile fetched successfully");
+  reply.ok(res, toDTO(user), "Profile fetched");
 }
 
-export const updateMe = async (req: Request, res: Response): Promise<void> => {
-  const data = updateMeSchema.parse(req.body);
+/** The PATCH as one update document. Every field is its own dotted path, so two requests that
+ *  change different settings at once (three switches flipped quickly) both land. */
+export const profileUpdate = (body: Valid<typeof updateMeSchemas>["body"]) => {
+  const $set: Record<string, unknown> = {};
+  const $unset: Record<string, 1> = {};
 
-  const user = await User.findById(req.user?.userId);
+  if (body.name !== undefined) $set.name = body.name;
+
+  // Explicit null means "this device is signing out" — unset rather than store null,
+  // so the reminder job's `pushToken` check stays a plain existence test.
+  if (body.pushToken === null) $unset.pushToken = 1;
+  else if (body.pushToken !== undefined) $set.pushToken = body.pushToken;
+
+  const { notifications, defaultAccount, timeZone } = body.prefs ?? {};
+  for (const [key, value] of Object.entries(notifications ?? {})) {
+    if (value !== undefined) $set[`prefs.notifications.${key}`] = value;
+  }
+  if (defaultAccount !== undefined) $set["prefs.defaultAccount"] = defaultAccount;
+  if (timeZone !== undefined) $set["prefs.timeZone"] = timeZone;
+
+  return { ...(Object.keys($set).length ? { $set } : {}), ...(Object.keys($unset).length ? { $unset } : {}) };
+};
+
+export const updateMe = async (req: Request, res: Response): Promise<void> => {
+  const { body } = req.valid as Valid<typeof updateMeSchemas>;
+  const userId = req.user!.userId;
+
+  const defaultAccount = body.prefs?.defaultAccount;
+  if (defaultAccount) {
+    // An id from the request body is untrusted: without this check a user
+    // could point their default at another user's account, and every screen
+    // that preselects it would then read a stranger's balance.
+    const account = await Account.exists({ _id: defaultAccount, userId, isArchived: false });
+    if (!account) {
+      throw AppError.invalidReference("prefs.defaultAccount", "The default account", "accounts");
+    }
+  }
+
+  if (body.pushToken) {
+    // A phone's token belongs to whoever signed in on it last. If an earlier user's sign-out
+    // couldn't detach it, they would keep getting reminders, amounts included, on a phone
+    // someone else now uses.
+    await User.updateMany({ _id: { $ne: userId }, pushToken: body.pushToken }, { $unset: { pushToken: 1 } });
+  }
+
+  const update = profileUpdate(body);
+  const user = Object.keys(update).length
+    ? await User.findByIdAndUpdate(userId, update, { new: true, runValidators: true })
+    : await User.findById(userId);
 
   if (!user) {
-    throw AppError.notFound("User not found");
+    throw signInAgain();
   }
 
-  if (data.name !== undefined) {
-    user.name = data.name;
-  }
-
-  if (data.pushToken !== undefined) {
-    // Explicit null means "this device is signing out" — unset rather than store null,
-    // so the reminder job's `pushToken` check stays a plain existence test.
-    if (data.pushToken === null) {
-      user.set("pushToken", undefined);
-    }
-    else {
-      user.pushToken = data.pushToken;
-    }
-  }
-
-  if (data.prefs) {
-    const { notifications, ...rest } = data.prefs;
-
-    if (notifications) {
-        user.prefs.notifications = {...user.prefs.notifications, ...notifications};
-    }
-
-    if (rest.defaultAccount !== undefined) {
-        // An id from the request body is untrusted: without this check a user
-        // could point their default at another user's account, and every screen
-        // that preselects it would then read a stranger's balance.
-        if (rest.defaultAccount !== null) {
-          const account = await Account.findOne({
-            _id: rest.defaultAccount,
-            userId: user._id,
-            isArchived: false
-          });
-
-          if (!account) {
-            throw AppError.notFound("Account not found");
-          }
-        }
-        user.set("prefs.defaultAccount", rest.defaultAccount);
-    }
-
-    if (rest.timeZone !== undefined) {
-        user.prefs.timeZone = rest.timeZone;
-    }
-  }
-  await user.save();
-
-  reply.ok(res, user, "Profile Updated");
+  reply.ok(res, toDTO(user), "Profile updated");
 }
 
 // Deactivate the account. Nothing is erased.
@@ -81,8 +87,8 @@ export const updateMe = async (req: Request, res: Response): Promise<void> => {
 // authController).
 //
 // What does happen immediately:
-//   - `deactivatedAt` is stamped, which locks the account out of `/auth/me` and so out
-//     of the app, and drops it from the reminder job's sweep.
+//   - `deactivatedAt` is stamped, which makes `protect` turn every request with an existing
+//     token away, and drops it from the reminder job's sweep.
 //   - `pushToken` is unset, because a deactivated account must not keep sending
 //     notifications to a phone whose owner believes they left.
 //
@@ -93,7 +99,7 @@ export const deleteMe = async (req: Request, res: Response): Promise<void> => {
   const user = await User.findById(userId);
 
   if (!user) {
-    throw AppError.notFound("User not found");
+    throw signInAgain();
   }
 
   user.deactivatedAt = new Date();

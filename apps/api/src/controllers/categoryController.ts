@@ -1,47 +1,53 @@
 import Category from "../models/Category";
-import { createCategorySchema, reorderSchema, updateCategorySchema } from "../schemas/categorySchema";
+import type { Valid } from "../middleware/validate";
+import { categoryIdSchemas, createCategorySchemas, reorderCategoriesSchemas, updateCategorySchemas } from "../schemas/categorySchema";
 import { AppError } from "../utils/AppError";
+import { inTransaction } from "../utils/inTransaction";
+import { notFound } from "../utils/messages";
+import { toDTO, toDTOs } from "../utils/dto";
 import * as reply from "../utils/response";
 import { Request, Response } from "express"
 
+/** The rule scripts/buildCategoryIndex.ts builds its unique index on: one live category per
+ *  kind, parent and name, names compared without case. The app-side check below is stricter
+ *  on purpose: one live name per user, because rows show the bare name. */
+export const CATEGORY_NAME_COLLATION = { locale: "en", strength: 2 } as const;
+
+const duplicateName = () => AppError.duplicate("a category with that name");
+const isDuplicateKey = (err: unknown) => (err as { code?: number } | null)?.code === 11000;
+
+const sameNameExists = (userId: string, name: string, except?: string) =>
+    Category.exists({
+        userId,
+        isArchived: false,
+        name,
+        ...(except ? { _id: { $ne: except } } : {})
+    }).collation(CATEGORY_NAME_COLLATION);
 
 export const listCategories = async (req: Request, res: Response): Promise<void> => {
     // `order` is only meaningful within a sibling set, so a flat sort by it is not a global
     // ranking — it puts each set in the user's order once the client groups by parent.
     // createdAt breaks the ties everything starts on, keeping never-reordered lists in the
     // order they were built.
-    const categories = await Category.find({
-        userId: req.user?.userId,
-        isArchived: false
-    }).sort({ order: 1, createdAt: 1 });
+    const categories = await Category.find({ userId: req.user?.userId, isArchived: false })
+        .sort({ order: 1, createdAt: 1 });
 
-    reply.ok(res, categories, "Categories fetched successfully");
+    reply.ok(res, toDTOs(categories), "Categories fetched");
 }
 
 export const createCategory = async (req: Request, res: Response): Promise<void> => {
-    const reqBody = createCategorySchema.parse(req.body);
+    const { body } = req.valid as Valid<typeof createCategorySchemas>;
+    const userId = req.user!.userId;
 
-    // Category names are unique per user (case-insensitive) — the same name
-    // anywhere reads as ambiguous, since rows show the bare name with no parent.
-    const duplicate = await Category.findOne({
-        userId: req.user?.userId,
-        isArchived: false,
-        name: reqBody.name
-    }).collation({ locale: "en", strength: 2 });
-
-    if (duplicate) {
-        throw AppError.badRequest(`A category named "${reqBody.name}" already exists`);
-    }
-
-    if (reqBody.parent) {
+    if (body.parent) {
         const parentCategory = await Category.findOne({
-            _id: reqBody.parent,
-            userId: req.user?.userId,
+            _id: body.parent,
+            userId,
             isArchived: false
         });
 
         if (!parentCategory) {
-            throw AppError.notFound("Parent Category not found");
+            throw AppError.invalidReference("parent", "Parent category", "categories");
         }
 
         if (parentCategory.parent != null) {
@@ -52,83 +58,91 @@ export const createCategory = async (req: Request, res: Response): Promise<void>
         // child's spend to its parent's — an income child under an expense parent
         // would fold earnings into a spending figure, in the breakdown, in the
         // budget bar, and in the alert that fires off the back of it.
-        if (parentCategory.kind !== reqBody.kind) {
-            throw AppError.badRequest(
-                `"${parentCategory.name}" is an ${parentCategory.kind} category, so its sub-categories must be too`
-            );
+        if (parentCategory.kind !== body.kind) {
+            throw AppError.badRequest("A sub-category has to be the same kind as its parent");
         }
+    }
+
+    if (await sameNameExists(userId, body.name)) {
+        throw duplicateName();
     }
 
     // Lands last among its siblings rather than at 0, which on a list the user has already
     // ordered would put their newest category at the top.
     const siblings = await Category.countDocuments({
-        userId: req.user?.userId,
+        userId,
         isArchived: false,
-        kind: reqBody.kind,
-        parent: reqBody.parent ?? null
+        kind: body.kind,
+        parent: body.parent ?? null
     });
 
-    const savedCategory = await Category.create({
-        userId: req.user?.userId,
-        name: reqBody.name,
-        kind: reqBody.kind,
-        parent: reqBody.parent ?? null,
-        icon: reqBody.icon ?? "wallet",
-        color: reqBody.color ?? "success",
-        order: siblings
-    });
+    let savedCategory;
+    try {
+        savedCategory = await Category.create({
+            userId,
+            name: body.name,
+            kind: body.kind,
+            parent: body.parent ?? null,
+            icon: body.icon ?? "wallet",
+            color: body.color ?? "success",
+            order: siblings
+        });
+    }
+    catch (err) {
+        // Two creates at once: the unique index (once built) stops the second.
+        if (isDuplicateKey(err)) throw duplicateName();
+        throw err;
+    }
 
-    reply.created(res, savedCategory, "Category created successfully");
+    reply.created(res, toDTO(savedCategory), "Category created");
 }
 
 export const getCategory = async (req: Request, res: Response): Promise<void> => {
-    const { id: categoryId } = req.params;
+    const { params: { id } } = req.valid as Valid<typeof categoryIdSchemas>;
 
     const category = await Category.findOne({
-        _id: categoryId,
+        _id: id,
         userId: req.user?.userId,
         isArchived: false
     });
 
     if (!category) {
-        throw AppError.notFound("Category not found");
+        throw AppError.notFound(notFound("category"));
     }
 
-    reply.ok(res, category, "Category fetched successfully");
+    reply.ok(res, toDTO(category), "Category fetched");
 }
 
 export const updateCategory = async (req: Request, res: Response): Promise<void> => {
-    const { id: categoryId } = req.params;
-    const reqBody = updateCategorySchema.parse(req.body);
+    const { params: { id }, body } = req.valid as Valid<typeof updateCategorySchemas>;
+    const userId = req.user!.userId;
 
     const category = await Category.findOne({
-        _id: categoryId,
-        userId: req.user?.userId,
+        _id: id,
+        userId,
         isArchived: false
     });
 
     if (!category) {
-        throw AppError.notFound("Category not found");
+        throw AppError.notFound(notFound("category"));
     }
 
-    if (reqBody.name) {
-        const duplicate = await Category.findOne({
-            userId: req.user?.userId,
-            isArchived: false,
-            _id: { $ne: categoryId },
-            name: reqBody.name
-        }).collation({ locale: "en", strength: 2 });
-
-        if (duplicate) {
-            throw AppError.badRequest(`A category named "${reqBody.name}" already exists`);
-        }
+    if (body.name && await sameNameExists(userId, body.name, id)) {
+        throw duplicateName();
     }
 
-    Object.assign(category, reqBody);
+    Object.assign(category, body);
 
-    const updatedCategory = await category.save();
+    let updatedCategory;
+    try {
+        updatedCategory = await category.save();
+    }
+    catch (err) {
+        if (isDuplicateKey(err)) throw duplicateName();
+        throw err;
+    }
 
-    reply.ok(res, updatedCategory, "Category details updated");
+    reply.ok(res, toDTO(updatedCategory), "Category updated");
 }
 
 /**
@@ -143,7 +157,7 @@ export const updateCategory = async (req: Request, res: Response): Promise<void>
  * user just did.
  */
 export const reorderCategories = async (req: Request, res: Response): Promise<void> => {
-    const { ids } = reorderSchema.parse(req.body);
+    const { body: { ids } } = req.valid as Valid<typeof reorderCategoriesSchemas>;
 
     if (new Set(ids).size !== ids.length) {
         throw AppError.badRequest("The same category was listed twice");
@@ -156,7 +170,7 @@ export const reorderCategories = async (req: Request, res: Response): Promise<vo
     });
 
     if (owned !== ids.length) {
-        throw AppError.badRequest("Some of those categories no longer exist");
+        throw new AppError(400, "Some of those categories no longer exist", { code: "invalid_reference" });
     }
 
     await Category.bulkWrite(ids.map((id, index) => ({
@@ -170,33 +184,35 @@ export const reorderCategories = async (req: Request, res: Response): Promise<vo
 }
 
 export const archiveCategory = async (req: Request, res: Response): Promise<void> => {
-    const { id: categoryId } = req.params;
-
-    const category = await Category.findOne({
-        _id: categoryId,
-        userId: req.user?.userId,
-        isArchived: false
-    });
-
-    if (!category) {
-        throw AppError.notFound("Category not found");
-    }
-
-    category.isArchived = true;
-
-    await category.save();
+    const { params: { id } } = req.valid as Valid<typeof categoryIdSchemas>;
+    const userId = req.user!.userId;
 
     // Archiving a parent takes its children with it. Leaving them behind would strand
     // rows pointing at a parent the list endpoint no longer returns — the picker would
     // show a child with no group, and the rollup would key spend to a name nothing can
     // resolve. Their transactions are untouched either way; this only hides them from
-    // the pickers, which is all archiving ever meant.
-    const archivedChildren = category.parent === null
-        ? await Category.updateMany(
-            { userId: req.user?.userId, parent: category._id, isArchived: false },
-            { $set: { isArchived: true } }
-        )
-        : null;
+    // the pickers, which is all archiving ever meant. Both writes commit together, so a
+    // failure can't leave live children under an archived parent.
+    const archivedChildren = await inTransaction(async (session) => {
+        const category = await Category.findOneAndUpdate(
+            { _id: id, userId, isArchived: false },
+            { $set: { isArchived: true } },
+            { new: true, session }
+        );
 
-    reply.ok(res, { archivedChildren: archivedChildren?.modifiedCount ?? 0 }, "Category deleted successfully");
+        if (!category) {
+            throw AppError.notFound(notFound("category"));
+        }
+
+        if (category.parent !== null) return 0;
+
+        const children = await Category.updateMany(
+            { userId, parent: category._id, isArchived: false },
+            { $set: { isArchived: true } },
+            { session }
+        );
+        return children.modifiedCount;
+    });
+
+    reply.ok(res, { archivedChildren }, "Category archived");
 }

@@ -1,9 +1,11 @@
 import { Request, Response } from "express";
-import mongoose from "mongoose";
 import * as reply from "../utils/response";
 import User from "../models/User";
-import { restoreRequestSchema } from "../schemas/backupSchema";
+import type { Valid } from "../middleware/validate";
+import { restoreSchemas } from "../schemas/backupSchema";
 import { exportAccountData, restoreAccountData } from "../services/backupService";
+import { inTransaction } from "../utils/inTransaction";
+import { toDTO } from "../utils/dto";
 
 export const getBackup = async (req: Request, res: Response): Promise<void> => {
     const backup = await exportAccountData(req.user!.userId);
@@ -11,18 +13,10 @@ export const getBackup = async (req: Request, res: Response): Promise<void> => {
 };
 
 export const restoreBackup = async (req: Request, res: Response): Promise<void> => {
-    const payload = restoreRequestSchema.parse(req.body);
+    const { body } = req.valid as Valid<typeof restoreSchemas>;
+    const { confirm: _confirm, ...payload } = body;
 
-    let counts: Record<string, number> = {};
-    const session = await mongoose.startSession();
-    try {
-        await session.withTransaction(async () => {
-            counts = await restoreAccountData(req.user!.userId, payload, session);
-        });
-    }
-    finally {
-        session.endSession();
-    }
+    const counts = await inTransaction((session) => restoreAccountData(req.user!.userId, payload, session));
 
     // Read fresh, after commit, with no session: the restore may have changed
     // currency/timeZone/notifications/defaultAccount, and the client's own session
@@ -30,5 +24,5 @@ export const restoreBackup = async (req: Request, res: Response): Promise<void> 
     // it, so a stale one would keep bucketing dates in the zone this backup just left.
     const user = await User.findById(req.user!.userId);
 
-    reply.ok(res, { counts, user }, "Backup restored");
+    reply.ok(res, { counts, user: user && toDTO(user) }, "Backup restored");
 };

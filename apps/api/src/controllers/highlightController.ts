@@ -6,7 +6,9 @@ import HighlightLog from "../models/HighlightLog";
 import { buildSnapshot, computeCurrentStreak } from "../services/highlightSnapshotService";
 import { runHighlightRules, rankHighlightRules, buildLoggingStreakHighlight, type Highlight } from "../services/highlightRules";
 import { normalizeZone, startOfDayInZone } from "../utils/timezone";
-import { highlightHistoryQuerySchema } from "../schemas/highlightSchema";
+import type { Valid } from "../middleware/validate";
+import { highlightHistorySchemas } from "../schemas/highlightSchema";
+import { toDTOs } from "../utils/dto";
 import * as reply from "../utils/response";
 
 /**
@@ -118,12 +120,12 @@ export const getHighlights = async (req: Request, res: Response): Promise<void> 
  * generating it. Newest first.
  */
 export const getHighlightHistory = async (req: Request, res: Response): Promise<void> => {
-    const { page, limit } = highlightHistoryQuerySchema.parse(req.query);
+    const { query: { page, limit } } = req.valid as Valid<typeof highlightHistorySchemas>;
 
     const result = await HighlightLog.paginate(
         { userId: new mongoose.Types.ObjectId(req.user!.userId) },
         { page, limit, sort: { createdAt: -1 } },
     );
 
-    reply.ok(res, result, "Highlight history fetched");
+    reply.ok(res, { ...result, docs: toDTOs(result.docs) }, "Highlight history fetched");
 };

@@ -1,4 +1,4 @@
-import mongoose, { ClientSession, Model } from "mongoose";
+import mongoose, { type ClientSession, type Model } from "mongoose";
 import User from "../models/User";
 import Account from "../models/Account";
 import Category from "../models/Category";
@@ -13,6 +13,7 @@ import { AppError } from "../utils/AppError";
 import { unresolvedReferences, type Reference, type Target } from "./backupReferences";
 
 const BACKUP_VERSION = 1;
+const FOREIGN_REFERENCE = "This backup refers to data that isn't yours";
 
 // Everything the user entered themselves, byte-for-byte. HighlightLog and Notification
 // are deliberately excluded — both are derived from this same data and regenerate on
@@ -93,19 +94,18 @@ export const restoreAccountData = async (
 
     const foreign = await firstForeignReference(uid, payload, session);
     if (foreign) {
-        throw AppError.badRequest(`This backup refers to data that isn't yours (${foreign.collection}.${foreign.field} ${foreign.id})`);
+        // Where it is goes in `issues`; the id never goes in the sentence.
+        throw new AppError(400, FOREIGN_REFERENCE, {
+            code: "invalid_reference",
+            issues: [{ path: `${foreign.collection}.${foreign.field}`, message: FOREIGN_REFERENCE }],
+        });
     }
 
-    await Promise.all([
-        Account.deleteMany({ userId: uid }, { session }),
-        Category.deleteMany({ userId: uid }, { session }),
-        Transaction.deleteMany({ userId: uid }, { session }),
-        Budget.deleteMany({ userId: uid }, { session }),
-        Bill.deleteMany({ userId: uid }, { session }),
-        Goal.deleteMany({ userId: uid }, { session }),
-        Trip.deleteMany({ userId: uid }, { session }),
-        TripExpense.deleteMany({ userId: uid }, { session }),
-    ]);
+    const replaced = [Account, Category, Transaction, Budget, Bill, Goal, Trip, TripExpense] as Model<any>[];
+    // One after another: MongoDB doesn't support parallel operations in one transaction.
+    for (const DocModel of replaced) {
+        await DocModel.deleteMany({ userId: uid }, { session });
+    }
 
     const collections: Collection[] = [
         ["accounts", Account, payload.accounts],

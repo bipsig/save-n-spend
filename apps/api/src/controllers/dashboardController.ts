@@ -1,5 +1,6 @@
 import { Request, Response } from "express"
-import { dashboardSummaryQuerySchema } from "../schemas/dashboardSchema"
+import type { Valid } from "../middleware/validate";
+import { dashboardSummarySchemas } from "../schemas/dashboardSchema"
 import Transaction from "../models/Transaction";
 import Goal from "../models/Goal";
 import * as reply from "../utils/response";
@@ -16,7 +17,7 @@ import { averageByDayOfMonth } from "../services/paceMath";
 
 export const getDashboardSummary = async (req: Request, res: Response): Promise<void> => {
 
-  const { month, since } = dashboardSummaryQuerySchema.parse(req.query);
+  const { query: { month, since } } = req.valid as Valid<typeof dashboardSummarySchemas>;
   const zone = await resolveZone(req);
   const now = new Date();
   const userId = new mongoose.Types.ObjectId(req.user!.userId);
@@ -111,7 +112,7 @@ export const getDashboardSummary = async (req: Request, res: Response): Promise<
       : undefined
   };
 
-  reply.ok(res, response, "Dashboard Summary Fetched successfully!");
+  reply.ok(res, response, "Dashboard summary fetched");
 }
 
 /**
@@ -122,7 +123,7 @@ export const getDashboardSummary = async (req: Request, res: Response): Promise<
 export const getHealthScore = async (req: Request, res: Response): Promise<void> => {
   const score = await healthScore(req.user!.userId, await resolveZone(req));
 
-  reply.ok(res, score, "Health score fetched successfully!");
+  reply.ok(res, score, "Health score fetched");
 }
 
 /** Consecutive-day-of-week Monday-first index (0=Mon .. 6=Sun) from Mongo's own

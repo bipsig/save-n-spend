@@ -1,6 +1,7 @@
-import z from "zod/v4";
+import { z } from "./z";
 
-const objectId = z.string().regex(/^[a-f0-9]{24}$/i, "Invalid id");
+// The same sentence schemas/errorMap gives any other fault in the file.
+const objectId = z.string().regex(/^[a-f0-9]{24}$/i, "That doesn't look like a Save n Spend backup file");
 
 // Loose, not per-field: every document keeps whatever it was exported with, and
 // Mongoose's own model schema is the real validator once insertMany runs inside the
@@ -29,8 +30,10 @@ export const backupPayloadSchema = z.object({
 
 // The server-side half of the destructive-action guard — a defense-in-depth check
 // against an accidental or retried POST, alongside the client's own hold-to-confirm.
-export const restoreRequestSchema = backupPayloadSchema.extend({
-    confirm: z.literal(true),
-});
+// The top level is strict (every backup ever exported has exactly these keys); the
+// documents and preferences inside stay loose.
+export const restoreSchemas = {
+    body: backupPayloadSchema.extend({ confirm: z.literal(true) }).strict(),
+};
 
 export type BackupPayload = z.infer<typeof backupPayloadSchema>;
