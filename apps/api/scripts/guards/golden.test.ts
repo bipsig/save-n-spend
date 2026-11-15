@@ -53,14 +53,3 @@ test("S2: the backup's new goalContributionLogs is allowed, nothing else new is"
     const diffs = compareSnapshots(snap({ "GET /backup": ok({ goals: [] }) }), snap({ "GET /backup": ok({ goals: [], goalContributionLogs: [], extra: 1 }) }));
     assert.deepEqual(diffs.map((d) => [d.path, !!d.allowed]), [["data.goalContributionLogs", true], ["data.extra", false]]);
 });
-
-test("R2 page shape for a 2.6.0 request: docs and totalDocs are kept and compared; only the unread paging fields differ", () => {
-    const row = (id: string, at: string) => ({ _id: id, occurredAt: at });
-    const old = { docs: [row("a", "t2"), row("b", "t1")], totalDocs: 2, limit: 20, page: 1, totalPages: 1, pagingCounter: 1, hasPrevPage: false, hasNextPage: false, prevPage: null, nextPage: null };
-    const now = { items: old.docs, docs: old.docs, page: 1, limit: 20, hasNextPage: false, total: 2, totalDocs: 2 };
-    const diffs = compareSnapshots(snap({ "GET /transactions?page=1": ok(old) }), snap({ "GET /transactions?page=1": ok(now) }));
-    assert.deepEqual(diffs.map((d) => d.path).sort(), ["data.hasPrevPage", "data.nextPage", "data.pagingCounter", "data.prevPage", "data.totalPages"]);
-    assert.ok(diffs.every((d) => d.allowed));
-    const lost = compareSnapshots(snap({ "GET /transactions?page=1": ok(old) }), snap({ "GET /transactions?page=1": ok({ ...now, totalDocs: 3 }) }));
-    assert.deepEqual(lost.filter((d) => !d.allowed).map((d) => d.path), ["data.totalDocs"]);
-});

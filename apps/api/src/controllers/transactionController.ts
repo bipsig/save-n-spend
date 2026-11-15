@@ -15,7 +15,7 @@ import { resolveTransactionFilter, summaryTotals, type SummaryGroup } from "../s
 import { inTransaction } from "../utils/inTransaction";
 import { conflict, notFound } from "../utils/messages";
 import { toDTO, toDTOs } from "../utils/dto";
-import { paginate, withOldPageFields } from "../utils/paginate";
+import { paginate } from "../utils/paginate";
 
 const TRIP_ROW = conflict("This is part of a trip expense", "Change it from the trip");
 const SPLIT_ROW = conflict("This expense is part of a split", "Remove it from the split first");
@@ -130,7 +130,7 @@ export const filterTransactions = async (req: Request, res: Response): Promise<v
 
     const found = await paginate(Transaction, await resolveTransactionFilter(req, filters), { page, limit, sort: { occurredAt: -1 } });
 
-    reply.ok(res, withOldPageFields({ ...found, items: toDTOs(found.items) }, req.header("x-app-version")), "Transactions fetched");
+    reply.ok(res, { ...found, items: toDTOs(found.items) }, "Transactions fetched");
 }
 
 // The list's own filter, so the card sits on exactly the rows beneath it. `trips` is applied

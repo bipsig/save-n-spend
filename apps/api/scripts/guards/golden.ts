@@ -100,9 +100,7 @@ export const pagePair = (request: string, a: unknown, b: unknown, out: Differenc
     if (!isObj(a) || !isObj(b) || !Array.isArray(b.items)) return [a, b];
     let before: Record<string, unknown> = a;
     if (Array.isArray(a.docs)) {
-        // Until both phones run 2.8, a 2.6.0 request still gets docs and totalDocs; compare those too.
-        const kept = Array.isArray(b.docs) ? { docs: a.docs, totalDocs: a.totalDocs } : {};
-        before = { items: a.docs, page: a.page, limit: a.limit, hasNextPage: a.hasNextPage, total: a.totalDocs, ...kept };
+        before = { items: a.docs, page: a.page, limit: a.limit, hasNextPage: a.hasNextPage, total: a.totalDocs };
         for (const k of Object.keys(a)) if (!(k in before)) out.push({ request, path: `data.${k}`, before: k === "docs" ? "(now data.items)" : a[k], after: undefined, allowed: PAGE_SHAPE });
     }
     else {
@@ -111,8 +109,8 @@ export const pagePair = (request: string, a: unknown, b: unknown, out: Differenc
         }
     }
     return [
-        { ...before, items: tiesById(before.items as unknown[]), ...(Array.isArray(before.docs) ? { docs: tiesById(before.docs) } : {}) },
-        { ...b, items: tiesById(b.items), ...(Array.isArray(b.docs) ? { docs: tiesById(b.docs) } : {}) },
+        { ...before, items: tiesById(before.items as unknown[]) },
+        { ...b, items: tiesById(b.items) },
     ];
 };
 

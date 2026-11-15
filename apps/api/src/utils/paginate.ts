@@ -6,17 +6,6 @@ export const pageOf = <T>(items: T[], page: number, limit: number, total: number
     ({ items, page, limit, hasNextPage: page * limit < total, total });
 
 /**
- * Temporary, until both phones run 2.8: an app older than 2.8.0, or one that sends no
- * `X-App-Version`, also gets `docs` and `totalDocs`, the only page fields 2.6.0 reads that
- * `Paginated` doesn't have. Delete this (and its callers' use of it) after the install.
- */
-export const withOldPageFields = <T>(page: Paginated<T>, appVersion: string | undefined): Paginated<T> | (Paginated<T> & { docs: T[]; totalDocs: number }) => {
-    const [major, minor] = (appVersion ?? "").split(".").map(Number);
-    const current = Number.isFinite(major) && Number.isFinite(minor) && (major > 2 || (major === 2 && minor >= 8));
-    return current ? page : { ...page, docs: page.items, totalDocs: page.total };
-};
-
-/**
  * One page of `filter`, newest first by `sort`. Ties are broken on `_id` (the order they were
  * saved), so a row can't show on two pages or on none.
  *

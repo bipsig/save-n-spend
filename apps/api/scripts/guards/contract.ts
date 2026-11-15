@@ -27,24 +27,21 @@ type Result = {
     agreed?: string;
 };
 
-/** R2 (B5): every paged list answers `{items, page, limit, hasNextPage, total}`. Until both
- *  phones run 2.8, an app sending 2.6.0 also gets `docs` and `totalDocs` on transactions and
- *  highlight history (the only page fields it reads that the new shape lacks), so all that
- *  differs for it is mongoose-paginate's other fields, which it never read. */
-const PAGE_SHAPE_AGREED = "page shape: totalPages/pagingCounter/hasPrevPage/prevPage/nextPage gone (2.6.0 never read them); items/total added";
+/** R2 (B5): every paged list answers `{items, page, limit, hasNextPage, total}`. Since 2.8.1 the
+ *  old `docs` and `totalDocs` are gone too: both phones run 2.8, which reads `items` and `total`. */
+const PAGE_SHAPE_AGREED = "page shape: docs/totalDocs/totalPages/pagingCounter/hasPrevPage/prevPage/nextPage gone (2.8.0+ reads items/total; no phone runs 2.6.0)";
 const PAGE_FIELDS = ["items", "page", "limit", "hasNextPage", "total"];
 const isPagedRead = (method: string, p: string): boolean =>
     method === "GET" && /^\/(transactions|highlights\/history|notifications)(\?|$)/.test(p);
-const pageShapeProblem = (data: unknown, oldFields: boolean): string | undefined => {
+const pageShapeProblem = (data: unknown): string | undefined => {
     const d = data as Record<string, unknown> | null;
     if (!d || typeof d !== "object") return "no page";
     const missing = PAGE_FIELDS.filter((k) => !(k in d));
     if (missing.length) return `page lacks ${missing.join(", ")}`;
     if (!Array.isArray(d.items) || typeof d.total !== "number" || d.total < (d.items as unknown[]).length) return "page fields of the wrong kind";
-    if (oldFields && (JSON.stringify(d.docs) !== JSON.stringify(d.items) || d.totalDocs !== d.total)) return "2.6.0 lost docs/totalDocs";
     return undefined;
 };
-/** The lists whose 2.6.0 reader uses `docs` and `totalDocs`. */
+/** The lists whose 2.6.0 reader used `docs` and `totalDocs`. */
 const readsOldPage = (p: string) => /^\/(transactions|highlights)/.test(p);
 
 const ZONE = "Asia/Kolkata";
@@ -86,7 +83,7 @@ const main = async () => {
         const paged = isPagedRead(method, p);
         if (!expect.includes(r.status)) problem = `status ${r.status}, expected ${expect.join("/")}`;
         else if (r.status < 300 && (r.json?.success !== true || !("data" in r.json))) problem = "success envelope without success/data";
-        else if (paged && r.status < 300 && pageShapeProblem(r.json.data, readsOldPage(p))) problem = pageShapeProblem(r.json.data, readsOldPage(p))!;
+        else if (paged && r.status < 300 && pageShapeProblem(r.json.data)) problem = pageShapeProblem(r.json.data)!;
         else if (check) {
             try { problem = (await check(r)) || null; }
             catch (e) { problem = `check threw: ${(e as Error).message}`; }
