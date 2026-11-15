@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { HighlightHistoryPage, IHighlightLog } from "@save-n-spend/types";
+import type { IHighlightLog, Paginated } from "@save-n-spend/types";
 import { get } from "./api";
 import { useSession } from "@/store/session";
 
@@ -25,11 +25,11 @@ export const useHighlightHistory = () => {
     replace ? setLoading(true) : setLoadingMore(true);
     setError(null);
     try {
-      const res = await get<HighlightHistoryPage>(`/highlights/history?page=${targetPage}&limit=${PAGE_SIZE}`);
-      setItems((prev) => (replace ? res.docs : [...prev, ...res.docs]));
+      const res = await get<Paginated<IHighlightLog>>(`/highlights/history?page=${targetPage}&limit=${PAGE_SIZE}`);
+      setItems((prev) => (replace ? res.items : [...prev, ...res.items]));
       setPage(res.page);
       setHasMore(res.hasNextPage);
-      setTotalDocs(res.totalDocs);
+      setTotalDocs(res.total);
     }
     catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");

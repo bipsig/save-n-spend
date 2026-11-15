@@ -1,14 +1,7 @@
-import type { ITransaction } from "@save-n-spend/types";
+import type { ITransaction, Paginated } from "@save-n-spend/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, get } from "@/lib/api";
 import { useSession } from "@/store/session";
-
-interface Paginated<T> {
-  docs: T[]
-  page: number
-  hasNextPage: boolean
-  totalDocs: number
-};
 
 const PAGE_SIZE = 20;
 
@@ -34,7 +27,7 @@ export const useTransactions = () => {
     try {
       // Everyday rows only — a trip's are read on the trip.
       const res = await get<Paginated<ITransaction>>("/transactions?trips=exclude");
-      setItems(res.docs);
+      setItems(res.items);
     }
     catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
@@ -108,10 +101,10 @@ export const useTransactionFeed = (params: FeedParams) => {
       });
       const res = await get<Paginated<ITransaction>>(`/transactions${query}`);
       if (myId !== reqId.current) return; // superseded by a newer request
-      setItems((prev) => (replace ? res.docs : [...prev, ...res.docs]));
+      setItems((prev) => (replace ? res.items : [...prev, ...res.items]));
       setPage(res.page);
       setHasMore(res.hasNextPage);
-      setTotalDocs(res.totalDocs);
+      setTotalDocs(res.total);
     }
     catch (err) {
       if (myId !== reqId.current) return;
@@ -165,7 +158,7 @@ export const countTransactionsIn = async (categoryId: string): Promise<number> =
   const res = await get<Paginated<ITransaction>>(
     `/transactions?category=${encodeURIComponent(categoryId)}&limit=1`
   );
-  return res.totalDocs;
+  return res.total;
 };
 
 export type TransactionSummary = {
@@ -238,8 +231,8 @@ export const useTripMatches = (params: { search?: string; startDate?: string; en
     get<Paginated<ITransaction>>(`/transactions${query}`)
       .then((res) => {
         if (!live) return;
-        const tripIds = [...new Set(res.docs.map((t) => t.tripId).filter((id): id is string => !!id))];
-        setData(res.totalDocs > 0 ? { count: res.totalDocs, tripIds } : null);
+        const tripIds = [...new Set(res.items.map((t) => t.tripId).filter((id): id is string => !!id))];
+        setData(res.total > 0 ? { count: res.total, tripIds } : null);
       })
       .catch(() => { if (live) setData(null); });
     return () => { live = false; };

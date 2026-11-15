@@ -1,6 +1,9 @@
 import { create } from "zustand";
-import type { INotification, NotificationFeed } from "@save-n-spend/types";
+import type { INotification, Paginated } from "@save-n-spend/types";
 import { get, patch, post } from "@/lib/api";
+
+/** A page of the feed, plus the badge count over the whole collection. */
+type NotificationFeed = Paginated<INotification> & { unread: number };
 
 // The bell's state, held globally rather than by the notifications screen: the unread
 // count is drawn in the header of a screen the list isn't mounted on, and a push

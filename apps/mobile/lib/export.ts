@@ -1,4 +1,4 @@
-import type { ITransaction } from "@save-n-spend/types";
+import type { ITransaction, Paginated } from "@save-n-spend/types";
 // SDK 54 ships a new file API by default; the classic string helpers we need
 // (writeAsStringAsync / cacheDirectory / copyAsync) live under /legacy.
 import * as FileSystem from "expo-file-system/legacy";
@@ -20,12 +20,6 @@ export type ExportFormat = "csv" | "pdf";
 
 export type ExportResult = { shared: boolean; count: number };
 
-interface Paginated<T> {
-  docs: T[];
-  page: number;
-  hasNextPage: boolean;
-}
-
 // Every transaction in the range, not a page: the list endpoint caps limit at 100, so walk
 // until the server says there are no more.
 const fetchAllInRange = async (bounds: { startDate?: string; endDate?: string }): Promise<ITransaction[]> => {
@@ -39,8 +33,8 @@ const fetchAllInRange = async (bounds: { startDate?: string; endDate?: string })
     if (bounds.endDate) params.push(`endDate=${bounds.endDate}`);
     const res = await get<Paginated<ITransaction>>(`/transactions?${params.join("&")}`);
 
-    all.push(...res.docs);
-    if (!res.hasNextPage || res.docs.length === 0) break;
+    all.push(...res.items);
+    if (!res.hasNextPage || res.items.length === 0) break;
     page += 1;
     if (page > 500) break; // hard safety stop (~50k rows)
   }

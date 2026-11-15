@@ -9,6 +9,7 @@
 // Every method swallows its own errors. A cache failure must never fail the request it
 // was only ever meant to help.
 import * as FileSystem from "expo-file-system/legacy";
+import { EPOCH_FILE, RESPONSE_EPOCH, filesToClear, isKeptFile, needsClear, parseEpoch } from "@/lib/cacheEpoch";
 
 const DIR = `${FileSystem.documentDirectory}offline-cache/`;
 
@@ -42,7 +43,32 @@ const ensureDir = async (): Promise<void> => {
   }
 };
 
+// Once per install of an app whose cached shapes changed (see lib/cacheEpoch.ts): every read,
+// write and clear waits for it, so nothing cached by the previous app is read, and nothing this
+// one caches is deleted by it. A failure leaves the marker unwritten, so the next launch retries.
+let upgrade: Promise<void> | null = null;
+const upgradeOnce = (): Promise<void> => (upgrade ??= (async () => {
+  try {
+    const marker = `${DIR}${EPOCH_FILE}`;
+    const info = await FileSystem.getInfoAsync(marker);
+    const raw = info.exists ? await FileSystem.readAsStringAsync(marker, { encoding: FileSystem.EncodingType.UTF8 }) : null;
+    if (!needsClear(parseEpoch(raw))) return;
+
+    await ensureDir();
+    const names = await FileSystem.readDirectoryAsync(DIR);
+    await Promise.all(
+      filesToClear(names, [`${keyFor("/auth/me")}.json`])
+        .map((name) => FileSystem.deleteAsync(`${DIR}${name}`, { idempotent: true }))
+    );
+    await FileSystem.writeAsStringAsync(marker, JSON.stringify({ epoch: RESPONSE_EPOCH }), { encoding: FileSystem.EncodingType.UTF8 });
+  }
+  catch {
+    // Retried on the next launch.
+  }
+})());
+
 export const read = async <T>(path: string): Promise<{ data: T; fetchedAt: number } | null> => {
+  await upgradeOnce();
   try {
     const file = fileFor(path);
     const info = await FileSystem.getInfoAsync(file);
@@ -58,6 +84,7 @@ export const read = async <T>(path: string): Promise<{ data: T; fetchedAt: numbe
 };
 
 export const write = async (path: string, data: unknown): Promise<void> => {
+  await upgradeOnce();
   try {
     await ensureDir();
     const entry: Entry<unknown> = { v: CACHE_VERSION, path, fetchedAt: Date.now(), data };
@@ -70,17 +97,16 @@ export const write = async (path: string, data: unknown): Promise<void> => {
 };
 
 // The outbox lives in the same directory but is excluded here — it's the one thing that
-// must survive a sign-out (see store/outbox.ts).
-const isOutboxFile = (name: string): boolean => name.startsWith("outbox.");
-
+// must survive a sign-out (see store/outbox.ts). So is the epoch marker.
 export const clearAll = async (): Promise<void> => {
+  await upgradeOnce();
   try {
     const info = await FileSystem.getInfoAsync(DIR);
     if (!info.exists) return;
     const names = await FileSystem.readDirectoryAsync(DIR);
     await Promise.all(
       names
-        .filter((name) => !isOutboxFile(name))
+        .filter((name) => !isKeptFile(name))
         .map((name) => FileSystem.deleteAsync(`${DIR}${name}`, { idempotent: true }))
     );
   }
@@ -92,12 +118,13 @@ export const clearAll = async (): Promise<void> => {
 /** Garbage-collects the long tail of one-off keys (every debounced search term makes
  *  one) rather than special-casing them — anything untouched past `maxAgeMs` goes. */
 export const prune = async (maxAgeMs: number): Promise<void> => {
+  await upgradeOnce();
   try {
     const info = await FileSystem.getInfoAsync(DIR);
     if (!info.exists) return;
     const cutoff = Date.now() - maxAgeMs;
     const names = await FileSystem.readDirectoryAsync(DIR);
-    await Promise.all(names.filter((name) => !isOutboxFile(name)).map(async (name) => {
+    await Promise.all(names.filter((name) => !isKeptFile(name)).map(async (name) => {
       const file = `${DIR}${name}`;
       try {
         const raw = await FileSystem.readAsStringAsync(file, { encoding: FileSystem.EncodingType.UTF8 });
