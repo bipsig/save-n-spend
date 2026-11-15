@@ -1,15 +1,15 @@
-import mongoose from "mongoose";
+import mongoose, { type ClientSession } from "mongoose";
 import Account from "../models/Account";
 import Category from "../models/Category";
 import Transaction from "../models/Transaction";
-import Trip from "../models/Trip";
+import { type ITrip } from "../models/Trip";
 import TripExpense from "../models/TripExpense";
 import User from "../models/User";
-import { AppError } from "../utils/AppError";
+import { inTransaction } from "../utils/inTransaction";
 import { SplitwiseFormatError, categoryHint, classifyRow, netBalance, parseSplitwiseCsv, rowKey, type ClassifiedRow } from "./splitwiseCsv";
-import { addTripExpense, settleUp, updateTripExpense } from "./tripService";
-import { isReroute, memberBalances, simplifyMayMatter } from "./tripLedger";
-import { requireOwnedAccounts } from "./ownership";
+import { checkExpense, claimTrip, insertInBulk, invalidInput, loadKnownRefs, loadTrip, replaceExpense, requireOpen, settlementRow, type At } from "./tripService";
+import { isReroute, memberBalances, simplifyMayMatter, type LedgerRow, type TripExpenseIn } from "./tripLedger";
+import { requireLiveAccounts } from "./transactionService";
 
 // Importing a Splitwise group export into a live trip. Two steps, nothing saved in the first:
 //
@@ -225,116 +225,167 @@ const proportional = (amount: number, ratios: [string, number][]): Map<string, n
     return out;
 };
 
+/**
+ * Applies the approved rows as ONE transaction: new people, members, expenses, applied splits
+ * and settle-ups all land together or not at all. A row already imported into this trip (its
+ * key on an expense, or on a settle-up's `sw:` clientId) is skipped, so sending the same commit
+ * again, after a lost response, adds nothing and answers as a success. Keys are read once,
+ * before anything is written: one Splitwise row legitimately writes its key more than once
+ * (each part of a lump, each of your entries a split is applied to).
+ */
 export const commitImport = async (
     userId: string, tripId: string, csv: string, mapping: NameMapping, decisions: Decision[],
 ): Promise<{ added: number; applied: number; settled: number; matchSplitwise: boolean }> => {
-    const trip = await Trip.findOne({ _id: tripId, userId });
-    if (!trip) throw AppError.notFound("Trip not found");
-    if (trip.status === "closed") throw AppError.badRequest("This trip is closed — reopen it to import");
     const table = readFile(csv);
     const me = Object.entries(mapping).find(([, v]) => v === "me")?.[0];
-    if (!me) throw AppError.badRequest("Pick which name is you");
-    // Before any write: everyone mapped to an existing account must be one of your live people.
-    await requireOwnedAccounts(userId, Object.values(mapping).filter((v) => v !== "me" && v !== "new"), { types: ["person"], live: true });
-
-    // Names mapped to "new" become person accounts, and everyone mapped joins the trip.
-    const resolved: Record<string, string | null> = {};
-    for (const [name, target] of Object.entries(mapping)) {
-        if (target === "me") { resolved[name] = null; continue; }
-        if (target === "new") {
-            const created = await Account.create({ userId, name, type: "person", balance: 0, startingBalance: 0, icon: "person", color: "info" });
-            resolved[name] = String(created._id);
-        }
-        else resolved[name] = target;
-    }
-    const memberSet = new Set(trip.members.map(String));
-    let joined = false;
-    for (const acc of Object.values(resolved)) {
-        if (acc && !memberSet.has(acc)) { memberSet.add(acc); joined = true; }
-    }
-    if (joined) {
-        trip.members = [...memberSet].map((m) => new mongoose.Types.ObjectId(m));
-        await trip.save();
-    }
-
+    if (!me) throw invalidInput("mapping", PICK_ME);
     const byKey = new Map(table.rows.map((r) => [rowKey(r), classifyRow(r, me)]));
     const sharesOf = (r: ClassifiedRow) => Object.entries(r.shares).filter(([, v]) => v > 0);
-    let added = 0; let applied = 0; let settled = 0;
 
-    for (const d of decisions) {
-        if (d.action === "skip") continue;
-        const r = byKey.get(d.key);
-        if (!r) continue;
-        const title = (d.title ?? r.description).trim() || r.description;
-        const occurredAt = new Date(`${r.date}T12:00:00Z`);
+    return inTransaction(async (session) => {
+        const trip = await claimTrip(userId, tripId, session);
+        requireOpen(trip);
+        // Everyone mapped to an existing account must be one of your live people.
+        await requireLiveAccounts(userId, Object.entries(mapping)
+            .filter(([, v]) => v !== "me" && v !== "new")
+            .map(([name, id]) => ({ path: `mapping.${name}`, id, label: "A person in the file", things: "people", types: ["person"] })), session);
 
-        if (r.kind === "settlement") {
-            const person = r.counterparty ? resolved[r.counterparty] : null;
-            if (!person || !d.account) continue;
-            // Fingerprinted (settle-ups aren't trip expenses, so they carry it as clientId).
-            await settleUp(userId, tripId, { person, account: d.account, amount: r.cost, direction: r.direction ?? "received", occurredAt }, `sw:${tripId}:${d.key}`);
-            settled++;
-            continue;
-        }
+        const swPrefix = `sw:${String(trip._id)}:`;
+        const keyed = await TripExpense.find({ userId, tripId: trip._id, importKey: { $ne: null } }).select("importKey").session(session).lean();
+        const swRows = await Transaction.find({ userId, tripId: trip._id, clientId: { $regex: `^${swPrefix}` } }).select("clientId").session(session).lean();
+        const already = new Set([...keyed.map((e) => e.importKey as string), ...swRows.map((t) => (t.clientId ?? "").slice(swPrefix.length))]);
+        const todo = decisions.map((d, i) => ({ d, i })).filter(({ d }) => d.action !== "skip" && !already.has(d.key) && byKey.has(d.key));
+        const chosen = decisions.some((d) => d.action !== "skip");
 
-        if (r.kind === "noEffect") {
-            if (!d.account) continue;
-            await addTripExpense(userId, tripId, { title, occurredAt, category: d.category ?? null, cost: r.cost, paidBy: null, paidFrom: d.account, shares: [{ account: null, amount: r.cost }] }, { source: "splitwise", importKey: d.key });
-            added++;
-            continue;
-        }
-
-        if (d.action === "apply" && r.kind === "youPaid") {
-            // Your own entries keep their detail; they take on this row's split.
-            const ids = (await previewMatches(userId, tripId, r.cost));
-            const ratios = sharesOf(r).map(([name, v]) => [resolved[name] ?? "me", v] as [string, number]);
-            for (const e of ids) {
-                const parts = proportional(e.cost, ratios);
-                await updateTripExpense(userId, tripId, String(e._id), {
-                    title: e.title, occurredAt: e.occurredAt, category: e.category ? String(e.category) : null,
-                    cost: e.cost, paidBy: null, paidFrom: e.paidFrom ? String(e.paidFrom) : null,
-                    shares: [...parts].map(([k, amount]) => ({ account: k === "me" ? null : k, amount })),
-                });
-                await TripExpense.updateOne({ _id: e._id }, { $set: { importKey: d.key } });
-                applied++;
+        // Every chosen row is in already: this is the same commit sent again. Nothing is
+        // written, not even the "new" people the first send created.
+        const resolved: Record<string, string | null> = {};
+        if (chosen && !todo.length) {
+            const people = await Account.find({ userId, type: "person", _id: { $in: trip.members } }).select("name").session(session).lean();
+            const byName = new Map(people.map((p) => [p.name, String(p._id)]));
+            for (const [name, target] of Object.entries(mapping)) {
+                resolved[name] = target === "me" ? null : target === "new" ? byName.get(name) ?? null : target.toLowerCase();
             }
-            continue;
+            return { added: 0, applied: 0, settled: 0, matchSplitwise: await mayMatter(session, userId, trip, table.totals, resolved) };
         }
 
-        if (r.kind !== "friendPaid" && r.kind !== "youPaid") continue;
-        const paidBy = r.kind === "friendPaid" ? resolved[r.payer as string] : null;
-        if (r.kind === "youPaid" && !d.account) continue;
-        const pieces = d.parts?.length ? d.parts : [{ title, category: d.category ?? null, cost: r.cost }];
-        const ratios = sharesOf(r).map(([name, v]) => [name, v] as [string, number]);
-        for (const piece of pieces) {
-            const split = proportional(piece.cost, ratios);
-            await addTripExpense(userId, tripId, {
-                title: piece.title || title,
-                occurredAt,
-                category: piece.category,
-                cost: piece.cost,
-                paidBy: paidBy ?? null,
-                paidFrom: r.kind === "youPaid" ? d.account ?? null : null,
-                shares: [...split].map(([name, amount]) => ({ account: resolved[name] ?? null, amount })),
-            }, { source: "splitwise", importKey: d.key });
-            added++;
+        // Names mapped to "new" become person accounts, and everyone mapped joins the trip.
+        for (const [name, target] of Object.entries(mapping)) {
+            if (target === "me") { resolved[name] = null; continue; }
+            if (target === "new") {
+                const [created] = await Account.create([{ userId, name, type: "person", balance: 0, startingBalance: 0, icon: "person", color: "info" }], { session });
+                resolved[name] = String(created._id);
+            }
+            else resolved[name] = target.toLowerCase();
         }
-    }
+        const memberSet = new Set(trip.members.map(String));
+        let joined = false;
+        for (const acc of Object.values(resolved)) {
+            if (acc && !memberSet.has(acc)) { memberSet.add(acc); joined = true; }
+        }
+        if (joined) {
+            trip.members = [...memberSet].map((m) => new mongoose.Types.ObjectId(m));
+            await trip.save({ session });
+        }
 
-    // Whether to offer "Match Splitwise" straight away: only when simplification could have
-    // changed someone's number. Measured against the ledger as it now stands, without any
-    // earlier plan's adjustments.
-    const txns = await Transaction.find({ userId, tripId: trip._id }).select("type amount account toAccount clientId").lean();
+        let added = 0; let applied = 0; let settled = 0;
+        // Two identical settle-up rows share a key (gaps row 191); the second would meet the
+        // first's clientId on the index and fail the whole import, so it is left out.
+        const settledKeys = new Set<string>();
+        // Checked row by row against references read once, then written together at the end,
+        // so a big file is a few round trips rather than several per row (R1's F1).
+        const known = await loadKnownRefs(userId, session);
+        const newExpenses: { input: TripExpenseIn; importKey: string }[] = [];
+        const settlements: LedgerRow[] = [];
+
+        for (const { d, i } of todo) {
+            const r = byKey.get(d.key)!;
+            const title = (d.title ?? r.description).trim() || r.description;
+            const occurredAt = new Date(`${r.date}T12:00:00Z`);
+            const at = (part?: number): At => (p) => {
+                if (p === "paidFrom" || p === "account") return `decisions.${i}.account`;
+                if (p === "category") return part === undefined ? `decisions.${i}.category` : `decisions.${i}.parts.${part}.category`;
+                return `decisions.${i}`;
+            };
+
+            if (r.kind === "settlement") {
+                const person = r.counterparty ? resolved[r.counterparty] : null;
+                if (!person || !d.account || settledKeys.has(d.key)) continue;
+                settledKeys.add(d.key);
+                // Fingerprinted (settle-ups aren't trip expenses, so they carry it as clientId).
+                settlements.push(await settlementRow(session, userId, trip, { person, account: d.account, amount: r.cost, direction: r.direction ?? "received", occurredAt }, `${swPrefix}${d.key}`, at(), known));
+                settled++;
+                continue;
+            }
+
+            if (r.kind === "noEffect") {
+                if (!d.account) continue;
+                const input = await checkExpense(userId, trip, { title, occurredAt, category: d.category ?? null, cost: r.cost, paidBy: null, paidFrom: d.account, shares: [{ account: null, amount: r.cost }] }, session, at(), known);
+                newExpenses.push({ input, importKey: d.key });
+                added++;
+                continue;
+            }
+
+            if (d.action === "apply" && r.kind === "youPaid") {
+                // Your own entries keep their detail; they take on this row's split.
+                const ratios = sharesOf(r).map(([name, v]) => [resolved[name] ?? "me", v] as [string, number]);
+                for (const e of await previewMatches(session, userId, trip._id as mongoose.Types.ObjectId, r.cost)) {
+                    const parts = proportional(e.cost, ratios);
+                    const input = await checkExpense(userId, trip, {
+                        title: e.title, occurredAt: e.occurredAt, category: e.category ? String(e.category) : null,
+                        cost: e.cost, paidBy: null, paidFrom: e.paidFrom ? String(e.paidFrom) : null,
+                        shares: [...parts].map(([k, amount]) => ({ account: k === "me" ? null : k, amount })),
+                    }, session, at(), known);
+                    e.importKey = d.key;
+                    await replaceExpense(session, userId, trip, e, input);
+                    applied++;
+                }
+                continue;
+            }
+
+            if (r.kind !== "friendPaid" && r.kind !== "youPaid") continue;
+            const paidBy = r.kind === "friendPaid" ? resolved[r.payer as string] : null;
+            if (r.kind === "youPaid" && !d.account) continue;
+            const pieces = d.parts?.length ? d.parts : [{ title, category: d.category ?? null, cost: r.cost }];
+            const ratios = sharesOf(r).map(([name, v]) => [name, v] as [string, number]);
+            for (const [j, piece] of pieces.entries()) {
+                const split = proportional(piece.cost, ratios);
+                const input = await checkExpense(userId, trip, {
+                    title: piece.title || title,
+                    occurredAt,
+                    category: piece.category,
+                    cost: piece.cost,
+                    paidBy: paidBy ?? null,
+                    paidFrom: r.kind === "youPaid" ? d.account ?? null : null,
+                    shares: [...split].map(([name, amount]) => ({ account: resolved[name] ?? null, amount })),
+                }, session, at(d.parts?.length ? j : undefined), known);
+                newExpenses.push({ input, importKey: d.key });
+                added++;
+            }
+        }
+
+        await insertInBulk(session, userId, trip, newExpenses, settlements);
+        return { added, applied, settled, matchSplitwise: await mayMatter(session, userId, trip, table.totals, resolved) };
+    });
+};
+
+/** Whether to offer "Match Splitwise" straight away: only when simplification could have
+ *  changed someone's number. Measured against the ledger as it now stands, without any
+ *  earlier plan's adjustments. */
+const mayMatter = async (
+    session: ClientSession, userId: string, trip: ITrip, totals: Record<string, number> | null, resolved: Record<string, string | null>,
+) => {
+    const txns = await Transaction.find({ userId, tripId: trip._id }).select("type amount account toAccount clientId").session(session).lean();
     const exact = memberBalances(
         txns.filter((t) => !isReroute(t)).map((t) => ({ type: t.type, amount: t.amount, account: String(t.account), toAccount: t.toAccount ? String(t.toAccount) : null })),
         trip.members.map(String),
     );
-    return { added, applied, settled, matchSplitwise: simplifyMayMatter(table.totals, exact, resolved) };
+    return simplifyMayMatter(totals, exact, resolved);
 };
 
 /** The same "your entries" match the preview offered, re-derived at commit time. */
-const previewMatches = async (userId: string, tripId: string, cost: number) => {
-    const mine = await TripExpense.find({ userId, tripId, source: "manual", paidBy: null, importKey: null }).lean();
+const previewMatches = async (session: ClientSession, userId: string, tripId: mongoose.Types.ObjectId, cost: number) => {
+    const mine = await TripExpense.find({ userId, tripId, source: "manual", paidBy: null, importKey: null }).session(session);
     const unsplit = mine.filter((e) => e.shares.every((s) => s.account === null));
     const single = unsplit.find((e) => Math.abs(e.cost - cost) <= 100);
     if (single) return [single];

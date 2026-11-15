@@ -328,3 +328,45 @@ test("an import commit that fails part-way writes nothing", async () => {
     assert.deepEqual(await tripState(t), before);
     await noDrift(bank, asha);
 });
+
+/** A Splitwise file of `expenses` rows (you and five friends, the payer alternating) and
+ *  `settles` payments from the first friend, every row distinct. */
+const bigCsv = (expenses: number, settles: number) => {
+    const people = ["Big Me", "Big P1", "Big P2", "Big P3", "Big P4", "Big P5"];
+    const rows: string[] = [];
+    for (let i = 0; i < expenses; i += 1) {
+        const payer = i % 2 === 0 ? 0 : 1 + (i % 5);
+        const effects = people.map((_, p) => (p === payer ? "500.00" : "-100.00"));
+        rows.push(`${day(-1 - (i % 30)).slice(0, 10)},Big row ${i},General,600.00,INR,${effects.join(",")}`);
+    }
+    for (let j = 0; j < settles; j += 1) {
+        rows.push(`${day(-1 - (j % 30)).slice(0, 10)},Big payment ${j},Payment,${(100 + j).toFixed(2)},INR,-${(100 + j).toFixed(2)},${(100 + j).toFixed(2)},0.00,0.00,0.00,0.00`);
+    }
+    return [`Date,Description,Category,Cost,Currency,${people.join(",")}`, "", ...rows].join("\n");
+};
+
+for (const [expenses, settles] of [[300, 20], [975, 25]] as const) {
+    test(`F1: a ${expenses} + ${settles} row import commits in one transaction, fully, once`, { timeout: 600_000 }, async () => {
+        const bank = await acc(`big bank ${expenses}`, 100_000_000); const p1 = await acc(`Big P1 ${expenses}`, 0, "person");
+        const t = await trip([p1], `big ${expenses}`);
+        const csv = bigCsv(expenses, settles);
+        const mapping = { "Big Me": "me", "Big P1": p1, "Big P2": "new", "Big P3": "new", "Big P4": "new", "Big P5": "new" };
+        const decisions = await decide(t, csv, mapping, bank);
+        assert.equal(decisions.length, expenses + settles);
+        const started = Date.now();
+        const r = await send("POST", `/trips/${t}/import/commit`, { csv, mapping, decisions });
+        const seconds = (Date.now() - started) / 1000;
+        console.log(`# ${expenses} + ${settles} rows: ${r.status} in ${seconds.toFixed(1)} s ${JSON.stringify(r.json?.data ?? r.json?.message)}`);
+        assert.equal(r.status, 200, r.json?.message);
+        assert.deepEqual([r.json.data.added, r.json.data.settled], [expenses, settles]);
+        const s = await tripState(t);
+        assert.equal(s.expenses, expenses);
+        assert.equal(s.members, 5);
+        const again = await send("POST", `/trips/${t}/import/commit`, { csv, mapping, decisions });
+        assert.equal(again.status, 200);
+        assert.deepEqual([again.json.data.added, again.json.data.settled], [0, 0]);
+        assert.deepEqual(await tripState(t), s);
+        const people = (await ro.col("accounts").find<{ _id: ObjectId }>({ userId, type: "person" })).map((p) => String(p._id));
+        await noDrift(bank, ...people);
+    });
+}
