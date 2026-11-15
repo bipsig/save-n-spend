@@ -1,5 +1,7 @@
-import z from "zod";
+import { z } from "./z";
 
-export const dismissRecurringSchema = z.object({
-    key: z.string().min(1).max(200),
-}).strict();
+export const dismissRecurringSchemas = {
+    body: z.object({
+        key: z.string().min(1).max(200),
+    }).strict(),
+};

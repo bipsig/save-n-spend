@@ -1,29 +1,52 @@
 import { Request, Response } from "express";
+import type { ClientSession } from "mongoose";
 import { AppError } from "../utils/AppError";
-import { createBillSchema, updateBillSchema, listBillQuerySchema, payBillSchema } from "../schemas/billSchema";
+import type { Valid } from "../middleware/validate";
+import { billProblems, createBillSchemas, updateBillSchemas, listBillsSchemas, payBillSchemas, billIdSchemas, skipBillSchemas } from "../schemas/billSchema";
 import Bill from "../models/Bill";
 import Category from "../models/Category";
 import * as reply from '../utils/response';
 import Account from "../models/Account";
-import mongoose from "mongoose";
 import Transaction from "../models/Transaction";
 import { applyEffects } from "../services/transactionService";
 import User from "../models/User";
 import { startOfDayInZone } from "../utils/timezone";
 import { resolveZone } from "../utils/userZone";
 import { advanceDueDate, isFuturePeriod, isSettledForPeriod } from "../services/billService";
+import { inTransaction } from "../utils/inTransaction";
+import { conflict, notFound } from "../utils/messages";
+import { toDTO, toDTOs } from "../utils/dto";
 
 // The zone-local period arithmetic these handlers run on lives in services/billService,
 // because the reminder job has to reach exactly the same verdict about a bill as this
 // screen does.
 
+const ALREADY_PAID = conflict("This bill is already paid for this period");
+
+/** Each reference the body names must be one of the user's live records of the right kind. */
+const checkReferences = async (
+    userId: string,
+    body: { category?: string | null; account?: string; toInvestment?: string | null },
+): Promise<void> => {
+    if (body.category && !(await Category.exists({ _id: body.category, userId, isArchived: false }))) {
+        throw AppError.invalidReference("category", "Category", "categories");
+    }
+    if (body.account && !(await Account.exists({ _id: body.account, userId, isArchived: false }))) {
+        throw AppError.invalidReference("account", "Account", "accounts");
+    }
+    if (body.toInvestment && !(await Account.exists({ _id: body.toInvestment, userId, type: "investment", isArchived: false }))) {
+        throw AppError.invalidReference("toInvestment", "Investment", "holdings");
+    }
+};
+
+const rejectProblems = (problems: { path: string; message: string }[]): void => {
+    if (problems.length) throw new AppError(400, problems[0].message, { code: "invalid_input", issues: problems });
+};
+
 export const listBills = async (req: Request, res: Response): Promise<void> => {
-    const { status } = listBillQuerySchema.parse(req.query);
+    const { query: { status } } = req.valid as Valid<typeof listBillsSchemas>;
 
-    const filter: Record<string, unknown> = { userId: req.user?.userId };
-    if (status) filter.status = status;
-
-    const bills = await Bill.find(filter).sort({ dueDate: 1 }).lean();
+    const bills = await Bill.find({ userId: req.user?.userId }).sort({ dueDate: 1 }).lean();
 
     const zone = await resolveZone(req);
     const now = new Date();
@@ -42,91 +65,47 @@ export const listBills = async (req: Request, res: Response): Promise<void> => {
         return [{ ...bill, status: derived }];
     });
 
-    reply.ok(res, result, "Bills fetched successfully");
+    // Filtered on the status shown, not the stored one: a recurring bill is never stored as
+    // paid, and "overdue" is never stored at all.
+    reply.ok(res, toDTOs(status ? result.filter((b) => b.status === status) : result), "Bills fetched");
 }
 
 export const createBill = async (req: Request, res: Response): Promise<void> => {
-    const reqBody = createBillSchema.parse(req.body);
+    const { body } = req.valid as Valid<typeof createBillSchemas>;
 
-    if (reqBody.category) {
-        const category = await Category.findOne({
-            _id: reqBody.category,
-            userId: req.user?.userId,
-            isArchived: false
-        });
-
-        if (!category) {
-            throw AppError.badRequest("Category not found");
-        }
-    }
-
-    if (reqBody.recurring && !reqBody.frequency) {
-        throw AppError.badRequest("Frequency is required for recurring bills");
-    }
-
-    if (reqBody.toInvestment) {
-        const investment = await Account.findOne({
-            _id: reqBody.toInvestment,
-            userId: req.user?.userId,
-            type: "investment",
-            isArchived: false
-        });
-        if (!investment) {
-            throw AppError.badRequest("Choose an investment account");
-        }
-    }
+    await checkReferences(req.user!.userId, body);
 
     const bill = await Bill.create({
         userId: req.user?.userId,
-        ...reqBody
+        ...body
     });
 
-    reply.created(res, bill, "Bill created successfully");
+    reply.created(res, toDTO(bill), "Bill created");
 }
 
 export const updateBill = async (req: Request, res: Response): Promise<void> => {
-    const { id } = req.params;
-    const reqBody = updateBillSchema.parse(req.body);
+    const { params: { id }, body } = req.valid as Valid<typeof updateBillSchemas>;
+    const userId = req.user!.userId;
 
-    if (reqBody.category) {
-        const category = await Category.findOne({
-            _id: reqBody.category,
-            userId: req.user?.userId,
-            isArchived: false
-        });
-
-        if (!category) {
-            throw AppError.badRequest("Category not found");
-        }
+    const existing = await Bill.findOne({ _id: id, userId }).lean();
+    if (!existing) {
+        throw AppError.notFound(notFound("bill"));
     }
 
-    if (reqBody.toInvestment) {
-        const investment = await Account.findOne({
-            _id: reqBody.toInvestment,
-            userId: req.user?.userId,
-            type: "investment",
-            isArchived: false
-        });
-        if (!investment) {
-            throw AppError.badRequest("Choose an investment account");
-        }
-    }
+    rejectProblems(billProblems({ ...existing, ...body }));
+    await checkReferences(userId, body);
 
-    const bill = await Bill.findOneAndUpdate(
-        { _id: id, userId: req.user?.userId },
-        reqBody,
-        { new: true }
-    );
+    const bill = await Bill.findOneAndUpdate({ _id: id, userId }, body, { new: true });
 
     if (!bill) {
-        throw AppError.notFound("Bill not found");
+        throw AppError.notFound(notFound("bill"));
     }
 
-    reply.ok(res, bill, "Bill updated successfully");
+    reply.ok(res, toDTO(bill), "Bill updated");
 }
 
 export const deleteBill = async (req: Request, res: Response): Promise<void> => {
-    const { id } = req.params;
+    const { params: { id } } = req.valid as Valid<typeof billIdSchemas>;
 
     const bill = await Bill.findOneAndDelete({
         _id: id,
@@ -134,155 +113,146 @@ export const deleteBill = async (req: Request, res: Response): Promise<void> => 
     });
 
     if (!bill) {
-        throw AppError.notFound("Bill not found");
+        throw AppError.notFound(notFound("bill"));
     }
 
-    reply.ok(res, null, "Bill deleted successfully");
+    reply.ok(res, null, "Bill deleted");
 }
 
+/** The account a payment comes out of: the one picked, else the bill's, else the default. */
+const accountToCharge = async (userId: string, chosen: string | undefined, billAccount: unknown, session: ClientSession) => {
+    const live = (id: unknown) => Account.findOne({ _id: id, userId, isArchived: false }).session(session);
+
+    if (chosen) {
+        const account = await live(chosen);
+        if (!account) throw AppError.invalidReference("account", "Account", "accounts");
+        return account;
+    }
+    const own = billAccount ? await live(billAccount) : null;
+    if (own) return own;
+
+    const user = await User.findById(userId).select("prefs.defaultAccount").session(session).lean();
+    const fallback = user?.prefs?.defaultAccount ? await live(user.prefs.defaultAccount) : null;
+    if (!fallback) throw AppError.badRequest("Pick an account to pay this bill from");
+    return fallback;
+};
+
 export const markBillPaid = async (req: Request, res: Response): Promise<void> => {
-    const { id: billId } = req.params;
+    const { params: { id: billId }, body: { account: chosenAccount } } = req.valid as Valid<typeof payBillSchemas>;
+    const userId = req.user!.userId;
 
-    const bill = await Bill.findOne({
-        _id: billId,
-        userId: req.user?.userId
-    });
+    // Read once, outside the transaction, on purpose: this copy is the claim below. If MongoDB
+    // retries the transaction, the retry must still claim the period THIS request saw, never
+    // one a racing request has just advanced to (that would pay an overdue bill twice).
+    const seen = await Bill.findOne({ _id: billId, userId }).lean();
 
-    if (!bill) {
-        throw AppError.notFound("Bill not found");
+    if (!seen) {
+        throw AppError.notFound(notFound("bill"));
     }
 
-    if (bill.status === "paid") {
-        throw AppError.badRequest("Bill is already paid");
+    if (seen.status === "paid") {
+        throw AppError.conflict(ALREADY_PAID);
     }
 
     const zone = await resolveZone(req);
 
-    if (bill.recurring && isFuturePeriod(bill.dueDate, new Date(), zone, bill.frequency)) {
-        throw AppError.badRequest("This bill is already handled for this period");
+    if (seen.recurring && isFuturePeriod(seen.dueDate, new Date(), zone, seen.frequency)) {
+        throw AppError.conflict(ALREADY_PAID);
     }
 
-    const { account: chosenAccount } = payBillSchema.parse(req.body ?? {});
+    const settledBill = await inTransaction(async (session) => {
+        const account = await accountToCharge(userId, chosenAccount, seen.account, session);
 
-    let account = null;
-    if (chosenAccount) {
-        account = await Account.findOne({ _id: chosenAccount, userId: req.user?.userId, isArchived: false });
-        if (!account) {
-            throw AppError.badRequest("Account not found");
-        }
-    }
-    else if (bill.account) {
-        account = await Account.findOne({ _id: bill.account, userId: req.user?.userId, isArchived: false });
-    }
-
-    if (!account) {
-        const user = await User.findById(req.user?.userId);
-        if (user?.prefs?.defaultAccount) {
-            account = await Account.findOne({ _id: user.prefs.defaultAccount, userId: req.user?.userId, isArchived: false });
-        }
-    }
-
-    if (!account) {
-        throw AppError.badRequest("No account to charge this bill to");
-    }
-
-    // A SIP bill funds an investment: marking it done moves money INTO that holding as a
-    // transfer, not an expense — so it never hits the spending charts and lands in the
-    // holding. Re-checked here (not just at create) in case the holding was archived since.
-    let investmentId: mongoose.Types.ObjectId | null = null;
-    if (bill.toInvestment) {
-        const investment = await Account.findOne({ _id: bill.toInvestment, userId: req.user?.userId, type: "investment", isArchived: false });
-        if (!investment) {
-            throw AppError.badRequest("This SIP's investment no longer exists — edit the bill to point it at one");
-        }
-        investmentId = investment._id as mongoose.Types.ObjectId;
-    }
-
-    let settledBill = bill;
-    const session = await mongoose.startSession();
-    try {
-        await session.withTransaction(async () => {
-            // Claim the bill atomically BEFORE moving any money. The status/period guard above
-            // is a check-then-act: a double-tap or an offline-queue replay can both pass it and
-            // each post a full expense/transfer + double-debit the account. This conditional
-            // update is the idempotency key — for a one-off it's status:"pending"; for a
-            // recurring bill it's the current dueDate, which this same update advances, so a
-            // second racing request matches nothing, gets null, and aborts the whole txn
-            // (rolling back before any transaction is written).
-            const now = new Date();
-            const claimed = bill.recurring
-                ? await Bill.findOneAndUpdate(
-                    { _id: bill._id, userId: req.user?.userId, dueDate: bill.dueDate },
-                    { dueDate: advanceDueDate(bill.dueDate, zone, bill.frequency), lastPaidAt: now },
-                    { session, new: true },
-                )
-                : await Bill.findOneAndUpdate(
-                    { _id: bill._id, userId: req.user?.userId, status: "pending" },
-                    { status: "paid", lastPaidAt: now },
-                    { session, new: true },
-                );
-
-            if (!claimed) {
-                throw AppError.badRequest("This bill was just handled — nothing more to do");
+        // A SIP bill funds an investment: marking it done moves money INTO that holding as a
+        // transfer, not an expense, so it never hits the spending charts. Re-checked here (not
+        // just at create) in case the holding was archived since.
+        let investmentId: unknown = null;
+        if (seen.toInvestment) {
+            const investment = await Account.findOne({ _id: seen.toInvestment, userId, type: "investment", isArchived: false }).session(session);
+            if (!investment) {
+                throw AppError.conflict(conflict("This bill's holding isn't there any more", "Edit the bill to pick another"));
             }
+            investmentId = investment._id;
+        }
 
-            const [transaction] = await Transaction.create([
-                investmentId
-                    ? {
-                        userId: req.user?.userId,
-                        type: "transfer",
-                        amount: bill.amount,
-                        account: account?._id,
-                        toAccount: investmentId,
-                        occurredAt: now
-                    }
-                    : {
-                        userId: req.user?.userId,
-                        type: "expense",
-                        amount: bill.amount,
-                        account: account?._id,
-                        category: bill.category,
-                        title: bill.name,
-                        occurredAt: now
-                    }
-            ], { session });
+        // Claim the bill BEFORE moving any money. For a one-off the key is status "pending";
+        // for a recurring bill it is the due date read above, which this same update advances,
+        // so a second request racing this one matches nothing and the whole transaction rolls
+        // back before any row is written.
+        const now = new Date();
+        const claimed = seen.recurring
+            ? await Bill.findOneAndUpdate(
+                { _id: seen._id, userId, dueDate: seen.dueDate },
+                { dueDate: advanceDueDate(seen.dueDate, zone, seen.frequency), lastPaidAt: now },
+                { session, new: true },
+            )
+            : await Bill.findOneAndUpdate(
+                { _id: seen._id, userId, status: "pending" },
+                { status: "paid", lastPaidAt: now },
+                { session, new: true },
+            );
 
-            await applyEffects(transaction, "add", session);
+        if (!claimed) {
+            throw AppError.conflict(ALREADY_PAID);
+        }
 
-            settledBill = claimed;
-        })
-    }
-    finally {
-        session.endSession();
-    }
+        const [transaction] = await Transaction.create([
+            investmentId
+                ? {
+                    userId,
+                    type: "transfer",
+                    amount: seen.amount,
+                    account: account._id,
+                    toAccount: investmentId,
+                    occurredAt: now
+                }
+                : {
+                    userId,
+                    type: "expense",
+                    amount: seen.amount,
+                    account: account._id,
+                    category: seen.category,
+                    title: seen.name,
+                    occurredAt: now
+                }
+        ], { session });
 
-    reply.ok(res, settledBill, "Bill marked as paid");
+        await applyEffects(transaction, "add", session);
+
+        return claimed;
+    });
+
+    reply.ok(res, toDTO(settledBill), "Bill paid");
 }
 
 export const skipBill = async (req: Request, res: Response): Promise<void> => {
-    const { id: billId } = req.params;
+    const { params: { id: billId } } = req.valid as Valid<typeof skipBillSchemas>;
+    const userId = req.user!.userId;
 
-    const bill = await Bill.findOne({
-        _id: billId,
-        userId: req.user?.userId
-    });
+    const seen = await Bill.findOne({ _id: billId, userId }).lean();
 
-    if (!bill) {
-        throw AppError.notFound("Bill not found");
+    if (!seen) {
+        throw AppError.notFound(notFound("bill"));
     }
 
-    if (!bill.recurring) {
-        throw AppError.badRequest("Only recurring bills can be skipped");
+    if (!seen.recurring) {
+        throw AppError.conflict(conflict("Only recurring bills can be skipped"));
     }
 
     const zone = await resolveZone(req);
 
-    if (isFuturePeriod(bill.dueDate, new Date(), zone, bill.frequency)) {
-        throw AppError.badRequest("This bill is already handled for this period");
+    if (isFuturePeriod(seen.dueDate, new Date(), zone, seen.frequency)) {
+        throw AppError.conflict(ALREADY_PAID);
     }
 
-    bill.dueDate = advanceDueDate(bill.dueDate, zone, bill.frequency);
-    await bill.save();
+    // Conditional on the due date read above, as pay is: a pay or skip racing this one has
+    // already moved it, so this matches nothing instead of advancing a second period.
+    const bill = await Bill.findOneAndUpdate(
+        { _id: seen._id, userId, dueDate: seen.dueDate },
+        { dueDate: advanceDueDate(seen.dueDate, zone, seen.frequency) },
+        { new: true },
+    );
+    if (!bill) throw AppError.conflict(ALREADY_PAID);
 
-    reply.ok(res, bill, "Bill skipped");
+    reply.ok(res, toDTO(bill), "Bill skipped");
 }

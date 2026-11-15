@@ -1,8 +1,15 @@
-import z from "zod/v4";
+import { z } from "./z";
+import { limit, objectId, page } from "./fields";
 
-export const listNotificationQuerySchema = z.object({
-    page: z.coerce.number().int().positive().default(1),
-    // Smaller than the transaction list's cap: nobody paginates deeply through
-    // notifications, they read the top of the list and leave.
-    limit: z.coerce.number().int().positive().max(50).default(20),
-});
+export const listNotificationsSchemas = {
+    query: z.object({
+        page,
+        // Smaller than the transaction list's cap: nobody paginates deeply through
+        // notifications, they read the top of the list and leave.
+        limit: limit(50),
+    }),
+};
+
+export const markNotificationReadSchemas = { params: z.object({ id: objectId("Notification") }), body: z.object({}).strict() };
+
+export const markAllNotificationsReadSchemas = { body: z.object({}).strict() };

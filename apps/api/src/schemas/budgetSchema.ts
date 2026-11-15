@@ -1,17 +1,18 @@
-import z from "zod";
+import { z } from "./z";
+import { month, objectId, positiveMoney } from "./fields";
 
-const monthPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
+const budgetId = z.object({ id: objectId("Budget") });
 
-export const createBudgetSchema = z.object({
-    category: z.string(),
-    month: z.string().regex(monthPattern),
-    limit: z.number().int().positive()
-}).strict();
+export const listBudgetsSchemas = { query: z.object({ month: month.optional() }) };
 
-export const updateBudgetSchema = z.object({
-    limit: z.number().int().positive()
-}).strict();
+export const createBudgetSchemas = {
+    body: z.object({
+        category: objectId("Category", "categories"),
+        month,
+        limit: positiveMoney,
+    }).strict(),
+};
 
-export const listBudgetQuerySchema = z.object({
-    month: z.string().regex(monthPattern).optional()
-});
+export const updateBudgetSchemas = { params: budgetId, body: z.object({ limit: positiveMoney }).strict() };
+
+export const budgetIdSchemas = { params: budgetId };

@@ -1,7 +1,8 @@
 import { Request, Response } from "express";
 import * as reply from "../utils/response";
 import { resolveZone } from "../utils/userZone";
-import { dismissRecurringSchema } from "../schemas/recurringSchema";
+import type { Valid } from "../middleware/validate";
+import { dismissRecurringSchemas } from "../schemas/recurringSchema";
 import { dismissRecurring, getRecurringSuggestions } from "../services/recurringService";
 
 export const listRecurringSuggestions = async (req: Request, res: Response): Promise<void> => {
@@ -11,7 +12,7 @@ export const listRecurringSuggestions = async (req: Request, res: Response): Pro
 };
 
 export const dismissRecurringSuggestion = async (req: Request, res: Response): Promise<void> => {
-    const { key } = dismissRecurringSchema.parse(req.body);
+    const { body: { key } } = req.valid as Valid<typeof dismissRecurringSchemas>;
     await dismissRecurring(req.user!.userId, key);
     reply.ok(res, null, "Suggestion dismissed");
 };
