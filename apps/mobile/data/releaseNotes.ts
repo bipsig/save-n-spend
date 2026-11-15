@@ -34,6 +34,35 @@ export interface Release {
 /** Newest first. */
 export const RELEASES: Release[] = [
   {
+    version: "2.8.1",
+    build: 24,
+    date: "2026-11-16",
+    headline: "Activity totals follow your filters",
+    notes: [
+      {
+        kind: "improved",
+        title: "The totals on Activity add up only the entries you've filtered to.",
+        detail: "Pick a category, account, type or search, and Income, Expenses and Net Savings count only the entries in the list, with a Filtered mark beside the period. Transfers are listed but never counted, so with the Transfers filter each figure shows a dash. An entry still waiting to be sent from offline counts once it's sent.",
+        highlight: true,
+        link: "/activity",
+      },
+      {
+        kind: "improved",
+        title: "Exports are always built fresh from the server, never from what's saved for offline, so a file can't miss recent entries.",
+      },
+      {
+        kind: "fixed",
+        title: "Categories and accounts load by themselves when the connection comes back.",
+        detail: "If the app first opened offline, the category picker and lists stayed empty until you reloaded.",
+      },
+      {
+        kind: "fixed",
+        title: "The Income and Expenses sparklines on Home show each month once.",
+        detail: "This month appeared twice, and the oldest month dropped off.",
+      },
+    ],
+  },
+  {
     version: "2.8.0",
     build: 23,
     date: "2026-11-16",
