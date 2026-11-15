@@ -8,13 +8,12 @@
 // this queue deliberately is not (see lib/outbox.ts's own doc comment).
 import { create } from "zustand";
 import type { ITransaction } from "@save-n-spend/types";
-import { ApiError, post } from "@/lib/api";
+import { post } from "@/lib/api";
 import { readOutbox, writeOutbox, type OutboxItem } from "@/lib/outbox";
+import { drainQueue } from "@/lib/outboxDrain";
+import { makeIdempotencyKey } from "@/lib/idempotency";
 import { useAccountStore } from "@/store/accounts";
 import { toast } from "@/store/toast";
-
-export const makeClientId = (): string =>
-  `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
 interface OutboxState {
   userId: string | null;
@@ -24,7 +23,8 @@ interface OutboxState {
   lastDrainedAt: number;
   load: (userId: string) => Promise<void>;
   resetMemory: () => void;
-  enqueue: (clientId: string, payload: Record<string, unknown>) => Promise<void>;
+  /** `idempotencyKey` defaults to the clientId, which is what Add Transaction sends. */
+  enqueue: (clientId: string, payload: Record<string, unknown>, idempotencyKey?: string) => Promise<void>;
   retry: (clientId: string) => void;
   discard: (clientId: string) => void;
   drain: () => Promise<void>;
@@ -34,6 +34,16 @@ interface OutboxState {
 // Module-level, not state anything renders — mirrors store/wake.ts's `inFlight`. A
 // concurrent auto-drain (on reconnect) and a manual "Retry" tap can never double-send.
 let draining: Promise<void> | null = null;
+// Backoff between failed passes. `notBefore` is set only when the server named a wait
+// (Retry-After); a reconnect or launch may otherwise drain straight away.
+let attempt = 0;
+let notBefore = 0;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+const clearRetry = () => {
+  if (retryTimer) clearTimeout(retryTimer);
+  retryTimer = null;
+};
 
 export const useOutbox = create<OutboxState>((set, get) => {
   const persist = (items: OutboxItem[]) => {
@@ -43,56 +53,35 @@ export const useOutbox = create<OutboxState>((set, get) => {
 
   const drain = (): Promise<void> => {
     if (draining) return draining;
+    if (Date.now() < notBefore) return Promise.resolve();
 
     draining = (async () => {
-      let synced = 0;
-
-      // Re-read the queue each pass rather than snapshotting it once, so an item a
-      // manual retry re-queues mid-drain is picked up by this same run.
-      while (true) {
-        const item = get().items.find((i) => i.status === "queued");
-        if (!item) break;
-
-        try {
-          await post("/transactions", item.payload);
-          set((s) => ({ items: s.items.filter((i) => i.clientId !== item.clientId) }));
-          persist(get().items);
-          synced++;
-        }
-        catch (err) {
-          if (!(err instanceof ApiError)) break;
-
-          // Already applied — the exact outcome the clientId dedupe exists to produce
-          // for a replay after a lost response.
-          if (err.status === 409) {
-            set((s) => ({ items: s.items.filter((i) => i.clientId !== item.clientId) }));
-            persist(get().items);
-            synced++;
-            continue;
-          }
-          // Unreachable, or the sign-out interceptor is already handling a 401 — stop,
-          // leave the rest of the queue exactly as it is.
-          if (err.status === 0 || err.status === 401) break;
-          // The server answered but is broken — hammering it with the rest of the
-          // queue is pointless; try again on the next drain.
-          if (err.status >= 500) break;
-
-          // A real validation failure (its category was deleted elsewhere, say) —
-          // visible, never silent, and must not block the rest of the queue.
-          set((s) => ({
-            items: s.items.map((i) => (
-              i.clientId === item.clientId
-                ? { ...i, status: "failed" as const, error: err.message }
-                : i
-            )),
-          }));
-          persist(get().items);
-        }
+      clearRetry();
+      const result = await drainQueue({
+        items: () => get().items,
+        update: (fn) => set((s) => ({ items: fn(s.items) })),
+        save: async () => {
+          const { userId, items } = get();
+          if (userId) await writeOutbox(userId, items);
+        },
+        send: (item, idempotencyKey) => post("/transactions", item.payload, { idempotencyKey }),
+        makeKey: makeIdempotencyKey,
+        attempt,
+      });
+      attempt = result.attempt;
+      if (result.retry) {
+        const { delayMs, wait } = result.retry;
+        notBefore = wait ? Date.now() + delayMs : 0;
+        retryTimer = setTimeout(() => {
+          retryTimer = null;
+          notBefore = 0;
+          void drain();
+        }, delayMs);
       }
 
-      if (synced > 0) {
+      if (result.synced > 0) {
         set({ lastDrainedAt: Date.now() });
-        toast.success(`Synced ${synced} transaction${synced === 1 ? "" : "s"}`);
+        toast.success(`Synced ${result.synced} transaction${result.synced === 1 ? "" : "s"}`);
         void useAccountStore.getState().load().catch(() => {});
       }
     })().finally(() => {
@@ -114,14 +103,20 @@ export const useOutbox = create<OutboxState>((set, get) => {
 
     // In-memory only — the file stays, so the same user's queue is there again on their
     // next authed launch (see app/_layout.tsx's guest branch).
-    resetMemory: () => set({ userId: null, items: [] }),
+    resetMemory: () => {
+      clearRetry();
+      attempt = 0;
+      notBefore = 0;
+      set({ userId: null, items: [] });
+    },
 
-    enqueue: async (clientId, payload) => {
+    enqueue: async (clientId, payload, idempotencyKey = clientId) => {
       const items = [...get().items, {
         clientId,
         payload,
         createdAt: Date.now(),
         status: "queued" as const,
+        idempotencyKey,
       }];
       set({ items });
       // Awaited: a "saved offline" toast must never precede the write it describes — an
@@ -131,7 +126,17 @@ export const useOutbox = create<OutboxState>((set, get) => {
 
     retry: (clientId) => {
       set((s) => ({
-        items: s.items.map((i) => (i.clientId === clientId ? { ...i, status: "queued" as const, error: undefined } : i)),
+        items: s.items.map((i) => (i.clientId === clientId
+          ? {
+              ...i,
+              status: "queued" as const,
+              error: undefined,
+              errorCode: undefined,
+              // The server saw this key with another body, so it can never succeed. The body
+              // clientId still stops a second copy.
+              ...(i.errorCode === "idempotency_mismatch" ? { idempotencyKey: makeIdempotencyKey() } : {}),
+            }
+          : i)),
       }));
       persist(get().items);
       void drain();

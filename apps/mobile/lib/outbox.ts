@@ -4,15 +4,22 @@
 // choose (a 401 while offline-authed on stale data — see app/_layout.tsx's boot flow)
 // just as much as one they did.
 import * as FileSystem from "expo-file-system/legacy";
+import type { ApiErrorCode } from "@save-n-spend/types";
 
 const DIR = `${FileSystem.documentDirectory}offline-cache/`;
 
+// Fields are only ever added: a file written by 2.6.0 has to load, and one written by this
+// app has to load in 2.6.0 if it is reinstalled.
 export type OutboxItem = {
   clientId: string;
   payload: Record<string, unknown>;
   createdAt: number;
   status: "queued" | "failed";
   error?: string;
+  /** Sent as the Idempotency-Key on every try. Absent on items 2.6.0 queued until their
+   *  first send gives them one. */
+  idempotencyKey?: string;
+  errorCode?: ApiErrorCode | null;
 };
 
 const fileFor = (userId: string): string => `${DIR}outbox.${userId}.json`;
