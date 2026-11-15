@@ -279,7 +279,8 @@ const END_BEFORE_START = "The trip can't end before it starts";
 export const createTrip = async (userId: string, body: TripBody) => {
     if (body.endDate < body.startDate) throw invalidInput("endDate", END_BEFORE_START);
     const members = await requirePeople(userId, body.members, null);
-    const trip = await Trip.create({ userId, ...body, members, budget: body.budget ?? null });
+    // In a transaction so a sent Idempotency-Key is recorded with the trip (utils/inTransaction).
+    const [trip] = await inTransaction((session) => Trip.create([{ userId, ...body, members, budget: body.budget ?? null }], { session }));
     return trip;
 };
 

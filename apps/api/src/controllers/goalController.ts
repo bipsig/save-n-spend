@@ -18,10 +18,11 @@ export const listGoals = async (req: Request, res: Response): Promise<void> => {
 export const createGoal = async (req: Request, res: Response): Promise<void> => {
     const { body } = req.valid as Valid<typeof createGoalSchemas>;
 
-    const goal = await Goal.create({
+    // In a transaction so a sent Idempotency-Key is recorded with the goal (utils/inTransaction).
+    const [goal] = await inTransaction((session) => Goal.create([{
         userId: req.user?.userId,
         ...body
-    });
+    }], { session }));
 
     reply.created(res, toDTO(goal), "Goal created");
 }

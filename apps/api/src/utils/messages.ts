@@ -29,6 +29,9 @@ export const MESSAGES = {
     rateLimitedAuth: "Too many tries. Wait a few minutes and try again",
     rateLimitedRestore: "Too many restores. Try again in an hour",
     rateLimitedReports: "Too many reports",
+    idempotencyInProgress: "This is still being saved. Wait a moment and try again",
+    idempotencyMismatch: "This doesn't match what was sent before. Please update the app",
+    alreadySaved: "This was already saved",
 } as const;
 
 /**

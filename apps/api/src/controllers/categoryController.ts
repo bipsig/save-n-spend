@@ -78,7 +78,8 @@ export const createCategory = async (req: Request, res: Response): Promise<void>
 
     let savedCategory;
     try {
-        savedCategory = await Category.create({
+        // In a transaction so a sent Idempotency-Key is recorded with the category (utils/inTransaction).
+        [savedCategory] = await inTransaction((session) => Category.create([{
             userId,
             name: body.name,
             kind: body.kind,
@@ -86,7 +87,7 @@ export const createCategory = async (req: Request, res: Response): Promise<void>
             icon: body.icon ?? "wallet",
             color: body.color ?? "success",
             order: siblings
-        });
+        }], { session }));
     }
     catch (err) {
         // Two creates at once: the unique index (once built) stops the second.

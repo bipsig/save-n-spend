@@ -37,7 +37,8 @@ export const createAccount = async (req: Request, res: Response): Promise<void> 
     // is today's value; the gap is that pre-tracking gain, not a movement this month, so
     // it's stored directly rather than as a value-update.
     const investment = body.type === "investment";
-    const savedAccount = await Account.create({
+    // In a transaction so a sent Idempotency-Key is recorded with the account (utils/inTransaction).
+    const [savedAccount] = await inTransaction((session) => Account.create([{
         userId: req.user?.userId,
         name: body.name,
         type: body.type,
@@ -48,7 +49,7 @@ export const createAccount = async (req: Request, res: Response): Promise<void> 
         investmentKind: body.investmentKind,
         ...(investment ? { investedSince: body.investedSince ?? null, investedHow: body.investedHow ?? null } : {}),
         order: existing
-    });
+    }], { session }));
 
     reply.created(res, toDTO(savedAccount), "Account created");
 }

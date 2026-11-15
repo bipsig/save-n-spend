@@ -75,10 +75,11 @@ export const createBill = async (req: Request, res: Response): Promise<void> => 
 
     await checkReferences(req.user!.userId, body);
 
-    const bill = await Bill.create({
+    // In a transaction so a sent Idempotency-Key is recorded with the bill (utils/inTransaction).
+    const [bill] = await inTransaction((session) => Bill.create([{
         userId: req.user?.userId,
         ...body
-    });
+    }], { session }));
 
     reply.created(res, toDTO(bill), "Bill created");
 }
@@ -247,12 +248,15 @@ export const skipBill = async (req: Request, res: Response): Promise<void> => {
 
     // Conditional on the due date read above, as pay is: a pay or skip racing this one has
     // already moved it, so this matches nothing instead of advancing a second period.
-    const bill = await Bill.findOneAndUpdate(
-        { _id: seen._id, userId, dueDate: seen.dueDate },
-        { dueDate: advanceDueDate(seen.dueDate, zone, seen.frequency) },
-        { new: true },
-    );
-    if (!bill) throw AppError.conflict(ALREADY_PAID);
+    const bill = await inTransaction(async (session) => {
+        const advanced = await Bill.findOneAndUpdate(
+            { _id: seen._id, userId, dueDate: seen.dueDate },
+            { dueDate: advanceDueDate(seen.dueDate, zone, seen.frequency) },
+            { new: true, session },
+        );
+        if (!advanced) throw AppError.conflict(ALREADY_PAID);
+        return advanced;
+    });
 
     reply.ok(res, toDTO(bill), "Bill skipped");
 }

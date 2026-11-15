@@ -907,7 +907,9 @@ export type ApiErrorCode =
   | 'route_not_found'     // 404: no such route or method
   | 'duplicate'           // 409: a unique value already exists
   | 'conflict'            // 409: the thing's current state doesn't allow this
+  | 'idempotency_in_progress' // 409: a request with this Idempotency-Key is still running
   | 'body_too_large'      // 413
+  | 'idempotency_mismatch'    // 422: this Idempotency-Key was used with a different body
   | 'rate_limited'        // 429, with Retry-After
   | 'internal'            // 500
 

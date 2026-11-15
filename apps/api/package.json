@@ -7,7 +7,7 @@
     "start": "node dist/server.js",
     "seed": "ts-node src/scripts/seed.ts",
     "reminders": "ts-node src/scripts/reminders.ts",
-    "test": "node --require ts-node/register --test src/services/highlightRules.test.ts src/services/highlightSnapshotMath.test.ts src/services/streakMath.test.ts src/services/netWorthMath.test.ts src/services/paceMath.test.ts src/services/reviewMath.test.ts src/services/billService.test.ts src/services/recurringMath.test.ts src/services/cashFlowMath.test.ts src/services/investmentMath.test.ts src/services/investmentHistoryMath.test.ts src/utils/logger.test.ts src/services/tripLedger.test.ts src/services/splitwiseCsv.test.ts src/services/backupReferences.test.ts src/utils/messages.test.ts src/schemas/errorMap.test.ts src/schemas/fields.test.ts src/middleware/errorHandler.test.ts src/middleware/validate.test.ts src/utils/dto.test.ts src/utils/inTransaction.test.ts scripts/invariants/rules.test.ts scripts/guards/golden.test.ts src/services/transactionService.test.ts src/schemas/moneySchemas.test.ts src/schemas/billsGoals.schema.test.ts src/schemas/rest.schema.test.ts src/controllers/userController.test.ts scripts/buildCategoryIndex.test.ts src/schemas/tripSchemas.test.ts",
+    "test": "node --require ts-node/register --test src/services/highlightRules.test.ts src/services/highlightSnapshotMath.test.ts src/services/streakMath.test.ts src/services/netWorthMath.test.ts src/services/paceMath.test.ts src/services/reviewMath.test.ts src/services/billService.test.ts src/services/recurringMath.test.ts src/services/cashFlowMath.test.ts src/services/investmentMath.test.ts src/services/investmentHistoryMath.test.ts src/utils/logger.test.ts src/services/tripLedger.test.ts src/services/splitwiseCsv.test.ts src/services/backupReferences.test.ts src/utils/messages.test.ts src/schemas/errorMap.test.ts src/schemas/fields.test.ts src/middleware/errorHandler.test.ts src/middleware/validate.test.ts src/utils/dto.test.ts src/utils/inTransaction.test.ts scripts/invariants/rules.test.ts scripts/guards/golden.test.ts src/services/transactionService.test.ts src/schemas/moneySchemas.test.ts src/schemas/billsGoals.schema.test.ts src/schemas/rest.schema.test.ts src/controllers/userController.test.ts scripts/buildCategoryIndex.test.ts src/schemas/tripSchemas.test.ts src/middleware/idempotency.test.ts",
     "guard:contract": "node --require ts-node/register scripts/guards/contract.ts",
     "guard:replay": "node --require ts-node/register scripts/guards/replay.ts",
     "guard:golden": "node --require ts-node/register scripts/guards/golden.ts",
@@ -16,7 +16,8 @@
     "test:live-bills-goals": "node --require ts-node/register --test src/controllers/billsGoals.live.test.ts",
     "test:live-rest": "node --require ts-node/register --test src/controllers/rest.live.test.ts",
     "build:category-index": "node --require ts-node/register scripts/buildCategoryIndex.ts",
-    "guard:trip-races": "node --require ts-node/register --test scripts/races/trips.race.test.ts"
+    "guard:trip-races": "node --require ts-node/register --test scripts/races/trips.race.test.ts",
+    "guard:idempotency-races": "node --require ts-node/register --test scripts/races/idempotency.race.test.ts"
   },
   "dependencies": {
     "@save-n-spend/types": "*",

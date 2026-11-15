@@ -6,6 +6,7 @@ import { createBudgetSchemas, updateBudgetSchemas, listBudgetsSchemas, budgetIdS
 import { budgetProgress } from "../services/budgetService";
 import { resolveZone } from "../utils/userZone";
 import { AppError } from "../utils/AppError";
+import { inTransaction } from "../utils/inTransaction";
 import { notFound } from "../utils/messages";
 import { toDTO } from "../utils/dto";
 import * as reply from "../utils/response";
@@ -28,12 +29,13 @@ export const createBudget = async (req: Request, res: Response): Promise<void> =
     }
 
     try {
-        const savedBudget = await Budget.create({
+        // In a transaction so a sent Idempotency-Key is recorded with the budget (utils/inTransaction).
+        const [savedBudget] = await inTransaction((session) => Budget.create([{
             userId: req.user?.userId,
             category: body.category,
             month: body.month,
             limit: body.limit
-        });
+        }], { session }));
         reply.created(res, toDTO(savedBudget), "Budget created");
     }
     catch (err) {
