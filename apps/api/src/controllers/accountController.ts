@@ -112,6 +112,19 @@ export const updateAccount = async (req: Request, res: Response): Promise<void> 
 
     if (!account) throw missing();
 
+    // A holding's balance is its value, not starting balance + rows (it can carry an opening
+    // gain) and can't go below zero; a person's is what they owe, and trips and splits only
+    // take people (and pay only from your own accounts). Turning either into another type, or
+    // another type into one, leaves a balance or a trip that breaks those rules. The app sends
+    // the type back unchanged on every save; that stays allowed.
+    if (body.type !== undefined && body.type !== account.type) {
+        const fixed = [body.type, account.type].includes("investment") ? "an investment" : [body.type, account.type].includes("person") ? "a person" : null;
+        if (fixed) {
+            const message = `An account can't be turned into ${fixed} or back. Add a new one instead`;
+            throw new AppError(400, message, { issues: [{ path: "type", message }] });
+        }
+    }
+
     // Gaps row 194: only a holding has an investment type. The edit sheet sends it only for one.
     if (body.investmentKind !== undefined && (body.type ?? account.type) !== "investment") {
         throw new AppError(400, "Investment type is only for investments", { issues: [{ path: "investmentKind", message: "Investment type is only for investments" }] });
