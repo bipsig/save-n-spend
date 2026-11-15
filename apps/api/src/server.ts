@@ -5,7 +5,8 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import connectDB, { isConnected } from './config/db';
 import apiRouter from './routes/router';
-import { errorHandler } from './middleware/errorHandler';
+import { errorHandler, routeNotFound } from './middleware/errorHandler';
+import { requireJsonBody } from './middleware/requireJsonBody';
 import { requestLogger } from './middleware/requestLogger';
 import { startReminderJob } from './jobs/reminderJob';
 
@@ -27,6 +28,7 @@ app.use (requestLogger);
 // body carrying a lifetime of transactions. Global rather than a second per-route
 // express.json() on the restore endpoint, to avoid double-consuming the same body stream.
 app.use (express.json({ limit: '25mb' }));
+app.use (requireJsonBody);
 
 // Answers as soon as the port is bound, whether or not Atlas has handed back a
 // connection yet. That is deliberate: this endpoint has two jobs beyond telling a human
@@ -38,10 +40,7 @@ app.use (express.json({ limit: '25mb' }));
 app.get('/health', (_, res) => res.json({ ok: true, db: isConnected() ? 'connected' : 'connecting' }))
 app.use ('/api', apiRouter);
 
-app.use((_req, res) => {
-  res.locals.errorMessage = 'Route not found';
-  res.status(404).json({ success: false, statusCode: 404, message: 'Route not found', data: null, requestId: res.locals.requestId ?? null });
-});
+app.use(routeNotFound);
 app.use(errorHandler);
 
 const PORT = Number(process.env.PORT) || 3000;

@@ -1,19 +1,26 @@
-import rateLimit from "express-rate-limit";
+import rateLimit, { type Options } from "express-rate-limit";
+import { sendError } from "./errorHandler";
+import { MESSAGES } from "../utils/messages";
 
-// Brute-force guard on the credential endpoints (login/register). 10 attempts
-// per IP per 15 minutes. The message follows the app envelope so the mobile
-// fetch helper surfaces it via `json.message`.
+/**
+ * The 429 every limiter sends: the standard error shape with `requestId`, code `rate_limited`
+ * and a Retry-After header (seconds until the window resets). Pass it as a limiter's `handler`.
+ */
+export const rateLimitHandler = (message: string): Options["handler"] => (req, res, _next, options) => {
+    const reset = (req as typeof req & { rateLimit?: { resetTime?: Date } }).rateLimit?.resetTime;
+    const seconds = reset ? Math.max(1, Math.ceil((reset.getTime() - Date.now()) / 1000)) : Math.ceil(options.windowMs / 1000);
+    // express-rate-limit has usually set it already; this keeps it when it hasn't.
+    const headers: Record<string, string> = res.getHeader("Retry-After") ? {} : { "Retry-After": String(seconds) };
+    sendError(res, { status: 429, code: "rate_limited", message, headers });
+};
+
+// Brute-force guard on the credential endpoints (login/register). 10 attempts per IP per 15 minutes.
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  message: {
-    success: false,
-    statusCode: 429,
-    message: "Too many attempts. Please try again in a few minutes.",
-    data: null,
-  },
+  handler: rateLimitHandler(MESSAGES.rateLimitedAuth),
 });
 
 // Guards the one endpoint that can wipe an account's own data. A real restore is a rare,
@@ -23,10 +30,5 @@ export const restoreLimiter = rateLimit({
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
-  message: {
-    success: false,
-    statusCode: 429,
-    message: "Too many attempts. Please try again in a few minutes.",
-    data: null,
-  },
+  handler: rateLimitHandler(MESSAGES.rateLimitedRestore),
 });

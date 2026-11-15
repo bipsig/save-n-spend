@@ -889,3 +889,47 @@ export interface InvestmentReport {
   ledger: LedgerEntry[];
 }
 
+
+// ---- API errors -----------------------------------------------------------------------------
+// The API reads only types from this package at runtime (`import type`): Render runs plain
+// `node dist/`, which can't load this .ts file. Values below are for the app; the API mirrors
+// them with constants typed `typeof` these, so a change here fails the API's typecheck.
+
+/** Every `code` an API error can carry. Closed: add a code here before the API sends it. */
+export type ApiErrorCode =
+  | 'invalid_input'       // 400: the body, query or path failed its rules
+  | 'invalid_json'        // 400: the body isn't JSON, or isn't sent as JSON
+  | 'invalid_reference'   // 400: a body field names something that isn't one of yours
+  | 'wrong_password'      // 400: change-password with the wrong current password
+  | 'unauthenticated'     // 401: no token, a bad or expired one, or the user is gone or closed
+  | 'invalid_credentials' // 401: wrong email or password at sign-in (only under /auth/)
+  | 'not_found'           // 404: the id in the URL is malformed, missing or someone else's
+  | 'route_not_found'     // 404: no such route or method
+  | 'duplicate'           // 409: a unique value already exists
+  | 'conflict'            // 409: the thing's current state doesn't allow this
+  | 'body_too_large'      // 413
+  | 'rate_limited'        // 429, with Retry-After
+  | 'internal'            // 500
+
+export interface ApiIssue {
+  /** Dotted path as the client sent it: `amount`, `owedBy.1.amount`, `prefs.timeZone`. */
+  path: string
+  message: string
+}
+
+export interface ApiErrorBody {
+  success: false
+  statusCode: number
+  code: ApiErrorCode
+  /** One plain sentence for a person. The 2.6/2.7 apps show only this. */
+  message: string
+  /** Present for `invalid_input` and `invalid_reference`. */
+  issues?: ApiIssue[]
+  data: null
+  requestId: string | null
+}
+
+/** Name lengths shared by the API's `name()` field and the app's forms. 1, not 2: the
+ *  2.7.x app sends one-letter names for people, bills, goals and trips. */
+export const NAME_MIN = 1
+export const NAME_MAX = 60

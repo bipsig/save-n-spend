@@ -9,6 +9,8 @@ declare global {
         email: string;
         loginTime: string;
       };
+      /** Set by middleware/validate. Cast with its `Valid<typeof schemas>`. */
+      valid?: { params?: unknown; query?: unknown; body?: unknown };
     }
   }
 }

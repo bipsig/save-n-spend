@@ -7,7 +7,7 @@ export const resolveDbName = (): string => {
   return process.env.NODE_ENV === 'production' ? 'save-n-spend-prod' : 'save-n-spend-dev';
 }
 
-const buildUri = (): string =>
+export const buildUri = (): string =>
   `mongodb://${process.env.DB_USERNAME}:${process.env.DB_PASSWORD}@ac-ubakita-shard-00-00.fhe4x2y.mongodb.net:27017,ac-ubakita-shard-00-01.fhe4x2y.mongodb.net:27017,ac-ubakita-shard-00-02.fhe4x2y.mongodb.net:27017/?ssl=true&replicaSet=atlas-sbadk3-shard-0&authSource=admin&appName=Cluster0`;
 
 const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -36,7 +36,9 @@ const connectDB = async ({ retryForever = false }: { retryForever?: boolean } = 
 
   for (let attempt = 1; ; attempt += 1) {
     try {
-      await mongoose.connect(buildUri(), { dbName });
+      // Majority write concern, stated rather than left to the cluster default: a write the
+      // API has answered must survive a primary failover.
+      await mongoose.connect(buildUri(), { dbName, writeConcern: { w: 'majority' } });
       console.log(`MongoDB connected: ${mongoose.connection.host} (db: ${dbName})`);
       return;
     }
