@@ -23,7 +23,7 @@ export type InvestmentsExportOptions = {
   format: ExportFormat;
 };
 
-export const fetchInvestmentReport = () => get<InvestmentReport>("/investments/report");
+export const fetchInvestmentReport = () => get<InvestmentReport>("/investments/report", { cache: false });
 
 const AXIS = "#9995ad";
 const GRID = "#eeecf6";

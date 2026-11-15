@@ -31,7 +31,7 @@ const fetchAllInRange = async (bounds: { startDate?: string; endDate?: string })
     const params = [`page=${page}`, "limit=100", "trips=exclude"];
     if (bounds.startDate) params.push(`startDate=${bounds.startDate}`);
     if (bounds.endDate) params.push(`endDate=${bounds.endDate}`);
-    const res = await get<Paginated<ITransaction>>(`/transactions?${params.join("&")}`);
+    const res = await get<Paginated<ITransaction>>(`/transactions?${params.join("&")}`, { cache: false });
 
     all.push(...res.items);
     if (!res.hasNextPage || res.items.length === 0) break;

@@ -24,6 +24,9 @@ export type RequestOptions = {
   /** Same key on every retry of one intent; the server answers a repeat with the first reply.
    *  See lib/idempotency.ts. */
   idempotencyKey?: string;
+  /** False for exports: a file must come from the server, so a GET neither answers from nor
+   *  writes to the offline cache, and fails as offline when nothing answers. */
+  cache?: boolean;
 };
 
 const request = async <T>(method: Method, path: string, body?: unknown, opts: RequestOptions = {}): Promise<T> => {
@@ -44,6 +47,8 @@ const request = async <T>(method: Method, path: string, body?: unknown, opts: Re
       ...(message ? { message } : {}),
     });
 
+  const cacheable = method === "GET" && opts.cache !== false;
+
   // Nothing (usable) came back, so there is no status and nothing about the token is in
   // question. Status 0 is how a caller tells this apart from a rejection.
   const unanswered = async (): Promise<T> => {
@@ -51,7 +56,7 @@ const request = async <T>(method: Method, path: string, body?: unknown, opts: Re
     record(0, "No response");
     // A GET has a fallback a write does not: its last-known answer. Every hook renders
     // this exactly as if the request had succeeded — no per-hook offline handling.
-    if (method === "GET") {
+    if (cacheable) {
       const cached = await offlineCache.read<T>(path);
       if (cached) return cached.data;
     }
@@ -83,7 +88,7 @@ const request = async <T>(method: Method, path: string, body?: unknown, opts: Re
     if (!parsed.ok) return unanswered();
     useConnectivity.getState().reportOnline();
     record(res.status);
-    if (method === "GET") void offlineCache.write(path, parsed.data);
+    if (cacheable) void offlineCache.write(path, parsed.data);
     return parsed.data as T; // unwrap the { success, message, data } envelope
   }
 
@@ -100,7 +105,7 @@ const request = async <T>(method: Method, path: string, body?: unknown, opts: Re
 };
 
 // Pass a type to get a typed result: post<{ accessToken: string }>("/auth/login", v).
-export const get = <T>(path: string) => request<T>("GET", path);
+export const get = <T>(path: string, opts?: RequestOptions) => request<T>("GET", path, undefined, opts);
 export const post = <T>(path: string, body?: unknown, opts?: RequestOptions) => request<T>("POST", path, body, opts);
 export const put = <T>(path: string, body?: unknown, opts?: RequestOptions) => request<T>("PUT", path, body, opts);
 export const patch = <T>(path: string, body?: unknown, opts?: RequestOptions) => request<T>("PATCH", path, body, opts);
