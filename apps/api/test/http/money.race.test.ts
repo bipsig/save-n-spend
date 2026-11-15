@@ -1,37 +1,26 @@
 /**
  * W1's race and replay tests for the money routes: each request sent twice, and in parallel,
- * against a local dev API it starts itself (127.0.0.1, save-n-spend-dev, refuses anything
- * else) as a fresh throwaway @example.test user. Balances are read straight from the dev
- * database, read-only, and must add up to their rows afterwards.
- *
- *   node --require ts-node/register --test scripts/races/money.race.test.ts      (from apps/api)
- *
- * Needs the dev database, so it is not part of `npm test`.
+ * as a fresh user on the in-memory database (test/harness.ts). Balances are read straight from
+ * the database and must add up to their rows afterwards.
  */
-import { after, before, test } from "node:test";
+import { before, test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "crypto";
 import { ObjectId } from "mongodb";
-import { startApi, throwawayUser, type Reply, type Send } from "../guards/lib";
-import { openReadOnly } from "../checkInvariants";
-import { effectsOf } from "../invariants/rules";
+import { useTestApi, type Reply, type Send } from "../harness";
+import { effectsOf } from "../../scripts/invariants/rules";
 
-let api: Awaited<ReturnType<typeof startApi>>;
-let ro: Awaited<ReturnType<typeof openReadOnly>>;
+const api = useTestApi();
 let send: Send;
 let cat: string;
 
 before(async () => {
-    api = await startApi();
-    ro = await openReadOnly("save-n-spend-dev");
-    send = (await throwawayUser(api.base, "w1-race")).send;
-    const cats = (await send("GET", "/categories")).json.data as { _id: string; kind: string; parent?: string | null }[];
-    cat = cats.find((c) => c.kind === "expense" && !c.parent)!._id;
+    await api.ready();
+    const u = await api.user("w1-race");
+    send = u.send;
+    cat = await u.category("expense");
 });
-after(async () => {
-    await api?.stop();
-    await ro?.close();
-});
+const ro = { col: (name: Parameters<typeof api.ro.col>[0]) => api.ro.col(name) };
 
 const par = <T>(n: number, fn: (i: number) => Promise<T>) => Promise.all(Array.from({ length: n }, (_, i) => fn(i)));
 const codes = (rs: Reply[]) => rs.map((r) => r.status).sort();

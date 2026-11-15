@@ -1,46 +1,30 @@
 /**
- * W3's route, race and replay tests for trips: every trip route the 2.6.0 app calls, the
- * agreed status/code/message for each refusal, and each write sent twice and in parallel.
- * Runs against a local dev API it starts itself (127.0.0.1, save-n-spend-dev, refuses anything
- * else) as a fresh throwaway @example.test user. Balances are read from the dev database,
- * read-only, and must add up to their rows afterwards.
- *
- *   node --require ts-node/register --test scripts/races/trips.race.test.ts     (from apps/api)
- *   API_DIR=<checkout>/apps/api ...                                             another checkout's API
- *
- * Needs the dev database, so it is not part of `npm test`.
+ * W3's route, race and replay tests for trips: every trip route the app calls, the agreed
+ * status/code/message for each refusal, and each write sent twice and in parallel, as a fresh
+ * user on the in-memory database (test/harness.ts). Balances are read from the database and
+ * must add up to their rows afterwards.
  */
-import { after, before, test } from "node:test";
+import { before, test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "crypto";
 import { ObjectId } from "mongodb";
-import { startApi, throwawayUser, type Reply, type Send } from "../guards/lib";
-import { openReadOnly } from "../checkInvariants";
-import { effectsOf } from "../invariants/rules";
+import { useTestApi, type Reply, type Send } from "../harness";
+import { effectsOf } from "../../scripts/invariants/rules";
 import { styleProblems } from "../../src/utils/messages";
 
-let api: Awaited<ReturnType<typeof startApi>>;
-let ro: Awaited<ReturnType<typeof openReadOnly>>;
+const api = useTestApi();
 let send: Send;
 let userId: ObjectId;
 let cat: string;
-export let userEmail = "";
 
 before(async () => {
-    api = await startApi({ apiDir: process.env.API_DIR });
-    ro = await openReadOnly("save-n-spend-dev");
-    const u = await throwawayUser(api.base, "w3-trips");
+    await api.ready();
+    const u = await api.user("w3-trips");
     send = u.send;
-    userEmail = u.email;
-    console.log(`# user ${u.email}`);
-    userId = new ObjectId(String((await send("GET", "/auth/me")).json.data._id));
-    const cats = (await send("GET", "/categories")).json.data as { _id: string; kind: string; parent?: string | null }[];
-    cat = cats.find((c) => c.kind === "expense" && !c.parent)!._id;
+    userId = new ObjectId(u.id);
+    cat = await u.category("expense");
 });
-after(async () => {
-    await api?.stop();
-    await ro?.close();
-});
+const ro = { col: (name: Parameters<typeof api.ro.col>[0]) => api.ro.col(name) };
 
 const par = <T>(n: number, fn: (i: number) => Promise<T>) => Promise.all(Array.from({ length: n }, (_, i) => fn(i)));
 const codes = (rs: Reply[]) => rs.map((r) => r.status).sort();

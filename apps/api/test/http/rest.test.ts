@@ -1,41 +1,20 @@
-import test, { after, before } from "node:test";
+import test, { before } from "node:test";
 import assert from "node:assert/strict";
-import path from "path";
 import { randomBytes } from "crypto";
-import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
-import { MongoClient, ObjectId } from "mongodb";
-import { styleProblems } from "../utils/messages";
-import { buildUri } from "../config/db";
+import { ObjectId } from "mongodb";
+import { styleProblems } from "../../src/utils/messages";
+import { useTestApi, type Reply } from "../harness";
 
 // HTTP tests for sign-in, users, categories, backup, diagnostics, dashboard, insights, reviews
-// and highlights, against a LOCAL dev API (reminders off). They need a running server, so they
-// are not in `npm test`:
-//
-//   cd apps/api && DISABLE_REMINDERS=true PORT=7232 node -r ts-node/register src/server.ts
-//   API_BASE=http://127.0.0.1:7232 node -r ts-node/register --test src/controllers/rest.live.test.ts
-//
-// Each run signs up two new throwaway @example.test users and touches nobody else. It makes 10
-// sign-in requests, the auth limiter's whole 15-minute allowance: start a fresh API per run. Stored
-// state is checked read-only (find only) in the dev database.
+// and highlights, as two fresh users on the in-memory database (test/harness.ts). It makes 10
+// sign-in requests, the auth limiter's whole 15-minute allowance (each test file is its own
+// process, so its own limiter). Stored state is read straight from the database.
 
-dotenv.config({ path: path.resolve(__dirname, "../../.env") });
-
-const BASE = process.env.API_BASE;
-const skip = BASE ? false : "set API_BASE to a local dev API to run these";
-if (BASE && !/^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(BASE)) throw new Error(`Refusing ${BASE}: local API only`);
-
-type Reply = { status: number; json: any };
 type User = { email: string; password: string; token: string; id: string };
 
-const call = async (method: string, p: string, body?: unknown, token?: string): Promise<Reply> => {
-    const res = await fetch(`${BASE}/api/v1${p}`, {
-        method,
-        headers: { "Content-Type": "application/json", "X-App-Version": "2.6.0", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-    });
-    return { status: res.status, json: await res.json().catch(() => null) };
-};
+const api = useTestApi();
+const call = (method: string, p: string, body?: unknown, token?: string): Promise<Reply> => api.send(method, p, body, { token: token ?? null });
 
 const failed = (r: Reply, status: number, code: string, message?: string) => {
     assert.equal(r.status, status, JSON.stringify(r.json));
@@ -56,46 +35,37 @@ const signUp = async (tag: string): Promise<User> => {
 
 let a: User;
 let b: User;
-let mongo: MongoClient | undefined;
-/** Read-only: `find` and `countDocuments` only. */
-const ro = {
-    col: (name: "users" | "categories") => ({
-        find: <T>(q: Record<string, unknown>) => mongo!.db("save-n-spend-dev").collection(name).find(q).toArray() as unknown as Promise<T[]>,
-        count: (q: Record<string, unknown>) => mongo!.db("save-n-spend-dev").collection(name).countDocuments(q),
-    }),
-};
+const ro = { col: (name: "users" | "categories") => api.ro.col(name) };
 const as = (u: User) => (method: string, p: string, body?: unknown) => call(method, p, body, u.token);
 const storedUser = async (u: User) => (await ro.col("users").find<Record<string, any>>({ _id: new ObjectId(u.id) }))[0];
 
 before(async () => {
-    if (skip) return;
-    mongo = await new MongoClient(buildUri(), { appName: "w4-live-readonly" }).connect();
+    await api.ready();
     a = await signUp("a");
     b = await signUp("b");
 });
-after(async () => { await mongo?.close(); });
 
 const INTERNAL = ["__v", "userId", "pushToken", "googleId", "totpEnabled", "authProvider", "deactivatedAt", "password"];
 
-test("sign-in: a wrong password is 401 invalid_credentials whatever its length; an unknown email too", { skip }, async () => {
+test("sign-in: a wrong password is 401 invalid_credentials whatever its length; an unknown email too", async () => {
     const msg = "That email and password don't match";
     failed(await call("POST", "/auth/login", { email: a.email, password: "short" }), 401, "invalid_credentials", msg);
     failed(await call("POST", "/auth/login", { email: a.email, password: "wrong-but-long" }), 401, "invalid_credentials", msg);
     failed(await call("POST", "/auth/login", { email: `nobody-${Date.now()}@example.test`, password: "whatever1" }), 401, "invalid_credentials", msg);
 });
 
-test("sign-up: duplicate email 409; the user reply has no internal fields", { skip }, async () => {
+test("sign-up: duplicate email 409; the user reply has no internal fields", async () => {
     failed(await call("POST", "/auth/register", { name: "W4", email: a.email, password: PASSWORD }), 409, "duplicate", "An account with this email already exists. Sign in instead");
     const me = await as(a)("GET", "/auth/me");
     assert.equal(me.status, 200);
     for (const f of INTERNAL) assert.ok(!(f in me.json.data), `/auth/me still sends ${f}`);
 });
 
-test("change-password: a wrong current password is 400 wrong_password, not 401", { skip }, async () => {
+test("change-password: a wrong current password is 400 wrong_password, not 401", async () => {
     failed(await as(a)("POST", "/auth/change-password", { currentPassword: "not-it-at-all", newPassword: "another-one-1" }), 400, "wrong_password", "Your current password isn't right");
 });
 
-test("protect: no token, a bad token and a token whose user is gone are 401 unauthenticated", { skip }, async () => {
+test("protect: no token, a bad token and a token whose user is gone are 401 unauthenticated", async () => {
     failed(await call("GET", "/accounts"), 401, "unauthenticated", "Please sign in again");
     failed(await call("GET", "/accounts", undefined, "not-a-jwt"), 401, "unauthenticated", "Your session has ended. Please sign in again");
     const ghost = jwt.sign({ userId: new ObjectId().toHexString(), name: "x", email: "x@example.test", loginTime: new Date().toISOString() }, process.env.JWT_SECRET!, { expiresIn: 60 });
@@ -103,7 +73,7 @@ test("protect: no token, a bad token and a token whose user is gone are 401 unau
     failed(await call("GET", "/auth/me", undefined, ghost), 401, "unauthenticated");
 });
 
-test("users: parallel switches all land (T14); a missing default account is 400 invalid_reference", { skip }, async () => {
+test("users: parallel switches all land (T14); a missing default account is 400 invalid_reference", async () => {
     const r = await Promise.all([{ budgetAlerts: false }, { goalMilestones: false }, { weeklySummary: true }].map((n) => as(a)("PATCH", "/users/me", { prefs: { notifications: n } })));
     assert.deepEqual(r.map((x) => x.status), [200, 200, 200]);
     const n = (await storedUser(a)).prefs.notifications;
@@ -114,7 +84,7 @@ test("users: parallel switches all land (T14); a missing default account is 400 
     for (const f of INTERNAL) assert.ok(!(f in ok.json.data), `PATCH /users/me still sends ${f}`);
 });
 
-test("users: registering a push token takes it off every other user (N18)", { skip }, async () => {
+test("users: registering a push token takes it off every other user (N18)", async () => {
     const token = `ExponentPushToken[w4-${randomBytes(4).toString("hex")}]`;
     assert.equal((await as(a)("PATCH", "/users/me", { pushToken: token })).status, 200);
     assert.equal((await storedUser(a)).pushToken, token);
@@ -125,7 +95,7 @@ test("users: registering a push token takes it off every other user (N18)", { sk
     assert.equal((await storedUser(b)).pushToken, undefined);
 });
 
-test("categories: duplicates 409 (case-insensitive, one live name per user as before R1), references 400, archive in one go", { skip }, async () => {
+test("categories: duplicates 409 (case-insensitive, one live name per user as before R1), references 400, archive in one go", async () => {
     const send = as(a);
     const top = await send("POST", "/categories", { name: "W4 Hobbies", kind: "expense", icon: "star", color: "blue" });
     assert.equal(top.status, 201);
@@ -154,7 +124,7 @@ test("categories: duplicates 409 (case-insensitive, one live name per user as be
     assert.equal(live, 0);
 });
 
-test("backup: today's file restores, so does one from before trips; a foreign reference is refused without its id", { skip }, async () => {
+test("backup: today's file restores, so does one from before trips; a foreign reference is refused without its id", async () => {
     const send = as(a);
     const backup = (await send("GET", "/backup")).json.data;
     const restored = await send("POST", "/backup/restore", { ...backup, confirm: true });
@@ -175,7 +145,7 @@ test("backup: today's file restores, so does one from before trips; a foreign re
     failed(await call("POST", "/backup/restore", { ...backup, confirm: true }), 401, "unauthenticated");
 });
 
-test("diagnostics: a report is taken without a token; the log the phone reads has no stack lines", { skip }, async () => {
+test("diagnostics: a report is taken without a token; the log the phone reads has no stack lines", async () => {
     const report = await call("POST", "/diagnostics/client-errors", { message: "w4 probe", stack: "Error: w4\n  at probe", screen: "/w4", appVersion: "2.6.0" });
     assert.equal(report.status, 200);
     await as(a)("GET", "/categories/abc"); // a failed request of its own
@@ -184,7 +154,7 @@ test("diagnostics: a report is taken without a token; the log the phone reads ha
     for (const row of rows) assert.ok(!("stack" in row), "a row still carries stack");
 });
 
-test("dashboard, insights, reviews and highlights: same answers, bad input is 4xx", { skip }, async () => {
+test("dashboard, insights, reviews and highlights: same answers, bad input is 4xx", async () => {
     const send = as(a);
     assert.equal((await send("GET", "/dashboard/summary")).status, 200);
     failed(await send("GET", "/dashboard/summary?month=2026-13"), 400, "invalid_input");
@@ -202,7 +172,7 @@ test("dashboard, insights, reviews and highlights: same answers, bad input is 4x
 });
 
 // Last: closes user A.
-test("a closed account is 401 on every route, not only /auth/me; signing in reopens it", { skip }, async () => {
+test("a closed account is 401 on every route, not only /auth/me; signing in reopens it", async () => {
     const oldToken = a.token;
     const send = (method: string, p: string, body?: unknown) => call(method, p, body, oldToken);
     assert.equal((await send("DELETE", "/users/me")).status, 200);

@@ -56,7 +56,7 @@ export const outcomeFor = (status: number, committed: boolean): "store" | "relea
 
 export const LOST_REPLY = JSON.stringify({ success: true, statusCode: 200, message: MESSAGES.alreadySaved, data: null });
 
-// Test seam for scripts/races/idempotency.race.test.ts: dies after the write committed and
+// Test seam for test/http/idempotency.race.test.ts: dies after the write committed and
 // before the reply is stored. Never in production.
 const CRASH_AFTER_COMMIT = process.env.NODE_ENV !== "production" && process.env.IDEMPOTENCY_TEST_CRASH === "after-commit";
 

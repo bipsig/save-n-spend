@@ -1,45 +1,33 @@
 /**
  * Idempotency-Key on every keyed route (R2): each write sent twice with one key lands once and
  * the second send gets the first reply byte for byte; and a server that dies after the write
- * committed but before it stored the reply never writes it again. Runs against local dev APIs
- * it starts itself (127.0.0.1, save-n-spend-dev, refuses anything else) as a fresh throwaway
- * @example.test user. Balances are read from the dev database, read-only.
- *
- *   node --require ts-node/register --test scripts/races/idempotency.race.test.ts     (from apps/api)
- *
- * Needs the dev database, so it is not part of `npm test`. The crash test waits out the 60 s lease.
+ * committed but before it stored the reply never writes it again. A fresh user on the
+ * in-memory database (test/harness.ts); balances are read from the database.
  */
-import { after, before, test } from "node:test";
+import { before, test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "crypto";
 import { ObjectId } from "mongodb";
-import { client, startApi, throwawayUser, type Reply, type Send } from "../guards/lib";
-import { openReadOnly } from "../checkInvariants";
-import { effectsOf } from "../invariants/rules";
-import { LEASE_MS, LOST_REPLY } from "../../src/middleware/idempotency";
+import { useTestApi, type Reply, type Send } from "../harness";
+import { client } from "../../scripts/guards/lib";
+import { effectsOf } from "../../scripts/invariants/rules";
+import { LOST_REPLY } from "../../src/middleware/idempotency";
 
-let api: Awaited<ReturnType<typeof startApi>>;
-let ro: Awaited<ReturnType<typeof openReadOnly>>;
+const api = useTestApi();
 let send: Send;
 let token: () => string | null;
 let userId: ObjectId;
 let cat: string;
 
 before(async () => {
-    api = await startApi({ apiDir: process.env.API_DIR });
-    ro = await openReadOnly("save-n-spend-dev");
-    const u = await throwawayUser(api.base, "w6-idem");
+    await api.ready();
+    const u = await api.user("w6-idem");
     send = u.send;
-    token = u.token;
-    console.log(`# user ${u.email}`);
-    userId = new ObjectId(String((await send("GET", "/auth/me")).json.data._id));
-    const cats = (await send("GET", "/categories")).json.data as { _id: string; kind: string; parent?: string | null }[];
-    cat = cats.find((c) => c.kind === "expense" && !c.parent)!._id;
+    token = () => u.token;
+    userId = new ObjectId(u.id);
+    cat = await u.category("expense");
 });
-after(async () => {
-    await api?.stop();
-    await ro?.close();
-});
+const ro = { col: (name: Parameters<typeof api.ro.col>[0]) => api.ro.col(name) };
 
 const keyed = (key: string) => ({ headers: { "Idempotency-Key": key } });
 const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString();
@@ -158,19 +146,18 @@ test("every keyed route: sent twice with one key, it lands once and the replay i
     await noDrift();
 });
 
-test("crash after the commit, before the reply is stored: the retry never writes again", { timeout: LEASE_MS + 120_000 }, async () => {
+test("crash after the commit, before the reply is stored: the retry never writes again", async () => {
     const bank = await acc("K crash bank");
     const body = { type: "expense", amount: 4_200, account: bank, category: cat, title: "K crash", occurredAt: day(0) };
     const key = randomUUID();
 
-    const crashing = await startApi({ apiDir: process.env.API_DIR, env: { IDEMPOTENCY_TEST_CRASH: "after-commit" } });
+    const crashing = await api.child({ IDEMPOTENCY_TEST_CRASH: "after-commit" });
     let answer: string;
     try { answer = String((await client(crashing.base, token)("POST", "/transactions", body, keyed(key))).status); }
     catch (e) { answer = `no answer (${(e as Error).message})`; }
-    await crashing.stop();
-    const sentAt = Date.now();
     console.log(`# first send, to the API that dies after committing: ${answer}`);
     assert.match(answer, /^no answer/);
+    assert.equal(await crashing.exited, 70);
     assert.equal(await count("transactions", { title: "K crash" }), 1, "the write committed before the crash");
 
     const soon = await send("POST", "/transactions", body, keyed(key));
@@ -178,7 +165,9 @@ test("crash after the commit, before the reply is stored: the retry never writes
     assert.equal(soon.status, 409);
     assert.equal(soon.json.code, "idempotency_in_progress");
 
-    await new Promise((r) => setTimeout(r, Math.max(0, sentAt + LEASE_MS + 1_000 - Date.now())));
+    // The lease ends LEASE_MS after the claim; moved into the past rather than waited out.
+    const moved = await api.db().collection("idempotencyrecords").updateOne({ userId, key }, { $set: { lockedUntil: new Date(Date.now() - 1_000) } });
+    assert.equal(moved.modifiedCount, 1);
     const later = await send("POST", "/transactions", body, keyed(key));
     console.log(`# retry after the lease: ${later.status} ${later.text}`);
     assert.equal(later.status, 200);

@@ -1,7 +1,8 @@
 {
-  // Typechecks the guard and invariant scripts (they live outside src/, so the API's own
-  // tsconfig and the Render build never see them): npx tsc --noEmit -p apps/api/scripts
+  // Typechecks everything outside src/ (the guard and invariant scripts, and the tests in
+  // test/), which the API's own tsconfig and the Render build never see:
+  // npx tsc --noEmit -p apps/api/scripts
   "extends": "../tsconfig.json",
   "compilerOptions": { "rootDir": "..", "noEmit": true },
-  "include": ["./**/*.ts", "../src/**/*.ts"]
+  "include": ["./**/*.ts", "../src/**/*.ts", "../test/**/*.ts"]
 }
