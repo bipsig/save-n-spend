@@ -55,13 +55,17 @@ export const netWorthTrend = async (
   if (monthsAvailable > 0) {
     const currentMonthStart = startOfMonthInZone(now, zone);
     const earliestBoundary = addMonthsInZone(currentMonthStart, zone, -(monthsAvailable - 1));
+    // `monthlyFlow` is the complete month BEFORE each boundary, so the query reaches one month
+    // further back. `reconstructTrend` only sums months at or after a boundary, so the extra
+    // month's rows don't move `points`.
+    const flowStart = addMonthsInZone(earliestBoundary, zone, -1);
 
     const rows = await Transaction.aggregate<{ _id: string; income: number; expense: number; posAdj: number; negAdj: number }>([
       {
         $match: {
           userId: oid,
           type: { $in: ["income", "expense", "positiveAdjustment", "negativeAdjustment"] },
-          occurredAt: { $gte: earliestBoundary },
+          occurredAt: { $gte: flowStart },
         },
       },
       {
@@ -88,8 +92,9 @@ export const netWorthTrend = async (
 
     boundaries.forEach((boundary, i) => {
       points.push({ label: monthLabel(boundary, zone), total: totals[i] });
-      const flow = flowByMonth.get(boundaryKeys[i]) ?? { income: 0, expense: 0 };
-      monthlyFlow.push({ label: monthLabel(boundary, zone), income: flow.income, expense: flow.expense });
+      const month = addMonthsInZone(boundary, zone, -1);
+      const flow = flowByMonth.get(ymKey(month, zone)) ?? { income: 0, expense: 0 };
+      monthlyFlow.push({ label: monthLabel(month, zone), income: flow.income, expense: flow.expense });
     });
   }
 
