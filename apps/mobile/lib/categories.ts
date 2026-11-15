@@ -161,8 +161,8 @@ export const reorderCategories = async (ids: string[]): Promise<void> => {
 
 // Archived, not deleted, so past transactions keep resolving to a real category. The
 // server cascades to children; the count comes back so the caller can say so.
-export const archiveCategory = async (id: string): Promise<number> => {
-  const result = await del<{ archivedChildren: number } | null>(`/categories/${id}`);
+export const archiveCategory = async (id: string, opts?: RequestOptions): Promise<number> => {
+  const result = await del<{ archivedChildren: number } | null>(`/categories/${id}`, opts);
   await useCategoryStore.getState().load();
   return result?.archivedChildren ?? 0;
 };

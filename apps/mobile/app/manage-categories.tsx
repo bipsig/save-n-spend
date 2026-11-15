@@ -282,7 +282,7 @@ const ManageCategoriesScreen = () => {
           const childCount = pendingDelete.parent === null
             ? (expenses.concat(income).find((g) => g.parent._id === pendingDelete._id)?.children.length ?? 0)
             : 0;
-          pendingDeletes.schedule(key, name, () => archiveCategory(pendingDelete._id).then(() => {}));
+          pendingDeletes.schedule(key, name, (opts) => archiveCategory(pendingDelete._id, opts).then(() => {}));
           // "Archived", not "deleted", or the confirm's wording is undone by its own
           // receipt. Children counted in, because they go too.
           toast.action(

@@ -291,8 +291,8 @@ const BillsScreen = () => {
           if (!removing) return;
           const key = `bill:${removing._id}`;
           const name = removing.name;
-          pendingDeletes.schedule(key, name, async () => {
-            await deleteBill(removing._id);
+          pendingDeletes.schedule(key, name, async (opts) => {
+            await deleteBill(removing._id, opts);
             refetch();
           });
           toast.action("info", `${name} deleted`, {

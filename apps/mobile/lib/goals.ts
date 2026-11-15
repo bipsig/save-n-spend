@@ -1,6 +1,6 @@
 import type { IGoal } from "@save-n-spend/types";
 import { useCallback, useEffect, useState } from "react";
-import { del, get, patch } from "@/lib/api";
+import { del, get, patch, type RequestOptions } from "@/lib/api";
 import { useSession } from "@/store/session";
 import { appZone, zonedParts } from "@/lib/zone";
 
@@ -46,7 +46,7 @@ export const updateGoal = (id: string, body: GoalPatch) => patch<IGoal>(`/goals/
 
 // Contributions are records of money that moved, so deleting the goal leaves them —
 // only the target and the progress bar built on it go away.
-export const deleteGoal = (id: string) => del<null>(`/goals/${id}`);
+export const deleteGoal = (id: string, opts?: RequestOptions) => del<null>(`/goals/${id}`, opts);
 
 // The edit form is a route, so it can be reached without the list that was on screen.
 // There is no GET /goals/:id, and the list is small enough that filtering it here beats

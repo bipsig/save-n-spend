@@ -181,8 +181,8 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
     if (!transaction) return;
     const key = `transaction:${transaction._id}`;
     const label = title;
-    pendingDeletes.schedule(key, label, async () => {
-      await del(`/transactions/${transaction._id}`);
+    pendingDeletes.schedule(key, label, async (opts) => {
+      await del(`/transactions/${transaction._id}`, opts);
       // A delete reverts the balance move it made — the account list held elsewhere
       // (Net Worth, the account picker) is stale until this reloads it. Caught rather
       // than awaited-and-thrown: a drop here means the delete itself still went through,

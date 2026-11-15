@@ -148,8 +148,8 @@ const GoalsScreen = () => {
           if (!removing) return;
           const key = `goal:${removing._id}`;
           const name = removing.name;
-          pendingDeletes.schedule(key, name, async () => {
-            await deleteGoal(removing._id);
+          pendingDeletes.schedule(key, name, async (opts) => {
+            await deleteGoal(removing._id, opts);
             refetch();
           });
           toast.action("info", `${name} deleted`, {

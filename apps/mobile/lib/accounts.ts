@@ -136,7 +136,7 @@ export const reorderAccounts = async (ids: string[]): Promise<void> => {
 
 // Archives rather than destroys — transactions keep pointing at a real account,
 // so history stays readable.
-export const archiveAccount = async (id: string): Promise<void> => {
-  await del<null>(`/accounts/${id}`);
+export const archiveAccount = async (id: string, opts?: RequestOptions): Promise<void> => {
+  await del<null>(`/accounts/${id}`, opts);
   await useAccountStore.getState().load();
 };

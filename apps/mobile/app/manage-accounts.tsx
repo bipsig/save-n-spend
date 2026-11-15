@@ -222,14 +222,14 @@ const ManageAccountsScreen = () => {
           const key = `account:${pendingDelete._id}`;
           const name = pendingDelete.name;
           const wasDefault = pendingDelete._id === defaultAccountId;
-          pendingDeletes.schedule(key, name, async () => {
-            await archiveAccount(pendingDelete._id);
+          pendingDeletes.schedule(key, name, async (opts) => {
+            await archiveAccount(pendingDelete._id, opts);
             // Otherwise the preference would still name an archived account, and every
             // form that preselects it would silently fall back to nothing. Inside the
             // commit, not at schedule-time — undoing the delete correctly undoes losing
             // the default too, for free.
             if (wasDefault) await updatePrefs({ defaultAccount: null });
-          });
+          }, wasDefault ? { after: [{ method: "PATCH", path: "/users/me", body: { prefs: { defaultAccount: null } } }] } : undefined);
           // Says the second consequence out loud: losing the default is a change the
           // user didn't ask for, and they'd otherwise meet it at the next form.
           toast.action(
