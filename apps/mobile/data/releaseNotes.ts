@@ -34,6 +34,73 @@ export interface Release {
 /** Newest first. */
 export const RELEASES: Release[] = [
   {
+    version: "2.8.0",
+    build: 23,
+    date: "2026-11-16",
+    headline: "Every save lands once, and archived categories keep their names",
+    notes: [
+      {
+        kind: "new",
+        title: "Entries filed under an archived category show its name, with an Archived mark.",
+        detail: "Rows show the category's icon with a small archive badge and an Archived tag after the name. An entry's details show the name beside ARCHIVED. Pickers, budgets and filters still leave archived categories out.",
+        highlight: true,
+        link: "/activity",
+        icon: "archive",
+      },
+      {
+        kind: "improved",
+        title: "A save lands once, whether you double-tap, tap again after an error, or the reply gets lost.",
+        detail: "That covers every form that moves money, and adding an account, person, bill, goal, budget, category or trip. Tapping again after a problem resends the same save instead of making a second one.",
+        highlight: true,
+      },
+      {
+        kind: "improved",
+        title: "Entries saved offline are sent once when you're back, even if a reply goes missing.",
+        icon: "cloudOff",
+        detail: "While the server is busy or starting up, the queue waits and tries again, and it marks an entry as failed only when the server turns it down. A Wi-Fi sign-in page can no longer make a queued entry look sent.",
+      },
+      {
+        kind: "improved",
+        title: "Large Splitwise imports go through, in seconds.",
+        icon: "flight",
+        detail: "Everything in the file is saved together or not at all. Approving the same import again, after its reply was lost, adds nothing twice.",
+        link: "/trips",
+      },
+      {
+        kind: "improved",
+        title: "Backups include your goal contribution history.",
+        icon: "cloudBackup",
+        detail: "Restoring a backup made from this version brings that history back. A backup made earlier leaves the history you have as it is.",
+      },
+      {
+        kind: "improved",
+        title: "While the server is waking up, the app says so and asks you to try again in a minute.",
+        detail: "Before, a save at that moment could show a confusing error.",
+      },
+      {
+        kind: "improved",
+        title: "When the server turns down a form, the reason shows under the field it's about.",
+        detail: "That's on Add transaction, Add goal, adding to a goal, bills and budgets.",
+      },
+      {
+        kind: "improved",
+        title: "Bill names can be up to 60 characters, and an account or category name can be a single letter.",
+      },
+      {
+        kind: "fixed",
+        title: "A delete you confirmed still happens if the app closes during the few seconds you have to undo it.",
+        icon: "undo",
+        detail: "It's sent the next time the app opens or comes back online. Undo works as before.",
+        highlight: true,
+      },
+      {
+        kind: "fixed",
+        title: "Signs and colours follow one rule.",
+        detail: "A figure below zero is red and one above is green, and for spending a rise is red. Zero is plain. A negative net savings on Activity used to show green; it's red now, and the Savings tile on Home follows the same rule. A change of nothing no longer shows a minus sign.",
+      },
+    ],
+  },
+  {
     version: "2.7.1",
     build: 22,
     date: "2026-11-16",
