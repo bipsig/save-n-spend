@@ -18,6 +18,7 @@ assumes you are comfortable with TypeScript, React Native, and Express.
 | [Mobile patterns](mobile-patterns.md) | Add a screen, a bottom sheet, or a period selector, and follow the conventions the existing screens already use. |
 | [Insights engine](insights-engine.md) | Highlights — the fifteen rules, the ranking, the cold-start gate, the permanent history, and why there is no LLM. |
 | [Shortcuts and Back Tap](native-shortcuts.md) | Reach the app from outside it — Back Tap, the Action Button, Siri — and why widgets are out. |
+| [Testing](testing.md) | Run the tests, write an HTTP test against the in-memory database, read the coverage, and know which checks stay release-time scripts. |
 | [Shipping](SHIPPING.md) | Build an `.ipa` and get it onto a physical iPhone, and run the app on the simulator against a local API. |
 | [To-do](../to-do.md) | See what has shipped, what is open, and the consistency audit of confirmed problems. |
 
@@ -116,34 +117,12 @@ npm test --workspace=apps/api
 npm test --workspace=apps/mobile
 ```
 
-The suites are `node:test` and `node:assert/strict` — standard library, **zero
-dependencies**, which on a free-tier deploy matters more than nicer matchers.
-`tsconfig.build.json` keeps test files out of `dist/`, so nothing test-related
-ships to Render.
-
-**API** (`npm test --workspace=apps/api`): the `test` script lists 14 files
-explicitly, so a new test file has to be added to it by hand. 188 tests today.
-
-| Area | Files |
-|---|---|
-| Highlights | `highlightRules.test.ts`, `highlightSnapshotMath.test.ts` |
-| Money and history math | `netWorthMath`, `paceMath`, `streakMath`, `reviewMath`, `recurringMath`, `cashFlowMath`, `investmentMath`, `investmentHistoryMath` |
-| Bills | `billService.test.ts` |
-| Trips | `tripLedger.test.ts`, `splitwiseCsv.test.ts` |
-| Logging | `utils/logger.test.ts` |
-
-All are fixtures in, assertions out — no database, no network, no clock. The
-rules behind the highlights are described in
-[Testing](insights-engine.md#testing). What is **not** covered is anything that
-needs a database: controllers, `tripService`, `investmentService` and the Mongo
-aggregations are untested.
-
-**Mobile** (`npm test --workspace=apps/mobile`): runs `apps/mobile/lib/*.test.ts`
-through the API's `ts-node`, from `apps/api`. 35 tests across three files:
-`accountOrder.test.ts`, `investmentsReportMath.test.ts` and `safeToSpend.test.ts`.
-Anything genuinely testable there should be a pure module whose runtime imports
-are `import type` only, so `ts-node` can load it without Expo; a module that
-imports React Native, `lib/api.ts` or an Expo package cannot be run this way.
+The suites are `node:test` and `node:assert/strict`. The API suite runs its unit tests
+and its HTTP tests (the real app against an in-memory MongoDB replica set, never Atlas)
+and reports line coverage by folder; `npm run test:coverage` also enforces the 80% gate.
+`tsconfig.build.json` keeps test files out of `dist/`, so nothing test-related ships to
+Render. How the harness works, how to write a test and which checks stay release-time
+scripts: [Testing](testing.md).
 
 A release build hides JavaScript errors behind a bare `EXC_CRASH`/`SIGABRT`
 with no message, so reproduce runtime problems in a release configuration

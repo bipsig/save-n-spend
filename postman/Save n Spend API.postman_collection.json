@@ -601,7 +601,7 @@
                 { "key": "endDate", "value": "2026-07-31", "description": "ISO date — must be paired with startDate", "disabled": true }
               ]
             },
-            "description": "Paginated (mongoose-paginate-v2) — `data.docs` holds the rows, plus `totalDocs/page/limit/totalPages/hasNextPage/...`.\n\nGotchas:\n- Query values are NOT quoted: `?type=income`, never `?type=\"income\"`.\n- `startDate`/`endDate` must be sent together (single one → 400).\n- `category` is a plain id in each doc (no populate) — the client resolves names from its own store."
+            "description": "A page (`Paginated<ITransaction>` in packages/types): `data` is `{ items, page, limit, hasNextPage, total }`, newest first. `total` counts every match across all pages. There is no `docs` or `totalDocs` (older APIs sent them).\n\nGotchas:\n- Query values are NOT quoted: `?type=income`, never `?type=\"income\"`.\n- `startDate`/`endDate` must be sent together (single one → 400).\n- `category` is a plain id in each row (no populate) — the client resolves names from its own store."
           },
           "response": [
             {
@@ -611,7 +611,7 @@
               "code": 200,
               "_postman_previewlanguage": "json",
               "header": [{ "key": "Content-Type", "value": "application/json" }],
-              "body": "{\n  \"success\": true,\n  \"statusCode\": 200,\n  \"message\": \"Transactions fetched\",\n  \"data\": {\n    \"docs\": [\n      {\n        \"_id\": \"6a5fcad5abf73860c118ea63\",\n        \"userId\": \"6a568001927536ee5cba3c9d\",\n        \"type\": \"expense\",\n        \"amount\": 45000,\n        \"account\": \"6a568002927536ee5cba3cbd\",\n        \"category\": \"6a568001927536ee5cba3c9f\",\n        \"title\": \"Starbucks\",\n        \"occurredAt\": \"2026-07-21T14:30:00.000Z\",\n        \"createdAt\": \"2026-07-21T14:30:01.534Z\",\n        \"updatedAt\": \"2026-07-21T14:30:01.534Z\"\n      }\n    ],\n    \"totalDocs\": 43,\n    \"limit\": 20,\n    \"page\": 1,\n    \"totalPages\": 3,\n    \"hasNextPage\": true,\n    \"hasPrevPage\": false,\n    \"nextPage\": 2,\n    \"prevPage\": null\n  }\n}"
+              "body": "{\n  \"success\": true,\n  \"statusCode\": 200,\n  \"message\": \"Transactions fetched\",\n  \"data\": {\n    \"items\": [\n      {\n        \"_id\": \"6a5fcad5abf73860c118ea63\",\n        \"type\": \"expense\",\n        \"amount\": 45000,\n        \"account\": \"6a568002927536ee5cba3cbd\",\n        \"category\": \"6a568001927536ee5cba3c9f\",\n        \"title\": \"Starbucks\",\n        \"occurredAt\": \"2026-07-21T14:30:00.000Z\",\n        \"createdAt\": \"2026-07-21T14:30:01.534Z\",\n        \"updatedAt\": \"2026-07-21T14:30:01.534Z\"\n      }\n    ],\n    \"page\": 1,\n    \"limit\": 20,\n    \"hasNextPage\": true,\n    \"total\": 43\n  }\n}"
             }
           ]
         },
@@ -1207,7 +1207,7 @@
                 { "key": "limit", "value": "20", "description": "Default 20, max 50" }
               ]
             },
-            "description": "Newest first. `data` is `{ items, unread, page, hasNextPage }`; `unread` counts the whole feed, not the page. `limit` max is 50 (default 20)."
+            "description": "Newest first. `data` is a page plus `unread`: `{ items, page, limit, hasNextPage, total, unread }`; `unread` counts the whole feed, not the page. `limit` max is 50 (default 20)."
           },
           "response": []
         },
@@ -1265,7 +1265,7 @@
                 { "key": "limit", "value": "20", "description": "Default 20, max 100" }
               ]
             },
-            "description": "Past highlights, newest first, paginated. `limit` max is 100."
+            "description": "Past highlights, newest first. `data` is a page: `{ items, page, limit, hasNextPage, total }`. `limit` max is 100."
           },
           "response": []
         }

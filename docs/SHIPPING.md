@@ -71,6 +71,46 @@ The seed is **destructive** and refuses to run against a production database.
 
 ## 3. Shipping a change to the phone
 
+### Release checklist
+
+Tick these in order for every release. The commands are in [Testing](testing.md); run them
+with Node 24.
+
+**Before pushing**
+
+1. `cd apps/api && npm test`, then `npm run test:coverage` (exits 1 under the 80% gate).
+2. `cd apps/mobile && npm test`.
+3. From the repo root: `npx tsc --noEmit -p apps/api`, `npx tsc --noEmit -p apps/api/scripts`
+   and `npx tsc --noEmit -p apps/mobile`.
+4. Release-time scripts, from `apps/api` against a local API on the **dev** copy (see
+   [Release-time checks](testing.md#release-time-checks-scripts-not-tests)):
+   `npm run guard:golden` (record on the old code, compare on the new) and
+   `npm run guard:contract -- --label <version>`.
+5. Only with Sagnik's OK at the time: `npm run check:invariants -- --db save-n-spend-prod
+   --prod-readonly`. Read-only; it must report no problems.
+
+**After pushing**
+
+6. Wait for Render's deploy to finish, then open
+   `https://save-n-spend.onrender.com/health`: it must answer `{"ok":true,"db":"connected"}`
+   (the first request after a deploy can take ~50 s).
+7. Build and install the `.ipa` (below). Open the app **online** first, so its first launch
+   talks to the new API before you use it offline.
+
+**Rolling back**
+
+- **API:** in the Render dashboard, roll the service back to the previous successful deploy,
+  then check `/health` again. Or revert the commit and push (ask first). The phones keep
+  working against the older API only if the installed build needs nothing new from it; if it
+  does, roll the app back too.
+- **App:** delete it and install the previous `savenspend-<version>.ipa` through SideStore, as
+  below. Data lives in the database, so nothing on the phone is lost beyond what the offline
+  queue still held.
+- **Data:** neither rollback undoes a write. If the release wrote something wrong, stop and
+  look (read-only, `check:invariants`) before anyone changes prod.
+
+### Pushing and building
+
 **Push first, so Render deploys the API before you install.** The sideloaded app talks to the
 deployed API, and a build that expects an endpoint or a field the API does not have yet fails in
 ways that look like an app bug. Render deploys from the pushed branch, so get the API change onto
@@ -327,6 +367,7 @@ dedupe key that belongs to the deployed instance.
   only the version, for the `.ipa` filename. See [Version and build number](#version-and-build-number).
 - Write the version's release notes before the bump. See [Release notes](#release-notes).
 - Push before you build: the phone talks to the deployed API. See §3.
+- Run the [release checklist](#release-checklist) before every push.
 
 ---
 

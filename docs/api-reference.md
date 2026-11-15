@@ -1,7 +1,11 @@
 # API reference
 
 All endpoints are mounted under `/api/v1`. Every endpoint except
-`POST /auth/register` and `POST /auth/login` requires a bearer token.
+`POST /auth/register`, `POST /auth/login` and `POST /diagnostics/client-errors`
+requires a bearer token; so does nothing outside `/api/v1` but
+[`GET /health`](#get-health). `apps/api/test/http/route-matrix.test.ts` reads
+every mounted route from the Express router and fails if any other route answers
+without a token.
 
 Every response uses the envelope described in
 [Response envelope](architecture.md#response-envelope). The tables below
@@ -43,14 +47,22 @@ Every monetary field is an **integer number of paise**. See
 
 | Header | Value | Required |
 |---|---|---|
-| `Authorization` | `Bearer <token>` | Yes, except on `/auth/register` and `/auth/login`. |
+| `Authorization` | `Bearer <token>` | Yes, except on `/auth/register`, `/auth/login` and `/diagnostics/client-errors`. |
 | `Content-Type` | `application/json` | Yes, on requests with a body. |
 | `Idempotency-Key` | 1–255 characters, `A–Z a–z 0–9 _ -` | No. On the writes listed under [Idempotency-Key](#idempotency-key). |
 
 **Note**
-Request bodies are validated with `.strict()` Zod objects in most resources.
-An unrecognized field is a 400, not a silently ignored key. This is deliberate:
-it catches a renamed field at the call site instead of after the write.
+Every `POST`, `PATCH` and `PUT` body is checked before the handler runs
+(`middleware/validate.ts`), and an unrecognized field is a `400` `invalid_input`
+(`This request had something the server didn't expect. Please update the app`),
+not a silently ignored key. This is deliberate: it catches a renamed field at the
+call site instead of after the write. The documents inside a backup file are the
+one place extra fields are kept. Three related rules hold on every route:
+
+- A `DELETE` takes no body and ignores one if sent.
+- Unknown **query** parameters are dropped, not refused.
+- An id in the path that is malformed, missing or another user's is a `404`
+  `not_found`, checked before the body.
 
 ## Idempotency-Key
 
@@ -109,17 +121,6 @@ From 2.8.0, every paged list (`GET /transactions`, `GET /highlights/history`,
 | `total` | integer | Every match across all pages. |
 
 The query parameters are unchanged (`page`, default 1; `limit`, default 20).
-
-**Temporary, until both phones run 2.8.** On `GET /transactions` and
-`GET /highlights/history`, a request whose `X-App-Version` is missing or below
-`2.8.0` also gets `docs` (the same array as `items`) and `totalDocs` (= `total`),
-the only page fields the 2.6.0 app reads that this shape lacks. So 2.6.0 sees
-only mongoose-paginate's other fields gone (`totalPages`, `pagingCounter`,
-`hasPrevPage`, `prevPage`, `nextPage`), none of which it reads. 2.8.0 and later
-get exactly `Paginated<T>`. `GET /notifications` needs no extra fields: 2.6.0
-reads `items`, `unread`, `page` and `hasNextPage`, all still there. Remove
-`withOldPageFields` (`apps/api/src/utils/paginate.ts`) and this paragraph after
-the install.
 
 ## Errors
 
@@ -202,10 +203,8 @@ limit, the response is `429` `rate_limited` with a `Retry-After` header and the
 message `Too many tries. Wait a few minutes and try again`. On
 `/auth/change-password` the limiter runs before the token check.
 
-**Known issue**
-The auth schemas import `zod` (v3), so a validation failure on any Auth or
-Users endpoint is a `400` `invalid_input` whose `message` is the first issue's
-message (see [Errors](#errors)).
+A validation failure on any Auth or Users endpoint is a `400` `invalid_input`
+whose `message` is the first issue's message (see [Errors](#errors)).
 
 ### POST /auth/register
 
@@ -215,9 +214,9 @@ access token. To obtain a token, call `POST /auth/login` afterwards.
 | Field | Type | Constraints |
 |---|---|---|
 | `name` | string | At least 2 characters, trimmed. |
-| `email` | string | Valid email. Stored lowercased and trimmed. A duplicate is a `409` with `Email is already in use`. |
+| `email` | string | Valid email. Stored lowercased and trimmed. A duplicate is a `409` `duplicate`, `An account with this email already exists. Sign in instead`. |
 | `password` | string | At least 8 characters. Hashed with bcrypt (`SALT_ROUNDS`, default 12). |
-| `timeZone` | string | Optional. IANA zone name from the device, e.g. `Asia/Kolkata`; seeds `prefs.timeZone`. Omitted falls back to the server default, `Asia/Kolkata`. A name the server cannot resolve is rejected with `400 Not a recognised time zone`. Accepted only here — an existing account's zone changes through `PATCH /users/me`, so travelling can't re-cut a user's history. |
+| `timeZone` | string | Optional. IANA zone name from the device, e.g. `Asia/Kolkata`; seeds `prefs.timeZone`. Omitted falls back to the server default, `Asia/Kolkata`. A name the server cannot resolve is a `400`, `That time zone isn't recognised`. Accepted only here — an existing account's zone changes through `PATCH /users/me`, so travelling can't re-cut a user's history. |
 
 Registration runs in one database transaction and does four things:
 
@@ -228,18 +227,18 @@ Registration runs in one database transaction and does four things:
 | Seeds the default categories | The tree in `apps/api/src/data/defaultCategories.ts`, parents first. Children inherit their parent's `kind`. |
 | Sets `prefs.defaultAccount` | Points at the new `Cash` account. |
 
-**Response** — `201`, message `User registered successfully!`. `data` is the
-user, shaped like `IUser` in `packages/types`. `password`, `resetToken`,
-`resetTokenExpiry` and `totpSecret` are stripped from every user response by
-the model's `toJSON`. Other stored fields (`authProvider`, `googleId`,
-`totpEnabled`, `deactivatedAt`) are present when set.
+**Response** — `201`, message `User registered`. `data` is the user, shaped
+like `IUser` in `packages/types`. `password`, `resetToken`, `resetTokenExpiry`
+and `totpSecret` are stripped from every user response by the model's `toJSON`,
+and `__v`, `pushToken`, `googleId`, `totpEnabled`, `authProvider` and
+`deactivatedAt` by `utils/dto.ts`.
 
 ### POST /auth/login
 
-Exchanges credentials for an access token. Same `email` and `password`
-constraints as registration, including the 8-character minimum on `password`.
+Exchanges credentials for an access token. `email` must be a valid email;
+`password` only has to be non-empty, so sign-in never reveals the password rules.
 
-**Response** — `200`, message `User logged in successfully!`.
+**Response** — `200`, message `User signed in`.
 
 | Field | Type | Description |
 |---|---|---|
@@ -247,8 +246,9 @@ constraints as registration, including the 8-character minimum on `password`.
 | `userData` | object | `{ name, email }`. Not the full user — call `GET /auth/me` for that. |
 
 An unknown email, an account with no password (a Google account), and a wrong
-password all return the same `401 Invalid credentials!`, so the response does
-not reveal which emails exist.
+password of any length all return the same `401` `invalid_credentials`, `That
+email and password don't match`, so the response does not reveal which emails
+exist.
 
 Signing in to a deactivated account clears `deactivatedAt` before the token is
 issued. See [DELETE /users/me](#delete-usersme).
@@ -259,19 +259,20 @@ user out on the first 401 and they log in again.
 
 ### GET /auth/me
 
-Returns the authenticated user (`IUser`). The mobile app calls this on boot to
-prove a restored token is still valid.
+Returns the authenticated user (`IUser`), message `User fetched`. The mobile app
+calls this on boot to prove a restored token is still valid.
 
-| Case | Response |
+These are the `401` `unauthenticated` answers of every signed-in route, not only
+this one (`protect` in `middleware/authMiddleware.ts`):
+
+| Case | Message |
 |---|---|
-| Token missing | `401 Token is missing`. |
-| Token invalid or expired | `401 Invalid or expired token`. |
-| User no longer exists | `404 User not found`. |
-| Account is deactivated | `401 Account is deactivated`. |
+| Token missing | `Please sign in again`. |
+| Token invalid, expired or signed with another secret | `Your session has ended. Please sign in again`. |
+| User no longer exists | `Please sign in again`. |
+| Account is deactivated | `This account was closed. Sign in to reopen it`. |
 
-**Important**
-This is the only endpoint that checks `deactivatedAt`. See
-[DELETE /users/me](#delete-usersme).
+See [DELETE /users/me](#delete-usersme).
 
 ### POST /auth/change-password
 
@@ -283,14 +284,16 @@ current password.
 | `currentPassword` | string | Required, at least 1 character. |
 | `newPassword` | string | At least 8 characters. Must differ from `currentPassword`. |
 
-**Response** — `200`, message `Password changed successfully`, `data: null`.
+**Response** — `200`, message `Password changed`, `data: null`. The old
+password stops working at once; the new one signs in.
 
 | Case | Response |
 |---|---|
-| User no longer exists | `404 User not found`. |
-| Account has no password (signs in with Google) | `400 This account signs in with Google, so there is no password to change`. |
-| `currentPassword` is wrong | `401 Current password is incorrect`. |
-| `newPassword` equals `currentPassword` | `400 Choose a password different from your current one`. |
+| User no longer exists | `401` `unauthenticated`, `Please sign in again`. |
+| Account has no password (signs in with Google) | `400` `invalid_input`, `This account signs in with Google, so there is no password to change`. |
+| `currentPassword` is wrong | `400` `wrong_password`, `Your current password isn't right`. Not a 401: the session is fine, so the apps don't sign out. |
+| `newPassword` equals `currentPassword` | `400` `invalid_input`, `Choose a password different from your current one`. |
+| `newPassword` under 8 characters | `400` `invalid_input`, issue path `newPassword`. |
 
 **Warning**
 Existing tokens are not revoked. They are stateless JWTs with no server-side
@@ -306,9 +309,8 @@ record, so sessions on other devices stay signed in after the change.
 
 ### GET /users/me
 
-Returns the user (`IUser`), message `Profile fetched successfully`. `404 User
-not found` if the row is gone. Unlike `GET /auth/me`, this does not check
-`deactivatedAt`.
+Returns the user (`IUser`), message `Profile fetched`: the same `data` as
+`GET /auth/me`. A closed account is a `401` here as on every route.
 
 `data.prefs` is `IUserPrefs`:
 
@@ -336,8 +338,8 @@ is `.strict()`: an unrecognized key at the top level, inside `prefs`, or inside
 |---|---|---|
 | `name` | string | Trimmed, 2–60 characters. Email is not editable. |
 | `pushToken` | string \| null | Expo push token for this device. `null` detaches it — the app sends that on sign-out, so the account's reminders stop reaching a phone somebody else is now signed in on. The stored field is unset rather than set to null. |
-| `prefs.defaultAccount` | string \| null | Account ID, or `null` to clear. The account must belong to the caller and not be archived, otherwise `404 Account not found`. |
-| `prefs.timeZone` | string | IANA zone name, e.g. `Asia/Kolkata`. Rejected with `400 Not a recognised time zone` if the server can't resolve it. Every day, month, and window the API cuts is cut in this zone. |
+| `prefs.defaultAccount` | string \| null | Account ID, or `null` to clear. The account must belong to the caller and not be archived, otherwise `400` `invalid_reference`, `The default account isn't one of your accounts any more. Pick another`. |
+| `prefs.timeZone` | string | IANA zone name, e.g. `Asia/Kolkata`. Rejected with `400`, `That time zone isn't recognised`, if the server can't resolve it. Every day, month, and window the API cuts is cut in this zone. |
 | `prefs.notifications.enabled` | boolean | Primary notification switch. Off silences every kind. |
 | `prefs.notifications.billReminderLead` | 1 \| 3 \| 7 | Days of lead time before a bill is due. |
 | `prefs.notifications.budgetAlerts` | boolean | |
@@ -349,7 +351,7 @@ is `.strict()`: an unrecognized key at the top level, inside `prefs`, or inside
 | `prefs.notifications.investmentReminderDay` | integer | 1–28, the day of the month the nudge fires. Capped at 28 so it lands every month. Defaults to `1`. |
 
 Send only the notification keys you want to change; the rest keep their stored
-values. `data` is the updated user (`IUser`), message `Profile Updated`.
+values. `data` is the updated user (`IUser`), message `Profile updated`.
 
 The three digests have separate switches and separate hours. See
 [Digest notifications](architecture.md#digest-notifications).
@@ -364,20 +366,18 @@ message `Account deactivated` and `data: null`. It is not a `204`: every
 
 | Consequence | When |
 |---|---|
-| `GET /auth/me` returns `401` | Immediately. This is the only gate — see below. |
+| Every signed-in route returns `401` `unauthenticated`, `This account was closed. Sign in to reopen it` | Immediately, for every token issued before or after. |
 | Reminders and digests stop | Immediately (`reminderJob` filters on `deactivatedAt: null`). |
 | Transactions, budgets, bills, goals, accounts, categories | Untouched, indefinitely. |
 
 Signing in again with the same credentials clears `deactivatedAt` before the
-token is issued, and the account is live with all of its data.
+token is issued, and the account is live with all of its data. Tokens from
+before the close work again too.
 
-**Important**
-`protect` verifies the JWT signature and never reads the database, so a token
-issued *before* the deactivation keeps working on other endpoints until it
-expires (7 days). That token belongs to the person who deactivated the account
-moments earlier on that same device, and the only data it can reach is their
-own — which is still there either way. Adding a user lookup to every request to
-close this would tax thousands of calls to guard one.
+`protect` reads the user by primary key on every request, so a token for a
+closed or deleted user stops working everywhere, not only on `/auth/me`. A
+failed read is a `500`, never a `401`, so a database hiccup can't sign anyone
+out.
 
 ## Accounts
 
@@ -405,13 +405,19 @@ An account is a place money sits. Every account has a `type`:
 Every response's `data` is an `IAccount` (or an array of them), except
 reorder and archive, described below. Archived accounts are invisible to every
 endpoint here: `GET /accounts/{id}`, `PATCH` and `DELETE` on one all return
-`404 Account not found`, as does an account belonging to another user.
+`404` `not_found`, `That account doesn't exist any more`, as does an account
+belonging to another user or a malformed id.
 
 ### GET /accounts
 
 Takes no parameters. Returns every non-archived account sorted by `order`, then
 `createdAt`. The `createdAt` tiebreak keeps a list nobody has reordered in the
-order it was built.
+order it was built. `data` is a plain array, not a [page](#pages); message
+`Accounts fetched`.
+
+### GET /accounts/{id}
+
+One live account of the caller's, message `Account fetched`.
 
 ### POST /accounts
 
@@ -424,14 +430,15 @@ The body is `.strict()`.
 | `startingBalance` | integer | Required. Paise. May be negative. |
 | `icon` | string | Optional. Icon name from `lib/icons.ts`. Defaults to `wallet`. |
 | `color` | string | Optional. Color token. See [Design system](design-system.md). Defaults to `success`. |
-| `investmentKind` | string | Optional. 1–40 characters, trimmed. The Investments hub's grouping key (SIP, Mutual Fund, ...). A free string, not an enum. Stored whatever the `type`; only meaningful for `investment`. |
+| `investmentKind` | string | Optional. 1–40 characters, trimmed. **`investment` only.** The Investments hub's grouping key (SIP, Mutual Fund, ...). A free string, not an enum. |
 | `currentValue` | integer | Optional. Paise, 0 or more. **`investment` only.** What the holding is worth today. Omitted means it is worth exactly `startingBalance`. |
 | `investedSince` | date | Optional. Coerced from an ISO string; a date in the future is rejected with `The start date can't be in the future`. **`investment` only.** When the opening amount started going in. Stored as `null` if omitted. |
 | `investedHow` | enum | Optional. `sip` \| `lump`. **`investment` only.** Stored as `null` if omitted. |
 
-`currentValue`, `investedSince` and `investedHow` pass validation for any
-`type`, but are used only when `type` is `investment`; on every other type they
-are silently ignored.
+`investmentKind`, `currentValue`, `investedSince` and `investedHow` on any
+other `type` are a `400` `invalid_input` naming the field: `Investment type is
+only for investments`, `Current value is only for investments`, `Start date is
+only for investments`, `How it was invested is only for investments`.
 
 The stored `balance` starts as `startingBalance`, except on an `investment`
 with `currentValue`, where it starts as `currentValue`. The gap between the two
@@ -439,7 +446,7 @@ is a gain or loss made before the holding was tracked here. It is stored
 directly, not recorded as a transaction.
 
 The new account's `order` is the number of live accounts the caller already has,
-so it lands last. **Response** — `201`, message `Account created successfully`.
+so it lands last. **Response** — `201`, message `Account created`.
 
 **Important**
 `startingBalance` can be set only at creation — `updateAccountSchema` omits it.
@@ -454,14 +461,26 @@ The body is `.strict()`. All fields optional.
 | Field | Type | Constraints |
 |---|---|---|
 | `name` | string | Non-empty, trimmed. |
-| `type` | enum | Same values as creation. The server applies no checks or side effects when a type changes. |
+| `type` | enum | Same values as creation. From 2.8.1 a change into or out of `investment` or `person` is refused (below). Changes among `bank`, `credit_card`, `cash` and `wallet` have no checks or side effects. |
 | `icon` | string | |
 | `color` | string | |
-| `investmentKind` | string | 1–40 characters, trimmed. |
+| `investmentKind` | string | 1–40 characters, trimmed. Only on a holding: on any other account it is a `400`, `Investment type is only for investments`. |
 
 `startingBalance`, `balance`, `currentValue`, `investedSince` and `investedHow`
 are rejected as unrecognized keys. **Response** — `200`, message `Account
-details updated`, `data` is the account.
+updated`, `data` is the account.
+
+**Type changes, investments and people.** From 2.8.1, a `type` that turns an
+account into an `investment` or a `person`, or one of those into anything else,
+is a `400` `invalid_input` with issue path `type`: `An account can't be turned
+into an investment or back. Add a new one instead` (or `… into a person or
+back …`). Nothing is written. A holding's balance is its value (it can carry an
+opening gain that no row explains, and it can't go below zero); a person's is
+what they owe, trips and splits take only people, and trip expenses are paid
+only from your own accounts. Either change would leave a balance, a trip or an
+expense that breaks those rules (a trip whose members can't be saved again, an
+expense that can't be edited). Sending the account's own type back, as the
+app's edit sheet does on every save, is allowed.
 
 ### PATCH /accounts/reorder
 
@@ -475,8 +494,9 @@ Writes the user's account order: each ID's position in `ids` becomes its
 | Case | Response |
 |---|---|
 | Success | `200`, message `Accounts reordered`, `data: { reordered: <count> }`. |
-| An ID appears twice | `400 The same account was listed twice`. |
-| An ID is not a live account of the caller's | `400 Some of those accounts no longer exist`. |
+| An ID appears twice (in any letter case) | `400` `invalid_input`, `An account is in the list twice`. |
+| An ID is malformed, missing, archived or another user's | `400` `invalid_reference`, `An account in the list isn't one of your accounts any more. Pick another`, issue path `ids.<n>` (or `ids`). |
+| `ids` is empty | `400` `invalid_input`. |
 
 **Note**
 The code comment says the request must carry every live account, so the result
@@ -514,8 +534,9 @@ See [The account balance invariant](architecture.md#the-account-balance-invarian
 | Case | Response |
 |---|---|
 | Difference is non-zero | `200` with the updated account. Message `"Balance updated"`. |
-| Already matches | `200`, `lastSyncedAt` stamped, **no transaction written**. Message `"Balance already matched"`. |
-| Account archived or not the caller's | `404`. |
+| Already matches | `200`, `lastSyncedAt` stamped, **no transaction written**. Message `"Balance confirmed"`. |
+| Account archived, missing, malformed or not the caller's | `404` `not_found`. |
+| The balance changed between the read and the write | `409` `conflict`, `This balance was just changed. Check it and try again`. |
 
 The endpoint does not check the account's `type`, so it also applies to
 `investment` and `person` accounts.
@@ -528,7 +549,8 @@ hidden from the default `GET /transactions` listing — see that endpoint.
 ### DELETE /accounts/{id}
 
 **Archives** the account: `isArchived` becomes `true`. The response is `200`,
-message `Account deleted successfully`, `data: null`.
+message `Account archived`, `data: null`. A second archive of the same account
+is a `404`.
 
 Deleting archives rather than removes, because past transactions reference the
 account and would otherwise lose their source. Transactions already on the
@@ -557,14 +579,23 @@ and an optional `parent`.
 | `DELETE` | `/categories/{id}` | **Archives** the category and its sub-categories. |
 
 `data` is an `ICategory` (or an array of them) except where noted. Archived
-categories and other users' categories return `404 Category not found`.
+categories, other users' categories and malformed ids return `404` `not_found`,
+`That category doesn't exist any more`.
 
 ### GET /categories
 
-Takes no parameters. Returns every non-archived category, parents and children
+Returns every non-archived category, parents and children
 together in one flat array, sorted by `order` then `createdAt`. `order` is only
 meaningful within a sibling set (top-level categories of a kind, or one parent's
 children), so group by `parent` on the client before relying on it.
+`?include=archived` (2.8.0 on) adds archived ones, so a row filed under one can
+still print its name. Message `Categories fetched`.
+
+### GET /categories/{id}
+
+One live category of the caller's, a heading or a sub-category (with its
+`parent`), message `Category fetched`. Archiving a heading archives its
+sub-categories, so both are `404` afterwards.
 
 ### POST /categories
 
@@ -582,10 +613,10 @@ Rules, checked in this order:
 
 | Rule | Failure |
 |---|---|
-| Names are unique per user, case-insensitively, across all live categories — whatever the `kind` or `parent`. A row shows only its bare name, so a repeat reads as ambiguous. | `400 A category named "<name>" already exists`. |
-| `parent` must be a live category of the caller's. | `404 Parent Category not found`. |
-| Categories are one level deep: a category has an optional `parent`, and a sub-category cannot itself be a parent. | `400 Categories can only be 2 levels deep`. |
-| A sub-category's `kind` must match its parent's. | `400 "<parent>" is an <kind> category, so its sub-categories must be too`. |
+| Names are unique per user, case-insensitively, across all live categories — whatever the `kind` or `parent`. A row shows only its bare name, so a repeat reads as ambiguous. | `409` `duplicate`, `You already have a category with that name`. |
+| `parent` must be a live category of the caller's. | `400` `invalid_reference`, `Parent category isn't one of your categories any more. Pick another`. |
+| Categories are one level deep: a category has an optional `parent`, and a sub-category cannot itself be a parent. | `400` `invalid_input`, `Categories can only be 2 levels deep`. |
+| A sub-category's `kind` must match its parent's. | `400` `invalid_input`, `A sub-category has to be the same kind as its parent`. |
 
 The kind rule exists because all three roll-ups sum a parent's children without
 re-checking `kind` — an income child under an expense parent would subtract
@@ -593,7 +624,7 @@ from that parent's spend.
 
 The new category's `order` is the count of live categories with the same `kind`
 and `parent`, so it lands last among its siblings. **Response** — `201`,
-message `Category created successfully`.
+message `Category created`.
 
 **Note**
 `kind` and `parent` are immutable — `updateCategorySchema` omits both. Changing
@@ -609,11 +640,11 @@ The body is `.strict()`. All fields optional.
 
 | Field | Type | Constraints |
 |---|---|---|
-| `name` | string | Non-empty, trimmed. Subject to the same case-insensitive uniqueness rule as creation, ignoring the category itself: `400 A category named "<name>" already exists`. |
+| `name` | string | Non-empty, trimmed. Subject to the same case-insensitive uniqueness rule as creation, ignoring the category itself: `409` `duplicate`, `You already have a category with that name`. |
 | `icon` | string | |
 | `color` | string | |
 
-**Response** — `200`, message `Category details updated`.
+**Response** — `200`, message `Category updated`.
 
 ### PATCH /categories/reorder
 
@@ -627,8 +658,9 @@ Writes the order of one sibling set: each ID's position in `ids` becomes its
 | Case | Response |
 |---|---|
 | Success | `200`, message `Categories reordered`, `data: { reordered: <count> }`. |
-| An ID appears twice | `400 The same category was listed twice`. |
-| An ID is not a live category of the caller's | `400 Some of those categories no longer exist`. |
+| An ID appears twice | `400` `invalid_input`, `The same category was listed twice`. |
+| An ID is malformed | `400` `invalid_reference`, `A category in the list isn't one of your categories any more. Pick another`, issue path `ids.<n>`. |
+| An ID is not a live category of the caller's | `400` `invalid_reference`, `Some of those categories no longer exist`, **with no `issues`** (the one `invalid_reference` that names no field; accounts' reorder does). |
 
 **Note**
 The server does not check that the IDs form one sibling set, or that they are
@@ -658,7 +690,7 @@ Transactions filed under an archived category are untouched; archiving only
 hides the category from pickers.
 
 ```json
-{ "data": { "archivedChildren": 3 }, "message": "Category deleted successfully" }
+{ "data": { "archivedChildren": 3 }, "message": "Category archived" }
 ```
 
 `archivedChildren` is `0` when the target is itself a sub-category. It counts
@@ -671,7 +703,7 @@ only children that were not already archived.
 | `GET` | `/transactions` | Lists transactions, filtered and paginated. |
 | `POST` | `/transactions` | Creates a transaction and applies its balance effect. |
 | `POST` | `/transactions/convert-to-investment` | Converts a batch of expenses into investment contributions. |
-| `GET` | `/transactions/summary` | Income, expense and savings totals for a date range. |
+| `GET` | `/transactions/summary` | Income, expense and savings totals over the list's filters. |
 | `GET` | `/transactions/title-suggestions` | Frequently used titles, for autosuggest. |
 | `GET` | `/transactions/{id}` | Retrieves one transaction. |
 | `PATCH` | `/transactions/{id}` | Updates a transaction and re-applies its effect. |
@@ -679,7 +711,11 @@ only children that were not already archived.
 | `DELETE` | `/transactions/{id}` | Deletes a transaction and reverts its effect. |
 
 Every transaction response's `data` is an `ITransaction` (or an array or page of
-them). Another user's transaction is a `404 Transaction not found`.
+them). Another user's transaction, a missing one or a malformed id is a `404`
+`not_found`, `That transaction doesn't exist any more`. A field that names an
+account, person or category that isn't one of the caller's (missing, someone
+else's, archived or the wrong kind) is a `400` `invalid_reference` whose issue
+path is that field (`account`, `toAccount`, `owedBy.1.account`, `category`).
 
 A validation failure on any Transactions endpoint is a `400` `invalid_input` (it was a `500` before the error handler recognised `zod/v4`).
 
@@ -716,7 +752,7 @@ Fields common to every type:
 | Field | Type | Constraints |
 |---|---|---|
 | `amount` | integer | Required. Positive paise. |
-| `account` | string | Required. Account ID. Must be a live account of the caller's, otherwise `400 Account not found`. |
+| `account` | string | Required. Account ID. Must be a live account of the caller's, otherwise `400` `invalid_reference`. |
 | `occurredAt` | string | Optional timestamp, parsed with `new Date()`. Defaults to now. The schema does not validate the format. |
 | `note` | string | Optional. |
 | `location` | string | Optional. |
@@ -730,11 +766,12 @@ Type-specific fields:
 |---|---|---|
 | `expense` | `category` (required), `title` (required, non-empty), `owedBy` (optional) | A spend. `title` is what the user sees in the list. |
 | `income` | `category` (required), `title` (required, non-empty) | |
-| `transfer` | `toAccount` (required) | Carries no `title` and no `category` — a transfer moves money, it does not classify it. `account` and `toAccount` must differ, otherwise `400 Cannot transfer to same account`. Both must be live accounts of the caller's. |
+| `transfer` | `toAccount` (required) | Carries no `title` and no `category` — a transfer moves money, it does not classify it. `account` and `toAccount` must differ, otherwise `400` `invalid_input`, `Pick two different accounts`. Both must be live accounts of the caller's. |
 | `positiveAdjustment`, `negativeAdjustment` | `title` (optional, non-empty) | Reconciliation entries, for correcting a drifted balance. |
 
-`category` is stored as given: the create endpoint does not check that it
-exists, belongs to the caller, or is of a matching `kind`.
+`category` must be one of the caller's categories of the matching `kind`
+(`income` for income, `expense` for an expense), otherwise `400`
+`invalid_reference`. An archived category is accepted.
 
 `tripId` and `tripExpenseId` cannot be sent; trips write them. A body carrying
 them is rejected as an unrecognized key.
@@ -745,11 +782,11 @@ them is rejected as an unrecognized key.
 `expense`, not because the number is.
 
 **Redemptions** — a `transfer` whose source `account` is an `investment` cannot
-exceed that holding's recorded value: `400 You can't redeem more than this
-investment is currently worth — update its value first if it has grown`. Other
-account types may overdraw.
+exceed that holding's recorded value: `400`, `You can't redeem more than this
+holding is worth. Update its value first if it has grown`. Other account types
+may overdraw.
 
-**Response** — `201`, message `Transaction created!`. `data` is the created
+**Response** — `201`, message `Transaction created`. `data` is the created
 transaction. After commit, if the type is `expense`, the server checks the
 category's budget (and its parent's) and may raise a budget notification; this
 never fails the request.
@@ -761,7 +798,7 @@ An `expense` may carry `owedBy` to record that other people owe part of it.
 | Field | Type | Constraints |
 |---|---|---|
 | `owedBy` | array | 1–10 rows. |
-| `owedBy[].account` | string | The account that owes. Must be a live account of the caller's. |
+| `owedBy[].account` | string | The person who owes. Must be a live `person` account of the caller's. |
 | `owedBy[].amount` | integer | Positive paise. |
 
 `amount` on the expense is the caller's **own share**. For each `owedBy` row the
@@ -773,13 +810,8 @@ appear in later listings.
 
 | Rule | Failure |
 |---|---|
-| A person may appear once, and may not be the source `account`. | `400 Each person can appear only once in a split`. |
-| Every account must exist and be live. | `400 Account not found`. |
-
-**Note**
-The server does not check that `owedBy[].account` is a `person` account. The
-types package says a person account is what a split transfers into,
-but the create endpoint accepts any live account.
+| A person may appear once, and may not be the source `account`. | `400` `invalid_input`, `Each person can be in the split only once`. |
+| Every row's account must be a live person account of the caller's. | `400` `invalid_reference`, `A person in the split isn't one of your people any more. Pick another`, issue path `owedBy.<n>.account`. |
 
 #### Idempotency with `clientId`
 
@@ -836,18 +868,26 @@ Results are sorted by `occurredAt`, newest first, and come as a
 
 ### GET /transactions/summary
 
-Income, expense and savings for a date range. Only `income` and `expense`
-transactions are counted; transfers and adjustments never are.
+Income, expense and savings over the rows `GET /transactions` returns for the
+same filters. Only `income` and `expense` transactions are counted; transfers
+and adjustments never are.
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `startDate` | `YYYY-MM-DD` | — | Start of the range. |
 | `endDate` | `YYYY-MM-DD` | — | End of the range. |
+| `category` | string | — | As on the list: comma-separated IDs, a parent also matches its children. |
+| `account` | string | — | As on the list: matches `account` or `toAccount`. The transfers it adds to the list add nothing here. |
+| `type` | enum | — | `expense` \| `income` \| `transfer`. With `transfer` every figure is `0`. |
+| `search` | string | — | As on the list. |
 | `trips` | enum | — | `exclude` \| `only`. Narrows `income` and `expenses`, not `savings`. |
 
-`startDate` and `endDate` follow the same together-or-neither rule and the same
-zone-local day bounds as the list, so the card's figures add up to the rows
-beneath it. With neither, the totals cover all time.
+The list and the summary build their filter in one place
+(`services/transactionFilter.ts`), so the card's figures add up to the rows
+beneath it under any combination. `startDate` and `endDate` follow the same
+together-or-neither rule and the same zone-local day bounds as the list. With
+neither, the totals cover all time. Bad filters fail as they do on the list.
+`savings` and `tripExpenses` are over the filtered rows, trips included.
 
 | Response field | Type | Description |
 |---|---|---|
@@ -894,7 +934,7 @@ Rules:
 
 ### GET /transactions/{id}
 
-Retrieves one transaction, message `Transaction fetched!`.
+Retrieves one transaction, message `Transaction fetched`.
 
 ### PATCH /transactions/{id}
 
@@ -903,9 +943,9 @@ Updates a transaction. The body is `.strict()`; all fields optional.
 | Field | Type | Constraints |
 |---|---|---|
 | `amount` | integer | Positive paise. |
-| `account` | string | Must be a live account of the caller's, otherwise `400 Account not found`. |
+| `account` | string | Must be a live account of the caller's, otherwise `400` `invalid_reference`. |
 | `toAccount` | string | Same check. |
-| `category` | string | Not checked against the caller's categories. |
+| `category` | string | Checked like on create, but only when it changes: the app sends the category back on every save, and a row filed under a category archived since stays editable. |
 | `title` | string | Non-empty. |
 | `note` | string | |
 | `location` | string | |
@@ -914,10 +954,10 @@ Updates a transaction. The body is `.strict()`; all fields optional.
 | `occurredAt` | string | |
 
 `type`, `clientId`, `owedBy`, `splitGroupId`, `tripId` and `tripExpenseId`
-cannot be changed. The endpoint does not check that a field fits the
-transaction's type: `toAccount` can be set on an expense and `category` on a
-transfer, and both are stored though they have no effect on balances. It also
-does not stop `account` being set equal to `toAccount` on a transfer.
+cannot be changed (unrecognized keys). The edited row is then checked against
+the create rules for its type, so a field that doesn't fit is a `400`
+`invalid_input`: no `toAccount` on an expense or income, no `category` or
+`title` on a transfer, and `account` can't equal `toAccount`.
 
 The old effect is reverted, the edit is applied, and the new effect is added in
 one database transaction. If the result is a `transfer` out of an `investment`,
@@ -929,14 +969,17 @@ written.
 If the transaction is an `expense`, the budget check runs afterwards, because
 raising an amount or re-filing it can cross a limit.
 
-**Response** — `200`, message `Transaction updated!`, `data` is the updated
+**Response** — `200`, message `Transaction updated`, `data` is the updated
 transaction.
 
 **Warning**
 A transaction with a `tripExpenseId` — a trip expense's share, or the transfer
-recording what a friend owes on it — cannot be edited here: `400 This is part
-of a trip expense — change it from the trip`. The same applies to deleting and
-converting. Editing one row would leave the rest of the trip expense disagreeing.
+recording what a friend owes on it — cannot be edited here: `409` `conflict`,
+`This is part of a trip expense. Change it from the trip`. The same applies to
+deleting and converting. Editing one row would leave the rest of the trip
+expense disagreeing. One transfer of a split can change its amount but not its
+account or date (`409`, `This is part of a split. Change the date or account on
+the expense itself`); edit the expense and every transfer follows it.
 
 Adjustments created by a balance sync can be edited through this endpoint like
 any other row.
@@ -944,14 +987,14 @@ any other row.
 ### DELETE /transactions/{id}
 
 Deletes a transaction and reverts its balance effect, in one database
-transaction. **Response** — `200`, message `Transaction Deleted`, `data: null`.
+transaction. **Response** — `200`, message `Transaction deleted`, `data: null`.
 
 | Case | Behaviour |
 |---|---|
 | Ordinary transaction | Reverts its effect and deletes it. |
 | Split expense (`type: expense` with a `splitGroupId`) | Reverts and deletes the **whole group** — the expense and every transfer — because transfers left behind would claim someone owes money for a purchase that no longer exists. |
 | One transfer of a split group | Deletes only that transfer. This is how a person is taken off a split after the fact. |
-| Has a `tripExpenseId` | `400 This is part of a trip expense — change it from the trip`. |
+| Has a `tripExpenseId` | `409` `conflict`, `This is part of a trip expense. Change it from the trip`. |
 
 Deleting an adjustment reverts the correction it made.
 
@@ -969,12 +1012,14 @@ endpoint because `PATCH` cannot change `type` or clear `category`.
 
 | Case | Response |
 |---|---|
-| Success | `200`, message `Converted to investment`, `data` is the updated transaction (now `type: transfer`, `category: null`). |
-| `toAccount` is not a live investment account of the caller's | `400 Choose an investment account`. |
-| `toAccount` is the transaction's own `account` | `400 Can't invest into the same account it came from`. |
-| Transaction is not an `expense` | `400 Only an expense can be converted to an investment`. |
-| Expense has a `splitGroupId` | `400 This expense is part of a split — remove it from the split first`. |
-| Has a `tripExpenseId` | `400 This is part of a trip expense — change it from the trip`. |
+| Success | `200`, message `Transaction converted`, `data` is the updated transaction (now `type: transfer`, `category: null`). |
+| Has a `tripExpenseId` | `409` `conflict`, `This is part of a trip expense. Change it from the trip`. |
+| Transaction is not an `expense` | `409` `conflict`, `Only an expense can be converted to an investment`. |
+| Expense has a `splitGroupId` | `409` `conflict`, `This expense is part of a split. Remove it from the split first`. |
+| `toAccount` is not a live investment account of the caller's | `400` `invalid_reference`, `The investment isn't one of your holdings any more. Pick another`. |
+| `toAccount` is the transaction's own `account` | `400` `invalid_input`, `Pick two different accounts`. |
+
+The checks run in that order.
 
 The balance move is revert, then flip to a transfer, then add, in one database
 transaction. The source account is unchanged overall; the investment gains the
@@ -987,8 +1032,8 @@ recurring suggestion.
 
 | Field | Type | Constraints |
 |---|---|---|
-| `transactionIds` | string[] | Required, 1–60 IDs. |
-| `toAccount` | string | Required. A live `investment` account of the caller's, otherwise `400 Choose an investment account`. |
+| `transactionIds` | string[] | Required, 1–60 IDs. A malformed one is `400` `invalid_reference`, issue path `transactionIds.<n>`. |
+| `toAccount` | string | Required. A live `investment` account of the caller's, otherwise `400` `invalid_reference`, `The investment isn't one of your holdings any more. Pick another`. |
 
 Only caller-owned plain expenses are converted: ones with no `splitGroupId`, no
 `tripExpenseId`, and an `account` other than `toAccount`. **Anything else is
@@ -996,7 +1041,7 @@ skipped silently** — an unknown ID, a non-expense, a split member, a trip row,
 an already-converted row — rather than failing the batch. All conversions land
 in one database transaction.
 
-**Response** — `200`, message `Converted to investment`, `data: { converted: <count> }`.
+**Response** — `200`, message `Transactions converted`, `data: { converted: <count> }`.
 Compare `converted` with the number of IDs sent to see whether any were skipped.
 Unlike the single form, the batch does not run the budget check, and it does
 not say which IDs were skipped.
@@ -1053,13 +1098,14 @@ health score's budgets pillar, so the three never disagree about `spent`.
 
 | Field | Type | Constraints |
 |---|---|---|
-| `category` | string | Required. Category ID. Must be the caller's and not archived, or the request fails with `400 Category not found`. |
+| `category` | string | Required. Category ID. Must be the caller's and not archived, or the request fails with `400` `invalid_reference`, `Category isn't one of your categories any more. Pick another`. |
 | `month` | string | Required. `YYYY-MM`, same pattern as above. |
 | `limit` | integer | Required. Positive paise. |
 
-Returns `201` with the created budget. There is a unique index on
-`(userId, category, month)`, so a second budget for the same category and month
-is a `409 A record with this value already exists`.
+Returns `201` with the created budget, message `Budget created`. There is a
+unique index on `(userId, category, month)`, so a second budget for the same
+category and month is a `409` `duplicate`, `You already have a budget for this
+category this month`.
 
 **Note**
 The server does not check the category's `kind` or whether its parent or a child
@@ -1072,13 +1118,14 @@ already carries a budget. Both rules are enforced only by the mobile picker.
 | `limit` | integer | Required. Positive paise. |
 
 `limit` is the only field. To move a budget to another category or month, delete
-it and create a new one. Returns `200` with the updated budget, or `404 Budget not
-found`. Changing a limit does not raise or retract a budget notification; alerts
-are evaluated only when an expense is written.
+it and create a new one. Returns `200` with the updated budget (`Budget
+updated`), or `404` `not_found`, `That budget doesn't exist any more`. Changing
+a limit does not raise or retract a budget notification; alerts are evaluated
+only when an expense is written.
 
 ### DELETE /budgets/{id}
 
-Returns `200` with `data: null`, or `404 Budget not found`.
+Returns `200` with `data: null` (`Budget deleted`), or `404` `not_found`.
 
 ## Bills
 
@@ -1100,7 +1147,7 @@ investment account as a transfer instead of spending it. The wire shape is
 
 | Parameter | Type | Description |
 |---|---|---|
-| `status` | enum | Optional. `pending` \| `paid`. Filters on the **stored** status, before the derived one below is computed. |
+| `status` | enum | Optional. `pending` \| `overdue` \| `paid`. Filters on the **derived** status below, the one each item is returned with. |
 
 Bills are sorted by `dueDate` ascending. Each item's `status` is **derived per
 request** in the caller's zone, not read from the document:
@@ -1118,14 +1165,8 @@ request** in the caller's zone, not read from the document:
 **Important**
 A recurring bill is never stored as `paid` — its `dueDate` rolls forward when
 paid. Its evidence of being settled is `lastPaidAt` in the current period, which
-is what makes it read `paid` here.
-
-**Known issue**
-Because the `status` filter runs on the stored value, `?status=paid` returns
-only one-off bills settled this period and never a recurring bill, even though
-the unfiltered list shows that recurring bill as `paid`. `?status=pending`
-includes recurring bills that the response then labels `paid`. A one-off bill
-disappears from the list entirely once the period it was paid in has ended.
+is what makes it read `paid` here. A one-off bill disappears from the list
+entirely once the period it was paid in has ended.
 
 ### POST /bills
 
@@ -1134,15 +1175,15 @@ disappears from the list entirely once the period it was paid in has ended.
 | `name` | string | Required, non-empty. |
 | `amount` | integer | Required. Positive paise. |
 | `dueDate` | date | Required. Coerced from an ISO string. |
-| `category` | string \| null | Optional. If set, must be the caller's non-archived category (`400 Category not found`). |
-| `account` | string | Optional. Which account it is normally paid from. **Not validated** at create or update. |
+| `category` | string \| null | Optional. If set, must be the caller's non-archived category (`400` `invalid_reference`). |
+| `account` | string | Optional. Which account it is normally paid from. Must be the caller's and not archived (`400` `invalid_reference`). |
 | `recurring` | boolean | Optional. Defaults to `false`. |
-| `frequency` | enum | `monthly` \| `yearly`. **Required when `recurring` is true** (`400 Frequency is required for recurring bills`). |
+| `frequency` | enum | `monthly` \| `yearly`. **Required when `recurring` is true** (`400` `invalid_input`, `Pick how often this bill repeats`). |
 | `reminderDays` | integer | Optional. 0 or more. Overrides the user's `billReminderLead` for this bill. |
-| `toInvestment` | string \| null | Optional. Investment account ID that makes this a SIP. Must be the caller's, non-archived, `type: "investment"` (`400 Choose an investment account`). |
+| `toInvestment` | string \| null | Optional. Investment account ID that makes this a SIP. Must be the caller's, non-archived, `type: "investment"` (`400` `invalid_reference`, `Investment isn't one of your holdings any more. Pick another`). |
 
-The body is `.strict()`. Returns `201` with the created bill; stored `status` is
-`pending` and `lastPaidAt` is `null`.
+The body is `.strict()`. Returns `201` with the created bill (`Bill created`);
+stored `status` is `pending` and `lastPaidAt` is `null`.
 
 `reminderDays` drives the bill reminder: the job uses
 `bill.reminderDays ?? prefs.notifications.billReminderLead ?? 3`. It never moves
@@ -1150,22 +1191,23 @@ money. See [Notifications](architecture.md#notifications).
 
 ### PATCH /bills/{id}
 
-Same fields as `POST /bills`, all optional, `.strict()`. `category` and
-`toInvestment` are re-validated when truthy; sending `toInvestment: null` turns a
-SIP back into an ordinary bill. The `recurring`-needs-`frequency` rule is **not**
-re-checked on update. Returns `200` with the updated bill, or `404 Bill not
-found`.
+Same fields as `POST /bills`, all optional, `.strict()`. `category`, `account`
+and `toInvestment` are re-validated when truthy; sending `toInvestment: null`
+turns a SIP back into an ordinary bill. The `recurring`-needs-`frequency` rule
+is checked on the bill as it would be after the update. Returns `200` with the
+updated bill (`Bill updated`), or `404` `not_found`, `That bill doesn't exist any
+more`.
 
 ### DELETE /bills/{id}
 
-Returns `200` with `data: null`, or `404 Bill not found`. Transactions already
-written by earlier payments are untouched.
+Returns `200` with `data: null` (`Bill deleted`), or `404` `not_found`.
+Transactions already written by earlier payments are untouched.
 
 ### POST /bills/{id}/pay
 
 | Field | Type | Description |
 |---|---|---|
-| `account` | string | Optional. Account to charge for this payment. Must be the caller's and not archived, or `400 Account not found`. |
+| `account` | string | Optional. Account to charge for this payment. Must be the caller's and not archived, or `400` `invalid_reference`. |
 
 The body may be omitted. The charged account is the first that resolves of:
 
@@ -1173,8 +1215,8 @@ The body may be omitted. The charged account is the first that resolves of:
 2. The bill's own `account`, if it still exists and is not archived.
 3. `prefs.defaultAccount` of the user.
 
-If none resolves: `400 No account to charge this bill to`. The account's `type`
-is not checked.
+If none resolves: `400` `invalid_input`, `Pick an account to pay this bill from`.
+The account's `type` is not checked.
 
 What gets written, in one MongoDB transaction:
 
@@ -1187,19 +1229,18 @@ What gets written, in one MongoDB transaction:
 Balances move through `applyEffects`, like any other transaction. The bill is
 claimed with a conditional update first (status `pending` for a one-off, the
 current `dueDate` for a recurring one), so a double tap or an offline-queue
-replay cannot double-debit: the loser gets `400 This bill was just handled —
-nothing more to do` and nothing is written.
+replay cannot double-debit: the loser gets `409` `conflict`, `This bill is
+already paid for this period`, and nothing is written.
 
-The response is the bill as stored (`200`, `Bill marked as paid`). For a
+The response is the bill as stored (`200`, `Bill paid`). For a
 recurring bill that means `status: "pending"` and the **new** `dueDate`, not the
 derived `paid` that `GET /bills` would show.
 
 | Status | Message | Cause |
 |---|---|---|
-| 400 | `Bill is already paid` | Stored status is `paid`. |
-| 400 | `This bill is already handled for this period` | Recurring, and `dueDate` is already in a later period than now. |
-| 400 | `This SIP's investment no longer exists — edit the bill to point it at one` | The SIP target was archived or deleted since creation. |
-| 404 | `Bill not found` | Not the caller's. |
+| 409 `conflict` | `This bill is already paid for this period` | Stored status is `paid`, or a recurring bill's `dueDate` is already in a later period than now. |
+| 409 `conflict` | `This bill's holding isn't there any more. Edit the bill to pick another` | The SIP target was archived or deleted since creation. |
+| 404 `not_found` | `That bill doesn't exist any more` | Malformed, missing or not the caller's. |
 
 **Important**
 `occurredAt` is always the moment of payment, not the due date.
@@ -1210,14 +1251,15 @@ never raises a budget warning. Only `POST` and `PATCH /transactions` do.
 
 ### POST /bills/{id}/skip
 
-Takes no body. Advances a recurring bill's `dueDate` by one `frequency` step and
-saves. It writes no transaction and does **not** set `lastPaidAt`.
+Takes no body (`{}` is accepted; any field is a `400`). Advances a recurring
+bill's `dueDate` by one `frequency` step and saves. It writes no transaction and
+does **not** set `lastPaidAt`.
 
 | Status | Message | Cause |
 |---|---|---|
-| 400 | `Only recurring bills can be skipped` | `recurring` is false. |
-| 400 | `This bill is already handled for this period` | `dueDate` is already in a later period than now. |
-| 404 | `Bill not found` | Not the caller's. |
+| 409 `conflict` | `Only recurring bills can be skipped` | `recurring` is false. |
+| 409 `conflict` | `This bill is already paid for this period` | `dueDate` is already in a later period than now. |
+| 404 `not_found` | `That bill doesn't exist any more` | Malformed, missing or not the caller's. |
 
 Returns `200` with the updated bill (`Bill skipped`).
 
@@ -1251,12 +1293,13 @@ Goals are returned as stored: `IGoal` in `packages/types/src/index.ts`
 | `color` | string | Optional. |
 | `deadline` | date | Optional. Coerced from an ISO string. |
 
-The body is `.strict()`; `saved` cannot be set. Returns `201`.
+The body is `.strict()`; `saved` cannot be set. Returns `201` (`Goal created`).
 
 ### PATCH /goals/{id}
 
 The same fields, all optional, and `deadline: null` clears the deadline. Returns
-`200` with the updated goal, or `404 Goal not found`.
+`200` with the updated goal (`Goal updated`), or `404` `not_found`, `That goal
+doesn't exist any more`.
 
 **Note**
 `saved` is not re-clamped when `target` is lowered, so a goal can hold
@@ -1264,8 +1307,9 @@ The same fields, all optional, and `deadline: null` clears the deadline. Returns
 
 ### DELETE /goals/{id}
 
-Returns `200` with `data: null`, or `404 Goal not found`. Past contribution logs
-are kept; a review that still references them names the goal `Goal`.
+Returns `200` with `data: null` (`Goal deleted`), or `404` `not_found`. Past
+contribution logs are kept; a review that still references them names the goal
+`Goal`.
 
 ### POST /goals/{id}/contribute
 
@@ -1276,7 +1320,7 @@ are kept; a review that still references them names the goal `Goal`.
 `saved` becomes `min(saved + amount, target)`, so a goal reaches 100% and never
 exceeds it. The mobile Contribute sheet validates against the remaining amount
 and turns an over-contribution into an inline message instead of a server error.
-Returns `200` with the updated goal.
+Returns `200` with the updated goal (`Contribution added`).
 
 Side effects:
 
@@ -1339,16 +1383,18 @@ A bad `page` or `limit` (for example `?limit=500` or `?page=abc`) is a `400`
 
 ### PATCH /notifications/{id}/read
 
-Takes no body. Returns `{ notification, unread }` with the updated notification
-and the new unread count, so the client never has to guess the badge.
-Idempotent: marking an already-read notification read again succeeds and
-preserves the original `readAt`. A notification belonging to another user is a
-`404 Notification not found`, not a 403. A malformed ID is a `400` through the
-Mongoose cast handler.
+Takes no body (`{}` is accepted; any field is a `400`). Returns
+`{ notification, unread }` with the updated notification and the new unread
+count, so the client never has to guess the badge (`Notification marked as
+read`). Idempotent: marking an already-read notification read again succeeds and
+preserves the original `readAt`. A notification belonging to another user, a
+missing one or a malformed id is a `404` `not_found`, `That notification doesn't
+exist any more`, not a 403.
 
 ### POST /notifications/read-all
 
-Takes no body. Returns `{ unread: 0 }`.
+Takes no body (`{}` is accepted; any field is a `400`). Returns `{ unread: 0 }`
+(`Notifications marked as read`).
 
 ## Recurring suggestions
 
@@ -1441,7 +1487,7 @@ the client fan out across resources. `data` is `DashboardSummary`.
 | `savings` | integer | `income - expenses`. May be negative. |
 | `netWorth` | integer | Paise. Sum of `balance` over all of the caller's non-archived accounts of every type (cards negative, investments and person accounts included). Always *now*, whatever `month` says. |
 | `netWorthTrend` | `{ label, total }[]` | Oldest first. The current total plus up to 3 prior month-start boundaries, floored to actual history, so length 1 for an account younger than a complete month. Labels read like `Nov 2026`. Anchored on now, not on `month`. |
-| `flowTrend` | `{ label, income, expense }[]` | Same window as `netWorthTrend`, one entry per month, with the requested month's own totals appended last. |
+| `flowTrend` | `{ label, income, expense }[]` | Oldest first, as long as `netWorthTrend`: the complete month before each of its boundaries (up to 3, labelled like `Nov 2026`), then the requested month's own totals last. Before 2.8.1 the current month appeared twice and the oldest month not at all. |
 | `currentStreak` | integer | Consecutive zone-local days with at least one logged transaction, ending today or yesterday. Anything except an adjustment counts (transfers and trip rows included). Looks back 400 days. |
 | `weekIncome`, `weekExpense` | integer | Paise for the current Monday-start zone-local week, regardless of `month`. |
 | `biggestExpense` | object \| null | `{ title, amount, occurredAt }` — the single largest expense in the month, trips included. `null` when the month has no expenses. |
@@ -1581,8 +1627,8 @@ A positive `offset` is rejected with a 400. See
 `byCategory` excludes trip spending from the real categories and adds **one**
 extra slice instead: `{ categoryId: "trips", name: "Trips", total, children }`,
 with each trip as a child. `"trips"` is not a category ID. The app routes a tap on
-it to Trips, and `GET /insights/category/trips` does not resolve (a malformed ID
-is a `400` through the Mongoose cast handler; UNVERIFIED: the exact message). Other
+it to Trips, and `GET /insights/category/trips` does not resolve (a malformed id
+in the path is a `404` `not_found`, `That category doesn't exist any more`). Other
 figures in the same response, listed in
 [Findings for the maintainer](#findings-for-the-maintainer), still include trips.
 
@@ -1590,8 +1636,8 @@ figures in the same response, listed in
 
 `data` is `InsightsCategoryDetail`. Every figure is rolled up (the category plus
 its children), matching the row that led here and what a budget on the category
-governs. Archived categories are allowed; another user's or an unknown one is a
-`404 Category not found`.
+governs. Archived categories are allowed; another user's, an unknown one or a
+malformed id is a `404` `not_found`, `That category doesn't exist any more`.
 
 | Field | Type | Description |
 |---|---|---|
@@ -2027,17 +2073,13 @@ contributions, redemptions, **and value updates**. The ordinary
 `GET /transactions` list hides adjustments, which is why this exists. Capped at
 the latest 200; there is no pagination.
 
-The response is an array of transaction documents, not a shaped payload.
+The response is an array of transaction documents, not a shaped payload, message
+`Investment history fetched`.
 
 | Case | Response |
 |---|---|
-| `id` is not an ObjectId | `400`, `Invalid investment id`. |
-| No transactions, or not the caller's | `200` with `[]`. |
-
-**Known issue**
-The id is not checked to be an investment, or to be live. Any of the caller's
-account ids, archived or not, returns that account's transactions; an unknown id
-returns `[]` rather than `404`.
+| A holding of the caller's, live or archived | `200`, newest first. `[]` if nothing is recorded on it. |
+| Malformed id, missing, another user's, or an account that isn't a holding | `404` `not_found`, `That holding doesn't exist any more`. |
 
 ### PATCH /investments/{id}/basis
 
@@ -2054,15 +2096,15 @@ correction. All fields optional; unknown fields are a `400`.
 When `invested` is sent, the server computes
 `opening = invested − (transfers in − transfers out)` over every transfer that
 touches the holding and stores it as `startingBalance`. If `opening` would be
-negative the request fails with
-`Invested can't be less than the ₹X already added here`.
+negative the request fails with `400` `invalid_input`,
+`Invested can't be less than what's already been added here` (no amount: the
+message may show while privacy mode is on).
 
 | Case | Response |
 |---|---|
-| Success | `200`, message `Investment updated`, data is the whole updated account document. |
-| Invalid id | `400`, `Invalid investment id`. |
-| Not an investment, archived, or not the caller's | `404`, `Investment not found`. |
-| `opening < 0`, a future `investedSince`, or a bad field | `400`. |
+| Success | `200`, message `Holding updated`, data is the whole updated account document. |
+| Malformed id, not an investment, archived, or not the caller's | `404` `not_found`, `That holding doesn't exist any more`. |
+| `opening < 0`, a future `investedSince`, or a bad field | `400` `invalid_input`. |
 
 **Note**
 `investedSince` and `investedHow` feed the
@@ -2099,9 +2141,9 @@ In both modes:
 
 | Case | Response |
 |---|---|
-| Success | `200`, message `Investment deleted`, `{ "removedTransactions": 4, "removedBills": 1 }`. |
-| Invalid id | `400`, `Invalid investment id`. |
-| No such investment for the caller | `404`, `Investment not found`. |
+| Success | `200`, message `Holding deleted`, `{ "removedTransactions": 4, "removedBills": 1 }`. |
+| Malformed id, or no such holding for the caller | `404` `not_found`, `That holding doesn't exist any more`. |
+| `mode` missing or not `undo` / `keep` | `400` `invalid_input`. |
 
 `removedTransactions` counts deleted rows only. Transfers rewritten as
 corrections in `keep` mode are not counted.
@@ -2137,8 +2179,8 @@ the everyday Activity list leave them out.
 | `POST` | `/trips/{id}/import/preview` | Reads a Splitwise CSV and says what it means. Saves nothing. |
 | `POST` | `/trips/{id}/import/commit` | Applies the approved rows. |
 
-An invalid `id` is `400` (`Invalid trip id`); a trip that is not the caller's is
-`404` (`Trip not found`).
+A malformed, missing or another user's `id` is `404` `not_found` (`That trip
+doesn't exist any more`).
 
 ### People and accounts
 
@@ -2179,8 +2221,8 @@ which is what an export needs. The same parameter is accepted by
 
 **Important**
 Rows with a `tripExpenseId` cannot be edited or deleted through
-`/transactions/{id}`: `PATCH` and `DELETE` there return `400`,
-`This is part of a trip expense — change it from the trip`. Settle-up,
+`/transactions/{id}`: `PATCH` and `DELETE` there return `409` `conflict`,
+`This is part of a trip expense. Change it from the trip`. Settle-up,
 let-go, and plan rows carry a `tripId` but no `tripExpenseId`.
 
 ### Split modes
@@ -2270,13 +2312,12 @@ Creates a trip. `201`, message `Trip created`.
 | `emoji` | string | Optional, at most 8 characters. |
 | `color` | string | Optional, at most 20 characters. |
 | `startDate` | date | Required. |
-| `endDate` | date | Required. Before `startDate` is `400`, `The trip can't end before it starts`. |
-| `members` | string[] | Required, at most 30 ids. Each must be one of the caller's non-archived person accounts, else `400`, `Everyone on a trip must be one of your people`. Duplicates are collapsed. May be empty. |
+| `endDate` | date | Required. Before `startDate` is `400` `invalid_input`, `The trip can't end before it starts`. |
+| `members` | string[] | Required, at most 30 ids. Each must be one of the caller's non-archived person accounts, else `400` `invalid_reference`, issue path `members.<n>`. Duplicates are collapsed. May be empty. |
 | `budget` | integer \| null | Optional. Paise, at least 0. |
 
-The response data is the stored trip document, not the `Trip` shape above.
-UNVERIFIED: the exact JSON (no custom `toJSON` was found, so it should carry
-`userId`, `updatedAt`, and `__v` in addition to the `Trip` fields).
+The response data is the stored trip document, minus `userId` and `__v` (as
+every reply, `utils/dto.ts`): the `Trip` fields plus `updatedAt`.
 
 ### GET /trips/{id}
 
@@ -2327,8 +2368,14 @@ Same fields and limits as `POST /trips`, all optional, unknown fields rejected.
   other date.
 - A person cannot be removed from `members` if they are the payer of, or in the
   shares of, any expense, or are the account on any transaction of the trip:
-  `400`, `Someone you're removing is already in this trip's expenses`.
+  `409` `conflict`, `Someone you're removing is already in this trip's expenses`.
 - Allowed on a closed trip.
+
+A malformed, missing or another user's trip id is a `404` `not_found`, `That
+trip doesn't exist any more`, on every route below; a malformed or foreign
+expense id is `That expense doesn't exist any more`. Changes to a closed trip's
+expenses or an import are a `409` `conflict`, `This trip is closed. Reopen it to
+make changes`.
 
 ### DELETE /trips/{id}
 
@@ -2340,18 +2387,17 @@ message `Trip deleted`. Allowed on a closed trip.
 ### POST /trips/{id}/expenses
 
 Adds an expense. `201`, message `Expense added`, with the stored `TripExpense`.
-Rejected with `400` (`This trip is closed — reopen it to make changes`) on a
-closed trip.
+Refused with `409` on a closed trip.
 
 | Field | Type | Constraints |
 |---|---|---|
 | `title` | string | Required, trimmed, 1 to 80 characters. |
 | `occurredAt` | date | Required. |
-| `category` | string \| null | Optional. Must be one of the caller's `expense` categories, else `400`, `Category not found`. |
+| `category` | string \| null | Optional. Must be one of the caller's `expense` categories, else `400` `invalid_reference`. |
 | `cost` | integer | Required. Paise, above 0. |
-| `paidBy` | string \| null | **Required key.** `null` means you; otherwise a trip member. |
-| `paidFrom` | string \| null | Required, non-null, when you paid: one of your live `bank`, `cash`, `wallet`, or `credit_card` accounts, else `400`, `Pick one of your own accounts`. Ignored (stored `null`) when a friend paid. |
-| `shares` | `{ account: string \| null, amount: integer }[]` | 1 to 31 entries. See [Split modes](#split-modes). |
+| `paidBy` | string \| null | **Required key.** `null` means you; otherwise a trip member (`400` `invalid_reference` if not). |
+| `paidFrom` | string \| null | Required, non-null, when you paid (`400`, `Pick the account you paid from`): one of your live `bank`, `cash`, `wallet`, or `credit_card` accounts, else `400` `invalid_reference`, `The account you paid from isn't one of your accounts any more. Pick another`. Ignored (stored `null`) when a friend paid. |
+| `shares` | `{ account: string \| null, amount: integer }[]` | 1 to 31 entries, adding up to `cost` (`The shares must add up to the amount`), nobody twice. See [Split modes](#split-modes). |
 
 The source is set to `manual`.
 
@@ -2360,27 +2406,29 @@ The source is set to `manual`.
 Replaces an expense, despite the method: the body is the **full** expense body
 above, not a partial one. The old ledger rows are removed and new ones written
 in one transaction. `200`, message `Expense updated`, with the stored
-`TripExpense`. `404` (`Expense not found`) if the expense is not on this trip;
-`400` on a closed trip. `source` and the import fingerprint are unchanged.
+`TripExpense`. `404` if the expense is not on this trip; `409` on a closed
+trip. `source` and the import fingerprint are unchanged.
 
 ### DELETE /trips/{id}/expenses/{expenseId}
 
 Reverts and deletes the expense's rows, then the expense. `200`, `data: null`,
-message `Expense deleted`. `404` if not found; `400` on a closed trip.
+message `Expense deleted`. `404` if not found; `409` on a closed trip.
 
 ### POST /trips/{id}/settle
 
 Records money changing hands between you and a friend. It is a `transfer`
 between your account and their person account, never spending. `200`,
-`data: null`, message `Settled`.
+`data: null`, message `Settle-up saved` (`Settle-up already saved` when a
+`clientId` that already landed is sent again).
 
 | Field | Type | Constraints |
 |---|---|---|
-| `person` | string | Required. Must be on the trip, else `400`, `They aren't on this trip`. |
+| `person` | string | Required. Must be on the trip, else `400` `invalid_reference`, `Person isn't one of your people on this trip any more. Pick another`. |
 | `account` | string | Required. One of your own accounts (as for `paidFrom`). |
 | `amount` | integer | Required. Paise, above 0. |
 | `direction` | enum | `received`: they paid you, into `account`. `paid`: you paid them, from `account`. |
 | `occurredAt` | date | Optional. Defaults to now. |
+| `clientId` | string | Optional, 8–64 characters, not starting `sw:` or `plan:`. Makes a resend land once. |
 
 The row's note is `<Name> paid you back` or `You paid <Name> back`.
 
@@ -2401,11 +2449,11 @@ fetches anything from Splitwise.
 |---|---|---|
 | `entries` | `{ account: string, amount: integer }[]` | At most 30. `amount` is signed paise: positive means they pay you, negative means you pay them. Anyone **left out** pays 0. |
 
-Validation, each a `400`:
+Validation, each a `400` (`invalid_input` unless noted):
 
 | Rule | Message |
 |---|---|
-| Every account is a trip member. | `Everyone in the plan must be on the trip` |
+| Every account is a trip member. | `invalid_reference`, `A person in the plan isn't one of your people on this trip any more. Pick another` |
 | No account twice. | `Someone is in the plan twice` |
 | Amounts are integers. | `Amounts must be whole paise` |
 | The amounts sum to the trip's overall balance (the sum of exact balances). | `The amounts must add up to what you're owed overall` |
@@ -2421,7 +2469,7 @@ stores `plan = { savedAt, entries, signature }`, where `signature` fingerprints
 the expenses' ids, costs, payers, and shares (not settle-ups, which move the
 exact and planned balance by the same amount).
 
-`200`, `data: null`, message `Matched to Splitwise`. Allowed on a closed trip.
+`200`, `data: null`, message `Plan saved`. Allowed on a closed trip.
 
 `GET /trips/{id}` reports it as `plan`:
 
@@ -2439,13 +2487,14 @@ are adjustments, so they stay out of Activity and spending totals.
 ### DELETE /trips/{id}/plan
 
 Removes the plan's rows and unsets `plan`, leaving balances as the exact ledger
-has them. `200`, `data: null`, message `Back to the exact amounts`. Not an error
+has them. `200`, `data: null`, message `Plan cleared`. Not an error
 if there was no plan. Allowed on a closed trip.
 
 ### POST /trips/{id}/close
 
-Closes the trip. `200`, `data: null`, message `Trip closed`. `400` if already
-closed.
+Closes the trip. `200`, `data: null`, message `Trip closed`. `409` `conflict`,
+`This trip is already closed`, if already closed. A `letGo` id that isn't on
+the trip is `400` `invalid_reference`, issue path `letGo.<n>`.
 
 | Field | Type | Constraints |
 |---|---|---|
@@ -2496,28 +2545,32 @@ Limits and format rules:
 | Rule | Detail |
 |---|---|
 | Size | `csv` is a non-empty string of at most 2,000,000 characters. |
-| Header | Must start with `Date, Description, Category, Cost, Currency` (case-insensitive, in that order) and then at least two people, else `400`. |
+| Header | Must start with `Date, Description, Category, Cost, Currency` (case-insensitive, in that order) and then at least two people, else `400` `invalid_input`, issue path `csv`: `This doesn't look like a Splitwise export. It should start with Date, Description, Category, Cost, Currency` or `No people found in the file`. |
 | Rows | Every row needs a `YYYY-MM-DD` date and a cost above 0, else `400`, `Line N couldn't be read`. One bad row fails the whole file. |
 | Amounts | Rupees with up to two decimals, rounded to paise. The `Currency` column is read but **not checked**: everything is treated as INR. |
-| Trip | Must exist and be open: `400`, `This trip is closed — reopen it to import`. |
+| Trip | Must exist and be open: `409` `conflict`, `This trip is closed. Reopen it to make changes`. |
 
 #### POST /trips/{id}/import/preview
+
+Message `Import previewed`. Nothing is written by either form.
 
 | Field | Type | Constraints |
 |---|---|---|
 | `csv` | string | Required. |
-| `mapping` | object | Optional. File name to one of `"me"`, `"new"`, or a person account id. Keys at most 80 characters, values at most 40. |
+| `mapping` | object | Optional. File name (at most 80 characters) to `"me"`, `"new"`, or a person account id; anything else is `400` `invalid_reference`, `A person in the file isn't one of your people any more. Pick another`. |
 
-**Without `mapping`**, it returns the names and a guess, and saves nothing:
+**Without `mapping`**, it returns the names in file order and a guess:
 
 ```json
 { "needsMapping": true, "people": ["Sagnik", "Jai"], "suggested": { "Sagnik": "me", "Jai": "<accountId>" } }
 ```
 
-`suggested` matches you by your account name (full or first name) and friends by
-their person account name (full or first name); no match is `"new"`.
+`suggested` matches you by your profile name and friends by their live person
+account names: first by the whole name, ignoring case, spaces and punctuation,
+then by the first word alone (`Ravi` finds `Ravi Kumar`, `Test R.` finds `Test
+Runner`). No match, or only an archived person, is `"new"`.
 
-**With `mapping`**, one name must map to `"me"` (else `400`, `Pick which name is you`). It returns:
+**With `mapping`**, one name must map to `"me"` (else `400` `invalid_input`, issue path `mapping`, `Pick which name is you`). It returns:
 
 | Field | Type | Meaning |
 |---|---|---|
@@ -2554,7 +2607,7 @@ their person account name (full or first name); no match is `"new"`.
 | `skipped` | One of: `You're not in this one`, `A payment between others`, or `More than one person paid — add it by hand`. See `reason`. | Nothing. |
 | `isThisYours` | Moves nobody's balance (someone's own expense logged in the group). Off unless you say it is yours. | `account` to import it as your own expense. |
 | `settlement` | Someone paid you back, or you paid them. | `account`: where it landed or left. |
-| `matchesYours` | You paid, and it lines up (within 100 paise) with a **single** unsplit manual entry of yours, or with several of them that add up to it. | `action: "apply"` to give those entries this row's split, or `"import"` to add it new (also needs `account`). |
+| `matchesYours` | You paid, and it lines up (within 100 paise) with a **single** unsplit manual entry of yours, or with all your remaining unsplit entries when there are several and they add up to it. Each entry matches one row at most, in file order. An entry already split with someone never matches. | `action: "apply"` to give those entries this row's split, or `"import"` to add it new (also needs `account`). |
 | `pickAccount` | You paid and nothing of yours matches. | `account` you paid from. |
 | `lump` | A friend paid and the description is vague (`expense`, `misc`, `other`, `stuff`, `everything`, `group`) with no category guess. | Optionally `parts` to break it down. |
 | `ready` | A friend paid. Your share becomes spending, charged to them. | Nothing beyond `import`. |
@@ -2574,7 +2627,7 @@ Applies only what you approved: a row with no decision is **not** imported.
 | Field | Type | Constraints |
 |---|---|---|
 | `key` | string | At most 300. A row's `key`. An unknown key is ignored. |
-| `action` | enum | `import` \| `skip` \| `apply`. `apply` applies only to a `matchesYours` row; on any other row it behaves as `import`. |
+| `action` | enum | `import` \| `skip` \| `apply`. On a you-paid row, `apply` gives the row's split to whichever of your entries match it **at commit time** (the same rule as the preview, among entries not yet imported); if none match, the row is not imported. On any other row it behaves as `import`. |
 | `title` | string | Optional, at most 80, trimmed. |
 | `category` | string \| null | Optional. |
 | `account` | string \| null | Where you paid from (`pickAccount`, `isThisYours`, `matchesYours` imported as new) or where a settlement went. A row that needs one and has none is silently skipped. |
@@ -2595,7 +2648,7 @@ What commit does, in order:
 Each share is the row's file share for that person, scaled to the piece's cost,
 to the paisa (the last person takes the remainder).
 
-Response, `200`, message `Imported`:
+Response, `200`, message `Import saved`:
 
 | Field | Type | Meaning |
 |---|---|---|
@@ -2650,8 +2703,8 @@ because the backup was taken while it held. See
 
 ### POST /backup/restore
 
-Rate limit: **5 requests per IP per hour** (`restoreLimiter`). It runs before
-`protect`, so unauthenticated attempts from the same IP also spend the budget.
+Rate limit: **5 requests per IP per hour** (`restoreLimiter`). It runs after
+`protect`, so requests without a valid session don't spend the budget.
 The 429 is `rate_limited` with `Retry-After` and the message `Too many restores.
 Try again in an hour`, and it sends the standard `RateLimit-*` headers. The request body limit is 25 MB for the whole API
 (`express.json`), which is what lets a lifetime of transactions fit in one body.
@@ -2688,7 +2741,7 @@ Returns `200` (`Backup restored`) with `{ counts, user }`:
 | Field | Type | Description |
 |---|---|---|
 | `counts` | object | Documents inserted per kind: `accounts`, `categories`, `transactions`, `budgets`, `bills`, `goals`, `trips`, `tripExpenses`, and `goalContributionLogs` when the file has it. |
-| `user` | object | The user document, read fresh after commit. The app swaps it into its session, because `appZone()` reads `prefs.timeZone` from it. `password`, `resetToken`, `resetTokenExpiry` and `totpSecret` are stripped; other fields such as `pushToken` are not. |
+| `user` | object | The user document, read fresh after commit. The app swaps it into its session, because `appZone()` reads `prefs.timeZone` from it. Stripped like every user reply (see [POST /auth/register](#post-authregister)), `pushToken` included. |
 
 **Warning**
 This wipes the caller's data. A failure after the 400-level checks rolls back,
@@ -2720,8 +2773,8 @@ are masked to `₹…`.
 
 Open without a token, because a crash can happen on the login screen. It is
 therefore capped **per IP: 30 requests per hour**, so a crash loop on one phone
-cannot flood the log. Over the cap: `429` with `{ success: false, statusCode:
-429, message: "Too many reports", data: null }` and `RateLimit-*` headers.
+cannot flood the log. Over the cap: `429` `rate_limited`, `Too many reports`,
+with `Retry-After` and `RateLimit-*` headers.
 
 If an `Authorization: Bearer` header is present and valid, the report is
 attributed to that user. An invalid or expired token is ignored rather than
@@ -2736,7 +2789,7 @@ rejected.
 | `appVersion` | string | Optional. Up to 20 characters. Falls back to the `X-App-Version` header. |
 
 The body is `.strict()`. Returns `200` with `{ requestId }` and message
-`Reported`. The entry is written as `source: "app"`, to stdout as one JSON line
+`Report received`. The entry is written as `source: "app"`, to stdout as one JSON line
 and to `RequestLog` once the database is connected. The message is capped at 300
 characters and the stack at 6 lines and 1200 characters.
 
@@ -2784,7 +2837,9 @@ the user's financial health score.
 
 ### Other unauthenticated routes
 
-Every route under `/api/v1` requires a bearer token except these three:
+Every route under `/api/v1` requires a bearer token except these three. With
+`GET /health` they are the allowlist in `apps/api/test/http/route-matrix.test.ts`,
+which fails if any other mounted route answers without a token:
 
 | Method | Path | Notes |
 |---|---|---|
@@ -2792,8 +2847,8 @@ Every route under `/api/v1` requires a bearer token except these three:
 | `POST` | `/api/v1/auth/login` | Rate-limited, see [Auth](#auth). |
 | `POST` | `/api/v1/diagnostics/client-errors` | Rate-limited per IP, see [Diagnostics](#diagnostics). |
 
-An unknown path anywhere returns the standard error envelope with `404 Route not
-found`.
+An unknown path or method anywhere returns the standard error envelope with
+`404` `route_not_found`, `This part of the app needs an update`.
 
 ## Known issues
 
@@ -2805,14 +2860,15 @@ These are verified against the code and have **not** been fixed. They are listed
 2. **`POST /auth/register` returns the user, not a token**, and `DELETE /users/me` returns `200` with a body, not `204`. The old reference said otherwise on both. `response.noContent` sends `200`.
 3. **Registration accepts a bad `timeZone` as a 400**, not a fallback to the server default as the old reference stated. Only an omitted `timeZone` falls back.
 4. **Reorder endpoints do not enforce completeness.** Both reorder controllers' comments say the request must carry the whole list or set; the code checks only that each ID is live and owned, and not duplicated. Category reorder does not check that the IDs share a parent and kind.
-5. **`POST /transactions` does not validate `category` ownership, `kind` or archival state**, and does not check that `owedBy[].account` is a `person` account.
-6. **`PATCH /transactions/{id}` does no type-specific validation**: `toAccount` on an expense, `category` on a transfer, and `account === toAccount` on a transfer are all accepted. `occurredAt` is an unvalidated string on both create and patch.
+5. **Fixed in 2.8.0: `POST /transactions` checks `category`** (owner and `kind`) and that every `owedBy[].account` is a `person` account.
+6. **Fixed in 2.8.0: `PATCH /transactions/{id}` checks the edited row against its type's create rules**: no `toAccount` on an expense, no `category` or `title` on a transfer, `account` ≠ `toAccount`. `occurredAt` must be a readable date on both create and patch.
 7. **`authLimiter` is one shared counter** across register, login and change-password (10 per IP per 15 min), so a few failed logins exhaust the allowance for changing a password from the same IP.
-8. **`GET /users/me` does not check `deactivatedAt`**; only `GET /auth/me` does. A pre-deactivation token still reaches everything else for up to 7 days (documented and deliberate in the old reference).
+8. **Fixed in 2.8.0: a closed account's token is refused everywhere.** `protect` reads the user on every request; a closed account is `401` on every signed-in route, not only `GET /auth/me`.
 9. **Archiving an account does not clear `prefs.defaultAccount`** in `archiveAccount`. The mobile app clears it with a separate `PATCH /users/me`.
-10. **`POST /accounts` accepts `investmentKind`, `currentValue`, `investedSince` and `investedHow` for any account `type`.** `investmentKind` is stored regardless; the other three are silently ignored on non-investments.
+10. **Fixed in 2.8.0: `POST /accounts` refuses `investmentKind`, `currentValue`, `investedSince` and `investedHow` on any other `type`** (`400`, `… is only for investments`).
 11. **Bulk convert skips ineligible IDs silently** and returns only a count, so a caller cannot tell which IDs were skipped.
 12. **`GET /transactions` cannot return adjustments.** `type` allows only `expense`, `income` and `transfer`, yet the old reference said to pass `type` to see them, and the controller comment says exports still carry them. The mobile export omits them too, so a CSV or PDF ledger does not add up to account balances after a sync.
+13. **`PATCH /categories/reorder` names no field on a foreign or missing id.** It is the one `invalid_reference` answer without `issues` (`Some of those categories no longer exist`); accounts' reorder carries the path.
 
 ### Planning, insights and operations
 
@@ -2858,21 +2914,19 @@ are the odd one: they count as a logged day for the streak and `activeDays`, but
 not for the dashboard's `noSpendDays`, so the two no-spend definitions differ
 (`controllers/dashboardController.ts:194` against `services/reviewMath.ts:8`).
 
-**4. `GET /bills` status filter and derived status.**
-`controllers/billController.ts:23`-`:39`. Filters on the stored value, then
-rewrites it; recurring bills are never stored `paid`, so `?status=paid` never
-returns one, and one-off bills vanish from the list after the period they were
-paid in.
+**4. Fixed in 2.8.0: `GET /bills` filters on the status it shows.**
+`?status=paid` includes a recurring bill paid this period, and `?status=overdue`
+works. One-off bills still leave the list after the period they were paid in.
 
 **5. Bill catch-up.** `isFuturePeriod` is the only guard on pay and skip
-(`controllers/billController.ts:161`, `:280`), so a bill several periods behind
+(`controllers/billController.ts`), so a bill several periods behind
 advances one step per call, and the list reads `paid` while the due date is
 still in the past.
 
 **6. Paying a bill raises no budget alert.** `markBillPaid` writes an expense
-through `applyEffects` but never calls `checkBudgetAlerts`
-(`controllers/transactionController.ts:115`, `:400` are the only callers). The
-charged account's `type` and a bill's `account` field are not validated either.
+through `applyEffects` but never calls `checkBudgetAlerts` (only `POST` and
+`PATCH /transactions` do). The charged account's `type` is not validated; a
+bill's own `account` is, on create and update.
 
 **7. `flowTrend` label mismatch.** `controllers/dashboardController.ts:93`
 appends the current month under the `YYYY-MM` key while
@@ -2887,16 +2941,13 @@ past `month`, the appended point is that month's but the history still ends now.
 checks the category exists and is not archived; an income category, or a child
 of a category that already has a budget, is accepted.
 
-**10. Goal `deadline: null` on create.** UNVERIFIED (read from zod semantics,
-not executed): `schemas/goalSchema.ts:8` is `z.coerce.date().optional()`, so
-`null` would coerce to the epoch rather than being rejected. `PATCH` uses
-`.nullable()` and clears the field properly.
+**10. Fixed: goal `deadline: null` on create** is kept as `null`
+(`schemas/goalSchema.ts` uses `.nullable()` on create and update).
 
-**11. Restore limiter ordering and copy.** `routes/v1/backupRoutes.ts:9` puts
-`restoreLimiter` before `protect`, so anonymous traffic spends an IP's 5-per-hour
-budget, and the message (`middleware/rateLimiter.ts`) says "in a few minutes"
-for an hourly window. Restore also leaves `Notification`, `HighlightLog`,
-`GoalContributionLog` and `RecurringDismissal` untouched.
+**11. Restore leaves some collections alone.** `Notification`, `HighlightLog`,
+`RecurringDismissal`, and `GoalContributionLog` when the file has none, are not
+touched. (Fixed: the limiter now runs after `protect`, and its message says "in
+an hour".)
 
 **12. Stale statements in the previous reference.** `/health` returned only
 `{ ok: true }` (it now includes `db`); the budget month window was said to be UTC
@@ -2909,20 +2960,20 @@ inapplicable pillars are returned with `score: null`.
 
 These are real behaviours found while documenting, not changes made.
 
-1. **Fixed in 2.7.1: import commit idempotency.** Commit skips rows already on
+1. **Fixed in 2.8.0: import commit idempotency.** Commit skips rows already on
    the trip and runs as one transaction (see the commit section).
-2. **Fixed in 2.7.1: import commit trusted mapped account ids.** Every mapped id
+2. **Fixed in 2.8.0: import commit trusted mapped account ids.** Every mapped id
    must be one of the caller's live person accounts (`400` `invalid_reference`
    otherwise), checked before anything is written.
 3. **Identical file rows collapse.** Two rows with the same date, description,
    cost, and category share one `key`. Commit keeps one of them (the key map is
    built from rows), and preview treats both as imported once one is.
-4. **Fixed in 2.7.1: repeated commits with `"new"` created duplicate people.**
+4. **Fixed in 2.8.0: repeated commits with `"new"` created duplicate people.**
    A commit whose chosen rows are all imported already writes nothing, people
    included.
-5. **`GET /investments/{id}/history` does not validate the account.** Any of the
-   caller's accounts works, archived or not; unknown ids return `[]`, not `404`.
-   It also silently caps at 200 rows.
+5. **Fixed in 2.8.0: `GET /investments/{id}/history` checks the account.** A
+   malformed, missing, foreign or non-holding id is `404`; an archived holding
+   still answers. It silently caps at 200 rows.
 6. **`DELETE /investments/{id}` ignores `isArchived`; `PATCH .../basis` requires it
    be false.** An archived holding can be deleted but not re-based.
 7. **`lastUpdatedAt` counts any adjustment**, including a plain balance
@@ -2941,9 +2992,9 @@ These are real behaviours found while documenting, not changes made.
 11. **`PATCH /trips/{id}` and `DELETE /trips/{id}` are allowed on a closed trip**,
     though expenses and import are not. Settle and plan are also allowed, which
     appears intentional (documented in code).
-12. **Trip create and update return the raw stored document**, while list and
-    detail return the `ITrip` DTO. Fields such as `userId`, `updatedAt`, `__v`
-    (and `plan`, for `PATCH`) can appear in the first two. UNVERIFIED as above.
+12. **Fixed: trip create and update drop `userId` and `__v`** like every reply
+    (`utils/dto.ts`). They still return the stored document (with `updatedAt`,
+    and `plan` on `PATCH`), while list and detail return the `ITrip` DTO.
 13. **A row with a non-positive cost fails the whole Splitwise file** with
     `Line N couldn't be read`, since the parser rejects any `cost` of 0 or less.
 14. **`settleUp` loads the person with `Account.findById(body.person)`**, with no

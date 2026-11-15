@@ -4,7 +4,8 @@ Scripts that prove an API change broke nothing. Run them from `apps/api`. Each o
 API starts its own (`DISABLE_REMINDERS=true`, a free loopback port, from this tree or
 `--api-dir <checkout>/apps/api`), checks the startup log says `save-n-spend-dev` before sending
 anything, and stops it when done. One API at a time; never point them at prod. Results go to
-`.audit/guards/` in the repo root.
+`.audit/guards/` in the repo root. They are the release-time checks; the HTTP, race and
+idempotency tests run in `npm test` against an in-memory database (`docs/testing.md`).
 
 | Guard | Command | What it proves | Exit 1 when |
 |---|---|---|---|
