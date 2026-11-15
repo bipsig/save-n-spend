@@ -10,6 +10,7 @@ import { haptics } from "@/lib/haptics";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { toast } from "@/store/toast";
 import { spacing } from "@/theme";
+import { signTone } from "@/lib/signTone";
 
 /** What each row needs to frame a revaluation as investment growth, not an account reset. */
 export type RevalueHolding = {
@@ -126,7 +127,7 @@ const RevalueSheet = forwardRef<BottomSheetModal, Props>(({ holdings, onSaved },
                 Invested {formatMoney(h.invested)} · now {formatMoney(h.current)}
               </AppText>
               {growth !== null && (
-                <AppText size="xs" weight="bold" color={growth >= 0 ? "success" : "danger"}>
+                <AppText size="xs" weight="bold" color={signTone(growth)}>
                   {growth >= 0 ? "▲ " : "▼ "}{formatMoney(Math.abs(growth))} growth
                 </AppText>
               )}

@@ -29,6 +29,7 @@ import type { InvestmentHolding } from "@save-n-spend/types";
 import type { IconName } from "@/lib/icons";
 import { chartPalette, chartOthers, colors, radius, spacing } from "@/theme";
 import { chipTintFor } from "@/theme/gradients";
+import { signTone } from "@/lib/signTone";
 
 const GroupLabel = ({ children }: { children: string }) => (
   <AppText size="xs" weight="bold" color="inkDim" style={styles.groupLabel}>
@@ -36,7 +37,7 @@ const GroupLabel = ({ children }: { children: string }) => (
   </AppText>
 );
 
-const gainColor = (n: number) => (n > 0 ? "success" : n < 0 ? "danger" : "inkDim");
+const gainColor = (n: number) => signTone(n);
 const gainStr = (n: number) => `${n > 0 ? "▲ " : n < 0 ? "▼ " : ""}${formatMoney(Math.abs(n))}`;
 
 const HoldingRow = ({ h, onPress }: { h: InvestmentHolding; onPress: () => void }) => {

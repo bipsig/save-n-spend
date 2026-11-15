@@ -25,6 +25,7 @@ import { usePendingDeletes } from "@/store/pendingDeletes";
 import { rangeBounds, rangeNavLabel } from "@/lib/dateRange";
 import { useAppZone } from "@/lib/zone";
 import { colors, radius, spacing } from "@/theme";
+import { signTone } from "@/lib/signTone";
 
 const SEGMENTS: { key: InsightsPeriod; label: string }[] = [
   { key: "day", label: "Day" },
@@ -141,8 +142,8 @@ const CategoryInsightsScreen = () => {
               {formatMoney(data.total)}
             </AppText>
             {data.previousTotal > 0 && (
-              <AppText size="sm" weight="bold" color={delta <= 0 ? "success" : "danger"}>
-                {`${delta > 0 ? "+" : "−"}${Math.abs(Math.round(delta))}%`}
+              <AppText size="sm" weight="bold" color={signTone(delta, { goodWhen: "down" })}>
+                {`${delta > 0 ? "+" : delta < 0 ? "−" : ""}${Math.abs(Math.round(delta))}%`}
               </AppText>
             )}
           </View>

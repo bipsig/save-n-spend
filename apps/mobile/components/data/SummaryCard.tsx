@@ -22,6 +22,8 @@ type Props = {
    * dashboard that could not be looked at.
    */
   amount: number
+  /** For a net (Savings): see lib/signTone. Every other tile's figure stays `ink`. */
+  amountColor?: ColorToken
   caption?: string
   captionColor?: ColorToken
   /**
@@ -47,6 +49,7 @@ const SummaryCard = ({
   iconBg = "accentSoft",
   label,
   amount,
+  amountColor,
   caption,
   captionColor = "gray500",
   onPress,
@@ -88,7 +91,7 @@ const SummaryCard = ({
       {/* One line, ellipsised rather than wrapped. A flex item is never squeezed below the
           width of its own content, so a long figure would push its tile wider than the one
           beside it — which is how two tiles in a row stopped being the same size. */}
-      <Money value={amount} weight="black" size="lg" numberOfLines={1} />
+      <Money value={amount} weight="black" size="lg" color={amountColor} numberOfLines={1} />
       {trend && <Sparkline values={trend} goodDirection={trendGoodDirection} />}
       {/* Exactly one line high whether or not there is a caption, hence the fixed height
           and not a minimum: an empty Text has no line box, so a reserved minimum still came

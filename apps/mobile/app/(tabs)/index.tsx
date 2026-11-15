@@ -16,6 +16,7 @@ import Fab from "@/components/ui/Fab";
 import TransactionRow from "@/components/rows/TransactionRow";
 import NetWorthSheet from "@/components/sheets/NetWorthSheet";
 import { usePrivacyMask } from "@/lib/money";
+import { signTone } from "@/lib/signTone";
 import { radius, spacing } from "@/theme";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useDashboardSummary, useDashboardInsights } from "@/lib/dashboard";
@@ -416,6 +417,7 @@ const HomeScreen = () => {
             iconBg="infoSoft"
             label="Savings"
             amount={dashboardSummary.savings}
+            amountColor={signTone(dashboardSummary.savings, { neutral: "ink" })}
             caption={savingsCaption}
             captionColor="info"
             onPress={() => router.push("/insights")}

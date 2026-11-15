@@ -31,8 +31,9 @@ import TrendsView from "@/components/investments/TrendsView";
 import type { IconName } from "@/lib/icons";
 import { colors, spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
+import { signTone } from "@/lib/signTone";
 
-const gainColor = (n: number): ColorToken => (n > 0 ? "success" : n < 0 ? "danger" : "inkDim");
+const gainColor = (n: number): ColorToken => signTone(n);
 
 type HistoryRow = { icon: IconName; tint: ColorToken; soft: ColorToken; title: string; amt: string; amtColor: ColorToken };
 

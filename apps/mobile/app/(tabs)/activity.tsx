@@ -31,6 +31,7 @@ import { dayKey, monthKeyOf, useAppZone } from "@/lib/zone";
 import { useOutbox } from "@/store/outbox";
 import { usePendingDeletes } from "@/store/pendingDeletes";
 import { colors, radius, spacing } from "@/theme";
+import { signTone } from "@/lib/signTone";
 
 // A flat feed row is either a transaction or a group header injected between days
 // (and a heavier month break when the list spans months).
@@ -113,7 +114,7 @@ const SummaryCard = ({
         <AppText color="inkDim" size="xs">
           Net Savings
         </AppText>
-        <AppText size="lg" weight="black" style={styles.netAmount}>
+        <AppText size="lg" weight="black" color={pending ? "ink" : signTone(savings, { neutral: "ink" })}>
           {money(savings)}
         </AppText>
       </View>
@@ -688,9 +689,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-  },
-  netAmount: {
-    color: "#8EFFC9", // spec — pale green net savings
   },
 });
 

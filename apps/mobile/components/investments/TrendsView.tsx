@@ -8,6 +8,7 @@ import PressableScale from "@/components/ui/PressableScale";
 import { compactMoney } from "@/lib/investments";
 import { usePrivacyMask } from "@/lib/money";
 import { colors, radius, spacing } from "@/theme";
+import { signTone } from "@/lib/signTone";
 
 export const ALL_SCOPE = "all";
 type Range = 6 | 12 | 0;
@@ -63,7 +64,7 @@ const TrendsView = ({ trend, initialScope = ALL_SCOPE, locked = false }: Props) 
     ? new Date(holding.lastUpdatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })
     : null;
   const money = (n: number | null, signed = true) => (n === null ? "—" : masked ? "••" : compactMoney(n, signed));
-  const tone = (n: number | null) => (n === null || n === 0 ? "inkDim" : n > 0 ? "success" : "danger");
+  const tone = (n: number | null) => (n === null ? "inkDim" : signTone(n));
 
   return (
     <Pressable style={styles.wrap} onPress={() => setTip(null)}>

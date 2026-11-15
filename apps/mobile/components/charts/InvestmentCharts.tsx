@@ -7,13 +7,14 @@ import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { compactMoney } from "@/lib/investments";
 import { useScrubTick } from "@/lib/useScrubTick";
 import { colors, spacing } from "@/theme";
+import { signTone } from "@/lib/signTone";
 
 const VIOLET = "#B0A2FF";
 const AXIS_W = 46;
 const PAD_L = 8;
 
 const signed = (n: number) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${formatMoney(Math.abs(n))}`;
-const tone = (n: number) => (n > 0 ? "success" : n < 0 ? "danger" : "inkDim");
+const tone = (n: number) => signTone(n);
 
 /** The last `n` entries — the chart range. */
 export const lastN = <T,>(xs: T[], n: number): T[] => (xs.length > n ? xs.slice(xs.length - n) : xs);

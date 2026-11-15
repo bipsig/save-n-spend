@@ -47,6 +47,7 @@ import {
 import { useHighlights } from "@/lib/highlights";
 import { useAppZone } from "@/lib/zone";
 import { colors, radius, spacing, incomeColor, expenseColor } from "@/theme";
+import { signTone, toneSoft } from "@/lib/signTone";
 
 const SEGMENTS: { key: InsightsPeriod; label: string }[] = [
   { key: "day", label: "Day" },
@@ -89,21 +90,21 @@ const Delta = ({
   pill?: boolean;
 }) => {
   const rounded = Math.round(value);
-  const good = goodWhen === "down" ? rounded <= 0 : rounded >= 0;
+  const tone = signTone(rounded, { goodWhen });
   const sign = rounded > 0 ? "+" : rounded < 0 ? "−" : "";
   const text = `${sign}${Math.abs(rounded)}% vs ${vs}`;
 
   if (!pill) {
     return (
-      <AppText size="xs" weight="semibold" color={good ? "success" : "danger"}>
+      <AppText size="xs" weight="semibold" color={tone}>
         {text}
       </AppText>
     );
   }
 
   return (
-    <View style={[styles.pill, { backgroundColor: good ? "rgba(52,224,161,0.16)" : "rgba(255,107,116,0.16)" }]}>
-      <AppText size="xs" weight="bold" color={good ? "success" : "danger"}>
+    <View style={[styles.pill, { backgroundColor: colors[toneSoft(tone)] }]}>
+      <AppText size="xs" weight="bold" color={tone}>
         {text}
       </AppText>
     </View>
@@ -295,8 +296,8 @@ const InsightsScreen = () => {
             <AppText size="lg" weight="black">
               {formatMoney(pace.atCurrentEnd.current)}
             </AppText>
-            <AppText size="sm" weight="semibold" color={paceDelta <= 0 ? "success" : "danger"}>
-              {`${paceDelta > 0 ? "+" : "−"}${formatMoney(Math.abs(paceDelta))}`}
+            <AppText size="sm" weight="semibold" color={signTone(paceDelta, { goodWhen: "down" })}>
+              {`${paceDelta > 0 ? "+" : paceDelta < 0 ? "−" : ""}${formatMoney(Math.abs(paceDelta))}`}
             </AppText>
           </View>
           {/* Says what the figure above is measured against, because "so far" is the whole

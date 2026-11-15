@@ -3,6 +3,7 @@ import { AppText } from "@/components/ui/AppText";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import type { CompareRow } from "@/lib/insights";
 import { colors } from "@/theme";
+import { signTone } from "@/lib/signTone";
 
 type Props = {
   rows: CompareRow[];
@@ -30,8 +31,8 @@ const Change = ({ row }: { row: CompareRow }) => {
   // Spending less is the good direction, so down is green. A rounded 0 keeps its real sign
   // off the bar rather than claiming no change.
   return (
-    <AppText size="xs" weight="semibold" color={row.delta <= 0 ? "success" : "danger"}>
-      {`${row.delta > 0 ? "+" : "−"}${Math.abs(pct)}%`}
+    <AppText size="xs" weight="semibold" color={signTone(row.delta, { goodWhen: "down" })}>
+      {`${row.delta > 0 ? "+" : row.delta < 0 ? "−" : ""}${Math.abs(pct)}%`}
     </AppText>
   );
 };

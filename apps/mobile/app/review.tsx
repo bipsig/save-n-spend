@@ -16,6 +16,7 @@ import { useReview } from "@/lib/reviews";
 import formatMoney from "@/lib/money";
 import { barGradients } from "@/theme/gradients";
 import { colors, radius, spacing } from "@/theme";
+import { signTone } from "@/lib/signTone";
 
 const GroupLabel = ({ children }: { children: string }) => (
   <AppText size="xs" weight="bold" color="inkDim" style={styles.groupLabel}>
@@ -25,15 +26,14 @@ const GroupLabel = ({ children }: { children: string }) => (
 
 /** "up 8%" / "down 3%" / null — null when there's no real previous figure to compare
  *  against (a brand-new account's first tracked period). */
-const pctDelta = (current: number, previous: number): { text: string; good: boolean } | null => {
+const pctDelta = (current: number, previous: number): { text: string; pct: number } | null => {
   if (previous <= 0) return null;
   const pct = Math.round(((current - previous) / previous) * 100);
-  if (pct === 0) return { text: "same as last time", good: true };
-  return { text: `${pct > 0 ? "up" : "down"} ${Math.abs(pct)}%`, good: pct >= 0 };
+  if (pct === 0) return { text: "same as last time", pct };
+  return { text: `${pct > 0 ? "up" : "down"} ${Math.abs(pct)}%`, pct };
 };
 
-const Stat = ({ label, amount, delta, deltaGoodIsUp = true }: { label: string; amount: number; delta: { text: string; good: boolean } | null; deltaGoodIsUp?: boolean }) => {
-  const good = delta ? (deltaGoodIsUp ? delta.good : !delta.good) : true;
+const Stat = ({ label, amount, delta, deltaGoodIsUp = true }: { label: string; amount: number; delta: { text: string; pct: number } | null; deltaGoodIsUp?: boolean }) => {
   return (
     <View style={styles.stat}>
       <Money value={amount} weight="black" size="md" numberOfLines={1} />
@@ -41,7 +41,7 @@ const Stat = ({ label, amount, delta, deltaGoodIsUp = true }: { label: string; a
         {label}
       </AppText>
       {delta && (
-        <AppText size="xs" weight="bold" color={good ? "success" : "danger"}>
+        <AppText size="xs" weight="bold" color={signTone(delta.pct, { goodWhen: deltaGoodIsUp ? "up" : "down" })}>
           {delta.text}
         </AppText>
       )}
@@ -168,7 +168,7 @@ const ReviewScreen = () => {
                 <AppText
                   size="sm"
                   weight="bold"
-                  color={review.netWorth.total >= review.netWorth.previousTotal ? "success" : "danger"}
+                  color={signTone(review.netWorth.total - review.netWorth.previousTotal)}
                   style={styles.netWorthDelta}
                 >
                   {review.netWorth.total >= review.netWorth.previousTotal ? "up " : "down "}
@@ -209,7 +209,7 @@ const ReviewScreen = () => {
                   </View>
                   <View style={styles.statDivider} />
                   <View style={styles.stat}>
-                    <AppText size="md" weight="black" color={review.investments.portfolioChange >= 0 ? "success" : "danger"}>
+                    <AppText size="md" weight="black" color={signTone(review.investments.portfolioChange, { neutral: "ink" })}>
                       {review.investments.portfolioChange >= 0 ? "▲ " : "▼ "}{formatMoney(Math.abs(review.investments.portfolioChange))}
                     </AppText>
                     <AppText size="xs" weight="bold" color="inkDim" style={styles.statLabel}>Portfolio</AppText>
