@@ -23,6 +23,7 @@ and hairlines inside a component's own `StyleSheet`.
 - [Chart conventions](#chart-conventions)
 - [Component reference](#component-reference)
 - [Styling conventions](#styling-conventions)
+- [Server messages](#server-messages)
 
 ## Import tokens
 
@@ -398,3 +399,27 @@ ends up hidden behind the keyboard.
 - Comments in this codebase explain *why*, and cite the design spec where a
   value comes from one (`// spec .flabel`). Match that density — do not narrate
   what the code already says.
+
+## Server messages
+
+The app shows an API error's `message` as it is (followed by ` · Ref <id>`), so
+the server writes it like app copy. The rules, enforced by
+`styleProblems()` in `apps/api/src/utils/messages.ts`:
+
+1. One plain sentence in sentence case. No `!`, no trailing full stop, and `. `
+   between two sentences, never ` — `.
+2. Say what's wrong in the app's words (account, person, holding, category,
+   bill), then what to do if that isn't obvious: `This trip is closed. Reopen it
+   to make changes`.
+3. Never a field name (`_id`, `toAccount`), an id, an amount (privacy mode hides
+   amounts, and a message would leak one), library text (`Required`, `Expected
+   number, received string`) or HTTP words.
+4. One helper per situation, so the same case always reads the same:
+   `notFound(thing)`, `invalidReference(label, things)`, `duplicate(thing)`,
+   `conflict(what, whatToDo)`.
+5. Field-level sentences come from one error map (`schemas/errorMap.ts`) that
+   labels each field in the app's words (`occurredAt` is "Date", `owedBy.1.amount`
+   is "What each person owes"), so a schema needs its own message only when the
+   generic one wouldn't say enough.
+
+Like the app's own copy, a server message never names a schedule time.

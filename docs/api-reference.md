@@ -14,6 +14,7 @@ Every monetary field is an **integer number of paise**. See
 ## Topics
 
 - [Common request headers](#common-request-headers)
+- [Errors](#errors)
 - [Auth](#auth)
 - [Users](#users)
 - [Accounts](#accounts)
@@ -48,6 +49,68 @@ Request bodies are validated with `.strict()` Zod objects in most resources.
 An unrecognized field is a 400, not a silently ignored key. This is deliberate:
 it catches a renamed field at the call site instead of after the write.
 
+## Errors
+
+Every error has one shape. `message` is one plain sentence for a person (the
+2.6.0 and 2.7.x apps show it, followed by ` · Ref <requestId>`); `code` is for
+code to branch on; `issues` lists every field at fault.
+
+```json
+{
+  "success": false,
+  "statusCode": 400,
+  "code": "invalid_input",
+  "message": "Amount must be more than zero",
+  "issues": [{ "path": "amount", "message": "Amount must be more than zero" }],
+  "data": null,
+  "requestId": "7K2QXB"
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `code` | `ApiErrorCode` | From the closed list below, exported by `@save-n-spend/types`. |
+| `message` | string | One sentence. See the rules below. For `invalid_input` it is the first issue's message. |
+| `issues` | `{ path, message }[]` | Only for `invalid_input` and `invalid_reference`. `path` is the dotted path as sent: `amount`, `owedBy.1.amount`, `prefs.timeZone`; empty for an unexpected field at the top level. |
+| `requestId` | string | On every error, including 429 and an unknown route. |
+
+| Status | `code` | When |
+|---|---|---|
+| 400 | `invalid_input` | The body or query fails its rules, or the request breaks a rule it decides alone (two different accounts, shares adding up). An unknown body field is refused (`This request had something the server didn't expect. Please update the app`). |
+| 400 | `invalid_json` | The body isn't valid JSON, or is sent without `Content-Type: application/json`. A request with no body needs no content type. |
+| 400 | `invalid_reference` | A body or query field names something that isn't one of yours: malformed, missing, someone else's, archived or the wrong kind. |
+| 400 | `wrong_password` | Change-password with the wrong current password. |
+| 401 | `unauthenticated` | No token, a bad or expired one, or the user is gone or closed. Carries `WWW-Authenticate: Bearer`. The apps sign out on any 401 outside `/auth/`. |
+| 401 | `invalid_credentials` | Wrong email or password, only under `/auth/`. |
+| 404 | `not_found` | The id in the URL is malformed, missing or someone else's. Ownership is answered as 404, never 403. |
+| 404 | `route_not_found` | No such route or method. |
+| 409 | `duplicate` | A unique value already exists. On `POST /transactions` a 409 only ever means "this `clientId` is already saved": the apps' offline queue drops any 409 there as saved. |
+| 409 | `conflict` | The thing's current state doesn't allow this. |
+| 413 | `body_too_large` | The body is over 25 MB. |
+| 429 | `rate_limited` | Too many tries. Carries `Retry-After` in seconds. |
+| 500 | `internal` | Anything unexpected: `Something went wrong on our side. Please try again`. The real error is in the log under `requestId`. |
+
+The API never sends 403, and never 204: every 2xx on `/api/v1` has a JSON body.
+
+Rolled out route by route: codes from the status (above) apply everywhere now;
+the specific codes (`invalid_reference`, `wrong_password`, `duplicate`) and the
+reworded messages arrive as each area is converted.
+
+**Message rules** (helpers in `utils/messages.ts`; `styleProblems()` tests a message):
+
+1. One plain sentence in sentence case. No `!`, no trailing full stop, and `. `
+   between two sentences, never ` — `.
+2. Say what's wrong in the app's words (account, person, holding, category),
+   then what to do if that isn't obvious.
+3. Never field names (`_id`, `toAccount`), ids, amounts (privacy mode), library
+   text or HTTP words.
+4. One helper per situation: `notFound("bill")` → `That bill doesn't exist any
+   more`; `invalidReference("The account it goes to", "accounts")` → `The account
+   it goes to isn't one of your accounts any more. Pick another`;
+   `duplicate("a budget for this category this month")` → `You already have a
+   budget for this category this month`; `conflict("This trip is closed",
+   "Reopen it to make changes")`.
+
 ## Auth
 
 | Method | Path | Description |
@@ -61,15 +124,14 @@ it catches a renamed field at the call site instead of after the write.
 `/auth/register`, `/auth/login` and `/auth/change-password` share one rate
 limiter, `authLimiter`: 10 requests per IP per 15 minutes. Because the three
 routes use the same limiter instance, they draw on one counter per IP. Over the
-limit, the response is `429` with the usual envelope and the message `Too many
-attempts. Please try again in a few minutes.` On `/auth/change-password` the
-limiter runs before the token check.
+limit, the response is `429` `rate_limited` with a `Retry-After` header and the
+message `Too many tries. Wait a few minutes and try again`. On
+`/auth/change-password` the limiter runs before the token check.
 
 **Known issue**
 The auth schemas import `zod` (v3), so a validation failure on any Auth or
-Users endpoint is a `400` whose `message` is the first issue's message. This is
-unlike Transactions, which currently returns `500` for the same failure. See
-[Transactions](#transactions).
+Users endpoint is a `400` `invalid_input` whose `message` is the first issue's
+message (see [Errors](#errors)).
 
 ### POST /auth/register
 
@@ -545,14 +607,7 @@ only children that were not already archived.
 Every transaction response's `data` is an `ITransaction` (or an array or page of
 them). Another user's transaction is a `404 Transaction not found`.
 
-**Known issue**
-`transactionSchema.ts` imports `zod/v4`, but `errorHandler.ts` checks for the v3
-`ZodError`. A validation failure on **any** Transactions endpoint — an unknown
-key, a negative `amount`, a missing field, a bad enum value, `startDate`
-without `endDate` — is therefore not recognised as a validation error and falls
-through to the generic handler: `500 Something went wrong. Please try again.`
-rather than `400` with the field's message. Everything below describes the
-constraints that *would* have produced a `400`; today they produce a `500`.
+A validation failure on any Transactions endpoint is a `400` `invalid_input` (it was a `500` before the error handler recognised `zod/v4`).
 
 ### Transaction types and balance effects
 
@@ -611,8 +666,8 @@ exists, belongs to the caller, or is of a matching `kind`.
 them is rejected as an unrecognized key.
 
 **Warning**
-`amount` is always positive. A negative or zero amount fails validation (a `500`
-today — see the known issue above). An expense is negative because `type` is
+`amount` is always positive. A negative or zero amount fails validation (`400`
+`invalid_input`). An expense is negative because `type` is
 `expense`, not because the number is.
 
 **Redemptions** — a `transfer` whose source `account` is an `investment` cannot
@@ -656,18 +711,14 @@ but the create endpoint accepts any live account.
 
 An offline-queued create sends a `clientId`. A partial unique index on
 `{ userId, clientId }` makes a replay after a lost response a no-op instead of
-a duplicate: the second create fails with a duplicate-key error, which the error
-handler turns into `409 A record with this value already exists`. A client
-reads that `409` as "already applied". The `409` body does not return the
-original transaction.
+a duplicate: a `clientId` already saved answers `200` "Transaction already
+saved" with the saved row, including two sends at once. `POST /transactions`
+never answers `409` for anything else, because the 2.6.0 offline queue drops any
+409 there as saved.
 
 The index applies only when `clientId` is a string, so ordinary transactions
 never collide. `clientId` is stored on the transaction and returned in `data`.
 It cannot be set by `PATCH`.
-
-UNVERIFIED: that the driver surfaces the duplicate-key error with code `11000`
-unchanged out of `session.withTransaction`. The model's comment says it does;
-I have not seen it exercised.
 
 ### GET /transactions
 
@@ -685,8 +736,7 @@ I have not seen it exercised.
 
 **Important**
 `startDate` and `endDate` must be supplied together. Sending one without the
-other is meant to return `400 startDate and endDate must be provided together`;
-today it is a `500` (see the [known issue](#transactions)). The range is cut at
+other returns `400` `invalid_input`. The range is cut at
 the **user's** midnights in `prefs.timeZone`, not UTC's, so a purchase made late
 last night stays in "Today".
 
@@ -1223,10 +1273,8 @@ Notifications expire 90 days after they are created, through a TTL index. The
 feed is a log, not a record — and the expiry is also what lets a yearly bill's
 reminder fire again next year.
 
-**Warning**
-`notificationSchema` imports `zod/v4`, so a bad `page` or `limit` (for example
-`?limit=500` or `?page=abc`) is a `500`, not a `400`. See
-[Findings for the maintainer](#findings-for-the-maintainer).
+A bad `page` or `limit` (for example `?limit=500` or `?page=abc`) is a `400`
+`invalid_input`.
 
 ### PATCH /notifications/{id}/read
 
@@ -1343,8 +1391,7 @@ adjustment types are excluded, so a balance correction never reads as income or
 spend. They do move `netWorth`, through the account balance.
 
 **Warning**
-`dashboardSchema` imports `zod/v4`, so a malformed `month` or `since` is a `500`,
-not a `400`. UNVERIFIED: `since` uses `z.iso.datetime()`, which in zod v4 accepts
+A malformed `month` or `since` is a `400` `invalid_input`. UNVERIFIED: `since` uses `z.iso.datetime()`, which in zod v4 accepts
 the UTC `Z` form by default and rejects numeric offsets; this was read, not
 executed.
 
@@ -2551,9 +2598,8 @@ because the backup was taken while it held. See
 
 Rate limit: **5 requests per IP per hour** (`restoreLimiter`). It runs before
 `protect`, so unauthenticated attempts from the same IP also spend the budget.
-The 429 body is `{ success: false, statusCode: 429, message: "Too many attempts.
-Please try again in a few minutes.", data: null }`, and it sends the standard
-`RateLimit-*` headers. The request body limit is 25 MB for the whole API
+The 429 is `rate_limited` with `Retry-After` and the message `Too many restores.
+Try again in an hour`, and it sends the standard `RateLimit-*` headers. The request body limit is 25 MB for the whole API
 (`express.json`), which is what lets a lifetime of transactions fit in one body.
 
 | Field | Type | Constraints |
@@ -2698,7 +2744,7 @@ These are verified against the code and have **not** been fixed. They are listed
 
 ### Accounts, categories, transactions and auth
 
-1. **Transactions validation errors return 500, not 400.** `schemas/transactionSchema.ts` imports `zod/v4`; `middleware/errorHandler.ts` tests `instanceof ZodError` from `zod` (v3). Installed `zod` is 3.25.76, which ships both. Affected: every validation failure on `POST/GET/PATCH /transactions*`, including `startDate`/`endDate` pairing, negative `amount`, unknown keys. `backupSchema`, `dashboardSchema` and `notificationSchema` also import `zod/v4` and have the same problem. The handler also reads `err.errors[0]`, which v4 errors do not have, so porting the check needs both changes.
+1. **Fixed: validation errors from `zod/v4` schemas returned 500.** The error handler now recognises zod v3 and v4 by name; bad input on these routes is a `400` `invalid_input`.
 2. **`POST /auth/register` returns the user, not a token**, and `DELETE /users/me` returns `200` with a body, not `204`. The old reference said otherwise on both. `response.noContent` sends `200`.
 3. **Registration accepts a bad `timeZone` as a 400**, not a fallback to the server default as the old reference stated. Only an omitted `timeZone` falls back.
 4. **Reorder endpoints do not enforce completeness.** Both reorder controllers' comments say the request must carry the whole list or set; the code checks only that each ID is live and owned, and not duplicated. Category reorder does not check that the IDs share a parent and kind.
@@ -2715,15 +2761,7 @@ These are verified against the code and have **not** been fixed. They are listed
 
 Verified in code; none of these were changed.
 
-**1. `zod/v4` schemas turn bad input into a 500.**
-`middleware/errorHandler.ts:2` imports `ZodError` from `zod` and tests
-`err instanceof ZodError` at line 33. Four schemas import `zod/v4`
-(`schemas/transactionSchema.ts:1`, `dashboardSchema.ts:1`, `backupSchema.ts:1`,
-`notificationSchema.ts:1`), whose errors are a different class, so the handler
-falls through to `500 Something went wrong`. Affected here: `GET
-/dashboard/summary` (`month`, `since`), `GET /notifications` (`page`, `limit`)
-and `POST /backup/restore` (every validation failure, including a missing
-`confirm`).
+**1. Fixed: `zod/v4` schemas turned bad input into a 500.** Both zod versions are now recognised by name in `middleware/errorHandler.ts`; `GET /dashboard/summary`, `GET /notifications` and `POST /backup/restore` answer `400` `invalid_input`.
 
 **2. Trip rows are included or excluded inconsistently.** Excluded
 (`tripId: null`): budget `spent` (`services/budgetService.ts:50`); insights

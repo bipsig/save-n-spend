@@ -210,25 +210,52 @@ and let it propagate:
 if (!budget) throw AppError.notFound("Budget not found");
 ```
 
-`AppError` (in `utils/AppError.ts`) carries an HTTP status alongside the
-message, with static constructors for the common cases: `badRequest`,
-`unauthorized`, `forbidden`, `notFound`, `conflict`.
+`AppError` (in `utils/AppError.ts`) carries an HTTP status, the message and an
+optional `code` and `issues`, with static constructors for the common cases:
+`badRequest`, `unauthorized`, `notFound`, `conflict`, `invalidReference` and
+`duplicate`.
 
-`middleware/errorHandler.ts` is the single exit point. It maps each error class
-to a status and an envelope:
+`middleware/errorHandler.ts` is the single exit point. Every error leaves in one
+shape, `{ success: false, statusCode, code, message, issues?, data: null,
+requestId }` (codes and messages: [API reference → Errors](api-reference.md#errors)):
 
-| Error | Status | Message the client sees |
+| Error | Status and `code` | Message the client sees |
 |---|---|---|
-| `AppError` | `err.statusCode` | `err.message` |
-| `ZodError` (from `zod`) | 400 | The first issue's message. A schema built on `zod/v4` throws a different class and misses this row — see [Known issues](#known-issues). |
-| `mongoose.Error.CastError` | 400 | `Invalid <path>` |
-| `mongoose.Error.ValidationError` | 400 | All field messages, comma-joined. |
-| MongoDB duplicate key (`11000`) | 409 | `A record with this value already exists` |
-| Anything else | 500 | `Something went wrong. Please try again.` |
+| `AppError` | `err.statusCode`; `err.code`, or one from the status (400 `invalid_input`, 401 `unauthenticated`, or `invalid_credentials` on `/auth/login` and `/auth/change-password`, 404 `not_found`, 409 `conflict`) | `err.message` |
+| zod error, v3 or v4 (recognised by `name`) | 400 `invalid_input`, or `invalid_reference` for a bad id from `objectId()` | The first issue's message; every issue in `issues`. Messages come from one error map (`schemas/errorMap.ts`), installed for both zod versions by `schemas/z.ts`. |
+| body-parser: broken JSON, bad encoding | 400 `invalid_json` | `The request couldn't be read. Please update the app` |
+| body-parser: over 25 MB | 413 `body_too_large` | `That's too big to send` |
+| A body sent without `Content-Type: application/json` (`middleware/requireJsonBody.ts`) | 400 `invalid_json` | as broken JSON |
+| Mongoose `CastError` on an id in the URL | 404 `not_found` | `That <thing> doesn't exist any more` |
+| Mongoose `CastError` on an id in the body or query | 400 `invalid_reference` | `<Label> isn't one of your <things> any more. Pick another` |
+| Mongoose `CastError` on another type, `ValidationError` | 400 `invalid_input` (or `invalid_reference` for an id) | A labelled sentence per path, in `issues`. |
+| MongoDB duplicate key (`11000`) | 409 `duplicate` | `A record with this value already exists` |
+| Unknown route or method (`routeNotFound`) | 404 `route_not_found` | `This part of the app needs an update` |
+| Rate limited (`rateLimitHandler`) | 429 `rate_limited`, with `Retry-After` | per limiter |
+| Anything else | 500 `internal` | `Something went wrong on our side. Please try again` |
+
+A 401 also carries `WWW-Authenticate: Bearer realm="save-n-spend"`.
 
 **Important**
 The 500 branch logs the real error server-side and returns a generic message.
 Keep it that way — internal details must not reach the client.
+
+### Validating a route
+
+New and converted routes validate before the handler with `validate({ params,
+query, body })` (`middleware/validate.ts`), placed after `protect`, so before
+any database read. Schemas import `z` from `schemas/z.ts` (zod's v4 API) and use
+the shared fields in `schemas/fields.ts`: `objectId(label, things?)`, `money`,
+`positiveMoney`, `calendarDay`, `instant`, `month`, `name(label)`, `timeZone`,
+`page`, `limit(max)`. A path failure is a 404; queries drop unknown parameters;
+bodies are strict unless the schema is a `z.looseObject` (backup documents); a
+missing body is `{}`. Handlers read `req.valid`.
+
+Writes that change more than one document go through `inTransaction(fn)`
+(`utils/inTransaction.ts`, built on `mongoose.connection.transaction()`). Load
+every document you change inside `fn`, with its session: a document loaded
+before the transaction keeps a failed attempt's changes when MongoDB retries.
+The connection sets write concern `majority` (`config/db.ts`).
 
 ### Request references and logs
 
@@ -1058,25 +1085,14 @@ the end of a build so you can confirm what the binary will actually call.
 Things that are wrong today and confirmed in the code. They are tracked as open
 work in the repository's `to-do.md`, under "Consistency audit".
 
-### Validation errors from `zod/v4` schemas return 500
+### Schemas are split across two zod entry points
 
-The API uses two Zod entry points. The root `package.json` pins `zod` to
-3.25.76, which ships both the v3 API (`import z from "zod"`) and the v4 API
-(`import z from "zod/v4"`), and the schemas are split between them:
-
-| Entry point | Schemas |
-|---|---|
-| `zod` (v3) | account, auth, bill, budget, category, diagnostics, goal, highlight, insights, recurring, review, trip, user |
-| `zod/v4` | **backup, dashboard, notification, transaction** |
-
-`middleware/errorHandler.ts` imports `ZodError` from `zod` and tests
-`err instanceof ZodError`. A v4 schema throws v4's own `ZodError`, a different
-class, so the test is false and the error falls through to the generic branch:
-the client gets **500** `Something went wrong. Please try again.` instead of a
-400 with the failed field's message. In practice, a bad body or query to
-`POST`/`PATCH /transactions`, `GET /transactions`, `GET /transactions/summary`,
-`GET /dashboard/summary`, the notification routes and backup restore fails as a
-500, and the real message appears only in the server log.
+The root `package.json` pins `zod` to 3.25.76, which ships both the v3 API
+(`import z from "zod"`) and the v4 API (`import z from "zod/v4"`). Backup,
+dashboard, notification and transaction schemas use v4; the rest use v3. Both
+are now recognised by the error handler and share one error map, so neither
+answers 500 for bad input any more. New and converted schemas import `z` from
+`schemas/z.ts` (v4); the v3 files move over as each area is converted.
 
 ### Trip rows are treated differently by different surfaces
 
