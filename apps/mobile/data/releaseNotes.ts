@@ -34,6 +34,52 @@ export interface Release {
 /** Newest first. */
 export const RELEASES: Release[] = [
   {
+    version: "2.7.1",
+    build: 22,
+    date: "2026-11-16",
+    headline: "Back that always works, and saves that count once",
+    notes: [
+      {
+        kind: "improved",
+        title: "Error messages say what went wrong in plain words.",
+        detail: "They name the thing in the app's own words, such as an account or a category, and say what to do next. Something the server can't accept is turned away with its reason, not a general error.",
+      },
+      {
+        kind: "improved",
+        title: "A phone still signed in to an account you've closed now signs out straight away.",
+      },
+      {
+        kind: "fixed",
+        title: "Back always takes you somewhere now.",
+        detail: "A screen opened straight from a link, with nothing behind it, used to ignore Back and ✕. They now take you Home, and so does Go to Home when such a screen runs into a problem.",
+        highlight: true,
+      },
+      {
+        kind: "fixed",
+        title: "Saving two things at once no longer counts money twice or overwrites a change.",
+        detail: "That covers two quick edits to one entry, and a double tap on delete, on turning an expense into an investment, on correcting a balance or on skipping a bill. Redeeming can't take more out of a holding than it's worth, even twice at once. Balances keep matching their entries.",
+        highlight: true,
+      },
+      {
+        kind: "fixed",
+        title: "Changing the amount, account or date of a split expense now updates what each person owes.",
+        detail: "Everyone's part changes in the same proportion, and the whole split stays on one account and one day.",
+        highlight: true,
+      },
+      {
+        kind: "fixed",
+        title: "Closing a trip with a double tap lets each friend go once.",
+        detail: "An expense added while the trip closes is either counted before it closes or turned away, never left on the closed trip.",
+        icon: "flight",
+      },
+      {
+        kind: "fixed",
+        title: "An offline entry the server turns down is marked as failed, so it no longer holds up the entries queued behind it.",
+        icon: "cloudOff",
+      },
+    ],
+  },
+  {
     version: "2.7.0",
     build: 21,
     date: "2026-11-14",

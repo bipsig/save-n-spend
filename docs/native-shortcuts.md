@@ -5,7 +5,7 @@ a double-tap on the back of the phone, the Action Button on an iPhone 15 Pro or
 later, or a Siri phrase — so that recording a transaction does not require finding
 the icon first.
 
-Designed, not built. It was planned for 2.0.0; the app is now at 2.7.0 and none of it has
+Designed, not built. It was planned for 2.0.0; the app is now at 2.7.1 and none of it has
 shipped: there is no `lib/pendingLink.ts`, no `targets/` directory, and no modal route falls back
 when the stack is empty. Widgets were considered and dropped; see
 [Why widgets are out](#why-widgets-are-out).
