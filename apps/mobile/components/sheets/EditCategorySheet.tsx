@@ -1,6 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { ICategory } from "@save-n-spend/types";
+import { NAME_MIN } from "@save-n-spend/types";
 import AppSheet from "./AppSheet";
 import Button from "@/components/ui/Button";
 import CategoryForm, { categoryCtaLabel, type CategoryFormValue } from "@/components/ui/CategoryForm";
@@ -73,9 +74,9 @@ const EditCategorySheet = forwardRef<BottomSheetModal, Props>(({ category, paren
 
   const save = async () => {
     const trimmed = form.name.trim();
-    if (trimmed.length < 2) {
+    if (trimmed.length < NAME_MIN) {
       haptics.error();
-      setError("Give the category a name of at least two characters.");
+      setError("Give the category a name");
       return;
     }
     setBusy(true);

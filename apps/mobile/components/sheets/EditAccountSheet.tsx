@@ -3,6 +3,7 @@ import { StyleSheet, View } from "react-native";
 import { BottomSheetModal, BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { useRouter } from "expo-router";
 import type { AccountType, IAccount, InvestedHow } from "@save-n-spend/types";
+import { NAME_MIN } from "@save-n-spend/types";
 import AppSheet from "./AppSheet";
 import { AppText } from "@/components/ui/AppText";
 import AmountHeroInput from "@/components/ui/AmountHeroInput";
@@ -176,9 +177,9 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
 
   const save = async () => {
     const trimmed = name.trim();
-    if (trimmed.length < 2) {
+    if (trimmed.length < NAME_MIN) {
       haptics.error();
-      setError("Give the account a name of at least two characters.");
+      setError("Give the account a name");
       return;
     }
     const startingBalance = toPaise(opening);

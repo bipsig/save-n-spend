@@ -25,12 +25,13 @@ import { fetchGoal, updateGoal } from "@/lib/goals";
 import { post } from "@/lib/api";
 import { splitIssues } from "@/lib/apiError";
 import { toast } from "@/store/toast";
+import { NAME_MAX, NAME_MIN } from "@save-n-spend/types";
 import type { IconName } from "@/lib/icons";
 import { radius, spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
 
 const schema = z.object({
-  name: z.string().min(1, "Name is required").max(60, "Keep it under 60 characters"),
+  name: z.string().min(NAME_MIN, "Name is required").max(NAME_MAX, `Keep it to ${NAME_MAX} characters`),
   amount: z
     .string()
     .regex(/^\s*₹?\s*[\d,]+(\.\d{1,2})?\s*$/, "Enter a valid amount")

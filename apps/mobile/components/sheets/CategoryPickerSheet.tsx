@@ -12,6 +12,7 @@ import PressableScale from "@/components/ui/PressableScale";
 import { buildCategoryTree, useCategories } from "@/lib/categories";
 import { useCategoryStore } from "@/store/categories";
 import { post } from "@/lib/api";
+import { NAME_MIN } from "@save-n-spend/types";
 import { useConnectivity } from "@/store/connectivity";
 import { toast } from "@/store/toast";
 import { haptics } from "@/lib/haptics";
@@ -186,9 +187,9 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
 
   const onCreate = async () => {
     const trimmed = draft.name.trim();
-    if (trimmed.length < 2) {
+    if (trimmed.length < NAME_MIN) {
       haptics.error();
-      setError("Give the category a name of at least two characters.");
+      setError("Give the category a name");
       return;
     }
     setSaving(true);

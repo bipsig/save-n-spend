@@ -28,6 +28,7 @@ import { startOfToday, toZonedDayISO } from "@/lib/date";
 import { post } from "@/lib/api";
 import { splitIssues } from "@/lib/apiError";
 import { toast } from "@/store/toast";
+import { NAME_MAX, NAME_MIN } from "@save-n-spend/types";
 import type { IconName } from "@/lib/icons";
 import { colors, spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
@@ -60,7 +61,7 @@ type Props = {
 };
 
 const schema = z.object({
-  name: z.string().min(1, "Name is required").max(40, "Keep it under 40 characters"),
+  name: z.string().min(NAME_MIN, "Name is required").max(NAME_MAX, `Keep it to ${NAME_MAX} characters`),
   amount: z
     .string()
     .regex(/^\s*₹?\s*[\d,]+(\.\d{1,2})?\s*$/, "Enter a valid amount")
