@@ -26,6 +26,7 @@ import { updateBill } from "@/lib/bills";
 import { parseMoney } from "@/lib/money";
 import { startOfToday, toZonedDayISO } from "@/lib/date";
 import { post } from "@/lib/api";
+import { splitIssues } from "@/lib/apiError";
 import { toast } from "@/store/toast";
 import type { IconName } from "@/lib/icons";
 import { colors, spacing } from "@/theme";
@@ -134,6 +135,7 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, draft, onChan
     watch,
     setValue,
     reset,
+    setError: setFieldError,
     formState: { isValid, errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -191,7 +193,13 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, draft, onChan
       // still in the fields, and the reason belongs beside them. The buzz is what
       // makes it noticeable without a banner.
       haptics.error();
-      setError(err instanceof Error ? err.message : `Couldn't ${editing ? "save" : "add"} the bill`);
+      const { byField, rest } = splitIssues(
+        err,
+        { name: "name", amount: "amount", category: "category", toInvestment: "toInvestment" } as const,
+        `Couldn't ${editing ? "save" : "add"} the bill`,
+      );
+      for (const [field, message] of Object.entries(byField) as [keyof FormValues, string][]) setFieldError(field, { message });
+      setError(rest);
     }
     finally {
       setSubmitting(false);

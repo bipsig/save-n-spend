@@ -23,6 +23,7 @@ import { formatFullDate, startOfToday, toZonedDayISO } from "@/lib/date";
 import { haptics } from "@/lib/haptics";
 import { fetchGoal, updateGoal } from "@/lib/goals";
 import { post } from "@/lib/api";
+import { splitIssues } from "@/lib/apiError";
 import { toast } from "@/store/toast";
 import type { IconName } from "@/lib/icons";
 import { radius, spacing } from "@/theme";
@@ -99,6 +100,7 @@ const AddGoal = () => {
     watch,
     setValue,
     reset,
+    setError,
     formState: { errors, isValid },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -216,9 +218,9 @@ const AddGoal = () => {
       // Kept on the screen, beside the name, target, icon and colour just chosen. The buzz
       // is what makes small red text at the bottom of a long form noticeable.
       haptics.error();
-      setSubmitError(
-        err instanceof Error ? err.message : `Couldn't ${editing ? "save" : "create"} the goal`
-      );
+      const { byField, rest } = splitIssues(err, { name: "name", target: "amount" } as const, `Couldn't ${editing ? "save" : "create"} the goal`);
+      for (const [field, message] of Object.entries(byField) as [keyof FormValues, string][]) setError(field, { message });
+      setSubmitError(rest);
     }
     finally {
       setSubmitting(false);

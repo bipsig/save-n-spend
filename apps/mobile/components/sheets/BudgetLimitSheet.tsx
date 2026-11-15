@@ -15,6 +15,7 @@ import formatMoney, { parseMoney, paiseToInput, usePrivacyMask } from "@/lib/mon
 import { useCategoryById } from "@/lib/categories";
 import CategoryName from "@/components/ui/CategoryName";
 import { post, patch, del } from "@/lib/api";
+import { splitIssues } from "@/lib/apiError";
 import { haptics } from "@/lib/haptics";
 import { isMonthClosed, monthTitle, type BudgetSummary } from "@/lib/budgets";
 import { toast } from "@/store/toast";
@@ -65,6 +66,7 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
     watch,
     setValue,
     reset,
+    setError: setFieldError,
     formState: { errors, isValid },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -116,7 +118,9 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
       // Kept in the sheet: the limit is still in the field beside the meter that
       // explains it, and a banner would expire before either is re-read.
       haptics.error();
-      setError(err instanceof Error ? err.message : "Couldn't save the budget");
+      const { byField, rest } = splitIssues(err, { limit: "limit" } as const, "Couldn't save the budget");
+      if (byField.limit) setFieldError("limit", { message: byField.limit });
+      setError(rest);
     }
     finally {
       setSaving(false);

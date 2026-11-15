@@ -16,6 +16,7 @@ import { haptics } from "@/lib/haptics";
 import { parseMoney, usePrivacyMask } from "@/lib/money";
 import formatMoney from "@/lib/money";
 import { post } from "@/lib/api";
+import { splitIssues } from "@/lib/apiError";
 import { fireGoalMilestone } from "@/lib/localNotifications";
 import { useSession } from "@/store/session";
 import { toast } from "@/store/toast";
@@ -70,6 +71,7 @@ const ContributeSheet = forwardRef<BottomSheetModal, Props>(({ goal, onChanged }
     reset,
     watch,
     setValue,
+    setError: setFieldError,
     formState: { errors, isValid },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -107,7 +109,9 @@ const ContributeSheet = forwardRef<BottomSheetModal, Props>(({ goal, onChanged }
       // Kept in the sheet rather than toasted: the amount is still in the field, and
       // the reason belongs beside it. The buzz is what makes it noticeable.
       haptics.error();
-      setError(err instanceof Error ? err.message : "Couldn't add the contribution");
+      const { byField, rest } = splitIssues(err, { amount: "amount" } as const, "Couldn't add the contribution");
+      if (byField.amount) setFieldError("amount", { message: byField.amount });
+      setError(rest);
     }
     finally {
       setSubmitting(false);

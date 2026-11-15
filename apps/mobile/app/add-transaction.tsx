@@ -32,6 +32,7 @@ import AccountPickerSheet from "@/components/sheets/AccountPickerSheet";
 import RevalueSheet from "@/components/sheets/RevalueSheet";
 import { useInvestments } from "@/lib/investments";
 import { ApiError, get, patch, post } from "@/lib/api";
+import { splitIssues } from "@/lib/apiError";
 import { useAccountStore } from "@/store/accounts";
 import { useTitleSuggestionStore } from "@/store/titleSuggestions";
 import { useTitleMatches } from "@/lib/titleSuggestions";
@@ -128,7 +129,7 @@ const AddTransaction = () => {
   const isEdit = !!id;
 
   const categories = useCategories();
-  const { control, handleSubmit, watch, setValue, reset, formState: { errors } } = useForm<FormValues>({
+  const { control, handleSubmit, watch, setValue, reset, setError, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { title: "", amount: "", category: "", type: "expense", note: "", location: "" }
   })
@@ -568,7 +569,10 @@ const AddTransaction = () => {
       }
       // On the screen rather than toasted — everything the user typed is still in the
       // fields, and the reason has to be readable next to it.
-      reject(err instanceof Error ? err.message : "Error creating new transaction");
+      const { byField, rest } = splitIssues(err, { title: "title", amount: "amount", category: "category" } as const, "Error creating new transaction");
+      for (const [field, message] of Object.entries(byField) as [keyof FormValues, string][]) setError(field, { message });
+      if (rest) reject(rest);
+      else haptics.error();
     }
     finally {
       setSubmitting(false);
