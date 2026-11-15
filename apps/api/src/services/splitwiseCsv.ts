@@ -68,7 +68,7 @@ export const parseSplitwiseCsv = (text: string): SplitwiseTable => {
     const header = splitLine(lines[headerAt]).map((h) => h.trim());
     const lower = header.map((h) => h.toLowerCase());
     if (!REQUIRED.every((r, i) => lower[i] === r)) {
-        throw new SplitwiseFormatError("This doesn't look like a Splitwise export — it should start with Date, Description, Category, Cost, Currency");
+        throw new SplitwiseFormatError("This doesn't look like a Splitwise export. It should start with Date, Description, Category, Cost, Currency");
     }
     const people = header.slice(5).filter(Boolean);
     if (people.length < 2) throw new SplitwiseFormatError("No people found in the file");

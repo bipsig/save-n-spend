@@ -94,15 +94,16 @@ const readFile = (csv: string) => {
         return parseSplitwiseCsv(csv);
     }
     catch (err) {
-        if (err instanceof SplitwiseFormatError) throw AppError.badRequest(err.message);
+        if (err instanceof SplitwiseFormatError) throw invalidInput("csv", err.message);
         throw err;
     }
 };
 
+const PICK_ME = "Pick which name is you";
+
 export const previewImport = async (userId: string, tripId: string, csv: string, mapping?: NameMapping): Promise<Preview> => {
-    const trip = await Trip.findOne({ _id: tripId, userId });
-    if (!trip) throw AppError.notFound("Trip not found");
-    if (trip.status === "closed") throw AppError.badRequest("This trip is closed — reopen it to import");
+    const trip = await loadTrip(userId, tripId);
+    requireOpen(trip);
     const table = readFile(csv);
 
     if (!mapping) {
@@ -118,13 +119,14 @@ export const previewImport = async (userId: string, tripId: string, csv: string,
     }
 
     const me = Object.entries(mapping).find(([, v]) => v === "me")?.[0];
-    if (!me) throw AppError.badRequest("Pick which name is you");
+    if (!me) throw invalidInput("mapping", PICK_ME);
 
+    const swPrefix = `sw:${String(trip._id)}:`;
     const [expenses, cats, recent, importedSettlements, persons] = await Promise.all([
         TripExpense.find({ userId, tripId: trip._id }).lean(),
         Category.find({ userId, kind: "expense", isArchived: false }).select("name").lean(),
         Transaction.find({ userId, type: "expense", category: { $ne: null } }).sort({ occurredAt: -1 }).limit(400).select("title category").lean(),
-        Transaction.find({ userId, tripId: trip._id, clientId: { $regex: `^sw:${tripId}:` } }).select("clientId").lean(),
+        Transaction.find({ userId, tripId: trip._id, clientId: { $regex: `^${swPrefix}` } }).select("clientId").lean(),
         Account.find({ userId, type: "person" }).select("name").lean(),
     ]);
     // A settle-up reads as "Priya paid you", in your names — Splitwise's own description is in
@@ -139,7 +141,7 @@ export const previewImport = async (userId: string, tripId: string, csv: string,
     const findCategory = categoryFinder(cats, history);
     const importedKeys = new Set([
         ...expenses.map((e) => e.importKey).filter(Boolean) as string[],
-        ...importedSettlements.map((t) => (t.clientId ?? "").replace(`sw:${tripId}:`, "")),
+        ...importedSettlements.map((t) => (t.clientId ?? "").replace(swPrefix, "")),
     ]);
     // Your own unsplit entries — what a "you paid" row can be applied to.
     const mine = expenses.filter((e) => e.source === "manual" && e.paidBy === null && e.shares.every((s) => s.account === null));
