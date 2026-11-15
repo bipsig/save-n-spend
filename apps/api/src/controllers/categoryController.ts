@@ -1,6 +1,6 @@
 import Category from "../models/Category";
 import type { Valid } from "../middleware/validate";
-import { categoryIdSchemas, createCategorySchemas, reorderCategoriesSchemas, updateCategorySchemas } from "../schemas/categorySchema";
+import { categoryIdSchemas, createCategorySchemas, listCategoriesSchemas, reorderCategoriesSchemas, updateCategorySchemas } from "../schemas/categorySchema";
 import { AppError } from "../utils/AppError";
 import { inTransaction } from "../utils/inTransaction";
 import { notFound } from "../utils/messages";
@@ -24,12 +24,16 @@ const sameNameExists = (userId: string, name: string, except?: string) =>
         ...(except ? { _id: { $ne: except } } : {})
     }).collation(CATEGORY_NAME_COLLATION);
 
+export const listFilter = (userId: string | undefined, include: "archived" | undefined) =>
+    include === "archived" ? { userId } : { userId, isArchived: false };
+
 export const listCategories = async (req: Request, res: Response): Promise<void> => {
+    const { query } = req.valid as Valid<typeof listCategoriesSchemas>;
     // `order` is only meaningful within a sibling set, so a flat sort by it is not a global
     // ranking — it puts each set in the user's order once the client groups by parent.
     // createdAt breaks the ties everything starts on, keeping never-reordered lists in the
     // order they were built.
-    const categories = await Category.find({ userId: req.user?.userId, isArchived: false })
+    const categories = await Category.find(listFilter(req.user?.userId, query.include))
         .sort({ order: 1, createdAt: 1 });
 
     reply.ok(res, toDTOs(categories), "Categories fetched");

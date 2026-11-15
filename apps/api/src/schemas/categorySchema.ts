@@ -7,6 +7,12 @@ const categoryName = z.string().trim().min(1, "Name can't be empty");
 
 const categoryId = z.object({ id: objectId("Category") });
 
+// `include=archived` (2.8.0 on) adds archived categories, so rows filed under one can still
+// print its name. Without it the list is live categories only, as the 2.6.0 app expects.
+export const listCategoriesSchemas = {
+    query: z.object({ include: z.enum(["archived"]).optional() }),
+};
+
 export const createCategorySchemas = {
     body: z.object({
         name: categoryName,
