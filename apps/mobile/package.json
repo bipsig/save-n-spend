@@ -9,7 +9,8 @@
     "web": "expo start --web",
     "ipa": "bash scripts/build-ipa.sh",
     "icons": "bash scripts/build-icons.sh",
-    "test": "cd ../api && node --require ts-node/register --test ../mobile/lib/*.test.ts"
+    "test": "cd ../api && TS_NODE_TRANSPILE_ONLY=true node --require ts-node/register --test ../mobile/lib/*.test.ts",
+    "test:coverage": "cd ../api && TS_NODE_TRANSPILE_ONLY=true node --require ts-node/register --test --experimental-test-coverage --test-coverage-include='../mobile/lib/**' --test-coverage-exclude='../mobile/lib/*.test.ts' ../mobile/lib/*.test.ts"
   },
   "dependencies": {
     "@expo-google-fonts/lato": "^0.4.1",

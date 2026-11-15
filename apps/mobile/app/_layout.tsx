@@ -26,6 +26,7 @@ import { useSettings } from "@/store/settings";
 import { useConnectivity } from "@/store/connectivity";
 import { useCategoryStore } from "@/store/categories";
 import { useAccountStore } from "@/store/accounts";
+import { reloadOnReconnect } from "@/lib/reconnectReload";
 import { useNotifications } from "@/store/notifications";
 import { useTitleSuggestionStore } from "@/store/titleSuggestions";
 import { useTripNameStore } from "@/store/tripNames";
@@ -210,6 +211,12 @@ const RootLayout = () => {
   useEffect(() => {
     if (!offline && status === "authed") void useOutbox.getState().drain();
   }, [offline, status]);
+
+  useEffect(() => reloadOnReconnect(
+    useConnectivity,
+    () => useSession.getState().status === "authed",
+    [useCategoryStore, useAccountStore],
+  ), []);
 
   // The evening banner, re-planned whenever the inputs move: on reaching `authed`, when the
   // user document lands with the real preferences, again the moment a digest switch is
