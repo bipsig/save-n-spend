@@ -125,3 +125,19 @@ test("failed items are skipped; only queued ones are sent", async () => {
   assert.deepEqual(h.sent.map((s) => s.clientId), ["q"]);
   assert.deepEqual(h.state().map((i) => i.clientId), ["f"]);
 });
+
+test("a mixed queue goes out in order, each item with its own key on every try", async () => {
+  const keyed = (clientId: string): OutboxItem => ({ ...legacy(clientId), idempotencyKey: `key-${clientId}` });
+  const queue = [legacy("a"), keyed("b"), legacy("c"), keyed("d")];
+  // a lands, b is refused, c finds no connection: d waits behind c.
+  const h = harness(queue, ["ok", refusal(400, "invalid_input"), offlineError(null)]);
+  const first = await drainQueue(h.deps);
+  assert.deepEqual(h.sent.map((s) => [s.clientId, s.key]), [["a", "made-1"], ["b", "key-b"], ["c", "made-2"]]);
+  assert.deepEqual(h.state().map((i) => [i.clientId, i.status]), [["b", "failed"], ["c", "queued"], ["d", "queued"]]);
+
+  const restarted = harness(h.saved[h.saved.length - 1], ["ok", "ok"], first.attempt);
+  const second = await drainQueue(restarted.deps);
+  assert.equal(second.synced, 2);
+  assert.deepEqual(restarted.sent.map((s) => [s.clientId, s.key]), [["c", "made-2"], ["d", "key-d"]]);
+  assert.deepEqual(restarted.state().map((i) => i.clientId), ["b"]);
+});

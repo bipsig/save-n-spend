@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { RELEASES } from "../data/releaseNotes";
 import type { Release, ReleaseNote } from "../data/releaseNotes";
@@ -192,4 +192,20 @@ test("2.6.0 highlights are Trends, the statement export and Insights exports", (
     "Export an Investments statement as a PDF, from Investments or from any holding",
     "Insights exports through the same screen as Activity, as a PDF for a day, week, month or year",
   ]);
+});
+
+test("RELEASES: every title is one sentence ending in its full stop or colon", () => {
+  for (const r of RELEASES) {
+    for (const n of r.notes) {
+      assert.match(n.title, /[.:]$/, `${r.version}: "${n.title}"`);
+      assert.equal(firstSentence(n.title), n.title.slice(0, -1), `${r.version}: "${n.title}" is more than one sentence`);
+    }
+  }
+});
+
+test("RELEASES: the newest entry is the version and build in app.json", () => {
+  // Without it the post-update sheet finds no notes for the installed version and stays shut.
+  const { expo } = JSON.parse(readFileSync(join(__dirname, "..", "app.json"), "utf8")) as { expo: { version: string; ios: { buildNumber: string } } };
+  assert.equal(RELEASES[0].version, expo.version);
+  assert.equal(RELEASES[0].build, Number(expo.ios.buildNumber));
 });
