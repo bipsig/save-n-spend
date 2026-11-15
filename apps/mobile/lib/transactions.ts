@@ -2,16 +2,12 @@ import type { ITransaction, Paginated } from "@save-n-spend/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, get } from "@/lib/api";
 import { useSession } from "@/store/session";
+import { buildQuery, feedFilters, summaryPath, type FeedParams } from "@/lib/transactionQuery";
+
+export type { FeedParams, FeedType } from "@/lib/transactionQuery";
 
 const PAGE_SIZE = 20;
 
-const buildQuery = (params: Record<string, string | number | undefined>): string => {
-  const query = Object.entries(params)
-    .filter(([, value]) => value !== undefined && value !== "")
-    .map(([key, value]) => `${key}=${encodeURIComponent(String(value))}`)
-    .join("&");
-  return query ? `?${query}` : "";
-};
 
 export const useTransactions = () => {
   const status = useSession((s) => s.status);
@@ -45,22 +41,6 @@ export const useTransactions = () => {
   return { items, loading, error, refetch };
 }
 
-/** The three kinds a reader can ask for. Balance corrections are never one of them —
- *  the server leaves them out of Activity entirely (see `filterTransactions`). */
-export type FeedType = "income" | "expense" | "transfer";
-
-export type FeedParams = {
-  startDate?: string;
-  endDate?: string;
-  /** Multi-select — joined into one comma-separated query param; the server expands
-   *  each selected category to include its own children. */
-  category?: string[];
-  /** Multi-select — matches a transaction whose `account` OR `toAccount` is any of these. */
-  account?: string[];
-  type?: FeedType;
-  search?: string;
-};
-
 // The Activity feed — server-filtered (date range / category / search) and
 // paginated for infinite scroll. Filtering and paging both live server-side per
 // the spec: a page can never be filtered or summed client-side.
@@ -90,14 +70,7 @@ export const useTransactionFeed = (params: FeedParams) => {
       const query = buildQuery({
         page: targetPage,
         limit: PAGE_SIZE,
-        startDate: params.startDate,
-        endDate: params.endDate,
-        category: params.category?.length ? params.category.join(",") : undefined,
-        account: params.account?.length ? params.account.join(",") : undefined,
-        type: params.type,
-        search: params.search,
-        // A trip's rows are read on the trip, never among daily spending.
-        trips: "exclude",
+        ...feedFilters(params),
       });
       const res = await get<Paginated<ITransaction>>(`/transactions${query}`);
       if (myId !== reqId.current) return; // superseded by a newer request
@@ -169,33 +142,35 @@ export type TransactionSummary = {
   tripExpenses?: number;
 };
 
-// The range summary aggregate that drives the Activity card — computed server-side
-// over the whole range, independent of the visible page or category/search filters.
-export const useTransactionSummary = (params: { startDate?: string; endDate?: string }) => {
+// The Activity card's totals, computed server-side over every row the list's filters match
+// (all pages, not just the loaded ones). Queued offline rows are not counted until they sync.
+export const useTransactionSummary = (params: FeedParams) => {
   const status = useSession((s) => s.status);
   const [data, setData] = useState<TransactionSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // A slow answer for an earlier filter must not land over a newer one.
+  const reqId = useRef(0);
 
-  const key = `${params.startDate ?? ""}|${params.endDate ?? ""}`;
+  const path = summaryPath(params);
+  const rangeKey = `${params.startDate ?? ""}|${params.endDate ?? ""}`;
 
   const refetch = useCallback(async () => {
     if (useSession.getState().status !== "authed") return;
+    const myId = ++reqId.current;
     setLoading(true);
     setError(null);
     try {
-      const query = buildQuery({ startDate: params.startDate, endDate: params.endDate, trips: "exclude" });
-      const res = await get<TransactionSummary>(`/transactions/summary${query}`);
-      setData(res);
+      const res = await get<TransactionSummary>(path);
+      if (myId === reqId.current) setData(res);
     }
     catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load");
+      if (myId === reqId.current) setError(err instanceof Error ? err.message : "Failed to load");
     }
     finally {
-      setLoading(false);
+      if (myId === reqId.current) setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [path]);
 
   useEffect(() => {
     if (status === "authed") refetch();
@@ -204,11 +179,12 @@ export const useTransactionSummary = (params: { startDate?: string; endDate?: st
   // Clear on a range change, so `data === null` is a reliable "these totals are not for
   // the range currently on screen". Holding the old ones was worse than showing nothing:
   // the label said "This Week" while the figures were still last week's, and the reader
-  // had no way to tell.
+  // had no way to tell. A filter change keeps them until the new ones land, as the list
+  // keeps its rows, so typing a search doesn't strobe the card.
   useEffect(() => {
     setData(null);
     setLoading(true);
-  }, [key]);
+  }, [rangeKey]);
 
   return { data, loading, error, refetch };
 };

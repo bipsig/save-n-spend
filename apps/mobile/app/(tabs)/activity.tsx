@@ -63,7 +63,7 @@ const SummaryCard = ({
   income,
   expense,
   savings,
-  pending = false,
+  blank = false,
   tripExpenses,
   onOpenTrips,
 }: {
@@ -71,16 +71,16 @@ const SummaryCard = ({
   income: number;
   expense: number;
   savings: number;
-  /** The totals for THIS label haven't arrived yet. A dash rather than the previous
-   *  range's money, which the label no longer describes — and it holds the space the
-   *  number will occupy, so nothing reflows when it lands. */
-  pending?: boolean;
+  /** No figure to show: the totals for THIS label haven't arrived yet, or the list is
+   *  transfers only, which are never income or expense. A dash rather than money the card
+   *  doesn't describe — and it holds the space the number will occupy, so nothing reflows. */
+  blank?: boolean;
   /** Trip spending in the range. Named under the everyday totals, which leave it out, so the
    *  month never reads cheaper than it was. Tapping it opens the Trips page. */
   tripExpenses?: number;
   onOpenTrips?: () => void;
 }) => {
-  const money = (paise: number) => (pending ? "—" : formatMoney(paise));
+  const money = (paise: number) => (blank ? "—" : formatMoney(paise));
 
   return (
     <GradientCard gradient="brand" style={styles.summary}>
@@ -114,12 +114,12 @@ const SummaryCard = ({
         <AppText color="inkDim" size="xs">
           Net Savings
         </AppText>
-        <AppText size="lg" weight="black" color={pending ? "ink" : signTone(savings, { neutral: "ink" })}>
+        <AppText size="lg" weight="black" color={blank ? "ink" : signTone(savings, { neutral: "ink" })}>
           {money(savings)}
         </AppText>
       </View>
 
-      {!pending && !!tripExpenses && tripExpenses > 0 && (
+      {!blank && !!tripExpenses && tripExpenses > 0 && (
         <PressableScale onPress={onOpenTrips} scaleTo={0.98} style={styles.tripNote}>
           <Icon name="flight" size={14} color="inkDim" />
           <AppText color="inkDim" size="xs" style={styles.tripNoteText}>
@@ -240,15 +240,17 @@ const ActivityScreen = () => {
     return !!parent && categoryFilter.includes(parent);
   };
 
-  const feed = useTransactionFeed({
+  // One set of filters for the list and the card, so the card totals exactly these rows.
+  const feedParams = {
     startDate: bounds.startDate,
     endDate: bounds.endDate,
     category: categoryFilter,
     account: activeAccounts,
     type: activeType === "all" ? undefined : activeType,
     search: debouncedQuery || undefined,
-  });
-  const summary = useTransactionSummary({ startDate: bounds.startDate, endDate: bounds.endDate });
+  };
+  const feed = useTransactionFeed(feedParams);
+  const summary = useTransactionSummary(feedParams);
   const tripMatches = useTripMatches({ search: debouncedQuery, startDate: bounds.startDate, endDate: bounds.endDate });
 
   const detailRef = useRef<BottomSheetModal>(null);
@@ -488,11 +490,11 @@ const ActivityScreen = () => {
           ListHeaderComponent={
             <>
             <SummaryCard
-              label={rangeLabel(range, offset)}
+              label={narrowed ? `${rangeLabel(range, offset)} · FILTERED` : rangeLabel(range, offset)}
               income={summary.data?.income ?? 0}
               expense={summary.data?.expenses ?? 0}
               savings={summary.data?.savings ?? 0}
-              pending={!summary.data}
+              blank={!summary.data || activeType === "transfer"}
               tripExpenses={summary.data?.tripExpenses}
               onOpenTrips={() => router.push("/trips")}
             />
