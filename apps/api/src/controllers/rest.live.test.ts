@@ -197,8 +197,8 @@ test("dashboard, insights, reviews and highlights: same answers, bad input is 4x
     await send("GET", "/highlights");
     const history = await send("GET", "/highlights/history?page=1&limit=20");
     assert.equal(history.status, 200);
-    for (const k of ["docs", "page", "hasNextPage", "totalDocs"]) assert.ok(k in history.json.data, `history lost ${k}`);
-    for (const d of history.json.data.docs) for (const f of ["__v", "userId"]) assert.ok(!(f in d), `history row still sends ${f}`);
+    for (const k of ["items", "page", "limit", "hasNextPage", "total"]) assert.ok(k in history.json.data, `history lost ${k}`);
+    for (const d of history.json.data.items) for (const f of ["__v", "userId"]) assert.ok(!(f in d), `history row still sends ${f}`);
 });
 
 // Last: closes user A.

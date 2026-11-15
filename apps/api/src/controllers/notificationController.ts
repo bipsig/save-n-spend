@@ -5,6 +5,7 @@ import { listNotificationsSchemas, markNotificationReadSchemas } from "../schema
 import { AppError } from "../utils/AppError";
 import { notFound } from "../utils/messages";
 import { toDTO, toDTOs } from "../utils/dto";
+import { paginate } from "../utils/paginate";
 import * as reply from "../utils/response";
 
 // The in-app feed behind the bell. It is the source of truth for what has been sent:
@@ -14,16 +15,7 @@ import * as reply from "../utils/response";
 export const listNotifications = async (req: Request, res: Response): Promise<void> => {
     const { query: { page, limit } } = req.valid as Valid<typeof listNotificationsSchemas>;
 
-    // One extra row rather than a second count query: all `hasNextPage` needs to know is
-    // whether anything follows this page.
-    const rows = await Notification.find({ userId: req.user?.userId })
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit + 1)
-        .lean();
-
-    const hasNextPage = rows.length > limit;
-    const items = hasNextPage ? rows.slice(0, limit) : rows;
+    const found = await paginate(Notification, { userId: req.user?.userId }, { page, limit, sort: { createdAt: -1 }, lean: true });
 
     // Counted over the whole collection, not the page — it drives the badge, which is
     // about everything unread rather than everything visible.
@@ -32,7 +24,7 @@ export const listNotifications = async (req: Request, res: Response): Promise<vo
         readAt: null
     });
 
-    reply.ok(res, { items: toDTOs(items), unread, page, hasNextPage }, "Notifications fetched");
+    reply.ok(res, { ...found, items: toDTOs(found.items), unread }, "Notifications fetched");
 }
 
 export const markNotificationRead = async (req: Request, res: Response): Promise<void> => {

@@ -9,6 +9,7 @@ import { normalizeZone, startOfDayInZone } from "../utils/timezone";
 import type { Valid } from "../middleware/validate";
 import { highlightHistorySchemas } from "../schemas/highlightSchema";
 import { toDTOs } from "../utils/dto";
+import { paginate, withOldPageFields } from "../utils/paginate";
 import * as reply from "../utils/response";
 
 /**
@@ -122,10 +123,7 @@ export const getHighlights = async (req: Request, res: Response): Promise<void> 
 export const getHighlightHistory = async (req: Request, res: Response): Promise<void> => {
     const { query: { page, limit } } = req.valid as Valid<typeof highlightHistorySchemas>;
 
-    const result = await HighlightLog.paginate(
-        { userId: new mongoose.Types.ObjectId(req.user!.userId) },
-        { page, limit, sort: { createdAt: -1 } },
-    );
+    const found = await paginate(HighlightLog, { userId: new mongoose.Types.ObjectId(req.user!.userId) }, { page, limit, sort: { createdAt: -1 } });
 
-    reply.ok(res, { ...result, docs: toDTOs(result.docs) }, "Highlight history fetched");
+    reply.ok(res, withOldPageFields({ ...found, items: toDTOs(found.items) }, req.header("x-app-version")), "Highlight history fetched");
 };

@@ -1,9 +1,8 @@
 // Deliberately NOT importing mongoose's `Date`: it shadows the global one, and
 // `occurredAt` then types as a schema type rather than the JS Date it actually holds —
 // which hides every `getTime`/`toISOString` the date helpers do with it.
-import mongoose, { Document, PaginateModel } from "mongoose";
+import mongoose, { Document } from "mongoose";
 import { Schema } from "mongoose";
-import mongoosePaginate from "mongoose-paginate-v2"
 
 export interface ITransaction extends Document {
     userId: mongoose.Types.ObjectId;
@@ -63,9 +62,8 @@ TransactionSchema.index(
     { userId: 1, clientId: 1 },
     { unique: true, partialFilterExpression: { clientId: { $type: 'string' } } }
 );
-TransactionSchema.plugin(mongoosePaginate);
 
-export default mongoose.model<ITransaction, PaginateModel<ITransaction>>(
+export default mongoose.model<ITransaction>(
     "Transaction",
     TransactionSchema
 );

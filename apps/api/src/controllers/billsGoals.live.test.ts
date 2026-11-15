@@ -238,10 +238,10 @@ test("budget references and paths", { skip }, async () => {
 
 // ---- Notifications, recurring, cash flow --------------------------------------------------
 
-test("notifications keep the 2.6.0 fields", { skip }, async () => {
+test("notifications keep the 2.6.0 fields, plus R2's limit and total", { skip }, async () => {
     const r = await send("GET", "/notifications?page=1&limit=20");
     assert.equal(r.status, 200);
-    assert.deepEqual(Object.keys(r.json.data).sort(), ["hasNextPage", "items", "page", "unread"]);
+    assert.deepEqual(Object.keys(r.json.data).sort(), ["hasNextPage", "items", "limit", "page", "total", "unread"]);
     failed(await send("GET", "/notifications?page=0"), 400, "invalid_input");
     for (const id of ["abc", MISSING]) failed(await send("PATCH", `/notifications/${id}/read`), 404, "not_found", "That notification doesn't exist any more");
     const all = await send("POST", "/notifications/read-all");

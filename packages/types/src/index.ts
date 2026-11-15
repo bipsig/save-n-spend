@@ -467,13 +467,20 @@ export interface INotification {
   createdAt: string
 }
 
+// The one shape every paged list answers with (2.8.0 on). `page` is 1-based; `total` counts
+// every match, not just this page.
+export interface Paginated<T> {
+  items: T[]
+  page: number
+  limit: number
+  hasNextPage: boolean
+  total: number
+}
+
 // One request answers both questions the bell asks — list and badge count — so the two
 // cannot disagree.
-export interface NotificationFeed {
-  items: INotification[]
+export interface NotificationFeed extends Paginated<INotification> {
   unread: number
-  page: number
-  hasNextPage: boolean
 }
 
 export interface DashboardSummary {
@@ -727,12 +734,7 @@ export interface IHighlightLog extends IHighlight {
   createdAt: string // ISO — when this key was first seen, ever
 }
 
-export interface HighlightHistoryPage {
-  docs: IHighlightLog[]
-  page: number
-  hasNextPage: boolean
-  totalDocs: number
-}
+export type HighlightHistoryPage = Paginated<IHighlightLog>
 
 // GET /reviews?period=week|month&offset=N — a recap of one CLOSED period, computed on
 // demand rather than stored: correct even if a past transaction is later edited.

@@ -17,6 +17,7 @@ import { resolveZone } from "../utils/userZone";
 import { inTransaction } from "../utils/inTransaction";
 import { conflict, notFound } from "../utils/messages";
 import { toDTO, toDTOs } from "../utils/dto";
+import { paginate, withOldPageFields } from "../utils/paginate";
 
 const TRIP_ROW = conflict("This is part of a trip expense", "Change it from the trip");
 const SPLIT_ROW = conflict("This expense is part of a split", "Remove it from the split first");
@@ -207,16 +208,9 @@ export const filterTransactions = async (req: Request, res: Response): Promise<v
         };
     }
 
-    const filteredTransactions = await Transaction.paginate(
-        filters,
-        {
-            page,
-            limit,
-            sort: { occurredAt: -1 },
-        }
-    );
+    const found = await paginate(Transaction, filters, { page, limit, sort: { occurredAt: -1 } });
 
-    reply.ok(res, filteredTransactions, "Transactions fetched");
+    reply.ok(res, withOldPageFields({ ...found, items: toDTOs(found.items) }, req.header("x-app-version")), "Transactions fetched");
 }
 
 export const getTransactionSummary = async (req: Request, res: Response): Promise<void> => {

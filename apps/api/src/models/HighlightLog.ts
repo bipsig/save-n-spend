@@ -1,6 +1,5 @@
-import mongoose, { Document, PaginateModel } from "mongoose";
+import mongoose, { Document } from "mongoose";
 import { Schema } from "mongoose";
-import mongoosePaginate from "mongoose-paginate-v2"
 
 // The permanent record `GET /highlights` itself never keeps — that endpoint recomputes
 // fresh from live data every call, so a highlight that resolves (or gets crowded off the
@@ -36,9 +35,8 @@ const HighlightLogSchema = new Schema<IHighlightLog>({
 // than a place the live poll could quietly duplicate into.
 HighlightLogSchema.index({ userId: 1, key: 1 }, { unique: true });
 HighlightLogSchema.index({ userId: 1, createdAt: -1 });
-HighlightLogSchema.plugin(mongoosePaginate);
 
-export default mongoose.model<IHighlightLog, PaginateModel<IHighlightLog>>(
+export default mongoose.model<IHighlightLog>(
     "HighlightLog",
     HighlightLogSchema
 );
