@@ -14,6 +14,8 @@ Every monetary field is an **integer number of paise**. See
 ## Topics
 
 - [Common request headers](#common-request-headers)
+- [Idempotency-Key](#idempotency-key)
+- [Pages](#pages)
 - [Errors](#errors)
 - [Auth](#auth)
 - [Users](#users)
@@ -43,11 +45,81 @@ Every monetary field is an **integer number of paise**. See
 |---|---|---|
 | `Authorization` | `Bearer <token>` | Yes, except on `/auth/register` and `/auth/login`. |
 | `Content-Type` | `application/json` | Yes, on requests with a body. |
+| `Idempotency-Key` | 1–255 characters, `A–Z a–z 0–9 _ -` | No. On the writes listed under [Idempotency-Key](#idempotency-key). |
 
 **Note**
 Request bodies are validated with `.strict()` Zod objects in most resources.
 An unrecognized field is a 400, not a silently ignored key. This is deliberate:
 it catches a renamed field at the call site instead of after the write.
+
+## Idempotency-Key
+
+From 2.8.0. One key per thing the user means to do: the app makes it when the
+form or sheet opens and sends the same key on every retry of that write
+(a re-tap after an error, an offline-queue resend), so the write lands once.
+The header is optional. Without it a route behaves exactly as before, and a
+write that moves money logs one `warn` line, `Money write without an
+Idempotency-Key`, to stdout (not to the request log the app can read).
+
+| Situation | Answer |
+|---|---|
+| First send | The route runs. A 2xx reply is stored with the key. |
+| Same key, same route, path, query and body, after the first finished with a 2xx | The stored reply, byte for byte, with `Idempotent-Replayed: true`. Nothing runs again. |
+| Same key with a different route, path, query or body | `422` `idempotency_mismatch`. Nothing runs. |
+| Same key while the first send is still running | `409` `idempotency_in_progress` with `Retry-After` (1–5 seconds). Nothing runs. |
+| The first send answered anything but a 2xx and wrote nothing | The key is released: the next send with it runs as new. |
+| The write committed but the reply was never stored (the server died in between, or failed after the commit) | `409` `idempotency_in_progress` for up to 60 seconds after the first send, then `200` `{ "success": true, "statusCode": 200, "message": "This was already saved", "data": null }` with `Idempotent-Replayed: true`. The write is never run twice. Re-read the list to see what landed. |
+| A malformed key (empty, over 255 characters, or other characters) | `400` `invalid_input`, issue path `Idempotency-Key`. |
+
+Keys are per user and remembered for 90 days (`IdempotencyRecord`, TTL index).
+The record is claimed before the route runs and marked committed inside the
+write's own MongoDB transaction, so "this key's write landed" and the write
+itself commit together. A claim whose write never committed (the server died
+first) can be taken over 60 seconds after it was made; the first attempt can
+then no longer commit.
+
+On `POST /transactions`, the body `clientId` keeps working as before, with or
+without the header.
+
+**Routes that take a key.** Money moves: `POST /accounts` (an opening balance),
+`PATCH /accounts/{id}/balance`, `POST /transactions`, `PATCH /transactions/{id}`,
+`DELETE /transactions/{id}`, `POST /transactions/{id}/convert-to-investment`,
+`POST /transactions/convert-to-investment`, `POST /bills/{id}/pay`,
+`POST /goals/{id}/contribute`, `POST /backup/restore`,
+`PATCH /investments/{id}/basis`, `DELETE /investments/{id}`, `DELETE /trips/{id}`,
+`POST /trips/{id}/expenses`, `PATCH /trips/{id}/expenses/{expenseId}`,
+`DELETE /trips/{id}/expenses/{expenseId}`, `POST /trips/{id}/settle`,
+`PUT /trips/{id}/plan`, `DELETE /trips/{id}/plan`, `POST /trips/{id}/close`,
+`POST /trips/{id}/import/commit`. Creates and the due-date move:
+`POST /categories`, `POST /budgets`, `POST /bills`, `POST /bills/{id}/skip`,
+`POST /goals`, `POST /trips`. Any other route ignores the header. Each of these
+writes inside a transaction, so its record is marked committed in the same commit.
+
+## Pages
+
+From 2.8.0, every paged list (`GET /transactions`, `GET /highlights/history`,
+`GET /notifications`) answers `Paginated<T>` from `packages/types`:
+
+| Field | Type | Description |
+|---|---|---|
+| `items` | `T[]` | This page, newest first. Rows at the same instant come in the order they were saved (`_id`), so a row never shows on two pages or on none. |
+| `page` | integer | The page asked for, 1-based. |
+| `limit` | integer | The page size used. |
+| `hasNextPage` | boolean | Whether anything follows this page. |
+| `total` | integer | Every match across all pages. |
+
+The query parameters are unchanged (`page`, default 1; `limit`, default 20).
+
+**Temporary, until both phones run 2.8.** On `GET /transactions` and
+`GET /highlights/history`, a request whose `X-App-Version` is missing or below
+`2.8.0` also gets `docs` (the same array as `items`) and `totalDocs` (= `total`),
+the only page fields the 2.6.0 app reads that this shape lacks. So 2.6.0 sees
+only mongoose-paginate's other fields gone (`totalPages`, `pagingCounter`,
+`hasPrevPage`, `prevPage`, `nextPage`), none of which it reads. 2.8.0 and later
+get exactly `Paginated<T>`. `GET /notifications` needs no extra fields: 2.6.0
+reads `items`, `unread`, `page` and `hasNextPage`, all still there. Remove
+`withOldPageFields` (`apps/api/src/utils/paginate.ts`) and this paragraph after
+the install.
 
 ## Errors
 
@@ -86,7 +158,9 @@ code to branch on; `issues` lists every field at fault.
 | 404 | `route_not_found` | No such route or method. |
 | 409 | `duplicate` | A unique value already exists. On `POST /transactions` a 409 only ever means "this `clientId` is already saved": the apps' offline queue drops any 409 there as saved. |
 | 409 | `conflict` | The thing's current state doesn't allow this. |
+| 409 | `idempotency_in_progress` | A request with this `Idempotency-Key` is still running. Carries `Retry-After`. See [Idempotency-Key](#idempotency-key). |
 | 413 | `body_too_large` | The body is over 25 MB. |
+| 422 | `idempotency_mismatch` | This `Idempotency-Key` was already used with a different route or body. |
 | 429 | `rate_limited` | Too many tries. Carries `Retry-After` in seconds. |
 | 500 | `internal` | Anything unexpected: `Something went wrong on our side. Please try again`. The real error is in the log under `requestId`. |
 
@@ -714,7 +788,7 @@ An offline-queued create sends a `clientId`. A partial unique index on
 a duplicate: a `clientId` already saved answers `200` "Transaction already
 saved" with the saved row, including two sends at once. `POST /transactions`
 never answers `409` for anything else, because the 2.6.0 offline queue drops any
-409 there as saved.
+409 there as saved. The `Idempotency-Key` header works alongside it.
 
 The index applies only when `clientId` is a string, so ordinary transactions
 never collide. `clientId` is stored on the transaction and returned in `data`.
@@ -757,24 +831,8 @@ listing without `type`, so it omits them too.
 | `only` | Only rows with a `tripId`, **minus** the transfers a trip expense generates for what each friend owes (`type: transfer` with a `tripExpenseId`). One row per trip expense, its share. |
 | unset | Everything. What an export needs. |
 
-Results are sorted by `occurredAt`, newest first, and paginated with
-`mongoose-paginate-v2`. `data` is the library's default page object:
-
-| Field | Type | Description |
-|---|---|---|
-| `docs` | `ITransaction[]` | This page's transactions. |
-| `totalDocs` | integer | Matches across all pages. |
-| `limit` | integer | Page size used. |
-| `totalPages` | integer | |
-| `page` | integer | |
-| `pagingCounter` | integer | Index of the first doc on this page. |
-| `hasPrevPage` | boolean | |
-| `hasNextPage` | boolean | |
-| `prevPage` | integer \| null | |
-| `nextPage` | integer \| null | |
-
-There is no named type for this page in `packages/types`; the mobile app
-declares its own `Paginated<T>`.
+Results are sorted by `occurredAt`, newest first, and come as a
+[page](#pages): `{ items, page, limit, hasNextPage, total }` (`Paginated<ITransaction>`).
 
 ### GET /transactions/summary
 
@@ -1250,14 +1308,17 @@ raises each kind, and [Dedupe keys](architecture.md#dedupe-keys).
 | `page` | integer | `1` | 1-based page number. Positive. |
 | `limit` | integer | `20` | Page size. Positive, maximum 50. |
 
-`data` is `NotificationFeed` in `packages/types/src/index.ts`.
+`data` is `NotificationFeed` in `packages/types/src/index.ts`: a [page](#pages)
+plus `unread`.
 
 | Field | Type | Description |
 |---|---|---|
-| `items` | array | Notification documents, newest first. Each carries `_id`, `userId`, `type`, `title`, `body`, `link?`, `dedupeKey`, `pushedAt`, `readAt`, `createdAt`, `updatedAt` and `__v` — the list is not projected, so the type in `packages/types` is a subset. |
+| `items` | array | Notification documents, newest first. Each carries `_id`, `type`, `title`, `body`, `link?`, `dedupeKey`, `pushedAt`, `readAt`, `createdAt` and `updatedAt`. |
 | `unread` | integer | Unread count across the whole feed, not this page. Drives the bell's dot and the app icon badge. |
 | `page` | integer | Echo of the requested page. |
-| `hasNextPage` | boolean | Whether an older page exists. Computed by fetching `limit + 1` rows, so there is no total count. |
+| `limit` | integer | The page size used. From 2.8.0. |
+| `hasNextPage` | boolean | Whether an older page exists. |
+| `total` | integer | Every notification in the feed. From 2.8.0. |
 
 `type` is one of `billReminder`, `billOverdue`, `budgetWarning`,
 `budgetExceeded`, `goalMilestone`, `goalDeadline`, `dailySummary`,
@@ -1602,20 +1663,10 @@ nothing dismisses or deletes it.
 | `page` | integer | `1` | 1-based. |
 | `limit` | integer | `20` | Maximum 100. |
 
-`data` is the `mongoose-paginate-v2` result, newest first (`HighlightHistoryPage`
-types the fields the app uses).
-
-| Field | Type | Description |
-|---|---|---|
-| `docs` | array | `IHighlightLog`: the `IHighlight` fields plus `createdAt` (when the key was first seen), and the stored `_id`, `userId` and `__v`. `screen` is `null` when unset. |
-| `page` | integer | Current page. |
-| `hasNextPage` | boolean | |
-| `totalDocs` | integer | |
-
-UNVERIFIED: the library also returns its other default paging fields (`limit`,
-`totalPages`, `hasPrevPage`, `nextPage`, `prevPage`, `pagingCounter`); the
-controller passes the result through unchanged, but the field list was not read
-from the installed version.
+`data` is a [page](#pages), newest first (`HighlightHistoryPage`, which is
+`Paginated<IHighlightLog>`). Each item is the `IHighlight` fields plus
+`createdAt` (when the key was first seen) and the stored `_id`. `screen` is
+`null` when unset.
 
 The history is the source for the review timeline's highlight entries, so a
 period with no `/highlights` poll has none.
@@ -2555,13 +2606,15 @@ Response, `200`, message `Imported`:
 
 **Idempotency.** Expenses carry the row key as `importKey`, and settle-ups carry
 it in their `clientId`. The **preview** marks any row seen before as `alreadyIn`,
-so importing the same file again offers only new rows. The commit does not
-re-check this by itself; see the known issues below.
+so importing the same file again offers only new rows. The commit skips them
+too: a decision whose key is already on this trip is left out, and a commit whose
+chosen rows are all in already writes nothing and answers `200` with zeros.
 
-**Known issue**
-Commit is not atomic across decisions: each expense is its own database
-transaction, and the new person accounts and trip membership are saved before any
-decision runs. A failure part-way leaves the earlier rows imported.
+The whole commit is one MongoDB transaction: new people, members, expenses,
+applied splits and settle-ups land together or not at all, and every ownership
+check runs before anything is written. New expenses, their rows and the balance
+changes are written in bulk (one insert of expenses, one of rows, one balance
+update per account), so a 975 + 25 row file commits in about 2 seconds.
 
 ## Backup
 
@@ -2581,10 +2634,11 @@ type in `packages/types`).
 | `exportedAt` | string | ISO instant. |
 | `preferences` | object | `{ currency, timeZone, notifications, defaultAccount }` — `defaultAccount` is `null` when unset. |
 | `accounts`, `categories`, `transactions`, `budgets`, `bills`, `goals`, `trips`, `tripExpenses` | array | Every document of that kind owned by the caller, as stored (`.lean()`): `_id`, `userId`, timestamps and `__v` included. Archived accounts and categories are included. |
+| `goalContributionLogs` | array | From 2.8.0. Every contribution to the caller's goals (`_id`, `goalId`, `amount`, `createdAt`), as stored. |
 
 Excluded on purpose: the profile and credentials (`name`, `email`, `password`,
 reset and TOTP fields, `googleId`), `pushToken`, notifications, highlight
-history, goal contribution logs, recurring dismissals and request logs. The
+history, recurring dismissals and request logs. The
 derived ones regenerate after a restore; restoring a stale copy would not be
 real data.
 
@@ -2610,6 +2664,7 @@ Try again in an hour`, and it sends the standard `RateLimit-*` headers. The requ
 | `preferences` | object | Required: `currency` (string), `timeZone` (string), `notifications` (object), optional `defaultAccount` (24-hex ID or `null`). Extra keys are kept. |
 | `accounts`, `categories`, `transactions`, `budgets`, `bills`, `goals` | array | Required. Each element is a loose object that must carry a 24-hex `_id`. |
 | `trips`, `tripExpenses` | array | Optional, so a backup from before trips still restores. |
+| `goalContributionLogs` | array | Optional. Present: it replaces the caller's logs. Absent (any backup made before 2.8.0): the caller's logs are left as they are. |
 
 Validation is deliberately loose per document; the Mongoose model schemas are
 the real validator once `insertMany` runs.
@@ -2618,7 +2673,8 @@ What it does, inside one MongoDB transaction (any failure rolls back to the
 pre-restore state):
 
 1. Deletes every account, category, transaction, budget, bill, goal, trip and
-   trip expense owned by the caller. It never merges.
+   trip expense owned by the caller, and their goal contribution logs when the
+   file carries `goalContributionLogs`. It never merges.
 2. Inserts the backup's documents with their original `_id`s, so cross
    references (`Transaction.account`, `Budget.category`, …) need no remapping,
    and with `userId` rewritten to the caller's. This is what makes restoring an
@@ -2631,18 +2687,19 @@ Returns `200` (`Backup restored`) with `{ counts, user }`:
 
 | Field | Type | Description |
 |---|---|---|
-| `counts` | object | Documents inserted per kind: `accounts`, `categories`, `transactions`, `budgets`, `bills`, `goals`, `trips`, `tripExpenses`. |
+| `counts` | object | Documents inserted per kind: `accounts`, `categories`, `transactions`, `budgets`, `bills`, `goals`, `trips`, `tripExpenses`, and `goalContributionLogs` when the file has it. |
 | `user` | object | The user document, read fresh after commit. The app swaps it into its session, because `appZone()` reads `prefs.timeZone` from it. `password`, `resetToken`, `resetTokenExpiry` and `totpSecret` are stripped; other fields such as `pushToken` are not. |
 
 **Warning**
 This wipes the caller's data. A failure after the 400-level checks rolls back,
-but a successful restore cannot be undone by the API. Notifications, highlight
-history and goal contribution logs are **not** wiped, so they can reference
-documents the backup no longer contains.
+but a successful restore cannot be undone by the API. Notifications and
+highlight history are **not** wiped, nor are goal contribution logs when an
+older file has none, so they can reference documents the backup no longer
+contains.
 
 **Warning**
-`backupSchema` imports `zod/v4`, so a body that fails validation — including a
-missing `confirm` — is a `500`, not a `400`. Validation runs before the
+A body that fails validation, including a missing `confirm`, is a `400`
+`invalid_input` (`That doesn't look like a Save n Spend backup file`). Validation runs before the
 transaction opens, so nothing is deleted. UNVERIFIED: restoring a backup whose
 `_id`s already belong to **another** account's documents would presumably fail
 on a duplicate key (`409`, rolled back); this was inferred, not read.
@@ -2852,24 +2909,17 @@ inapplicable pillars are returned with `score: null`.
 
 These are real behaviours found while documenting, not changes made.
 
-1. **Import commit does not enforce idempotency.** `commitImport` never checks
-   `importKey` or `sw:<tripId>:<key>` against what is already saved. Only the
-   preview does. Committing the same decisions twice duplicates every expense,
-   and for settle-ups the second write hits the partial unique index on
-   `(userId, clientId)`. UNVERIFIED: the unique violation maps to `409` via the
-   duplicate-key branch of the error handler, which was not exercised.
-2. **Import commit trusts mapped account ids.** Values in `mapping` other than
-   `me` and `new` are used as account ids with no check that they are the caller's
-   live person accounts (`requirePeople` is skipped), and an id that is not an
-   ObjectId throws on `trip.save()`. `applyEffects` updates by `_id` alone, so a
-   foreign account id would have its balance changed. The preview does not
-   validate the mapping either.
+1. **Fixed in 2.7.1: import commit idempotency.** Commit skips rows already on
+   the trip and runs as one transaction (see the commit section).
+2. **Fixed in 2.7.1: import commit trusted mapped account ids.** Every mapped id
+   must be one of the caller's live person accounts (`400` `invalid_reference`
+   otherwise), checked before anything is written.
 3. **Identical file rows collapse.** Two rows with the same date, description,
    cost, and category share one `key`. Commit keeps one of them (the key map is
    built from rows), and preview treats both as imported once one is.
-4. **Repeated commits with `"new"` create duplicate people.** Names mapped to
-   `"new"` always create a fresh person account, with no lookup by name, and do so
-   even when there are no decisions.
+4. **Fixed in 2.7.1: repeated commits with `"new"` created duplicate people.**
+   A commit whose chosen rows are all imported already writes nothing, people
+   included.
 5. **`GET /investments/{id}/history` does not validate the account.** Any of the
    caller's accounts works, archived or not; unknown ids return `[]`, not `404`.
    It also silently caps at 200 rows.

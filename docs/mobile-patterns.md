@@ -136,10 +136,36 @@ transaction entered without it. Four pieces cooperate.
 
 | Piece | File | What it does |
 |---|---|---|
-| Read cache | `lib/offlineCache.ts`, used by `lib/api.ts` | Every successful `GET` is written to a JSON file under `documentDirectory/offline-cache/`, keyed by a hash of the path. When a `GET` gets no answer at all, `api.ts` returns the cached copy as if the request had succeeded, so no hook needs offline handling of its own. A write with no answer throws `You're offline — check your connection`. Cleared on sign-out. |
+| Read cache | `lib/offlineCache.ts`, used by `lib/api.ts` | Every successful `GET` is written to a JSON file under `documentDirectory/offline-cache/`, keyed by a hash of the path. When a `GET` gets no answer at all, `api.ts` returns the cached copy as if the request had succeeded, so no hook needs offline handling of its own. A write with no answer throws `Couldn't reach the server, so check your connection and try again` (status 0). Cleared on sign-out. |
 | Connectivity | `store/connectivity.ts` | `offline` flips from `lib/api.ts` itself: any answer, even a rejection, reports online; no answer reports offline. While offline it pings `/health` every 30 s and on returning to the foreground. |
 | `OfflineBanner` | `components/shell/OfflineBanner.tsx` | "Offline — showing data from 3:42 pm". Mounted once inside `ScreenScaffold`, so every scaffold screen has it. |
-| Outbox | `store/outbox.ts`, `lib/outbox.ts` | A new transaction captured offline is queued with a `clientId` and replayed FIFO on reconnect and on launch. The server dedupes on `clientId`, so a `409` counts as synced. A validation failure marks the item `failed` and surfaces it, without blocking the rest. The outbox file deliberately survives sign-out. |
+| Outbox | `store/outbox.ts`, `lib/outbox.ts`, `lib/outboxDrain.ts`, `lib/outboxPolicy.ts` | A new transaction captured offline is queued with its `clientId` and `Idempotency-Key` (the same value) and replayed FIFO on reconnect and on launch, sending the same key every time. What happens next is decided by the error's `code` (table below). An item queued by 2.6.0 has no key; it is given one, saved to the file, before its first send. The outbox file deliberately survives sign-out. |
+
+| Answer | Outbox does |
+|---|---|
+| 2xx | Removes the item, counts it as synced |
+| No answer, a gateway page, an empty or garbled body, `rate_limited`, `idempotency_in_progress`, any 5xx | Keeps it queued and stops; tries again after 2 s, 4 s, 8 s … up to five minutes, never before `Retry-After` |
+| `invalid_input`, `invalid_json`, `invalid_reference`, `not_found`, `duplicate`, `conflict`, `idempotency_mismatch`, any other 4xx | Marks it `failed` with the message, without blocking the rest. Retry after `idempotency_mismatch` sends a new key |
+| 401 | Stops, leaves the queue as it is |
+| 409 with no `code` (an API older than 2.8.0) | Removes it: that API's only 409 here means the `clientId` is already saved |
+
+**Every create and money-moving write sends an `Idempotency-Key`.** At submit a form calls
+`keyFor(method, path, body)` on a key holder. The same request gets the same key across double
+taps, re-taps after an error, and closing and reopening the sheet; a changed value or another
+target gets a new one; `reset()` after a success. Sheets, and screens that reopen with the
+same values, take the holder for their target, `holderFor(\`goal:${id}:contribute\`)` or
+`holderFor("bill:new")`, which lasts the app run. A new entry on a full-screen form (Add
+Transaction, Add Goal, trip import) starts blank, so it uses `useIdempotencyKey()`, one holder
+per mount. Pass it as
+`post(path, body, { idempotencyKey })`; the write helpers in `lib/` take the same options last.
+`lib/formKeys.test.ts` fails when a form's write goes out without one.
+
+**Server errors keep their parts.** `ApiError` has `status`, `code`, `issues`, `requestId`,
+`retryAfterMs` and `reason` (the message without the Ref). `splitIssues(err, { amount: "amount" }, fallback)`
+puts each issue on the form field it names and returns what's left for the form's own error line.
+A 502/503/504 or HTML page reads "The server is starting up, so try again in a minute", and an
+empty or unreadable body "Something went wrong, so try again in a moment". A 2xx that isn't JSON
+(a Wi-Fi sign-in page) counts as no answer, never as saved.
 
 Two rules follow.
 
@@ -147,7 +173,7 @@ Two rules follow.
 CTA while `offline` and say why ("Needs a connection"): a stale statement reads as
 authoritative in a way a stale screen does not.
 
-**Deletes are undoable, and are not queued.** `store/pendingDeletes.ts` defers a
+**Deletes are undoable, and survive the app closing.** `store/pendingDeletes.ts` defers a
 destructive call for five seconds. The row disappears at once (screens filter their
 items against `usePendingDeletes((s) => s.keys)`), an `info` toast with an **Undo**
 action is shown, and only after the window does the real call run. Undo calls
@@ -156,8 +182,16 @@ so navigating away does not cancel a delete; a failed commit restores the row wi
 error toast; and sign-out flushes any pending deletes so a confirmed delete is not
 reverted. Bills, goals, categories, accounts and transactions use it.
 
+Each delete is also written to `documentDirectory/pending-deletes/<userId>.json` and removed
+when it commits, fails or is undone. If the app is killed or suspended inside the window (or
+sign-out had no token left to send it), the next authed launch or reconnect sends it
+(`replayPendingDeletes`), with the same `Idempotency-Key` the commit gets as `opts`. A 404 on
+that resend means it already landed. The DELETE route comes from the key, `<kind>:<id>` for
+`transaction`, `goal`, `bill`, `category` and `account` (`lib/pendingDeleteReplay.ts`); `after`
+adds follow-up requests, such as clearing the default account.
+
 ```ts
-pendingDeletes.schedule(key, name, () => deleteBill(id));
+pendingDeletes.schedule(key, name, (opts) => deleteBill(id, opts));
 toast.action("info", `${name} deleted`, { label: "Undo", onPress: () => pendingDeletes.cancel(key) });
 ```
 
@@ -777,6 +811,12 @@ modules that do not pull in React Native, Expo or the `@/` alias. That is why lo
 | `lib/accountOrder.test.ts` | `mergeSectionOrder`: a dragged section's order lands in place, hidden rows are still sent. |
 | `lib/safeToSpend.test.ts` | `billsAgainstBudgets`: which bills count against which budgets, SIPs excluded, zone-correct months. |
 | `lib/investmentsReportMath.test.ts` | Financial years, periods, sections and presets, the ledger CSV and best/worst month. |
+| `lib/apiError.test.ts` | Error parsing: the envelope, older bodies without a code, gateway pages, empty bodies, Retry-After, success bodies, `splitIssues`. |
+| `lib/outboxPolicy.test.ts` | The outbox's decision for every error code. |
+| `lib/outboxDrain.test.ts` | Draining: 2.6.0 items get one stored key, keys survive retries and restarts, refusals don't block the queue. |
+| `lib/idempotency.test.ts` | Key reuse across retries, replacement on a changed value or `reset()`. |
+| `lib/formKeys.test.ts` | Every create and money-moving write in `app/` and `components/` passes a key. |
+| `lib/pendingDeleteReplay.test.ts` | Deletes left on disk: key → route, replay with the delete's own key, 404 as done, kept when unreachable, refusals reported, follow-ups only after the DELETE. |
 
 Add a test beside the module as `lib/<name>.test.ts` using `node:test` and `node:assert/strict`.
 
