@@ -71,18 +71,21 @@ test("summary: this month's figures, cut at Kolkata midnight, trips and an archi
     assert.equal("sinceLastOpened" in d, false);
 });
 
-test("summary: net-worth history walks back from today by each month's rows (current behaviour)", async () => {
+test("summary: net-worth history walks back from today over the accounts today's figure counts (D24)", async () => {
     setClock(NOW);
     const d = (await me.send("GET", "/dashboard/summary")).json.data;
-    // Month deltas (income − expense ± adjustments; transfers net to zero):
-    // Feb −350,000, Mar −250,000, Apr +845,000 (the archived wallet's −30,000 included).
+    // Month deltas on the live accounts (income − expense ± adjustments; transfers between them
+    // net to zero): Feb −350,000, Mar −250,000, Apr +875,000. The archived wallet's −30,000
+    // coffee is left out, as its balance is left out of today's figure; 2.8.1 counted it, which
+    // put every past point 30,000 higher (8,030,000, 7,680,000, 7,430,000).
     assert.deepEqual(d.netWorthTrend, [
-        { label: "Feb 2026", total: 8_030_000 },
-        { label: "Mar 2026", total: 7_680_000 },
-        { label: "Apr 2026", total: 7_430_000 },
+        { label: "Feb 2026", total: 8_000_000 },
+        { label: "Mar 2026", total: 7_650_000 },
+        { label: "Apr 2026", total: 7_400_000 },
         { label: "Apr 2026", total: NET_WORTH },
     ]);
-    // Each point is the complete month before the boundary, then this month once, last.
+    // Each point is the complete month before the boundary, then this month once, last. The flow
+    // still counts every account's rows, the archived wallet's included, as `expenses` does.
     assert.deepEqual(d.flowTrend, [
         { label: "Jan 2026", income: 3_000_000, expense: 0 },
         { label: "Feb 2026", income: 0, expense: 400_000 },
@@ -217,7 +220,35 @@ test("netWorthAtBoundaries: a month's opening and closing net worth; null before
     const decStart = new Date("2025-11-30T18:30:00Z");
     assert.deepEqual(
         await netWorthAtBoundaries(oid, "Asia/Kolkata", NET_WORTH, new Date("2026-01-10T06:30:00Z"), [decStart, marchStart, aprilStart]),
-        [null, 7_680_000, 7_430_000],
+        [null, 7_650_000, 7_400_000],
+    );
+});
+
+test("net-worth history (D24): an archived account's own rows and its transfers' far legs drop out", async () => {
+    setClock(NOW);
+    const u = await api.user("dash-archived");
+    const b = await u.account("Bank", { startingBalance: 1_000_000 });
+    const old = await u.account("Old savings", { startingBalance: 500_000 });
+    await txn(u, "transfer", 200_000, old, "2026-03-05T06:30:00Z", { toAccount: b });
+    await txn(u, "expense", 50_000, old, "2026-03-10T06:30:00Z");
+    await txn(u, "transfer", 100_000, b, "2026-04-02T06:30:00Z", { toAccount: old });
+    await txn(u, "income", 300_000, b, "2026-04-03T06:30:00Z");
+    assert.equal((await u.send("DELETE", `/accounts/${old}`)).status, 200);
+
+    // Today: Bank 1,400,000; the archived account's 350,000 is left out.
+    const d = (await u.send("GET", "/dashboard/summary")).json.data;
+    assert.equal(d.netWorth, 1_400_000);
+    // Bank on 1 April was 1,200,000: April moved it −100,000 (the transfer out) + 300,000.
+    // 2.8.1 skipped transfers and gave 1,100,000.
+    assert.deepEqual(d.netWorthTrend, [{ label: "Apr 2026", total: 1_200_000 }, { label: "Apr 2026", total: 1_400_000 }]);
+
+    // On 1 March, Bank's 1,000,000: March brought in the 200,000 transfer; the archived account's
+    // 50,000 expense never touched it. 2.8.1 counted the expense and not the transfer: 1,150,000.
+    const marchStart = new Date("2026-02-28T18:30:00Z");
+    const aprilStart = new Date("2026-03-31T18:30:00Z");
+    assert.deepEqual(
+        await netWorthAtBoundaries(new mongoose.Types.ObjectId(u.id), "Asia/Kolkata", 1_400_000, new Date("2026-02-01T00:00:00Z"), [marchStart, aprilStart]),
+        [1_000_000, 1_200_000],
     );
 });
 

@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import Account from "../models/Account";
 import Transaction from "../models/Transaction";
 import { addMonthsInZone, startOfMonthInZone, partsInZone } from "../utils/timezone";
 import { monthOrdinal, AVERAGE_MONTHS } from "./highlightSnapshotMath";
@@ -6,12 +7,15 @@ import { reconstructTrend, type MonthDelta } from "./netWorthMath";
 
 // Account.balance is a live running total (mutated by $inc as transactions land) — there
 // is no stored balance history anywhere. Reconstructing past net worth means walking
-// backward from the current total by each month's own delta: income/positiveAdjustment
-// add, expense/negativeAdjustment subtract, and a transfer nets to zero across the user's
-// full account set (both legs, including a `person`-type account, are already inside the
-// same summed total) so it never needs subtracting. This can't reuse
-// highlightSnapshotMath's Snapshot.months — that aggregation deliberately excludes both
-// adjustment types, which move the balance even though they aren't income or spending.
+// backward from the current total by each month's own delta.
+//
+// History covers the same accounts as today's figure (D24): the user's accounts that are not
+// archived. A month's delta is what its rows did to THOSE balances — income/positiveAdjustment
+// add and expense/negativeAdjustment subtract when they sit on one, and a transfer counts only
+// the legs that land on one (so between two of them it nets to zero). Archiving an account
+// then changes no past point. This can't reuse highlightSnapshotMath's Snapshot.months — that
+// aggregation deliberately excludes both adjustment types, which move the balance even though
+// they aren't income or spending.
 
 const ymKey = (instant: Date, zone: string): string => {
   const { year, month } = partsInZone(instant, zone);
@@ -24,17 +28,57 @@ const monthLabel = (instant: Date, zone: string): string =>
 export type NetWorthPoint = { label: string; total: number };
 export type MonthlyFlowPoint = { label: string; income: number; expense: number };
 
+type MonthRow = { _id: string; income: number; expense: number; delta: number };
+
+/** Per zone-local month from `since`: income and expense over every row (what the flow
+ *  figures always meant), and the net-worth delta over the accounts today's figure counts. */
+const monthRows = async (oid: mongoose.Types.ObjectId, zone: string, since: Date): Promise<MonthRow[]> => {
+  const live = await Account.find({ userId: oid, isArchived: false }).distinct("_id");
+  const on = (field: string) => ({ $in: [field, live] });
+  const amountIf = (cond: unknown) => ({ $cond: [cond, "$amount", 0] });
+
+  return Transaction.aggregate<MonthRow>([
+    {
+      $match: {
+        userId: oid,
+        type: { $in: ["income", "expense", "positiveAdjustment", "negativeAdjustment", "transfer"] },
+        occurredAt: { $gte: since },
+      },
+    },
+    {
+      $group: {
+        _id: { $dateToString: { date: "$occurredAt", format: "%Y-%m", timezone: zone } },
+        income: { $sum: amountIf({ $eq: ["$type", "income"] }) },
+        expense: { $sum: amountIf({ $eq: ["$type", "expense"] }) },
+        delta: {
+          $sum: {
+            $switch: {
+              branches: [
+                { case: { $in: ["$type", ["income", "positiveAdjustment"]] }, then: amountIf(on("$account")) },
+                { case: { $in: ["$type", ["expense", "negativeAdjustment"]] }, then: { $subtract: [0, amountIf(on("$account"))] } },
+                { case: { $eq: ["$type", "transfer"] }, then: { $subtract: [amountIf(on("$toAccount")), amountIf(on("$account"))] } },
+              ],
+              default: 0,
+            },
+          },
+        },
+      },
+    },
+  ]);
+};
+
+const deltasOf = (rows: MonthRow[]): MonthDelta[] => rows.map((r) => ({ key: r._id, delta: r.delta }));
+
 /**
  * Current net worth + up to `AVERAGE_MONTHS` prior complete-month boundaries, oldest
  * first, floored to however much history the account actually has. Length 1 (current
  * only) for an account younger than one complete month — a boundary that predates the
  * account's first transaction isn't a real point, it's an artifact of the arithmetic.
  *
- * `monthlyFlow` rides along on the SAME query (the aggregate already groups income/
- * expense per month before this function collapses them into a single delta) — each
- * complete reference month's own income/expense, same order, one entry shorter than
- * `points` since it excludes the current (still partial) month. The caller already
- * knows this month's own income/expense from its own aggregate and appends that itself.
+ * `monthlyFlow` rides along on the SAME query — each complete reference month's own
+ * income/expense, same order, one entry shorter than `points` since it excludes the current
+ * (still partial) month. The caller already knows this month's own income/expense from its
+ * own aggregate and appends that itself.
  */
 export const netWorthTrend = async (
   userId: string | mongoose.Types.ObjectId,
@@ -58,43 +102,21 @@ export const netWorthTrend = async (
     // `monthlyFlow` is the complete month BEFORE each boundary, so the query reaches one month
     // further back. `reconstructTrend` only sums months at or after a boundary, so the extra
     // month's rows don't move `points`.
-    const flowStart = addMonthsInZone(earliestBoundary, zone, -1);
-
-    const rows = await Transaction.aggregate<{ _id: string; income: number; expense: number; posAdj: number; negAdj: number }>([
-      {
-        $match: {
-          userId: oid,
-          type: { $in: ["income", "expense", "positiveAdjustment", "negativeAdjustment"] },
-          occurredAt: { $gte: flowStart },
-        },
-      },
-      {
-        $group: {
-          _id: { $dateToString: { date: "$occurredAt", format: "%Y-%m", timezone: zone } },
-          income: { $sum: { $cond: [{ $eq: ["$type", "income"] }, "$amount", 0] } },
-          expense: { $sum: { $cond: [{ $eq: ["$type", "expense"] }, "$amount", 0] } },
-          posAdj: { $sum: { $cond: [{ $eq: ["$type", "positiveAdjustment"] }, "$amount", 0] } },
-          negAdj: { $sum: { $cond: [{ $eq: ["$type", "negativeAdjustment"] }, "$amount", 0] } },
-        },
-      },
-    ]);
-
-    const deltas: MonthDelta[] = rows.map((r) => ({ key: r._id, delta: r.income - r.expense + r.posAdj - r.negAdj }));
-    const flowByMonth = new Map(rows.map((r) => [r._id, { income: r.income, expense: r.expense }]));
+    const rows = await monthRows(oid, zone, addMonthsInZone(earliestBoundary, zone, -1));
+    const flowByMonth = new Map(rows.map((r) => [r._id, r]));
 
     // Oldest boundary first.
     const boundaries: Date[] = [];
     for (let k = monthsAvailable; k >= 1; k--) {
       boundaries.push(addMonthsInZone(currentMonthStart, zone, -(k - 1)));
     }
-    const boundaryKeys = boundaries.map((boundary) => ymKey(boundary, zone));
-    const totals = reconstructTrend(currentNetWorth, deltas, boundaryKeys);
+    const totals = reconstructTrend(currentNetWorth, deltasOf(rows), boundaries.map((boundary) => ymKey(boundary, zone)));
 
     boundaries.forEach((boundary, i) => {
       points.push({ label: monthLabel(boundary, zone), total: totals[i] });
       const month = addMonthsInZone(boundary, zone, -1);
-      const flow = flowByMonth.get(ymKey(month, zone)) ?? { income: 0, expense: 0 };
-      monthlyFlow.push({ label: monthLabel(month, zone), income: flow.income, expense: flow.expense });
+      const flow = flowByMonth.get(ymKey(month, zone));
+      monthlyFlow.push({ label: monthLabel(month, zone), income: flow?.income ?? 0, expense: flow?.expense ?? 0 });
     });
   }
 
@@ -120,28 +142,8 @@ export const netWorthAtBoundaries = async (
   const oid = new mongoose.Types.ObjectId(String(userId));
   const earliest = boundaries.reduce((a, b) => (b < a ? b : a));
 
-  const rows = await Transaction.aggregate<{ _id: string; income: number; expense: number; posAdj: number; negAdj: number }>([
-    {
-      $match: {
-        userId: oid,
-        type: { $in: ["income", "expense", "positiveAdjustment", "negativeAdjustment"] },
-        occurredAt: { $gte: earliest },
-      },
-    },
-    {
-      $group: {
-        _id: { $dateToString: { date: "$occurredAt", format: "%Y-%m", timezone: zone } },
-        income: { $sum: { $cond: [{ $eq: ["$type", "income"] }, "$amount", 0] } },
-        expense: { $sum: { $cond: [{ $eq: ["$type", "expense"] }, "$amount", 0] } },
-        posAdj: { $sum: { $cond: [{ $eq: ["$type", "positiveAdjustment"] }, "$amount", 0] } },
-        negAdj: { $sum: { $cond: [{ $eq: ["$type", "negativeAdjustment"] }, "$amount", 0] } },
-      },
-    },
-  ]);
-
-  const deltas: MonthDelta[] = rows.map((r) => ({ key: r._id, delta: r.income - r.expense + r.posAdj - r.negAdj }));
-  const boundaryKeys = boundaries.map((b) => ymKey(b, zone));
-  const totals = reconstructTrend(currentNetWorth, deltas, boundaryKeys);
+  const rows = await monthRows(oid, zone, earliest);
+  const totals = reconstructTrend(currentNetWorth, deltasOf(rows), boundaries.map((b) => ymKey(b, zone)));
 
   return boundaries.map((boundary, i) => (boundary < firstTxnAt ? null : totals[i]));
 };
