@@ -44,6 +44,9 @@ export const AGREED = {
         [/^GET \/insights\?.* data\.byCategory\.\d+\.share$/, "2.8.4 D21: shares of everyday spending"],
         [/^GET \/insights\/category\/\w+\?.* data\.shareOfEverydaySpend$/, "2.8.4 D21: share of everyday spending"],
         [/^GET \/reviews\?.* data\.(tripExpenses|previousTripExpenses|uncategorised|categories\.\d+\.share)$/, "2.8.4 D21 and V-4: trip shares, one-decimal shares"],
+        [/^GET \/dashboard\/summary(\?.*)? data\.(biggestEverydayExpense|sinceLastOpened\.tripSpent)$/, "2.8.4 D21: everyday biggest expense, trip part of spent"],
+        [/^GET \/dashboard\/insights data\.everyday$/, "2.8.4 D21: everyday no-spend days, heatmap and pace"],
+        [/^GET \/insights\?.* data\.((trend|previousTrend)\.\d+\.tripAmount|avgDailyEverydaySpend(Current|Previous))$/, "2.8.4 D21: trip part of the trend, everyday averages"],
     ] as [RegExp, string][],
     /** Values a later release changes on purpose, with the reason. */
     changed: [
@@ -51,7 +54,8 @@ export const AGREED = {
         [/^GET \/reviews\?period=month.* data\.netWorth\.(total|previousTotal)$/, "2.8.4 D24: history counts today's accounts"],
         [/^GET \/reviews\?.* data\.verdict\.(headline|detail)$/, "2.8.4 Q3: exact paise, one decimal"],
         [/^GET \/reviews\?.* data\.timeline\.\d+\.(date|kind|text)$/, "2.8.4 Q3 wording; D21 timeline's biggest expense is everyday"],
-        [/^GET \/dashboard\/health data\.(pillars\.\d+\.(value|hint)|focus\.hint)$/, "2.8.4 Q3: exact paise, one decimal"],
+        [/^GET \/dashboard\/health data\.(pillars\.\d+\.(value|hint)|focus\.hint)$/, "2.8.4 Q3 wording; D21 buffer on everyday spending"],
+        [/^GET \/dashboard\/health data\.(score|band|rating|runwayMonths|pillars\.\d+\.(score|verdict)|focus\.(key|label))$/, "2.8.4 D21: the buffer is measured on everyday spending"],
         [/^GET \/highlights data\.highlights\.\d+\.(title|body)$/, "2.8.4 Q3: exact paise, one decimal"],
     ] as [RegExp, string][],
     /** R2 (B5): paged lists answer {items, page, limit, hasNextPage, total}. */

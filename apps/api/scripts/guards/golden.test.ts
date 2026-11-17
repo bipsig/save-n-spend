@@ -36,6 +36,21 @@ test("time-driven values and unordered lists don't count", () => {
     assert.equal(compareSnapshots(a, moved).length, 1);
 });
 
+test("2.8.4 everyday pass: the new everyday fields and the health buffer's values are allowed, an old field's value is not", () => {
+    const before = snap({
+        "GET /dashboard/health": ok({ score: 60, runwayMonths: 0.5, pillars: [{ score: 22 }] }),
+        "GET /insights?period=month&offset=0": ok({ trend: [{ amount: 5 }], avgDailySpendCurrent: 3 }),
+    });
+    const after = snap({
+        "GET /dashboard/health": ok({ score: 61, runwayMonths: 0.6, pillars: [{ score: 23 }] }),
+        "GET /insights?period=month&offset=0": ok({ trend: [{ amount: 6, tripAmount: 1 }], avgDailySpendCurrent: 3, avgDailyEverydaySpendCurrent: 2 }),
+    });
+    assert.deepEqual(compareSnapshots(before, after).map((d) => [d.path, !!d.allowed]), [
+        ["data.score", true], ["data.runwayMonths", true], ["data.pillars.0.score", true],
+        ["data.trend.0.amount", false], ["data.trend.0.tripAmount", true], ["data.avgDailyEverydaySpendCurrent", true],
+    ]);
+});
+
 test("GET /highlights generatedAt is a timestamp; the highlights themselves still count", () => {
     const at = (generatedAt: string, title: string) => snap({ "GET /highlights": ok({ generatedAt, highlights: [{ title }] }) });
     assert.deepEqual(compareSnapshots(at("t1", "A"), at("t2", "A")), []);
