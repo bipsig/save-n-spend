@@ -53,3 +53,23 @@ test("S2: the backup's new goalContributionLogs is allowed, nothing else new is"
     const diffs = compareSnapshots(snap({ "GET /backup": ok({ goals: [] }) }), snap({ "GET /backup": ok({ goals: [], goalContributionLogs: [], extra: 1 }) }));
     assert.deepEqual(diffs.map((d) => [d.path, !!d.allowed]), [["data.goalContributionLogs", true], ["data.extra", false]]);
 });
+
+test("2.8.4: the new trip and share fields, D24 history and Q3 sentences are allowed; other changes are not", () => {
+    const before = snap({
+        "GET /dashboard/summary": ok({ expenses: 5, netWorth: 9, netWorthTrend: [{ label: "Oct", total: 3 }] }),
+        "GET /reviews?period=month&offset=-1": ok({ verdict: { headline: "₹8,655 saved this period" }, netWorth: { total: 1 }, categories: [{ pct: 50 }] }),
+    });
+    const after = snap({
+        "GET /dashboard/summary": ok({ expenses: 6, tripExpenses: 1, netWorth: 9, netWorthTrend: [{ label: "Oct", total: 2 }] }),
+        "GET /reviews?period=month&offset=-1": ok({ verdict: { headline: "₹8,655.00 saved this period" }, netWorth: { total: 0 }, categories: [{ pct: 50, share: 55.6 }], tripExpenses: 0 }),
+    });
+    assert.deepEqual(compareSnapshots(before, after).map((d) => [d.path, !!d.allowed]), [
+        ["data.expenses", false],
+        ["data.netWorthTrend.0.total", true],
+        ["data.tripExpenses", true],
+        ["data.verdict.headline", true],
+        ["data.netWorth.total", true],
+        ["data.categories.0.share", true],
+        ["data.tripExpenses", true],
+    ]);
+});

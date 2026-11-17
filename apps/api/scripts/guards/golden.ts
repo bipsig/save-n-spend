@@ -37,7 +37,23 @@ export const AGREED = {
     /** Lists whose order among ties isn't fixed by the query: compared as sets. */
     unordered: [/^GET \/transactions\/title-suggestions$/],
     /** Fields a later release adds, with the reason. */
-    added: [[/^GET \/backup data\.goalContributionLogs$/, "S2: backups carry goal contribution logs"]] as [RegExp, string][],
+    added: [
+        [/^GET \/backup data\.goalContributionLogs$/, "S2: backups carry goal contribution logs"],
+        [/^GET \/dashboard\/summary(\?.*)? data\.(tripExpenses|weekTripExpense|flowTrend\.\d+\.tripExpense)$/, "2.8.4 D21: trip shares beside the totals"],
+        [/^GET \/insights\?.* data\.(incomeVsExpense\.\d+\.tripExpense|uncategorised)$/, "2.8.4 D21: trip shares and uncategorised spend"],
+        [/^GET \/insights\?.* data\.byCategory\.\d+\.share$/, "2.8.4 D21: shares of everyday spending"],
+        [/^GET \/insights\/category\/\w+\?.* data\.shareOfEverydaySpend$/, "2.8.4 D21: share of everyday spending"],
+        [/^GET \/reviews\?.* data\.(tripExpenses|previousTripExpenses|uncategorised|categories\.\d+\.share)$/, "2.8.4 D21 and V-4: trip shares, one-decimal shares"],
+    ] as [RegExp, string][],
+    /** Values a later release changes on purpose, with the reason. */
+    changed: [
+        [/^GET \/dashboard\/summary(\?.*)? data\.netWorthTrend\.\d+\.total$/, "2.8.4 D24: history counts today's accounts"],
+        [/^GET \/reviews\?period=month.* data\.netWorth\.(total|previousTotal)$/, "2.8.4 D24: history counts today's accounts"],
+        [/^GET \/reviews\?.* data\.verdict\.(headline|detail)$/, "2.8.4 Q3: exact paise, one decimal"],
+        [/^GET \/reviews\?.* data\.timeline\.\d+\.(date|kind|text)$/, "2.8.4 Q3 wording; D21 timeline's biggest expense is everyday"],
+        [/^GET \/dashboard\/health data\.(pillars\.\d+\.(value|hint)|focus\.hint)$/, "2.8.4 Q3: exact paise, one decimal"],
+        [/^GET \/highlights data\.highlights\.\d+\.(title|body)$/, "2.8.4 Q3: exact paise, one decimal"],
+    ] as [RegExp, string][],
     /** R2 (B5): paged lists answer {items, page, limit, hasNextPage, total}. */
     paged: /^GET \/(transactions|highlights\/history|notifications)(\?|$)/,
 };
@@ -71,7 +87,7 @@ export const diffValues = (request: string, a: unknown, b: unknown, at = "", out
         const key = at.split(".").pop() ?? "";
         const close = typeof a === "number" && typeof b === "number" && AGREED.approx.keys.includes(key)
             && Math.abs(a - b) <= AGREED.approx.tolerance * Math.max(1e-9, Math.abs(a), Math.abs(b));
-        if (!close) out.push({ request, path: at || "(value)", before: a, after: b, allowed: null });
+        if (!close) out.push({ request, path: at || "(value)", before: a, after: b, allowed: AGREED.changed.find(([re]) => re.test(`${request} ${at}`))?.[1] ?? null });
     }
     return out;
 };
