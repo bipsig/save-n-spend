@@ -43,16 +43,17 @@ test("a bill outside its lead window says nothing", () => {
   assert.equal(copy.billNotice({ name: "Rent", amount: 1, sip: false, days: 4, lead: 3, on: "x" }), null);
 });
 
-test("SIP bills read as investing and are title-only with privacy on", () => {
+test("SIP bills read as investing and keep their date or days late with privacy on", () => {
   const cases = [
-    { days: -2, title: "Index fund — SIP overdue", body: `${rs(5_000_00)} was due to invest 2 days ago.` },
-    { days: 0, title: "Time to invest — Index fund", body: `${rs(5_000_00)} to invest today.` },
-    { days: 2, title: "Index fund · invest in 2 days", body: `${rs(5_000_00)} to invest on 18 Nov.` },
+    { days: -2, title: "Index fund — SIP overdue", body: `${rs(5_000_00)} was due to invest 2 days ago.`, hidden: "Was due to invest 2 days ago." },
+    { days: -1, title: "Index fund — SIP overdue", body: `${rs(5_000_00)} was due to invest 1 day ago.`, hidden: "Was due to invest 1 day ago." },
+    { days: 0, title: "Time to invest — Index fund", body: `${rs(5_000_00)} to invest today.`, hidden: "To invest today." },
+    { days: 2, title: "Index fund · invest in 2 days", body: `${rs(5_000_00)} to invest on 18 Nov.`, hidden: "To invest on 18 Nov." },
   ];
   for (const c of cases) {
     const n = bill({ name: "Index fund", amount: 5_000_00, sip: true, days: c.days });
     assert.deepEqual(compose(n, open), { title: c.title, body: c.body });
-    assert.deepEqual(compose(n, hidden), { title: c.title });
+    assert.deepEqual(compose(n, hidden), { title: c.title, body: c.hidden });
   }
 });
 
@@ -96,6 +97,36 @@ test("the flow line says what was put aside or overspent", () => {
   assert.equal(copy.flowLine(1_000_00, 4_000_00), `Spent ${rs(4_000_00)}, earned ${rs(1_000_00)} — ${rs(3_000_00)} more than you earned.`);
 });
 
+test("the flow line names everyday spending and gives trips their own clause; put aside counts both", () => {
+  // Mockup 08's November: ₹86,090.20 spent in all, ₹6,450.00 of it on trips.
+  assert.equal(
+    copy.flowLine(1_20_000_00, 86_090_20, 6_450_00),
+    "Spent ₹79,640.20 plus ₹6,450.00 on trips, earned ₹1,20,000.00 — ₹33,909.80 put aside.",
+  );
+  assert.equal(
+    copy.flowLine(0, 6_450_00, 6_450_00),
+    `Spent ${rs(0)} plus ${rs(6_450_00)} on trips, earned ${rs(0)} — ${rs(6_450_00)} more than you earned.`,
+  );
+  // No trips, or an API older than 2.8.4 that sends no tripExpenses: the sentence as it was.
+  const before = `Spent ${rs(86_090_20)}, earned ${rs(1_20_000_00)} — ${rs(33_909_80)} put aside.`;
+  assert.equal(copy.flowLine(1_20_000_00, 86_090_20, 0), before);
+  assert.equal(copy.flowLine(1_20_000_00, 86_090_20), before);
+});
+
+test("digests carry the trips clause with privacy off and only 'ready' with it on", () => {
+  const flow = { income: 1_20_000_00, expenses: 86_090_20, tripExpenses: 6_450_00 };
+  const line = copy.flowLine(flow.income, flow.expenses, flow.tripExpenses);
+  assert.ok(line.includes("on trips"));
+  const day = copy.dailyNotice("14 Nov", flow, null)!;
+  const week = copy.weeklyNotice("9 Nov", "15 Nov", flow);
+  const month = copy.monthlyNotice("October 2026", flow);
+  assert.deepEqual([compose(day, open).body, compose(week, open).body, compose(month, open).body], [line, line, line]);
+  assert.deepEqual(
+    [compose(day, hidden).body, compose(week, hidden).body, compose(month, hidden).body],
+    ["Your daily summary is ready.", "Your weekly summary is ready.", "Your monthly summary is ready."],
+  );
+});
+
 test("weekly and monthly digests say only that they're ready with privacy on", () => {
   const flow = { income: 1_20_000_00, expenses: 79_640_20 };
   const week = copy.weeklyNotice("9 Nov", "15 Nov", flow);
@@ -124,6 +155,7 @@ test("no banner kind shows a rupee sign or an empty body with privacy on", () =>
     copy.dailyNotice("1 Nov", { income: 1, expenses: 2 }, copy.owedLine("R", 5_00, "1 Oct"))!,
     copy.weeklyNotice("a", "b", { income: 1, expenses: 0 }),
     copy.monthlyNotice("m", { income: 0, expenses: 1 }),
+    copy.monthlyNotice("m", { income: 0, expenses: 3, tripExpenses: 2 }),
     copy.investmentNotice(2), copy.recurringNotice(["X"]),
   ];
   for (const n of all) {

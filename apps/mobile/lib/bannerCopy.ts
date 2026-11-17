@@ -1,3 +1,4 @@
+import { tripLine } from "@/lib/everydaySpend";
 import { formatMoneyExact } from "@/lib/money";
 
 // The words of every local banner, kept apart from the scheduling in lib/localNotifications.ts
@@ -28,10 +29,17 @@ export const compose = (notice: Notice, { masked }: { masked: boolean }): Banner
 export const plural = (count: number, word: string): string => `${count} ${word}${count === 1 ? "" : "s"}`;
 
 /** The server's `flowLine`, minus the transaction count: /transactions/summary returns totals
- *  only, and a figure invented here could disagree with the feed entry. */
-export const flowLine = (income: number, expenses: number): string => {
+ *  only, and a figure invented here could disagree with the feed entry. `expenses` counts
+ *  trips; "Spent" names everyday spending and the trips get their own clause, while what was
+ *  put aside still counts them (D21 A+, Q1). An API older than 2.8.4 sends no `tripExpenses`,
+ *  and the sentence is then the one it always was. */
+export const flowLine = (income: number, expenses: number, tripExpenses?: number): string => {
   const net = income - expenses;
-  return `Spent ${formatMoneyExact(expenses)}, earned ${formatMoneyExact(income)}`
+  const trips = tripLine(tripExpenses);
+  const spent = trips === null
+    ? formatMoneyExact(expenses)
+    : `${formatMoneyExact(expenses - trips)} plus ${formatMoneyExact(trips)} on trips`;
+  return `Spent ${spent}, earned ${formatMoneyExact(income)}`
     + (net >= 0
       ? ` — ${formatMoneyExact(net)} put aside.`
       : ` — ${formatMoneyExact(-net)} more than you earned.`);
@@ -44,27 +52,28 @@ export const owedLine = (name: string, balance: number, since: string): string =
     ? `${name} has owed you ${formatMoneyExact(balance)} since ${since}`
     : `You've owed ${name} ${formatMoneyExact(-balance)} since ${since}`;
 
-type Flow = { income: number; expenses: number };
+/** /transactions/summary over the period; `tripExpenses` from 2.8.4 on. */
+type Flow = { income: number; expenses: number; tripExpenses?: number };
 
 /** Null when the day had neither flow nor a nudge, the commonest day there is. */
 export const dailyNotice = (day: string, flow: Flow | null, nudge: string | null): Notice | null => {
   if (!flow && !nudge) return null;
   return {
     title: `${day} in review`,
-    body: [flow ? flowLine(flow.income, flow.expenses) : null, nudge].filter(Boolean).join(" · "),
+    body: [flow ? flowLine(flow.income, flow.expenses, flow.tripExpenses) : null, nudge].filter(Boolean).join(" · "),
     privateBody: "Your daily summary is ready.",
   };
 };
 
 export const weeklyNotice = (from: string, to: string, flow: Flow): Notice => ({
   title: `${from}–${to} in review`,
-  body: flowLine(flow.income, flow.expenses),
+  body: flowLine(flow.income, flow.expenses, flow.tripExpenses),
   privateBody: "Your weekly summary is ready.",
 });
 
 export const monthlyNotice = (month: string, flow: Flow): Notice => ({
   title: `${month} in review`,
-  body: flowLine(flow.income, flow.expenses),
+  body: flowLine(flow.income, flow.expenses, flow.tripExpenses),
   privateBody: "Your monthly summary is ready.",
 });
 
@@ -72,8 +81,9 @@ export type BillWhen = "overdue" | "today" | "due";
 
 /**
  * The reminder job's three-way bill branch. A SIP bill funds an investment, so it reads as
- * investing rather than paying. With privacy on a SIP banner is title-only, as mockup 09's
- * table draws it; a plain bill keeps its date or its days late.
+ * investing rather than paying. With privacy on, every bill keeps its date or its days late;
+ * a SIP due today keeps "To invest today." though the title says so, so all three SIP
+ * banners read alike.
  */
 export const billNotice = (
   { name, amount, sip, days, lead, on }: {
@@ -92,18 +102,18 @@ export const billNotice = (
   if (days < 0) {
     const ago = plural(-days, "day");
     return sip
-      ? { when: "overdue", title: `${name} — SIP overdue`, body: `${money} was due to invest ${ago} ago.`, privateBody: null }
+      ? { when: "overdue", title: `${name} — SIP overdue`, body: `${money} was due to invest ${ago} ago.`, privateBody: `Was due to invest ${ago} ago.` }
       : { when: "overdue", title: `${name} is overdue`, body: `${money} was due ${ago} ago.`, privateBody: `Was due ${ago} ago.` };
   }
   if (days === 0) {
     return sip
-      ? { when: "today", title: `Time to invest — ${name}`, body: `${money} to invest today.`, privateBody: null }
+      ? { when: "today", title: `Time to invest — ${name}`, body: `${money} to invest today.`, privateBody: "To invest today." }
       : { when: "today", title: `${name} is due today`, body: `${money} due today.`, privateBody: null };
   }
   if (days > lead) return null;
   const inDays = plural(days, "day");
   return sip
-    ? { when: "due", title: `${name} · invest in ${inDays}`, body: `${money} to invest on ${on}.`, privateBody: null }
+    ? { when: "due", title: `${name} · invest in ${inDays}`, body: `${money} to invest on ${on}.`, privateBody: `To invest on ${on}.` }
     : { when: "due", title: `${name} due in ${inDays}`, body: `${money} due on ${on}.`, privateBody: `Due on ${on}.` };
 };
 

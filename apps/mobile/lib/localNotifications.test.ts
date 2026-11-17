@@ -15,7 +15,8 @@ const IST = "Asia/Kolkata";
 
 type Request = { identifier: string; content: { title: string; body?: string }; trigger: unknown };
 
-const world = () => {
+// The 2.8.1 shape by default: no tripExpenses.
+const world = (summary: Record<string, number> = { income: 0, expenses: 6_350_00, savings: -6_350_00 }) => {
   const scheduled: Request[] = [];
   let cancels = 0;
   const settings = createStore(() => ({ privacyMode: false, peeking: false }));
@@ -49,7 +50,7 @@ const world = () => {
   });
   fake("@/lib/api", {
     get: async (path: string) => {
-      if (path.startsWith("/transactions/summary")) return { income: 0, expenses: 6_350_00, savings: -6_350_00 };
+      if (path.startsWith("/transactions/summary")) return summary;
       if (path === "/bills") return bills;
       if (path === "/goals") return goals;
       if (path === "/recurring") return { expenses: [], income: [] };
@@ -101,6 +102,27 @@ test("privacy off: banners carry their amounts and the owed nudge", async () => 
     data: { link: { screen: "bills", id: "b1" } },
   });
   assert.equal(last(w.scheduled, "goal:g1:deadline:2026-11-19")?.content.body, `${w.rs(20_000_00)} still to go.`);
+});
+
+test("digests: everyday spending with a trips clause from a 2.8.4 summary, and a trip-only day still gets one", async () => {
+  relaunch();
+  const w = world({ income: 1_20_000_00, expenses: 86_090_20, savings: 33_909_80, tripExpenses: 6_450_00 });
+  await w.local.rescheduleLocalNotifications(inputs);
+  const line = `Spent ${w.rs(79_640_20)} plus ${w.rs(6_450_00)} on trips, earned ${w.rs(1_20_000_00)} — ${w.rs(33_909_80)} put aside.`;
+  assert.equal(last(w.scheduled, "local:dailySummary")?.content.body, `${line} · Ravi has owed you ${w.rs(1_250_00)} since 2 Nov`);
+  assert.equal(last(w.scheduled, "local:weeklySummary")?.content.body, line);
+
+  w.settings.setState({ privacyMode: true });
+  await settle();
+  assert.equal(last(w.scheduled, "local:weeklySummary")?.content.body, "Your weekly summary is ready.");
+
+  relaunch();
+  const trips = world({ income: 0, expenses: 6_450_00, savings: -6_450_00, tripExpenses: 6_450_00 });
+  await trips.local.rescheduleLocalNotifications({ ...inputs, accounts: [] });
+  assert.equal(
+    last(trips.scheduled, "local:dailySummary")?.content.body,
+    `Spent ${trips.rs(0)} plus ${trips.rs(6_450_00)} on trips, earned ${trips.rs(0)} — ${trips.rs(6_450_00)} more than you earned.`,
+  );
 });
 
 test("switching privacy on and off re-plans the queued digests, once each way", async () => {

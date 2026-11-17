@@ -56,7 +56,7 @@ const BILL_LEAD_DEFAULT = 3;
 /** Mirrors DEADLINE_WINDOW_DAYS in the API's jobs/reminderJob.ts. */
 const DEADLINE_WINDOW_DAYS = 7;
 
-type Summary = { income: number; expenses: number; savings: number };
+type Summary = { income: number; expenses: number; savings: number; tripExpenses?: number };
 
 /** "11 Sep" from a calendar date, the label the server's digest uses. Formatted in UTC because
  *  that is where a calendar date's fields live (see lib/zone.ts) — reading one back in the
