@@ -149,6 +149,10 @@ export const getHealthScore = async (req: Request, res: Response): Promise<void>
 const mondayFirst = (mongoDayOfWeek: number): number => (mongoDayOfWeek + 5) % 7;
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+/** One grouped row of expense: `total` with trips, `everyday` without. */
+type DaySums<K> = { _id: K; total: number; everyday: number };
+type Pick = (row: DaySums<string | number>) => number;
+
 /** "YYYY-MM-DD" in `zone` — matches the $dateToString format the aggregations below
  *  group by, so a value built from this always looks up correctly against them. */
 const dayKey = (instant: Date, zone: string): string => {
@@ -170,15 +174,16 @@ export const getDashboardInsights = async (req: Request, res: Response): Promise
 
   const [goals, expenseDays, weekdayRows, first] = await Promise.all([
     Goal.find({ userId }).select("name target saved createdAt").lean(),
-    // Also carries `total` per day — feeds both the no-spend-day count (`.length`) and
-    // the pace-vs-average chart's current-month series below, one query for both.
-    Transaction.aggregate<{ _id: string; total: number }>([
+    // Also carries `total` per day — feeds both the no-spend-day count and the
+    // pace-vs-average chart's current-month series below, one query for both. `everyday` is
+    // the same sum without trip spending, for the `everyday` twins below.
+    Transaction.aggregate<DaySums<string>>([
       { $match: { userId, type: "expense", occurredAt: { $gte: start, $lt: next } } },
-      { $group: { _id: { $dateToString: { date: "$occurredAt", format: "%Y-%m-%d", timezone: zone } }, total: { $sum: "$amount" } } }
+      { $group: { _id: { $dateToString: { date: "$occurredAt", format: "%Y-%m-%d", timezone: zone } }, total: { $sum: "$amount" }, everyday: { $sum: { $cond: [{ $gt: ["$tripId", null] }, 0, "$amount"] } } } }
     ]),
-    Transaction.aggregate<{ _id: number; total: number }>([
+    Transaction.aggregate<DaySums<number>>([
       { $match: { userId, type: "expense", occurredAt: { $gte: start, $lt: next } } },
-      { $group: { _id: { $dayOfWeek: { date: "$occurredAt", timezone: zone } }, total: { $sum: "$amount" } } }
+      { $group: { _id: { $dayOfWeek: { date: "$occurredAt", timezone: zone } }, total: { $sum: "$amount" }, everyday: { $sum: { $cond: [{ $gt: ["$tripId", null] }, 0, "$amount"] } } } }
     ]),
     Transaction.findOne({ userId }).sort({ occurredAt: 1 }).select("occurredAt").lean()
   ]);
@@ -209,22 +214,22 @@ export const getDashboardInsights = async (req: Request, res: Response): Promise
 
   // Too little of the month has happened yet for "days without spending" to mean
   // anything — the same kind of floor budget_pace's own MIN_PACE_DAYS applies.
-  const noSpendDays = daysElapsed >= 5 ? daysElapsed - expenseDays.length : null;
+  const noSpendDaysOf = (pick: Pick): number | null =>
+    daysElapsed >= 5 ? daysElapsed - expenseDays.filter((row) => pick(row) > 0).length : null;
 
   // Two full weeks is the floor for "you spend most on Fridays" to be a pattern
   // rather than one loud Tuesday.
-  const weekdayHeatmap = daysElapsed >= 14
-    ? (() => {
-      const totals = new Array(7).fill(0);
-      for (const row of weekdayRows) totals[mondayFirst(row._id)] = row.total;
-      const max = Math.max(...totals, 0);
-      return WEEKDAY_LABELS.map((day, i) => ({
-        day,
-        total: totals[i],
-        intensity: max > 0 ? totals[i] / max : 0
-      }));
-    })()
-    : null;
+  const weekdayHeatmapOf = (pick: Pick) => {
+    if (daysElapsed < 14) return null;
+    const totals = new Array(7).fill(0);
+    for (const row of weekdayRows) totals[mondayFirst(row._id)] = pick(row);
+    const max = Math.max(...totals, 0);
+    return WEEKDAY_LABELS.map((day, i) => ({
+      day,
+      total: totals[i],
+      intensity: max > 0 ? totals[i] / max : 0
+    }));
+  };
 
   // Complete prior months only, floored to actual history — same AVERAGE_MONTHS/
   // floor-to-available convention as the highlight engine's own multi-month average,
@@ -233,7 +238,8 @@ export const getDashboardInsights = async (req: Request, res: Response): Promise
     ? Math.min(AVERAGE_MONTHS, Math.max(0, monthOrdinal(now, zone) - monthOrdinal(first.occurredAt, zone)))
     : 0;
 
-  let pace: { current: { date: string; amount: number }[]; average: { date: string; amount: number }[]; monthsAveraged: number } | null = null;
+  type Pace = { current: { date: string; amount: number }[]; average: { date: string; amount: number }[]; monthsAveraged: number };
+  let paceOf = (_pick: Pick): Pace | null => null;
 
   if (monthsAveraged > 0) {
     const referenceMonthStarts: Date[] = [];
@@ -241,37 +247,43 @@ export const getDashboardInsights = async (req: Request, res: Response): Promise
       referenceMonthStarts.push(addMonthsInZone(start, zone, -k));
     }
 
-    const referenceRows = await Transaction.aggregate<{ _id: number; total: number }>([
+    const referenceRows = await Transaction.aggregate<DaySums<number>>([
       { $match: { userId, type: "expense", occurredAt: { $gte: referenceMonthStarts[0], $lt: start } } },
-      { $group: { _id: { $dayOfMonth: { date: "$occurredAt", timezone: zone } }, total: { $sum: "$amount" } } }
+      { $group: { _id: { $dayOfMonth: { date: "$occurredAt", timezone: zone } }, total: { $sum: "$amount" }, everyday: { $sum: { $cond: [{ $gt: ["$tripId", null] }, 0, "$amount"] } } } }
     ]);
-    const sumByDayOfMonth = new Map(referenceRows.map((r) => [r._id, r.total]));
     const referenceMonths = referenceMonthStarts.map((s) => ({ daysInMonth: wholeDays(s, addMonthsInZone(s, zone, 1), zone) }));
-    // The fiddly bit lives entirely in this pure function: each day-of-month index
-    // divides only by however many reference months actually have that day.
-    const averageAmounts = averageByDayOfMonth(sumByDayOfMonth, referenceMonths);
-
-    const sumByDate = new Map(expenseDays.map((r) => [r._id, r.total]));
-    const current = Array.from({ length: daysElapsed }, (_, i) => {
-      const key = dayKey(addDaysInZone(start, zone, i), zone);
-      return { date: key, amount: sumByDate.get(key) ?? 0 };
-    });
-    // `average` is allowed to run past `current` — that's the point of seeing where the
-    // usual month ends up. Dated the same way `current` would be for the days they
-    // overlap; beyond that there's no real calendar date to give it (a reference month
-    // can run longer than this one, e.g. averaging in a 31-day month while this one is
-    // February), so it's labelled by day-of-month instead of overflowing into next month.
     const daysInCurrentMonth = wholeDays(start, next, zone);
-    const average = averageAmounts.map((amount, i) => ({
-      date: current[i]?.date ?? (i < daysInCurrentMonth ? dayKey(addDaysInZone(start, zone, i), zone) : `day-${i + 1}`),
-      amount
-    }));
 
-    pace = { current, average, monthsAveraged };
+    paceOf = (pick) => {
+      // The fiddly bit lives entirely in this pure function: each day-of-month index
+      // divides only by however many reference months actually have that day.
+      const averageAmounts = averageByDayOfMonth(new Map(referenceRows.map((r) => [r._id, pick(r)])), referenceMonths);
+      const sumByDate = new Map(expenseDays.map((r) => [r._id, pick(r)]));
+      const current = Array.from({ length: daysElapsed }, (_, i) => {
+        const key = dayKey(addDaysInZone(start, zone, i), zone);
+        return { date: key, amount: sumByDate.get(key) ?? 0 };
+      });
+      // `average` is allowed to run past `current` — that's the point of seeing where the
+      // usual month ends up. Dated the same way `current` would be for the days they
+      // overlap; beyond that there's no real calendar date to give it (a reference month
+      // can run longer than this one, e.g. averaging in a 31-day month while this one is
+      // February), so it's labelled by day-of-month instead of overflowing into next month.
+      const average = averageAmounts.map((amount, i) => ({
+        date: current[i]?.date ?? (i < daysInCurrentMonth ? dayKey(addDaysInZone(start, zone, i), zone) : `day-${i + 1}`),
+        amount
+      }));
+      return { current, average, monthsAveraged };
+    };
   }
 
+  const all: Pick = (row) => row.total;
+  const everyday: Pick = (row) => row.everyday;
+
+  // `forYou` and `pace` count trip spending as in 2.8.1; `everyday` is the same three without
+  // it (D21), for the app's "spending means everyday" rule.
   reply.ok(res, {
-    forYou: { goalWatch, noSpendDays, weekdayHeatmap },
-    pace
+    forYou: { goalWatch, noSpendDays: noSpendDaysOf(all), weekdayHeatmap: weekdayHeatmapOf(all) },
+    pace: paceOf(all),
+    everyday: { noSpendDays: noSpendDaysOf(everyday), weekdayHeatmap: weekdayHeatmapOf(everyday), pace: paceOf(everyday) }
   }, "Dashboard insights fetched");
 }

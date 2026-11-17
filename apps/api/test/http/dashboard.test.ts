@@ -417,6 +417,17 @@ test("insights: no-spend days, the weekday heatmap and pace against the last thr
     assert.equal(pace.average.length, 31);
     assert.deepEqual(pace.average.filter((p: { amount: number }) => p.amount > 0),
         [{ date: "2026-04-05", amount: 133_333 }, { date: "2026-04-12", amount: 50_000 }, { date: "day-31", amount: 50_000 }]);
+
+    // `everyday` leaves out the 45,000 trip dinner on Friday 10 April: that day counts as no-spend.
+    const { everyday } = r.json.data;
+    assert.equal(everyday.noSpendDays, 13);
+    assert.deepEqual(everyday.weekdayHeatmap.map((c: { day: string; total: number }) => [c.day, c.total]),
+        [["Mon", 30_000], ["Tue", 0], ["Wed", 70_000], ["Thu", 0], ["Fri", 0], ["Sat", 0], ["Sun", 0]]);
+    assert.deepEqual(everyday.pace.current.filter((p: { amount: number }) => p.amount > 0),
+        [{ date: "2026-04-01", amount: 70_000 }, { date: "2026-04-13", amount: 30_000 }]);
+    // No trips in January to March, so the average is the same.
+    assert.deepEqual(everyday.pace.average, pace.average);
+    assert.equal(everyday.pace.monthsAveraged, 3);
 });
 
 test("insights: the goal closest to finishing at its own pace", async () => {
@@ -443,7 +454,10 @@ test("insights: under 5 days in, no counts; under 14, no heatmap; under a month 
     const u = await api.user("dash-early");
     const b = await u.account("Bank", { startingBalance: 100_000 });
     await txn(u, "expense", 1_000, b, "2026-04-02T06:30:00Z");
-    assert.deepEqual((await u.send("GET", "/dashboard/insights")).json.data, { forYou: { goalWatch: null, noSpendDays: null, weekdayHeatmap: null }, pace: null });
+    assert.deepEqual((await u.send("GET", "/dashboard/insights")).json.data, {
+        forYou: { goalWatch: null, noSpendDays: null, weekdayHeatmap: null }, pace: null,
+        everyday: { noSpendDays: null, weekdayHeatmap: null, pace: null },
+    });
     setClock("2026-04-09T06:30:00Z");
     assert.deepEqual((await u.send("GET", "/dashboard/insights")).json.data.forYou, { goalWatch: null, noSpendDays: 8, weekdayHeatmap: null });
 });

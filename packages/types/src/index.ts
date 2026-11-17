@@ -564,6 +564,13 @@ export interface DashboardInsights {
   }
   /** Null for an account younger than one complete month — nothing to average against. */
   pace: DashboardPace | null
+  /** `noSpendDays`, `weekdayHeatmap` and `pace` again, everyday spending only: a day with
+   *  only trip spending is a no-spend day. Same nulls as above. */
+  everyday: {
+    noSpendDays: number | null
+    weekdayHeatmap: WeekdayHeatmapCell[] | null
+    pace: DashboardPace | null
+  }
 }
 
 // The five things the health score is made of. Sent individually, not just as the total:
