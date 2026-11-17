@@ -619,7 +619,9 @@ export type InsightsPeriod = "day" | "week" | "month" | "year"
 // every reader to know which day it named.
 export interface InsightsTrendPoint {
   date: string          // 'YYYY-MM-DD' (week/month) or 'YYYY-MM' (year)
-  amount: number        // paise, expenses
+  amount: number        // paise, expenses (trips included in the overall trend)
+  /** On `InsightsSummary.trend` and `previousTrend` only: the trip part of `amount`. */
+  tripAmount?: number
 }
 
 export interface InsightsSeriesPoint {
@@ -689,6 +691,8 @@ export interface InsightsSummary {
   byAccount: InsightsAccountSlice[]
   avgDailySpendCurrent: number     // paise/day
   avgDailySpendPrevious: number    // paise/day, prior period — for the delta
+  avgDailyEverydaySpendCurrent: number   // paise/day, trips left out
+  avgDailyEverydaySpendPrevious: number  // paise/day, trips left out, prior period
   topCategory: string | null       // biggest category name this period
   txnCount: number                 // non-transfer count, current window
 }

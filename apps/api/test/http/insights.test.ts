@@ -98,17 +98,21 @@ test("insights: trend, averages and counts include trips; transfers and adjustme
     const d = (await me.send("GET", "/insights?period=month&offset=0")).json.data;
     // 1 to 15 April, stopping today.
     assert.equal(d.trend.length, 15);
+    // `amount` keeps the trip share; `tripAmount` (2.8.4) is the trip part of it.
     assert.deepEqual(d.trend.filter((p: { amount: number }) => p.amount), [
-        { date: "2026-04-01", amount: 2_000 }, { date: "2026-04-02", amount: 120_000 }, { date: "2026-04-03", amount: 30_000 },
-        { date: "2026-04-05", amount: 50_000 }, { date: "2026-04-06", amount: 200_000 }, { date: "2026-04-07", amount: 300_000 },
-        { date: "2026-04-08", amount: 10_000 }, { date: "2026-04-09", amount: 40_000 },
+        { date: "2026-04-01", amount: 2_000, tripAmount: 0 }, { date: "2026-04-02", amount: 120_000, tripAmount: 0 }, { date: "2026-04-03", amount: 30_000, tripAmount: 0 },
+        { date: "2026-04-05", amount: 50_000, tripAmount: 0 }, { date: "2026-04-06", amount: 200_000, tripAmount: 0 }, { date: "2026-04-07", amount: 300_000, tripAmount: 0 },
+        { date: "2026-04-08", amount: 10_000, tripAmount: 0 }, { date: "2026-04-09", amount: 40_000, tripAmount: 40_000 },
     ]);
     assert.equal(d.trend.reduce((s: number, p: { amount: number }) => s + p.amount, 0), APRIL_SPEND);
     // March in full, the 23:59:59 row on the 31st.
     assert.equal(d.previousTrend.length, 31);
-    assert.deepEqual(d.previousTrend.at(-1), { date: "2026-03-31", amount: 1_000 });
+    assert.deepEqual(d.previousTrend.at(-1), { date: "2026-03-31", amount: 1_000, tripAmount: 0 });
     assert.equal(d.avgDailySpendCurrent, Math.round(APRIL_SPEND / 15));
     assert.equal(d.avgDailySpendPrevious, Math.round(386_000 / 31));
+    // The projection's everyday rate leaves the 40,000 trip share out.
+    assert.equal(d.avgDailyEverydaySpendCurrent, Math.round(712_000 / 15));
+    assert.equal(d.avgDailyEverydaySpendPrevious, Math.round(386_000 / 31));
     assert.equal(d.txnCount, 9);
     // `expense` keeps the trip share; `tripExpense` says how much of it that is.
     assert.deepEqual(d.incomeVsExpense, [
@@ -128,12 +132,12 @@ test("insights: last month, a year, a week, a day; an empty period is all zeros"
     assert.equal(march.topCategory, "Shopping");
 
     const year = (await me.send("GET", "/insights?period=year")).json.data;
-    assert.deepEqual(year.trend, [{ date: "2026-01", amount: 0 }, { date: "2026-02", amount: 0 }, { date: "2026-03", amount: 386_000 }, { date: "2026-04", amount: APRIL_SPEND }]);
+    assert.deepEqual(year.trend, [{ date: "2026-01", amount: 0, tripAmount: 0 }, { date: "2026-02", amount: 0, tripAmount: 0 }, { date: "2026-03", amount: 386_000, tripAmount: 0 }, { date: "2026-04", amount: APRIL_SPEND, tripAmount: 40_000 }]);
     assert.equal(year.incomeVsExpense.at(-1).periodStart, "2026-01-01");
 
     // Monday 13 April onward: nothing spent.
     const week = (await me.send("GET", "/insights?period=week")).json.data;
-    assert.deepEqual(week.trend, [{ date: "2026-04-13", amount: 0 }, { date: "2026-04-14", amount: 0 }, { date: "2026-04-15", amount: 0 }]);
+    assert.deepEqual(week.trend, [{ date: "2026-04-13", amount: 0, tripAmount: 0 }, { date: "2026-04-14", amount: 0, tripAmount: 0 }, { date: "2026-04-15", amount: 0, tripAmount: 0 }]);
     assert.deepEqual([week.byCategory, week.topCategory, week.txnCount, week.avgDailySpendCurrent], [[], null, 0, 0]);
     // 6 to 12 April: shopping, others, the hobby and the trip share.
     assert.equal(week.previousTrend.reduce((s: number, p: { amount: number }) => s + p.amount, 0), 550_000);

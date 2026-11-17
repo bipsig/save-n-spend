@@ -42,17 +42,17 @@ export const getInsights = async (req: Request, res: Response): Promise<void> =>
 
     const { currentStartDate, currentEndDate, previousStartDate, previousEndDate } = parsePeriod(period, offset, zone);
 
-    const trend = await getTrend(currentStartDate, currentEndDate, period, zone, req);
+    const trend = await getTrend(currentStartDate, currentEndDate, period, zone, req, { tripPart: true });
     // Not stopped early — that period is over. The client compares the two by bucket index,
     // which is what makes a 28-day February line up against a 31-day January.
-    const previousTrend = await getTrend(previousStartDate, previousEndDate, period, zone, req);
+    const previousTrend = await getTrend(previousStartDate, previousEndDate, period, zone, req, { tripPart: true });
     const incomeVsExpense = await getIncomeVsExpense(currentStartDate, currentEndDate, period, zone, req);
     const { slices: byCategory, uncategorised } = await getCategoryBreakDown(currentStartDate, currentEndDate, req);
     const { slices: previousByCategory } = await getCategoryBreakDown(previousStartDate, previousEndDate, req);
     const categoryCompare = buildCategoryCompare(byCategory, previousByCategory);
     const byAccount = await getAccountBreakDown(currentStartDate, currentEndDate, req);
-    const avgDailySpendCurrent = await getAverageSpend(currentStartDate, currentEndDate, zone, req);
-    const avgDailySpendPrevious = await getAverageSpend(previousStartDate, previousEndDate, zone, req);
+    const averageCurrent = await getAverageSpend(currentStartDate, currentEndDate, zone, req);
+    const averagePrevious = await getAverageSpend(previousStartDate, previousEndDate, zone, req);
     const topCategory = await getTopCategory(byCategory);
     const txnCount = await Transaction.countDocuments({
         userId: req.user?.userId,
@@ -60,7 +60,7 @@ export const getInsights = async (req: Request, res: Response): Promise<void> =>
         occurredAt: { $gte: currentStartDate, $lt: currentEndDate }
     })
 
-    reply.ok(res, { period, timeZone: zone, periodStart: currentStartDate, periodEnd: currentEndDate, trend, previousTrend, incomeVsExpense, byCategory, uncategorised, categoryCompare, byAccount, avgDailySpendCurrent, avgDailySpendPrevious, topCategory, txnCount }, "Insights fetched");
+    reply.ok(res, { period, timeZone: zone, periodStart: currentStartDate, periodEnd: currentEndDate, trend, previousTrend, incomeVsExpense, byCategory, uncategorised, categoryCompare, byAccount, avgDailySpendCurrent: averageCurrent.all, avgDailySpendPrevious: averagePrevious.all, avgDailyEverydaySpendCurrent: averageCurrent.everyday, avgDailyEverydaySpendPrevious: averagePrevious.everyday, topCategory, txnCount }, "Insights fetched");
 }
 
 /**
@@ -143,7 +143,7 @@ export const getCategoryInsights = async (req: Request, res: Response): Promise<
 
     const windowSpend = allSpend[0]?.total ?? 0;
     const everydaySpend = allSpend[0]?.everyday ?? 0;
-    const trend = await getTrend(currentStartDate, currentEndDate, period, zone, req, scope);
+    const trend = await getTrend(currentStartDate, currentEndDate, period, zone, req, { categoryIds: scope });
 
     const parent = category.parent
         ? await Category.findById(category.parent).select("name").lean()
@@ -436,7 +436,8 @@ const getAverageSpend = async (startTime: Date, endTime: Date, zone: string, req
         {
             $group: {
                 _id: null,
-                total: { $sum: "$amount" }
+                total: { $sum: "$amount" },
+                everyday: { $sum: { $cond: [{ $gt: ["$tripId", null] }, 0, "$amount"] } }
             }
         },
     ]);
@@ -448,9 +449,9 @@ const getAverageSpend = async (startTime: Date, endTime: Date, zone: string, req
         ? daysBetweenInZone(startTime, now, zone) + 1
         : daysBetweenInZone(startTime, endTime, zone);
 
-    const total = totalSpend[0]?.total ?? 0;
+    const perDay = (paise: number) => Math.round(paise / Math.max(1, numberOfDays));
 
-    return Math.round(total / Math.max(1, numberOfDays));
+    return { all: perDay(totalSpend[0]?.total ?? 0), everyday: perDay(totalSpend[0]?.everyday ?? 0) };
 }
 
 const getTopCategory = (byCategory: { name?: string; total: number }[]) => {
@@ -526,8 +527,10 @@ const getIncomeVsExpense = async (startTime: Date, endTime: Date, period: string
  * order, zeros included. Zero-filled here because only the server knows which zone the
  * buckets were cut in, leaving the client a plain map over an array it can trust.
  *
- * `categoryIds` narrows it to one category and its children — the same series, for the
- * detail screen.
+ * `categoryIds` narrows it to one category and its children (everyday spend, matching their
+ * row in the breakdown) — the same series, for the detail screen. `everyday` leaves trip
+ * spending out; `tripPart` adds each bucket's trip spending as `tripAmount` beside `amount`,
+ * which still includes it.
  */
 // One bucket per unit — hour (day period), day (week/month), or month (year) — each with
 // its own format string, its own "cap at now" boundary, its own key and its own step. `year`
@@ -542,7 +545,7 @@ export const getTrend = async (
     period: string,
     zone: string,
     req: Request,
-    categoryIds?: mongoose.Types.ObjectId[]
+    { categoryIds, everyday = false, tripPart = false }: { categoryIds?: mongoose.Types.ObjectId[]; everyday?: boolean; tripPart?: boolean } = {}
 ) => {
     const granularity = granularityFor(period);
     const format = granularity === "month" ? "%Y-%m" : granularity === "hour" ? "%Y-%m-%dT%H" : "%Y-%m-%d";
@@ -552,9 +555,8 @@ export const getTrend = async (
             $match: {
                 userId: new mongoose.Types.ObjectId(req.user!.userId),
                 type: "expense",
-                // A category's own trend is everyday spend only, matching its row in the
-                // breakdown, where trip spending sits under Trips instead.
-                ...(categoryIds ? { category: { $in: categoryIds }, tripId: null } : {}),
+                ...(categoryIds ? { category: { $in: categoryIds } } : {}),
+                ...(categoryIds || everyday ? { tripId: null } : {}),
                 occurredAt: { $gte: startTime, $lt: endTime }
             }
         },
@@ -569,12 +571,13 @@ export const getTrend = async (
                         timezone: zone
                     }
                 },
-                total: { $sum: "$amount" }
+                total: { $sum: "$amount" },
+                trips: { $sum: { $cond: [{ $gt: ["$tripId", null] }, "$amount", 0] } }
             }
         }
     ]);
 
-    const byKey = new Map<string, number>(rows.map((row) => [row._id as string, row.total as number]));
+    const byKey = new Map<string, { total: number; trips: number }>(rows.map((row) => [row._id as string, { total: row.total as number, trips: row.trips as number }]));
 
     // An unfinished window stops after now: the chart should show the period so far, not a
     // cliff at the current bucket followed by a flat line to the end.
@@ -589,11 +592,12 @@ export const getTrend = async (
     const keyOf = granularity === "month" ? monthLabelInZone : granularity === "hour" ? hourKeyInZone : dayKeyInZone;
     const stepOf = granularity === "month" ? addMonthsInZone : granularity === "hour" ? addHoursInZone : addDaysInZone;
 
-    const out: { date: string; amount: number }[] = [];
+    const out: { date: string; amount: number; tripAmount?: number }[] = [];
     let cursor = startTime;
     while (cursor < stop) {
         const key = keyOf(cursor, zone);
-        out.push({ date: key, amount: byKey.get(key) ?? 0 });
+        const hit = byKey.get(key);
+        out.push({ date: key, amount: hit?.total ?? 0, ...(tripPart ? { tripAmount: hit?.trips ?? 0 } : {}) });
         cursor = stepOf(cursor, zone, 1);
     }
 
