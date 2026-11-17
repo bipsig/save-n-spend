@@ -2,7 +2,19 @@ import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import type { IAccount, IBill, IGoal, INotificationPrefs, RecurringSuggestionsPayload } from "@save-n-spend/types";
 import { get } from "@/lib/api";
-import { formatMoneyExact } from "@/lib/money";
+import {
+  billNotice,
+  compose,
+  dailyNotice,
+  goalDeadlineNotice,
+  goalMilestoneNotice,
+  investmentNotice,
+  monthlyNotice,
+  owedLine,
+  recurringNotice,
+  weeklyNotice,
+  type Notice,
+} from "@/lib/bannerCopy";
 import { useSettings } from "@/store/settings";
 import { calendarDate, calendarDaysBetween, dayKey, instantInZone, zonedParts } from "@/lib/zone";
 import { daysUntilDue, isSettledForPeriod } from "@/lib/bills";
@@ -58,18 +70,25 @@ const monthLabel = (calendar: Date): string =>
   new Intl.DateTimeFormat("en-IN", { timeZone: "UTC", month: "long", year: "numeric" })
     .format(calendar);
 
-/** Word for word the reminder job's own `plural`. */
-const plural = (count: number, word: string): string => `${count} ${word}${count === 1 ? "" : "s"}`;
+type Trigger = Notifications.NotificationTriggerInput;
 
-/** Word for word the server's `flowLine`, minus the transaction count: /transactions/summary
- *  returns totals only, and a figure invented here could disagree with the feed entry. */
-const flowLine = (income: number, expenses: number): string => {
-  const net = income - expenses;
-  return `Spent ${formatMoneyExact(expenses)}, earned ${formatMoneyExact(income)}`
-    + (net >= 0
-      ? ` — ${formatMoneyExact(net)} put aside.`
-      : ` — ${formatMoneyExact(-net)} more than you earned.`);
-};
+/** At a given instant. The Android channel only matters there. */
+const at = (date: Date): Trigger => ({
+  type: Notifications.SchedulableTriggerInputTypes.DATE,
+  date,
+  ...(Platform.OS === "android" ? { channelId: "default" } : {}),
+});
+
+/**
+ * Hands one banner to the OS. Privacy mode is read here, at the moment of handing over, so a
+ * reschedule racing a toggle writes what the switch says now.
+ */
+const deliver = (identifier: string, notice: Notice, data: Record<string, unknown>, trigger: Trigger | null) =>
+  Notifications.scheduleNotificationAsync({
+    identifier,
+    content: { ...compose(notice, { masked: useSettings.getState().privacyMode }), data },
+    trigger,
+  });
 
 /** How long a person account's balance has to sit unchanged before the digest mentions it —
  *  long enough that it reads as "it's been a couple of weeks", not as nagging about a dinner
@@ -114,10 +133,7 @@ const owedNudge = (accounts: IAccount[], zone: string): string | null => {
   if (stale.length === 0) return null;
 
   const { account } = stale[0];
-  const since = sinceLabel(new Date(account.updatedAt!), zone);
-  return account.balance > 0
-    ? `${account.name} has owed you ${formatMoneyExact(account.balance)} since ${since}`
-    : `You've owed ${account.name} ${formatMoneyExact(-account.balance)} since ${since}`;
+  return owedLine(account.name, account.balance, sinceLabel(new Date(account.updatedAt!), zone));
 };
 
 /** Mirrors `wantsNotification` in the API's services/notificationService.ts. `=== true` rather
@@ -176,35 +192,17 @@ const scheduleDailySummary = async (
   // yesterday whole.
   const summary = await get<Summary>(`/transactions/summary?startDate=${key}&endDate=${key}`);
   const hadFlow = summary.income !== 0 || summary.expenses !== 0;
-  const nudge = owedNudge(accounts, zone);
 
   // An empty day is the commonest day there is, and normally the server stays quiet on one
   // too — but a stale person balance is worth saying even on a day with nothing else to
   // report, so the two are checked independently rather than one gating the other.
-  if (!hadFlow && !nudge) return null;
+  const notice = dailyNotice(dateLabel(yesterday), hadFlow ? summary : null, owedNudge(accounts, zone));
+  if (!notice) return null;
 
-  // Privacy mode covers the lock screen too — arguably most of all, since iOS holds this text
-  // from now until it fires and nothing can re-mask it once handed over.
-  const { privacyMode } = useSettings.getState();
-
-  await Notifications.scheduleNotificationAsync({
-    identifier: DAILY_ID,
-    content: {
-      title: `${dateLabel(yesterday)} in review`,
-      body: privacyMode
-        ? "Your daily summary is ready."
-        : [hadFlow ? flowLine(summary.income, summary.expenses) : null, nudge].filter(Boolean).join(" · "),
-      // Read by useNotificationBridge in lib/push.ts, which routes the tap and reloads the
-      // feed. Insights has nothing to show on a flow-less night, so a nudge-only banner
-      // goes to the accounts screen instead — see routeFor in lib/notifications.ts.
-      data: { link: { screen: hadFlow ? "insights" : "accounts" } },
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DATE,
-      date: fireAt,
-      ...(Platform.OS === "android" ? { channelId: "default" } : {}),
-    },
-  });
+  // Read by useNotificationBridge in lib/push.ts, which routes the tap and reloads the feed.
+  // Insights has nothing to show on a flow-less night, so a nudge-only banner goes to the
+  // accounts screen instead — see routeFor in lib/notifications.ts.
+  await deliver(DAILY_ID, notice, { link: { screen: hadFlow ? "insights" : "accounts" } }, at(fireAt));
 
   return fireAt;
 };
@@ -235,20 +233,7 @@ const scheduleWeeklySummary = async (
   const summary = await get<Summary>(`/transactions/summary?startDate=${startKey}&endDate=${endKey}`);
   if (summary.income === 0 && summary.expenses === 0) return;
 
-  const { privacyMode } = useSettings.getState();
-  await Notifications.scheduleNotificationAsync({
-    identifier: WEEKLY_ID,
-    content: {
-      title: `${dateLabel(weekStart)}–${dateLabel(weekEnd)} in review`,
-      body: privacyMode ? "Your weekly summary is ready." : flowLine(summary.income, summary.expenses),
-      data: { link: { screen: "insights" } },
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DATE,
-      date: fireAt,
-      ...(Platform.OS === "android" ? { channelId: "default" } : {}),
-    },
-  });
+  await deliver(WEEKLY_ID, weeklyNotice(dateLabel(weekStart), dateLabel(weekEnd), summary), { link: { screen: "insights" } }, at(fireAt));
 };
 
 /**
@@ -275,20 +260,7 @@ const scheduleMonthlySummary = async (
   const summary = await get<Summary>(`/transactions/summary?startDate=${startKey}&endDate=${endKey}`);
   if (summary.income === 0 && summary.expenses === 0) return;
 
-  const { privacyMode } = useSettings.getState();
-  await Notifications.scheduleNotificationAsync({
-    identifier: MONTHLY_ID,
-    content: {
-      title: `${monthLabel(lastMonthStart)} in review`,
-      body: privacyMode ? "Your monthly summary is ready." : flowLine(summary.income, summary.expenses),
-      data: { link: { screen: "insights" } },
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DATE,
-      date: fireAt,
-      ...(Platform.OS === "android" ? { channelId: "default" } : {}),
-    },
-  });
+  await deliver(MONTHLY_ID, monthlyNotice(monthLabel(lastMonthStart), summary), { link: { screen: "insights" } }, at(fireAt));
 };
 
 /**
@@ -313,20 +285,8 @@ const scheduleInvestmentReminder = async (
   const fireAt = instantInZone(zone, year, month, day, REVALUE_HOUR, 0);
   if (fireAt.getTime() <= Date.now()) return;
 
-  await Notifications.scheduleNotificationAsync({
-    identifier: INVESTMENT_ID,
-    content: {
-      title: "Time to update your investments",
-      body: `Update what your ${plural(holdings.length, "investment")} ${holdings.length === 1 ? "is" : "are"} worth today to keep your net worth accurate.`,
-      // `id: "revalue"` mirrors the server nudge — routeFor opens the hub's revalue sheet.
-      data: { link: { screen: "investments", id: "revalue" } },
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DATE,
-      date: fireAt,
-      ...(Platform.OS === "android" ? { channelId: "default" } : {}),
-    },
-  });
+  // `id: "revalue"` mirrors the server nudge — routeFor opens the hub's revalue sheet.
+  await deliver(INVESTMENT_ID, investmentNotice(holdings.length), { link: { screen: "investments", id: "revalue" } }, at(fireAt));
 };
 
 /**
@@ -375,46 +335,23 @@ const scheduleBillReminders = async (
     const due = new Date(bill.dueDate);
     const days = daysUntilDue(due, now, zone);
     const lead = bill.reminderDays ?? prefs?.billReminderLead ?? BILL_LEAD_DEFAULT;
-    const dueKey = dayKey(due, zone);
-    const amount = formatMoneyExact(bill.amount);
 
-    // Same three-way branch as the reminder job's remindBills, same dedupe key shape, same
-    // copy — a SIP bill funds an investment, so it reads as investing, not paying a bill.
-    const sip = !!bill.toInvestment;
-    const on = dateLabel(calendarDate(due, zone));
-    const notice
-      = days < 0
-        ? {
-            title: sip ? `${bill.name} — SIP overdue` : `${bill.name} is overdue`,
-            body: sip ? `${amount} was due to invest ${plural(-days, "day")} ago.` : `${amount} was due ${plural(-days, "day")} ago.`,
-            key: `bill:${bill._id}:overdue:${dueKey}`,
-          }
-        : days === 0
-          ? {
-              title: sip ? `Time to invest — ${bill.name}` : `${bill.name} is due today`,
-              body: sip ? `${amount} to invest today.` : `${amount} due today.`,
-              key: `bill:${bill._id}:today:${dueKey}`,
-            }
-          : days <= lead
-            ? {
-                title: sip ? `${bill.name} · invest in ${plural(days, "day")}` : `${bill.name} due in ${plural(days, "day")}`,
-                body: sip ? `${amount} to invest on ${on}.` : `${amount} due on ${on}.`,
-                key: `bill:${bill._id}:due:${dueKey}`,
-              }
-            : null;
-
-    if (!notice || (await alreadyNotified(notice.key))) continue;
-
-    await Notifications.scheduleNotificationAsync({
-      identifier: notice.key,
-      content: {
-        title: notice.title,
-        body: notice.body,
-        data: { link: { screen: "bills", id: bill._id } },
-      },
-      trigger: null,
+    // Same three-way branch as the reminder job's remindBills, same dedupe key shape, same copy.
+    const notice = billNotice({
+      name: bill.name,
+      amount: bill.amount,
+      sip: !!bill.toInvestment,
+      days,
+      lead,
+      on: dateLabel(calendarDate(due, zone)),
     });
-    await markNotified(notice.key);
+    if (!notice) continue;
+
+    const key = `bill:${bill._id}:${notice.when}:${dayKey(due, zone)}`;
+    if (await alreadyNotified(key)) continue;
+
+    await deliver(key, notice, { link: { screen: "bills", id: bill._id } }, null);
+    await markNotified(key);
   }
 };
 
@@ -447,16 +384,8 @@ const scheduleGoalDeadlines = async (
     const key = `goal:${goal._id}:deadline:${dayKey(due, zone)}`;
     if (await alreadyNotified(key)) continue;
 
-    const remaining = formatMoneyExact(Math.max(goal.target - goal.saved, 0));
-    await Notifications.scheduleNotificationAsync({
-      identifier: key,
-      content: {
-        title: days === 0 ? `${goal.name} is due today` : `${goal.name} is due in ${plural(days, "day")}`,
-        body: `${remaining} still to go.`,
-        data: { link: { screen: "goals", id: goal._id } },
-      },
-      trigger: null,
-    });
+    const notice = goalDeadlineNotice(goal.name, days, Math.max(goal.target - goal.saved, 0));
+    await deliver(key, notice, { link: { screen: "goals", id: goal._id } }, null);
     await markNotified(key);
   }
 };
@@ -481,16 +410,7 @@ const scheduleRecurringFound = async (prefs: INotificationPrefs | undefined): Pr
   const key = `recurring:${expenses.map((p) => p.key).sort().join("|")}`;
   if (await alreadyNotified(key)) return;
 
-  const one = expenses.length === 1;
-  await Notifications.scheduleNotificationAsync({
-    identifier: `local:recurring`,
-    content: {
-      title: one ? `${expenses[0].title} looks like a monthly payment` : `${plural(expenses.length, "payment")} look like they repeat`,
-      body: `Turn ${one ? "it" : "them"} into ${one ? "a bill" : "bills"} to get reminded before ${one ? "it's" : "they're"} due.`,
-      data: { link: { screen: "bills", id: "suggestions" } },
-    },
-    trigger: null,
-  });
+  await deliver(`local:recurring`, recurringNotice(expenses.map((p) => p.title)), { link: { screen: "bills", id: "suggestions" } }, null);
   await markNotified(key);
 };
 
@@ -528,19 +448,22 @@ export const fireGoalMilestone = async (
     const { granted } = await Notifications.getPermissionsAsync();
     if (!granted) return;
 
-    await Notifications.scheduleNotificationAsync({
-      identifier: `local:goal:${goal._id}:milestone:${milestone}`,
-      content: {
-        title: milestone === 100 ? `${goal.name} is fully funded` : `${goal.name} hit ${milestone}%`,
-        body: `${formatMoneyExact(after)} of ${formatMoneyExact(goal.target)} saved.`,
-        data: { link: { screen: "goals", id: goal._id } },
-      },
-      trigger: null,
-    });
+    await deliver(
+      `local:goal:${goal._id}:milestone:${milestone}`,
+      goalMilestoneNotice(goal.name, milestone, after, goal.target),
+      { link: { screen: "goals", id: goal._id } },
+      null,
+    );
   }
   catch (err) {
     console.warn("[local] could not fire goal milestone", err);
   }
+};
+
+type RescheduleInputs = {
+  notificationPrefs: INotificationPrefs | undefined;
+  zone: string;
+  accounts: IAccount[];
 };
 
 /**
@@ -552,11 +475,7 @@ export const fireGoalMilestone = async (
  * either way.
  */
 export const rescheduleLocalNotifications = async (
-  { notificationPrefs, zone, accounts }: {
-    notificationPrefs: INotificationPrefs | undefined;
-    zone: string;
-    accounts: IAccount[];
-  },
+  { notificationPrefs, zone, accounts }: RescheduleInputs,
 ): Promise<void> => {
   try {
     const { granted } = await Notifications.getPermissionsAsync();
