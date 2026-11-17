@@ -474,6 +474,10 @@ type RescheduleInputs = {
   accounts: IAccount[];
 };
 
+/** What the last reschedule planned from, so a privacy toggle can plan again without the
+ *  layout passing anything. Null while signed out, which keeps a toggle there a no-op. */
+let lastInputs: RescheduleInputs | null = null;
+
 /**
  * Re-plans every local banner this app owns. Safe and expected on each launch: the old ones
  * are cancelled first, so re-running cannot double up, and a preference turned off in Settings
@@ -482,9 +486,9 @@ type RescheduleInputs = {
  * Never throws — a failed schedule must not break launch, and the bell has the same content
  * either way.
  */
-export const rescheduleLocalNotifications = async (
-  { notificationPrefs, zone, accounts }: RescheduleInputs,
-): Promise<void> => {
+export const rescheduleLocalNotifications = async (inputs: RescheduleInputs): Promise<void> => {
+  lastInputs = inputs;
+  const { notificationPrefs, zone, accounts } = inputs;
   try {
     const { granted } = await Notifications.getPermissionsAsync();
     // registerForPush asks on every authed launch; if the answer was no there is nothing to
@@ -528,6 +532,7 @@ export const rescheduleLocalNotifications = async (
 
 /** Drops everything queued, for sign-out — the next account's evening is not this one's. */
 export const clearLocalNotifications = async (): Promise<void> => {
+  lastInputs = null;
   try {
     await Notifications.cancelAllScheduledNotificationsAsync();
   }
@@ -535,3 +540,10 @@ export const clearLocalNotifications = async (): Promise<void> => {
     // Signing out must not be blockable.
   }
 };
+
+// A queued banner keeps the text it was scheduled with, so switching privacy mode re-plans
+// them: a digest planned with figures loses them, and one planned without gets them back.
+// Peeking is in-app only and never reaches the lock screen, so it doesn't count.
+useSettings.subscribe((state, prev) => {
+  if (state.privacyMode !== prev.privacyMode && lastInputs) void rescheduleLocalNotifications(lastInputs);
+});
