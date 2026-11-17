@@ -6,22 +6,24 @@ import { goBackOrHome } from "@/lib/navigation";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
-import BackButton from "@/components/shell/BackButton";
 import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
+import Caps from "@/components/ui/Caps";
 import CategoryName from "@/components/ui/CategoryName";
 import DateField from "@/components/ui/DateField";
+import ErrorState from "@/components/states/ErrorState";
+import NotFoundState from "@/components/states/NotFoundState";
 import { haptics } from "@/lib/haptics";
 import { toast } from "@/store/toast";
 import { z } from "zod/v4";
-import formatMoney, { paiseToInput, parseMoney, usePrivacyMask } from "@/lib/money";
+import formatMoney, { formatBalance, paiseToInput, parseMoney, usePrivacyMask } from "@/lib/money";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Input from "@/components/ui/Input";
 import GhostTitleInput from "@/components/ui/GhostTitleInput";
 import Button from "@/components/ui/Button";
-import { useCategories, useCategoryById } from "@/lib/categories";
+import { useCategories, useCategoryById, useCategoryLabel } from "@/lib/categories";
 import SegmentedControl from "@/components/ui/SegmentedControl";
 import CategoryPickerSheet from "@/components/sheets/CategoryPickerSheet";
 import type { IconName } from "@/lib/icons";
@@ -35,6 +37,7 @@ import { ApiError, get, patch, post } from "@/lib/api";
 import { splitIssues } from "@/lib/apiError";
 import { useIdempotencyKey } from "@/lib/useIdempotencyKey";
 import { holderFor } from "@/lib/idempotency";
+import { useOnlineGate } from "@/lib/onlineGate";
 import { useAccountStore } from "@/store/accounts";
 import { useTitleSuggestionStore } from "@/store/titleSuggestions";
 import { useTitleMatches } from "@/lib/titleSuggestions";
@@ -117,7 +120,8 @@ const SuggestionChip = ({
   color: ColorToken;
   onPress: () => void;
 }) => (
-  <PressableScale style={styles.suggestionChip} onPress={onPress} scaleTo={0.95}>
+  // Labelled by hand: left to itself VoiceOver joins the icon's empty part in (", Big Basket").
+  <PressableScale style={styles.suggestionChip} onPress={onPress} scaleTo={0.95} accessibilityLabel={label} accessibilityHint="Fills in this title and its category.">
     <Icon name={icon} size={11} containerSize={20} containerRadius={7} container="square" gradient={color} />
     <AppText size="sm" weight="semibold" numberOfLines={1}>
       {label}
@@ -144,6 +148,9 @@ const AddTransaction = () => {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [occurredAt, setOccurredAt] = useState<Date>(new Date());
   const [extrasOpen, setExtrasOpen] = useState(false);
+  // An edit whose transaction couldn't be read: the blank form must not be saved over it.
+  const [editLoad, setEditLoad] = useState<{ notFound: boolean; message: string } | null>(null);
+  const [editAttempt, setEditAttempt] = useState(0);
 
   // Shared by editing a transaction and repeating one — everything is the same except
   // which moment it lands on: the original's own timestamp for an edit, right now for a
@@ -174,13 +181,14 @@ const AddTransaction = () => {
         applyTransactionToForm(transaction, transaction.occurredAt ? new Date(transaction.occurredAt) : new Date());
       }
       catch (err) {
-        // Buzzes even though nothing was pressed: the form is showing blank defaults for
-        // a transaction the user opened to edit, and saving would overwrite real data.
         haptics.error();
-        setSubmitError(err instanceof Error ? err.message : "Couldn't load transaction");
+        setEditLoad({
+          notFound: err instanceof ApiError && err.status === 404,
+          message: err instanceof Error ? err.message : "Couldn't load transaction",
+        });
       }
     })();
-  }, [id, reset])
+  }, [id, reset, editAttempt])
 
   // "Log again today" from the detail sheet — the same load as editing, except it lands on
   // now rather than the original's moment, and `isEdit` stays false (keyed to `id` alone) so
@@ -241,6 +249,7 @@ const AddTransaction = () => {
   // Category — picked via the shared sheet (search + create on the fly), same as Bills/Budgets.
   const categoryRef = useRef<BottomSheetModal>(null);
   const selectedCategory = useCategoryById(watch("category"));
+  const selectedCategoryLabel = useCategoryLabel(watch("category"));
 
   // Title autosuggest — ranked by how often this account has used a title, scoped to this
   // category once one is picked. Hooks run every render regardless of `type`, so a
@@ -304,7 +313,7 @@ const AddTransaction = () => {
   // update — so redeem mode offers "update value first" (see the row below). Fetched only
   // when arriving to redeem, since a plain expense has no use for it.
   const revalueRef = useRef<BottomSheetModal>(null);
-  const { data: investmentsData, refetch: refetchInvestments } = useInvestments(!!redeemFrom);
+  const { data: investmentsData } = useInvestments(!!redeemFrom);
   const redeemHolding = investmentsData?.holdings.find((h) => h.accountId === account?._id) ?? null;
 
   // "Settle up" from a person account's sheet — a transfer prefilled in whichever direction
@@ -379,21 +388,28 @@ const AddTransaction = () => {
   const entered = parseMoney(amountRaw);
   const balanceLine = useMemo(() => {
     if (isEdit || !account) return null;
+    // Words where the figure has a direction (D11 A): a card is "owed", a bank "overdrawn".
+    const words = account.type !== "person";
+    const available = words ? formatBalance(account.balance, account.type) : `${formatMoney(account.balance)} available`;
+    const afterThis = (after: number, income = false) =>
+      words && after < 0
+        ? `${formatBalance(after, account.type)} after this`
+        : `${formatMoney(after)} ${income ? "after this" : "left after this"}`;
     if (isMoveType) {
       const dest = toAccount ? ` → ${toAccount.name}` : "";
       return entered > 0
-        ? `From ${account.name}${dest} · ${formatMoney(account.balance - entered)} left after this`
-        : `From ${account.name}${dest} · ${formatMoney(account.balance)} available`;
+        ? `From ${account.name}${dest} · ${afterThis(account.balance - entered)}`
+        : `From ${account.name}${dest} · ${available}`;
     }
     if (!(entered > 0)) {
-      return `From ${account.name} · ${formatMoney(account.balance)} available`;
+      return `From ${account.name} · ${available}`;
     }
     if (type === "expense" && owedTotal > 0) {
       const share = Math.max(entered - owedTotal, 0);
       return `From ${account.name} · your share ${formatMoney(share)} · ${formatMoney(owedTotal)} owed to you`;
     }
     const after = type === "income" ? account.balance + entered : account.balance - entered;
-    return `${type === "income" ? "To" : "From"} ${account.name} · ${formatMoney(after)} ${type === "income" ? "after this" : "left after this"}`;
+    return `${type === "income" ? "To" : "From"} ${account.name} · ${afterThis(after, type === "income")}`;
   }, [account, toAccount, entered, type, isMoveType, isEdit, owedTotal]);
 
   const setAmount = (next: string) =>
@@ -585,27 +601,28 @@ const AddTransaction = () => {
     }
   }
 
-  // Spec .shead — ✕ on the left, centered title, balancing spacer on the right.
-  const header = (
-    <View style={styles.header}>
-      {/* The shared ✕, so this route squeezes and ticks like every other modal. */}
-      <BackButton variant="close" />
-      <AppText weight="black" size="lg">
-        {isEdit ? "Edit Transaction" : "Add Transaction"}
-      </AppText>
-      <View style={styles.headerSpacer} />
-    </View>
-  );
+  // Adding queues offline (store/outbox.ts); an edit has nowhere to wait.
+  const editGate = useOnlineGate("Save Changes");
+
+  if (isEdit && editLoad) {
+    return (
+      <ScreenScaffold title="Edit transaction" back="close">
+        {editLoad.notFound
+          ? <NotFoundState thing="transaction" />
+          : <ErrorState message={editLoad.message} onRetry={() => { setEditLoad(null); setEditAttempt((n) => n + 1); }} />}
+      </ScreenScaffold>
+    );
+  }
 
   return (
     // A native modal route hosts its own portal — without this, gorhom sheets render
     // behind the modal and read as unclickable.
     <BottomSheetModalProvider>
-    <ScreenScaffold header={header} scroll={false}>
+    <ScreenScaffold title={isEdit ? "Edit transaction" : "Add transaction"} back="close" scroll={false}>
       <View style={styles.body}>
         {/* Type — Expense / Income / Transfer. Immutable in edit mode. */}
         <View pointerEvents={isEdit ? "none" : "auto"} style={isEdit ? styles.segRowLocked : undefined}>
-          <SegmentedControl segments={TYPE_SEGMENTS} value={type} onChange={switchType} />
+          <SegmentedControl segments={TYPE_SEGMENTS} value={type} onChange={switchType} accessibilityLabel="Type" />
         </View>
 
         {/* Amount hero — spec .heroamt: numpad digits stream straight in */}
@@ -689,7 +706,12 @@ const AddTransaction = () => {
               exiting={FadeOut.duration(120)}
               style={styles.field}
             >
-              <PressableScale style={styles.selRow} onPress={() => categoryRef.current?.present()} scaleTo={0.98}>
+              <PressableScale
+                style={styles.selRow}
+                onPress={() => categoryRef.current?.present()}
+                scaleTo={0.98}
+                accessibilityLabel={`Category, ${selectedCategory ? selectedCategoryLabel.path : "Choose a category"}`}
+              >
                 <Icon
                   name={(selectedCategory?.icon ?? "add") as IconName}
                   size={17}
@@ -699,7 +721,7 @@ const AddTransaction = () => {
                   gradient={(selectedCategory?.color ?? "accent") as ColorToken}
                 />
                 <View style={styles.selText}>
-                  <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>CATEGORY</AppText>
+                  <Caps>Category</Caps>
                   {/* Inline breadcrumb: the row already has a label, so the parent shares
                       the value line — "Fuel" has to show it lands in Transportation. */}
                   <CategoryName
@@ -722,7 +744,7 @@ const AddTransaction = () => {
               editable in edit mode — it would need cross-account balance reconciliation. */}
           {!isEdit && !isMoveType && (
             <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)}>
-              <PressableScale style={styles.selRow} onPress={() => accountRef.current?.present()} scaleTo={0.98}>
+              <PressableScale style={styles.selRow} onPress={() => accountRef.current?.present()} scaleTo={0.98} accessibilityLabel={`Paid from, ${account?.name ?? "Select account"}`}>
                 <Icon name="wallet" size={18} color="inkDim" />
                 <AppText size="sm" weight="bold" style={styles.selValue}>
                   {account?.name ?? "Select account"}
@@ -736,7 +758,13 @@ const AddTransaction = () => {
               split is still possible below in Activity, just not from here. */}
           {!isEdit && type === "expense" && (
             <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)} style={styles.stack}>
-              <PressableScale style={[styles.selRow, !splitOpen && styles.selRowDim]} onPress={toggleSplit} scaleTo={0.98}>
+              <PressableScale
+                style={[styles.selRow, !splitOpen && styles.selRowDim]}
+                onPress={toggleSplit}
+                scaleTo={0.98}
+                accessibilityState={{ expanded: splitOpen }}
+                accessibilityLabel={owedTotal > 0 ? `Split, ${formatMoney(owedTotal)} owed to you` : "Split with people"}
+              >
                 <Icon name="person" size={18} color="inkDim" />
                 <AppText size="sm" weight="semibold" color={splitOpen ? "ink" : "inkDim"} style={styles.selValue}>
                   {owedTotal > 0 ? `Split · ${formatMoney(owedTotal)} owed to you` : "Split with people"}
@@ -753,6 +781,7 @@ const AddTransaction = () => {
                         <PressableScale
                           style={styles.splitPerson}
                           scaleTo={0.98}
+                          accessibilityLabel={person?.name ?? "Choose person"}
                           onPress={() => {
                             setActiveSplitKey(row.key);
                             splitAccountRef.current?.present();
@@ -772,9 +801,10 @@ const AddTransaction = () => {
                             keyboardType="decimal-pad"
                             editable={!!row.accountId}
                             style={styles.splitAmountInput}
+                            accessibilityLabel={`${person?.name ?? "This person"}'s share`}
                           />
                         </View>
-                        <PressableScale style={styles.splitRemove} onPress={() => removeSplitRow(row.key)} scaleTo={0.9}>
+                        <PressableScale style={styles.splitRemove} onPress={() => removeSplitRow(row.key)} scaleTo={0.9} accessibilityLabel={`Remove ${person?.name ?? "this person"} from the split`}>
                           <Icon name="close" size={16} color="inkDim" />
                         </PressableScale>
                       </View>
@@ -802,21 +832,24 @@ const AddTransaction = () => {
               exiting={FadeOut.duration(120)}
               style={styles.stack}
             >
-              <PressableScale style={styles.selRow} onPress={() => accountRef.current?.present()} scaleTo={0.98}>
+              <PressableScale style={styles.selRow} onPress={() => accountRef.current?.present()} scaleTo={0.98} accessibilityLabel={`From, ${account?.name ?? "Select account"}`}>
                 <Icon name="wallet" size={18} color="inkDim" />
                 <View style={styles.selText}>
-                  <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>FROM</AppText>
+                  <Caps>From</Caps>
                   <AppText size="sm" weight="bold">{account?.name ?? "Select account"}</AppText>
                 </View>
                 <Icon name="chevronRight" size={20} color="inkDim" />
               </PressableScale>
 
-              <PressableScale style={styles.selRow} onPress={() => toAccountRef.current?.present()} scaleTo={0.98}>
+              <PressableScale
+                style={styles.selRow}
+                onPress={() => toAccountRef.current?.present()}
+                scaleTo={0.98}
+                accessibilityLabel={`${isRedeem ? "Redeem to" : type === "invest" ? "Invest in" : "To"}, ${toAccount?.name ?? (type === "invest" ? "Select an investment" : "Select destination")}`}
+              >
                 <Icon name={type === "invest" ? "investments" : "activity"} size={18} color="inkDim" />
                 <View style={styles.selText}>
-                  <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>
-                    {isRedeem ? "REDEEM TO" : type === "invest" ? "INVEST IN" : "TO"}
-                  </AppText>
+                  <Caps>{isRedeem ? "Redeem to" : type === "invest" ? "Invest in" : "To"}</Caps>
                   <AppText size="sm" weight="bold" color={toAccount ? "ink" : "inkDim"}>
                     {toAccount?.name ?? (type === "invest" ? "Select an investment" : "Select destination")}
                   </AppText>
@@ -828,10 +861,10 @@ const AddTransaction = () => {
                   holding that grew since the last update would otherwise redeem low (and the
                   guard in onSubmit blocks redeeming more than what's recorded). */}
               {isRedeem && redeemHolding && (
-                <PressableScale style={styles.selRow} onPress={() => revalueRef.current?.present()} scaleTo={0.98}>
+                <PressableScale style={styles.selRow} onPress={() => revalueRef.current?.present()} scaleTo={0.98} accessibilityLabel={`Worth now, ${formatMoney(account!.balance)}. Tap to update if it's grown`}>
                   <Icon name="investments" size={18} color="inkDim" />
                   <View style={styles.selText}>
-                    <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>WORTH NOW</AppText>
+                    <Caps>Worth now</Caps>
                     <AppText size="sm" weight="bold">
                       {formatMoney(account!.balance)}
                       <AppText size="xs" weight="semibold" color="inkDim"> · tap to update if it's grown</AppText>
@@ -844,13 +877,15 @@ const AddTransaction = () => {
           )}
 
           {/* Date + time row — defaults to now; tap to set when it actually happened. */}
-          <DateField label="WHEN" mode="datetime" value={occurredAt} onChange={setOccurredAt} maximumDate={new Date()} />
+          <DateField label="When" mode="datetime" value={occurredAt} onChange={setOccurredAt} maximumDate={new Date()} />
 
           {/* Progressive disclosure — tap to reveal note + location fields. */}
           <PressableScale
             style={[styles.selRow, !extrasOpen && styles.selRowDim]}
             onPress={() => setExtrasOpen((open) => !open)}
             scaleTo={0.98}
+            accessibilityState={{ expanded: extrasOpen }}
+            accessibilityLabel={extrasOpen ? "Note and location" : "Add note or location"}
           >
             <Icon name="add" size={18} color="inkDim" />
             <AppText size="sm" weight="semibold" color={extrasOpen ? "ink" : "inkDim"} style={styles.selValue}>
@@ -932,8 +967,10 @@ const AddTransaction = () => {
         <Button
           onPress={handleSubmit(onSubmit)}
           loading={submitting}
+          disabled={isEdit && !editGate.allowed}
+          icon={isEdit ? editGate.icon : undefined}
           label={
-            isEdit ? "Save Changes"
+            isEdit ? editGate.label
             : type === "income" ? "Save Income"
             : type === "invest" ? (entered > 0 ? `Invest ${formatMoney(entered)}` : "Invest")
             : isRedeem ? (entered > 0 ? `Redeem ${formatMoney(entered)}` : "Redeem")
@@ -970,11 +1007,10 @@ const AddTransaction = () => {
       />
       {/* Redeem mode only — one holding, so the sheet reads as "what's this worth now".
           syncAccountBalance reloads the account store, so the value line and redeem guard
-          above pick up the new figure; refetch keeps invested/growth framing fresh. */}
+          above pick up the new figure; the write refreshes invested/growth. */}
       <RevalueSheet
         ref={revalueRef}
         holdings={redeemHolding ? [{ accountId: redeemHolding.accountId, name: redeemHolding.name, invested: redeemHolding.invested, current: redeemHolding.current }] : []}
-        onSaved={() => { void refetchInvestments(); }}
       />
     </ScreenScaffold>
     </BottomSheetModalProvider>
@@ -982,14 +1018,6 @@ const AddTransaction = () => {
 };
 
 const styles = StyleSheet.create({
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  headerSpacer: {
-    width: 32, // balances the ✕ so the title sits centered
-  },
   // Fixed top / scrollable middle / fixed bottom, so the amount hero and the numpad stay
   // on screen together whatever the middle fields do.
   body: {
@@ -1025,9 +1053,6 @@ const styles = StyleSheet.create({
   // would have given those rows directly.
   stack: {
     gap: spacing.lg,
-  },
-  fieldLabel: {
-    letterSpacing: 1.3, // spec .flabel
   },
   splitRow: {
     flexDirection: "row",

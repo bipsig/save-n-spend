@@ -9,6 +9,7 @@ import { KEYBOARD_DONE_ID } from "@/components/ui/KeyboardDoneBar";
 import Button from "@/components/ui/Button";
 import CategoryForm, { categoryCtaLabel, type CategoryFormValue } from "@/components/ui/CategoryForm";
 import PressableScale from "@/components/ui/PressableScale";
+import Caps from "@/components/ui/Caps";
 import { buildCategoryTree, useCategories } from "@/lib/categories";
 import { useCategoryStore } from "@/store/categories";
 import { post } from "@/lib/api";
@@ -16,6 +17,7 @@ import { holderFor } from "@/lib/idempotency";
 import { recoverCreated, sameName } from "@/lib/replayed";
 import { NAME_MIN } from "@save-n-spend/types";
 import { useConnectivity } from "@/store/connectivity";
+import { useOnlineGate } from "@/lib/onlineGate";
 import { toast } from "@/store/toast";
 import { haptics } from "@/lib/haptics";
 import type { IconName } from "@/lib/icons";
@@ -61,6 +63,7 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
   const emptyDraft: CategoryFormValue = { name: "", kind, parent: null, icon: "more", color: "accent" };
   const [draft, setDraft] = useState<CategoryFormValue>(emptyDraft);
   const patch = (next: Partial<CategoryFormValue>) => setDraft((prev) => ({ ...prev, ...next }));
+  const createGate = useOnlineGate(categoryCtaLabel(false, draft.parent));
 
   // Opening the form is what decides the parent: tapping "add here" inside a heading
   // answers the question by pointing at it, so the form needs no parent selector. A new
@@ -136,9 +139,7 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
         </PressableScale>
       ) : (
         // Not selectable itself (e.g. already budgeted) — a plain grouping header.
-        <AppText size="xs" weight="bold" color="inkDim" style={styles.headerLabel}>
-          {parent.name.toUpperCase()}
-        </AppText>
+        <Caps header>{parent.name}</Caps>
       )}
 
       {/* Renders even for a childless heading: the rail carries the "add here" row, the
@@ -167,6 +168,7 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
           onPress={() => startCreate(parent)}
           scaleTo={0.97}
           haptic={false}
+          accessibilityLabel={offline ? `New under ${parent.name}, needs a connection` : `New under ${parent.name}`}
         >
           {/* The lock is the whole message at a glance — offline, this doesn't say WHY
               in the label itself; that's what the toast on tap is for. */}
@@ -236,10 +238,11 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
       {/* Tracks the draft's parent, so the button never says "category" over a form
           showing a sub-category. */}
       <Button
-        label={categoryCtaLabel(false, draft.parent)}
+        label={createGate.label}
+        icon={createGate.icon}
         onPress={onCreate}
         loading={saving}
-        disabled={draft.name.trim().length === 0}
+        disabled={!createGate.allowed || draft.name.trim().length === 0}
       />
       <Button label="Back" variant="ghost" onPress={() => setCreating(false)} />
     </>
@@ -323,9 +326,6 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
 CategoryPickerSheet.displayName = "CategoryPickerSheet";
 
 const styles = StyleSheet.create({
-  headerLabel: {
-    letterSpacing: 1.3,
-  },
   searchBox: {
     flexDirection: "row",
     alignItems: "center",

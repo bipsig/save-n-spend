@@ -3,27 +3,34 @@ import { StyleSheet, View } from "react-native";
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import type { GrowthPoint, MonthPoint } from "@save-n-spend/types";
 import { AppText } from "@/components/ui/AppText";
+import Caps from "@/components/ui/Caps";
+import ChartLegend from "@/components/ui/ChartLegend";
+import ChartTooltip, { type TooltipLine } from "@/components/ui/ChartTooltip";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
-import { compactMoney } from "@/lib/investments";
+import { formatCompact } from "@/lib/format/compact";
+import { formatPct } from "@/lib/format/pct";
+import { chartA11y } from "@/lib/chartSummary";
+import { profitSummary, valueHistorySummary } from "@/lib/chartSummaries";
 import { useScrubTick } from "@/lib/useScrubTick";
-import { colors, spacing } from "@/theme";
+import { chartValueColor, colors, spacing } from "@/theme";
 import { signTone } from "@/lib/signTone";
 
-const VIOLET = "#B0A2FF";
 const AXIS_W = 46;
 const PAD_L = 8;
 
-const signed = (n: number) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${formatMoney(Math.abs(n))}`;
+const signed = (n: number) => formatMoney(n, { sign: "always" });
 const tone = (n: number) => signTone(n);
+const pctChange = (pct: number | null) => (pct !== null ? ` · ${formatPct(pct, { kind: "change" })}` : "");
 
 /** The last `n` entries — the chart range. */
 export const lastN = <T,>(xs: T[], n: number): T[] => (xs.length > n ? xs.slice(xs.length - n) : xs);
 
-const Axis = ({ w, y, ticks, masked }: { w: number; y: (v: number) => number; ticks: number[]; masked: boolean }) => (
+// Ticks are scale marks, so they stay compact (₹1L, ₹75k); every figure read elsewhere is exact.
+const Axis = ({ w, y, ticks }: { w: number; y: (v: number) => number; ticks: number[] }) => (
   <>
     {ticks.map((v) => (
       <View key={v} pointerEvents="none" style={{ position: "absolute", left: w - AXIS_W + 4, top: y(v) - 7, width: AXIS_W - 4 }}>
-        <AppText size="xs" color="inkDim" numberOfLines={1}>{masked ? "••" : compactMoney(v)}</AppText>
+        <AppText size="xs" color="inkDim" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{formatCompact(v)}</AppText>
       </View>
     ))}
   </>
@@ -31,10 +38,11 @@ const Axis = ({ w, y, ticks, masked }: { w: number; y: (v: number) => number; ti
 
 const ticksOf = (lo: number, hi: number, n: number) => Array.from({ length: n + 1 }, (_, i) => lo + ((hi - lo) * i) / n);
 
-/** Tag riding the right edge at the latest value — how a price chart shows "now". */
-const LastTag = ({ w, y, text, color }: { w: number; y: number; text: string; color: string }) => (
-  <View pointerEvents="none" style={[styles.tag, { left: w - AXIS_W + 2, top: y - 9, backgroundColor: color }]}>
-    <AppText size="xs" weight="black" style={{ color: colors.bg }} numberOfLines={1}>{text}</AppText>
+/** Tag riding the right edge at the latest value — how a price chart shows "now". Exact, so it
+ *  grows leftwards from the edge over the end of the plot. */
+const LastTag = ({ y, text, color }: { y: number; text: string; color: string }) => (
+  <View pointerEvents="none" style={[styles.tag, { right: 0, top: y - 9, backgroundColor: color }]}>
+    <AppText size="xs" weight="black" style={{ color: colors.bg }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{text}</AppText>
   </View>
 );
 
@@ -56,19 +64,9 @@ const Scrub = ({ count, slot, active, onPick }: { count: number; slot: number; a
   );
 };
 
-const TIP_W = 124;
-
-/** Bubble beside the touched month, kept inside the plot. */
-const Tip = ({ w, x, y, title, lines }: { w: number; x: number; y: number; title: string; lines: { text: string; color?: "success" | "danger" | "warning" | "inkDim" }[] }) => (
-  <View
-    pointerEvents="none"
-    style={[styles.tip, { width: TIP_W, left: Math.max(0, Math.min(x - TIP_W / 2, w - AXIS_W - TIP_W)), top: Math.max(0, y - 20 - 14 * lines.length - 18) }]}
-  >
-    <AppText size="xs" weight="bold" color="inkDim">{title}</AppText>
-    {lines.map((l, k) => (
-      <AppText key={k} size="xs" weight="black" color={l.color} numberOfLines={1}>{l.text}</AppText>
-    ))}
-  </View>
+/** The bubble sits above the touched point, kept inside the plot and clear of the axis. */
+const Tip = ({ w, x, y, title, lines }: { w: number; x: number; y: number; title: string; lines: TooltipLine[] }) => (
+  <ChartTooltip x={x} chartWidth={w} rightInset={AXIS_W} top={Math.max(0, y - 20 - 14 * lines.length - 18)} title={title} lines={lines} />
 );
 
 const MonthAxis = ({ labels }: { labels: string[] }) => (
@@ -111,22 +109,23 @@ export const ValueHistoryChart = ({ points, height = 150, activeIndex, onScrub }
   const line = points.map((p, k) => `${k ? "L" : "M"} ${x(k)},${y(p.value)}`).join(" ");
   const last = points[points.length - 1];
   const gain = sel.value - sel.invested;
+  const title = `${sel.label}${sel.partial ? " · so far" : ""}`;
 
   return (
     <View style={styles.block}>
       <View style={styles.readout}>
-        <AppText size="xs" weight="bold" color="inkDim">{sel.label}{sel.partial ? " · so far" : ""}</AppText>
+        <AppText size="xs" weight="bold" color="inkDim">{title}</AppText>
         <AppText size="sm" weight="black">{formatMoney(sel.value)}</AppText>
         <AppText size="xs" weight="bold" color={tone(gain)}>{signed(gain)} on {formatMoney(sel.invested)} invested</AppText>
       </View>
-      <View style={{ height }} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
+      <View style={{ height }} onLayout={(e) => setW(e.nativeEvent.layout.width)} {...chartA11y(valueHistorySummary(points, masked))}>
         {w > 0 && (
           <>
             <Svg width={w} height={height}>
               <Defs>
                 <LinearGradient id="vfill" x1="0" y1="0" x2="0" y2="1">
-                  <Stop offset="0" stopColor={VIOLET} stopOpacity={0.3} />
-                  <Stop offset="1" stopColor={VIOLET} stopOpacity={0} />
+                  <Stop offset="0" stopColor={chartValueColor} stopOpacity={0.3} />
+                  <Stop offset="1" stopColor={chartValueColor} stopOpacity={0} />
                 </LinearGradient>
               </Defs>
               {ticksOf(lo, hi, 3).map((v) => (
@@ -138,26 +137,26 @@ export const ValueHistoryChart = ({ points, height = 150, activeIndex, onScrub }
                 <Path
                   key={p.month}
                   d={`M ${x(k)},${y(points[k].value)} L ${x(k + 1)},${y(p.value)}`}
-                  stroke={VIOLET}
+                  stroke={chartValueColor}
                   strokeWidth={2.4}
                   strokeLinecap="round"
                 />
               ))}
               {open && <Line x1={x(i)} x2={x(i)} y1={0} y2={height} stroke={colors.ink} strokeOpacity={0.25} strokeDasharray="2 3" />}
               {points.map((p, k) => (
-                <Circle key={p.month} cx={x(k)} cy={y(p.value)} r={open && k === i ? 5 : 3} fill={VIOLET} stroke={VIOLET} strokeWidth={2} />
+                <Circle key={p.month} cx={x(k)} cy={y(p.value)} r={open && k === i ? 5 : 3} fill={chartValueColor} stroke={chartValueColor} strokeWidth={2} />
               ))}
             </Svg>
-            <Axis w={w} y={y} ticks={ticksOf(lo, hi, 3)} masked={masked} />
-            <LastTag w={w} y={y(last.value)} text={masked ? "••" : compactMoney(last.value)} color={VIOLET} />
+            <Axis w={w} y={y} ticks={ticksOf(lo, hi, 3)} />
+            <LastTag y={y(last.value)} text={formatMoney(last.value)} color={chartValueColor} />
             {open && <Tip
               w={w}
               x={x(i)}
               y={y(sel.value)}
-              title={`${sel.label}${sel.partial ? " · so far" : ""}`}
+              title={title}
               lines={[
-                { text: masked ? "••" : compactMoney(sel.value) },
-                { text: masked ? "••" : `${compactMoney(gain, true)} gain`, color: gain > 0 ? "success" : gain < 0 ? "danger" : "inkDim" },
+                { label: "Value", value: formatMoney(sel.value) },
+                { label: "Gain", value: signed(gain), tone: tone(gain) },
               ]}
             />}
             <Scrub count={points.length} slot={slot} active={activeIndex} onPick={onScrub} />
@@ -165,20 +164,15 @@ export const ValueHistoryChart = ({ points, height = 150, activeIndex, onScrub }
         )}
       </View>
       <MonthAxis labels={points.map((p) => p.label)} />
-      <View style={styles.legend}>
-        <Legend color={VIOLET} text="Value" />
-        <Legend color={colors.teal} text="Invested" />
-      </View>
+      <ChartLegend
+        items={[
+          { label: "Value", color: chartValueColor },
+          { label: "Invested", color: colors.teal, mark: "line" },
+        ]}
+      />
     </View>
   );
 };
-
-const Legend = ({ color, text }: { color: string; text: string }) => (
-  <View style={styles.legendItem}>
-    <View style={[styles.swatch, { backgroundColor: color }]} />
-    <AppText size="xs" color="inkDim">{text}</AppText>
-  </View>
-);
 
 type ProfitProps = {
   points: MonthPoint[];
@@ -226,17 +220,18 @@ export const ProfitChart = ({ points, growth, activeIndex, onScrub }: ProfitProp
     ? "History starts here"
     : !g.upd
       ? "No change"
-      : `${signed(g.growth as number)}${g.pct !== null ? ` · ${g.pct >= 0 ? "+" : "−"}${Math.abs(g.pct).toFixed(1)}%` : ""}`;
+      : `${signed(g.growth as number)}${pctChange(g.pct)}`;
+  const title = `${points[i].label}${points[i].partial ? " · so far" : ""}`;
 
   return (
     <View style={styles.block}>
       <View style={styles.readout}>
-        <AppText size="xs" weight="bold" color="inkDim">{points[i].label}{points[i].partial ? " · so far" : ""}</AppText>
+        <AppText size="xs" weight="bold" color="inkDim">{title}</AppText>
         <AppText size="sm" weight="black" color={tone(profit[i])}>{signed(profit[i])} profit so far</AppText>
         <AppText size="xs" weight="bold" color={g.opening || !g.upd ? "inkDim" : tone(g.growth as number)}>{changeText}</AppText>
         {g.upd && !g.opening && g.cover > 1 && <AppText size="xs" color="inkDim">Covers the {g.cover} months since the last update</AppText>}
       </View>
-      <View style={{ height }} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
+      <View style={{ height }} onLayout={(e) => setW(e.nativeEvent.layout.width)} {...chartA11y(profitSummary(points, growth, masked))}>
         {w > 0 && (
           <>
             <Svg width={w} height={height}>
@@ -287,23 +282,23 @@ export const ProfitChart = ({ points, growth, activeIndex, onScrub }: ProfitProp
                 );
               })}
             </Svg>
-            <Axis w={w} y={y} ticks={ticksOf(lo, hi, 3)} masked={masked} />
-            <LastTag w={w} y={y(lastProfit)} text={masked ? "••" : compactMoney(lastProfit, true)} color={colorOf(lastProfit)} />
+            <Axis w={w} y={y} ticks={ticksOf(lo, hi, 3)} />
+            <LastTag y={y(lastProfit)} text={signed(lastProfit)} color={colorOf(lastProfit)} />
             <View pointerEvents="none" style={{ position: "absolute", left: 0, top: topH + 2 }}>
-              <AppText size="xs" color="inkDim" style={styles.caps}>Monthly change</AppText>
+              <Caps size="sm">Monthly change</Caps>
             </View>
             {open && <Tip
               w={w}
               x={x(i)}
               y={y(profit[i])}
-              title={`${points[i].label}${points[i].partial ? " · so far" : ""}`}
+              title={title}
               lines={[
-                { text: masked ? "••" : `${compactMoney(profit[i], true)} profit`, color: profit[i] > 0 ? "success" : profit[i] < 0 ? "danger" : "inkDim" },
+                { label: "Profit", value: signed(profit[i]), tone: tone(profit[i]) },
                 g.opening
-                  ? { text: "history starts", color: "inkDim" as const }
+                  ? { value: "History starts", tone: "inkDim" }
                   : !g.upd
-                    ? { text: "no change", color: "inkDim" as const }
-                    : { text: masked ? "••" : `${compactMoney(g.growth as number, true)}${g.pct !== null ? ` · ${g.pct >= 0 ? "+" : "−"}${Math.abs(g.pct).toFixed(1)}%` : ""} month`, color: (g.growth as number) > 0 ? "success" as const : (g.growth as number) < 0 ? "danger" as const : "inkDim" as const },
+                    ? { value: "No change", tone: "inkDim" }
+                    : { label: "Month", value: `${signed(g.growth as number)}${pctChange(g.pct)}`, tone: tone(g.growth as number) },
               ]}
             />}
             <Scrub count={n} slot={slot} active={activeIndex} onPick={onScrub} />
@@ -320,10 +315,5 @@ const styles = StyleSheet.create({
   readout: { gap: 2, minHeight: 58 },
   months: { flexDirection: "row", marginLeft: PAD_L },
   tick: { flex: 1, textAlign: "center" },
-  legend: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
-  legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
-  swatch: { width: 10, height: 10, borderRadius: 3 },
-  caps: { letterSpacing: 1, textTransform: "uppercase", fontSize: 10 },
-  tip: { position: "absolute", gap: 1, paddingVertical: 6, paddingHorizontal: 9, borderRadius: 10, backgroundColor: "rgba(32,28,60,0.96)", borderWidth: 1, borderColor: colors.glassBorder },
-  tag: { position: "absolute", minWidth: AXIS_W, height: 18, borderRadius: 4, paddingHorizontal: 4, justifyContent: "center" },
+  tag: { position: "absolute", minWidth: AXIS_W - 2, maxWidth: 104, height: 18, borderRadius: 4, paddingHorizontal: 4, justifyContent: "center" },
 });

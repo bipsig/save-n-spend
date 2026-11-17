@@ -1,4 +1,4 @@
-import { beforeEach, test } from "node:test";
+import { afterEach, beforeEach, mock, test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -47,8 +47,10 @@ beforeEach(async () => {
   log.length = 0;
   session.token = "tok";
   session.signOuts = 0;
+  api.useServerWaking.setState({ waking: false });
   await cache.clearAll();
 });
+afterEach(() => mock.timers.reset());
 
 const failure = async (run: () => Promise<unknown>): Promise<ApiError> => {
   try {
@@ -178,17 +180,153 @@ test("a 2xx that isn't the API's (a Wi-Fi sign-in page) is no answer, not a succ
   assert.equal((await failure(() => api.post("/bills", {}, { idempotencyKey: "k" }))).status, 0);
 });
 
-// Today's behaviour: a gateway page while Render wakes reaches the screen as an error even
-// when a cached copy exists. A fallback is planned for 2.8.2 (D19 A).
-test("a 502 or 503 page from a waking server is an error, not the cached copy", async () => {
+// D19: Render's free tier sleeps, and while it boots a read gets 502/503/504 or a gateway page.
+
+const flush = async () => {
+  for (let i = 0; i < 20; i++) await new Promise((resolve) => setImmediate(resolve));
+};
+const waking = () => api.useServerWaking.getState().waking;
+
+/** Lets a retry loop left by a test see the flag down and end, so the next test starts clean. */
+const settle = async () => {
+  api.useServerWaking.setState({ waking: false });
+  mock.timers.tick(Math.max(...api.WAKE_RETRY_MS));
+  await flush();
+};
+
+for (const status of [502, 503]) {
+  test(`a ${status} from a waking server serves the saved copy and marks the server waking`, async () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+    answer = json(200, { success: true, data: ["cached"] });
+    await api.get("/dashboard");
+
+    answer = reply(status, "<html>Bad Gateway</html>");
+    assert.deepEqual(await api.get("/dashboard"), ["cached"]);
+    assert.equal(waking(), true);
+    // An answer, not no signal: the offline banner stays down.
+    assert.equal(reach.at(-1), "online");
+    assert.deepEqual(log.at(-1)?.status, status);
+    await settle();
+  });
+}
+
+test("a 504 or an HTML error page is the same waking server", async () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  answer = json(200, { success: true, data: ["cached"] });
+  await api.get("/bills");
+  answer = reply(504, "");
+  assert.deepEqual(await api.get("/bills"), ["cached"]);
+  answer = reply(500, "<!doctype html><title>Service starting</title>");
+  assert.deepEqual(await api.get("/bills"), ["cached"]);
+  assert.equal(waking(), true);
+  await settle();
+});
+
+test("a 502 with nothing saved is still an error, and nothing is marked", async () => {
+  answer = reply(502, "<html>Bad Gateway</html>");
+  const err = await failure(() => api.get("/dashboard"));
+  assert.equal(err.status, 502);
+  assert.equal(err.reason, WAKING_MESSAGE);
+  assert.equal(waking(), false);
+});
+
+test("an export on a 502 never uses the saved copy", async () => {
+  answer = json(200, { success: true, data: { items: ["cached"] } });
+  await api.get("/investments/report");
+  answer = reply(502, "<html>Bad Gateway</html>");
+  const err = await failure(() => api.get("/investments/report", { cache: false }));
+  assert.equal(err.status, 502);
+  assert.equal(err.reason, WAKING_MESSAGE);
+  assert.equal(waking(), false);
+});
+
+test("a write on a 502 fails as before", async () => {
+  answer = json(200, { success: true, data: ["cached"] });
+  await api.get("/goals");
+  answer = reply(503, "<html>Service Unavailable</html>");
+  assert.equal((await failure(() => api.post("/goals", { name: "x" }, { idempotencyKey: "k" }))).status, 503);
+  assert.equal(waking(), false);
+});
+
+test("the API's own 503 is an answer, not a waking server", async () => {
   answer = json(200, { success: true, data: ["cached"] });
   await api.get("/dashboard");
-  for (const status of [502, 503]) {
-    answer = reply(status, "<html>Bad Gateway</html>");
-    const err = await failure(() => api.get("/dashboard"));
-    assert.equal(err.status, status);
-    assert.equal(err.reason, WAKING_MESSAGE);
-  }
+  answer = json(503, { success: false, code: "unavailable", message: "The database is busy" });
+  const err = await failure(() => api.get("/dashboard"));
+  assert.equal(err.reason, "The database is busy");
+  assert.equal(waking(), false);
+});
+
+test("the flag clears on the next real answer, and screens are told to refetch", async () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  let awake = 0;
+  const off = api.onServerAwake(() => awake++);
+
+  answer = json(200, { success: true, data: ["old"] });
+  await api.get("/accounts");
+  answer = reply(502, "<html>Bad Gateway</html>");
+  await api.get("/accounts");
+  assert.equal(waking(), true);
+  assert.equal(awake, 0);
+
+  answer = json(200, { success: true, data: ["new"] });
+  assert.deepEqual(await api.get("/accounts"), ["new"]);
+  assert.equal(waking(), false);
+  assert.equal(awake, 1);
+  off();
+  await settle();
+});
+
+test("while waking, the app retries by itself with backoff until the server answers", async () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  let awake = 0;
+  const off = api.onServerAwake(() => awake++);
+
+  answer = json(200, { success: true, data: ["cached"] });
+  await api.get("/dashboard");
+  answer = reply(502, "<html>Bad Gateway</html>");
+  await api.get("/dashboard");
+  await api.get("/dashboard"); // a second read joins the same loop
+  sent = [];
+
+  // Nothing before the first gap; then one probe of /health per gap, each gap longer.
+  mock.timers.tick(api.WAKE_RETRY_MS[0] - 1);
+  await flush();
+  assert.equal(sent.length, 0);
+  mock.timers.tick(1);
+  await flush();
+  assert.deepEqual(sent.map((s) => s.url), ["http://localhost:7019/health"]);
+  assert.equal(waking(), true);
+
+  mock.timers.tick(api.WAKE_RETRY_MS[1] - 1);
+  await flush();
+  assert.equal(sent.length, 1);
+
+  answer = json(200, { ok: true, db: "connected" });
+  mock.timers.tick(1);
+  await flush();
+  assert.equal(sent.length, 2);
+  assert.equal(waking(), false);
+  assert.equal(awake, 1);
+
+  // Stopped: no more probes.
+  mock.timers.tick(Math.max(...api.WAKE_RETRY_MS) * 3);
+  await flush();
+  assert.equal(sent.length, 2);
+  off();
+});
+
+test("no signal while waking hands over to the offline banner", async () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  answer = json(200, { success: true, data: ["cached"] });
+  await api.get("/dashboard");
+  answer = reply(502, "<html>Bad Gateway</html>");
+  await api.get("/dashboard");
+  answer = noSignal;
+  assert.deepEqual(await api.get("/dashboard"), ["cached"]);
+  assert.equal(waking(), false);
+  assert.equal(reach.at(-1), "offline");
+  await settle();
 });
 
 test("an export read is never answered from the cache: no answer fails as offline", async () => {
@@ -230,4 +368,45 @@ test("every request the export files make opts out of the cache", () => {
     for (const args of calls) assert.match(args, /\{ cache: false \}/, `${file}: ${args}`);
     assert.doesNotMatch(src, /\b(post|put|patch|del)\(/, `${file} writes`);
   }
+});
+
+// 2.8.3: what lib/query reads through.
+
+test("a read says when its data was fetched; a saved copy, when it was saved", async () => {
+  mock.timers.enable({ apis: ["setTimeout", "Date"], now: 1_000_000 });
+  answer = json(200, { success: true, data: ["fresh"] });
+  assert.deepEqual(await api.getFetched("/budgets"), { data: ["fresh"], fetchedAt: 1_000_000 });
+  await flush();
+
+  mock.timers.tick(3_600_000);
+  answer = noSignal;
+  assert.deepEqual(await api.getFetched("/budgets"), { data: ["fresh"], fetchedAt: 1_000_000 });
+
+  // D19: a waking server's 502 or gateway page serves the same saved copy and its time.
+  for (const waking of [reply(502, "<html>Bad Gateway</html>"), reply(500, "<!doctype html><title>Starting</title>")]) {
+    answer = waking;
+    assert.deepEqual(await api.getFetched("/budgets"), { data: ["fresh"], fetchedAt: 1_000_000 });
+    assert.equal(api.useServerWaking.getState().waking, true);
+  }
+  await settle();
+});
+
+test("a write marks the reads stale; the outbox's rows wait for the end of the pass", async () => {
+  const { queryClient } = require("./queryClient") as typeof import("./queryClient");
+  const key = ["api", "u1", "/dashboard/summary"];
+  queryClient.setQueryData(key, { data: 1, fetchedAt: 0 });
+
+  answer = json(201, { success: true, data: { _id: "t1" } });
+  await api.post("/transactions", { amount: 1 }, { idempotencyKey: "k", invalidate: false });
+  assert.equal(queryClient.getQueryState(key)?.isInvalidated, false);
+
+  await api.post("/transactions", { amount: 1 }, { idempotencyKey: "k2" });
+  assert.equal(queryClient.getQueryState(key)?.isInvalidated, true);
+
+  // A refused write changes nothing.
+  queryClient.setQueryData(key, { data: 1, fetchedAt: 0 });
+  answer = json(400, { success: false, code: "invalid_input", message: "No" });
+  await failure(() => api.post("/transactions", {}, { idempotencyKey: "k3" }));
+  assert.equal(queryClient.getQueryState(key)?.isInvalidated, false);
+  queryClient.clear();
 });

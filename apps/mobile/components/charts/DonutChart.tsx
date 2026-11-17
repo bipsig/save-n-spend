@@ -2,6 +2,9 @@ import { StyleSheet, View } from "react-native";
 import Svg, { Circle, G, Path } from "react-native-svg";
 import { AppText } from "@/components/ui/AppText";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { formatPct } from "@/lib/format/pct";
+import { chartA11y } from "@/lib/chartSummary";
+import { donutSummary } from "@/lib/chartSummaries";
 import { useScrubTick } from "@/lib/useScrubTick";
 
 export type DonutSlice = { id: string; name: string; total: number; pct: number; color: string };
@@ -15,6 +18,8 @@ type Props = {
   onScrub?: (i: number | null) => void;
   size?: number;
   thickness?: number;
+  /** What VoiceOver calls the chart before its figures. Defaults to `centerLabel`. */
+  summaryTitle?: string;
 };
 
 const GAP_DEG = 1.6;
@@ -62,8 +67,9 @@ const DonutChart = ({
   onScrub,
   size = 176,
   thickness = 26,
+  summaryTitle,
 }: Props) => {
-  usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
+  const masked = usePrivacyMask(); // also subscribes: a peek has to re-render the amounts below
   const active = activeIndex ?? null;
   const cx = size / 2;
   const cy = size / 2;
@@ -102,7 +108,7 @@ const DonutChart = ({
   const shown = active !== null ? data[active] : null;
 
   return (
-    <View style={styles.wrap}>
+    <View style={styles.wrap} {...chartA11y(donutSummary(summaryTitle ?? centerLabel, centerValue, data, masked))}>
       <View
         style={{ width: size, height: size }}
         onStartShouldSetResponder={() => true}
@@ -144,7 +150,7 @@ const DonutChart = ({
           </AppText>
           {shown && (
             <AppText size="xs" color="inkDim">
-              {`${Math.round(shown.pct)}%`}
+              {formatPct(shown.pct)}
             </AppText>
           )}
         </View>

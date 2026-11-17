@@ -4,6 +4,7 @@ import { iconMap } from "@/lib/icons";
 import { MaterialIcons } from "@expo/vector-icons";
 import { Tabs } from "expo-router"
 import ScreenErrorBoundary from "@/components/shell/ScreenErrorBoundary"
+import { screenTitles } from "@/data/menu"
 
 const TabsLayout = () => {
   return (
@@ -42,7 +43,7 @@ const TabsLayout = () => {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Home",
+          title: screenTitles.home,
           tabBarIcon: ({ color, size }) => (
             <MaterialIcons name={iconMap.home} color={color} size={size} />
           )
@@ -51,7 +52,7 @@ const TabsLayout = () => {
       <Tabs.Screen
         name="activity"
         options={{
-          title: "Activity",
+          title: screenTitles.activity,
           tabBarIcon: ({ color, size }) => (
             <MaterialIcons name={iconMap.activity} color={color} size={size} />
           )
@@ -60,7 +61,7 @@ const TabsLayout = () => {
       <Tabs.Screen
         name="insights"
         options={{
-          title: "Insights",
+          title: screenTitles.insights,
           tabBarIcon: ({ color, size }) => (
             <MaterialIcons name={iconMap.insights} color={color} size={size} />
           )
@@ -69,7 +70,7 @@ const TabsLayout = () => {
       <Tabs.Screen
         name="more"
         options={{
-          title: "More",
+          title: screenTitles.more,
           tabBarIcon: ({ color, size }) => (
             <MaterialIcons name={iconMap.more} color={color} size={size} />
           )

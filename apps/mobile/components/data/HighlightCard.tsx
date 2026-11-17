@@ -13,12 +13,12 @@ import { spacing } from "@/theme";
 // Shared by /assistant (its dedicated screen) and Insights (an embedded preview of the same
 // list) — one card, so the two never render a highlight differently from each other.
 
-/** Severity → Badge status, so the chip wears the palette Badge already owns. */
+/** Severity → Badge tone, so the chip wears the palette Badge already owns. */
 const SEVERITY_BADGE = {
-  urgent: "overdue",
-  warning: "pending",
-  notice: "onTrack",
-  win: "paid",
+  urgent: "danger",
+  warning: "warning",
+  notice: "info",
+  win: "success",
 } as const;
 
 type Props = {
@@ -65,7 +65,7 @@ const HighlightCard = ({ highlight, onDismiss, minHeight }: Props) => {
             containerColor="surface2"
             color={SEVERITY_COLOR[highlight.severity]}
           />
-          <Badge label={SEVERITY_LABEL[highlight.severity]} status={SEVERITY_BADGE[highlight.severity]} size="sm" />
+          <Badge label={SEVERITY_LABEL[highlight.severity]} tone={SEVERITY_BADGE[highlight.severity]} size="sm" />
           <View style={styles.spacer} />
           {/* Wave it away for a week. Device-local: the server never learns, and a
               card that still fires next week has earned its second look. */}

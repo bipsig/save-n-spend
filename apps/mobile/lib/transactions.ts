@@ -1,126 +1,37 @@
 import type { ITransaction, Paginated } from "@save-n-spend/types";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, get } from "@/lib/api";
-import { useSession } from "@/store/session";
+import { useMemo } from "react";
+import { get } from "@/lib/api";
+import { useApiPages, useApiQuery } from "@/lib/query/useApiQuery";
 import { buildQuery, feedFilters, summaryPath, type FeedParams } from "@/lib/transactionQuery";
 
 export type { FeedParams, FeedType } from "@/lib/transactionQuery";
 
 const PAGE_SIZE = 20;
 
+const rangeKeyOf = (params: FeedParams): string => `${params.startDate ?? ""}|${params.endDate ?? ""}`;
+
 
 export const useTransactions = () => {
-  const status = useSession((s) => s.status);
-  const [items, setItems] = useState<ITransaction[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-
-  const refetch = useCallback(async () => {
-    if (useSession.getState().status !== "authed") return;
-    setLoading(true);
-    setError(null);
-    try {
-      // Everyday rows only — a trip's are read on the trip.
-      const res = await get<Paginated<ITransaction>>("/transactions?trips=exclude");
-      setItems(res.items);
-    }
-    catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load");
-    }
-    finally {
-      setLoading(false);
-    }
-  }, []);
-
-
-  useEffect(() => {
-    if (status === "authed") refetch();
-  }, [status, refetch]);
-
-  return { items, loading, error, refetch };
-}
+  // Everyday rows only — a trip's are read on the trip.
+  const { data, ...rest } = useApiQuery<Paginated<ITransaction>>("/transactions?trips=exclude");
+  return { items: data?.items ?? [], ...rest };
+};
 
 // The Activity feed — server-filtered (date range / category / search) and
 // paginated for infinite scroll. Filtering and paging both live server-side per
 // the spec: a page can never be filtered or summed client-side.
 export const useTransactionFeed = (params: FeedParams) => {
-  const status = useSession((s) => s.status);
-  const [items, setItems] = useState<ITransaction[]>([]);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
+  const filters = feedFilters(params);
+  // Every filter is in the key. A range change drops the rows, so the list falls back to its
+  // skeleton rather than showing last week's transactions under "This Week"; a category or
+  // search change keeps them until the new ones land, so typing doesn't strobe the list.
+  const { total, ...rest } = useApiPages<ITransaction>(
+    (page) => `/transactions${buildQuery({ page, limit: PAGE_SIZE, ...filters })}`,
+    { keepPreviousWithin: rangeKeyOf(params) },
+  );
   // How many rows this filter combination matches in total, not just what's loaded —
   // the filter sheet's "Show N results" reads this live as chips are tapped.
-  const [totalDocs, setTotalDocs] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // A monotonic id so a slow response from a stale filter can't clobber a newer one.
-  const reqId = useRef(0);
-  // Serialize the filter so the load callback is stable while values are unchanged.
-  const key = `${params.startDate ?? ""}|${params.endDate ?? ""}|${(params.category ?? []).join(",")}|${(params.account ?? []).join(",")}|${params.type ?? ""}|${params.search ?? ""}`;
-
-  const load = useCallback(async (targetPage: number, replace: boolean) => {
-    if (useSession.getState().status !== "authed") return;
-    const myId = ++reqId.current;
-    replace ? setLoading(true) : setLoadingMore(true);
-    setError(null);
-    try {
-      const query = buildQuery({
-        page: targetPage,
-        limit: PAGE_SIZE,
-        ...feedFilters(params),
-      });
-      const res = await get<Paginated<ITransaction>>(`/transactions${query}`);
-      if (myId !== reqId.current) return; // superseded by a newer request
-      setItems((prev) => (replace ? res.items : [...prev, ...res.items]));
-      setPage(res.page);
-      setHasMore(res.hasNextPage);
-      setTotalDocs(res.total);
-    }
-    catch (err) {
-      if (myId !== reqId.current) return;
-      // A page-two miss offline must not blank the page-one rows already on screen —
-      // it just means there's nothing further cached, so the list quietly stops here.
-      // A reconnect's refetch (already wired to focus) resets `hasMore` on its own.
-      if (!replace && err instanceof ApiError && err.status === 0) {
-        setHasMore(false);
-        return;
-      }
-      setError(err instanceof Error ? err.message : "Failed to load");
-    }
-    finally {
-      if (myId === reqId.current) replace ? setLoading(false) : setLoadingMore(false);
-    }
-    // key captures every param that shapes the request.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
-
-  useEffect(() => {
-    if (status === "authed") load(1, true);
-  }, [status, load]);
-
-  // Drop the rows when the RANGE changes, so the list falls back to its skeleton rather than
-  // showing last week's transactions under a card labelled "This Week" — the summary above is
-  // computed server-side for the new range and arrives separately.
-  //
-  // Only the range, not `key`: category and search are refinements the user can see they just
-  // made, and clearing on every debounced keystroke would strobe the list while they typed.
-  const rangeKey = `${params.startDate ?? ""}|${params.endDate ?? ""}`;
-  useEffect(() => {
-    setItems([]);
-    setLoading(true);
-  }, [rangeKey]);
-
-  const loadMore = useCallback(() => {
-    if (!hasMore || loading || loadingMore) return;
-    load(page + 1, false);
-  }, [hasMore, loading, loadingMore, page, load]);
-
-  const refetch = useCallback(() => load(1, true), [load]);
-
-  return { items, loading, loadingMore, error, hasMore, totalDocs, loadMore, refetch };
+  return { ...rest, totalDocs: total };
 };
 
 // How many transactions are filed under a category — asked once, right before
@@ -144,50 +55,11 @@ export type TransactionSummary = {
 
 // The Activity card's totals, computed server-side over every row the list's filters match
 // (all pages, not just the loaded ones). Queued offline rows are not counted until they sync.
-export const useTransactionSummary = (params: FeedParams) => {
-  const status = useSession((s) => s.status);
-  const [data, setData] = useState<TransactionSummary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  // A slow answer for an earlier filter must not land over a newer one.
-  const reqId = useRef(0);
-
-  const path = summaryPath(params);
-  const rangeKey = `${params.startDate ?? ""}|${params.endDate ?? ""}`;
-
-  const refetch = useCallback(async () => {
-    if (useSession.getState().status !== "authed") return;
-    const myId = ++reqId.current;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await get<TransactionSummary>(path);
-      if (myId === reqId.current) setData(res);
-    }
-    catch (err) {
-      if (myId === reqId.current) setError(err instanceof Error ? err.message : "Failed to load");
-    }
-    finally {
-      if (myId === reqId.current) setLoading(false);
-    }
-  }, [path]);
-
-  useEffect(() => {
-    if (status === "authed") refetch();
-  }, [status, refetch]);
-
-  // Clear on a range change, so `data === null` is a reliable "these totals are not for
-  // the range currently on screen". Holding the old ones was worse than showing nothing:
-  // the label said "This Week" while the figures were still last week's, and the reader
-  // had no way to tell. A filter change keeps them until the new ones land, as the list
-  // keeps its rows, so typing a search doesn't strobe the card.
-  useEffect(() => {
-    setData(null);
-    setLoading(true);
-  }, [rangeKey]);
-
-  return { data, loading, error, refetch };
-};
+// A range change clears the totals, so `data === null` is a reliable "these totals are not
+// for the range on screen"; a filter change keeps them until the new ones land, as the list
+// keeps its rows.
+export const useTransactionSummary = (params: FeedParams) =>
+  useApiQuery<TransactionSummary>(summaryPath(params), { keepPreviousWithin: rangeKeyOf(params) });
 
 
 export type TripMatches = { count: number; tripIds: string[] };
@@ -195,24 +67,15 @@ export type TripMatches = { count: number; tripIds: string[] };
 // What a search turns up among trip expenses, which Activity's list leaves out — so a search for
 // "AirBnB" can say where it went instead of looking like it found nothing. Same date range as the
 // list; a failure just means no hint.
-export const useTripMatches = (params: { search?: string; startDate?: string; endDate?: string }) => {
-  const status = useSession((s) => s.status);
-  const [data, setData] = useState<TripMatches | null>(null);
+export const useTripMatches = (params: { search?: string; startDate?: string; endDate?: string }): TripMatches | null => {
   const term = params.search?.trim() ?? "";
-
-  useEffect(() => {
-    if (status !== "authed" || term.length < 2) { setData(null); return; }
-    let live = true;
-    const query = buildQuery({ search: term, startDate: params.startDate, endDate: params.endDate, trips: "only", limit: 50 });
-    get<Paginated<ITransaction>>(`/transactions${query}`)
-      .then((res) => {
-        if (!live) return;
-        const tripIds = [...new Set(res.items.map((t) => t.tripId).filter((id): id is string => !!id))];
-        setData(res.total > 0 ? { count: res.total, tripIds } : null);
-      })
-      .catch(() => { if (live) setData(null); });
-    return () => { live = false; };
-  }, [status, term, params.startDate, params.endDate]);
-
-  return data;
+  const path = term.length < 2
+    ? null
+    : `/transactions${buildQuery({ search: term, startDate: params.startDate, endDate: params.endDate, trips: "only", limit: 50 })}`;
+  const { data, error } = useApiQuery<Paginated<ITransaction>>(path);
+  return useMemo(() => {
+    if (!path || error || !data || data.total === 0) return null;
+    const tripIds = [...new Set(data.items.map((t) => t.tripId).filter((id): id is string => !!id))];
+    return { count: data.total, tripIds };
+  }, [path, error, data]);
 };

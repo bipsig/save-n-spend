@@ -2,6 +2,7 @@ import { StyleSheet, View } from "react-native";
 import { AppText } from "@/components/ui/AppText";
 import PressableScale from "@/components/ui/PressableScale";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { count } from "@/lib/format/count";
 import { hourAbbr } from "@/lib/insights";
 import type { HourCell, HourlyPattern } from "@/lib/insights";
 
@@ -89,7 +90,7 @@ const HourlyRhythm = ({ rhythm, active, onSelect }: Props) => {
       ) : (
         <AppText size="xs" color="inkDim">
           {busiest
-            ? `Heaviest hour ${formatMoney(busiest.amount)} at ${hourAbbr(busiest.hour)} · ${clearHours} clear hour${clearHours === 1 ? "" : "s"}`
+            ? `Heaviest hour ${formatMoney(busiest.amount)} at ${hourAbbr(busiest.hour)} · ${count(clearHours, "clear hour")}`
             : "Nothing spent yet today"}
         </AppText>
       )}

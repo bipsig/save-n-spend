@@ -1,56 +1,59 @@
 import { useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet } from "react-native";
 import type { PortfolioTrend } from "@save-n-spend/types";
 import Card from "@/components/data/Card";
 import { ProfitChart, ValueHistoryChart, lastN } from "@/components/charts/InvestmentCharts";
 import { AppText } from "@/components/ui/AppText";
-import PressableScale from "@/components/ui/PressableScale";
-import { compactMoney } from "@/lib/investments";
-import { usePrivacyMask } from "@/lib/money";
-import { colors, radius, spacing } from "@/theme";
+import Caps from "@/components/ui/Caps";
+import Chip from "@/components/ui/Chip";
+import SegmentedControl from "@/components/ui/SegmentedControl";
+import { StatRow, type StatTileProps } from "@/components/ui/StatTile";
+import { formatMoneyExact } from "@/lib/money";
+import { formatInstant } from "@/lib/format/date";
+import { spacing } from "@/theme";
 import { signTone } from "@/lib/signTone";
 
 export const ALL_SCOPE = "all";
-type Range = 6 | 12 | 0;
+export type InvestTab = "overview" | "trends";
 
-const Pill = ({ label, on, onPress, big, disabled }: { label: string; on: boolean; onPress: () => void; big?: boolean; disabled?: boolean }) => (
-  <PressableScale onPress={onPress} disabled={disabled} scaleTo={0.94} accessibilityRole="button" accessibilityState={{ selected: on, disabled }}>
-    <View style={[styles.pill, big && styles.pillBig, on && styles.pillOn, disabled && !on && styles.pillOff]}>
-      <AppText size="xs" weight="bold" color={on ? "ink" : "inkDim"} numberOfLines={1}>{label}</AppText>
-    </View>
-  </PressableScale>
-);
+/** The Overview | Trends switch on the hub and on a holding's page. */
+export const INVEST_TABS: { key: InvestTab; label: string }[] = [
+  { key: "overview", label: "Overview" },
+  { key: "trends", label: "Trends" },
+];
 
-const Stat = ({ label, text, color }: { label: string; text: string; color: "success" | "danger" | "ink" | "inkDim" }) => (
-  <Card style={styles.stat}>
-    <AppText size="xs" color="inkDim" numberOfLines={1}>{label}</AppText>
-    <AppText size="sm" weight="black" color={color} numberOfLines={1}>{text}</AppText>
-  </Card>
-);
+type Range = "6" | "12" | "0";
+const RANGES: { key: Range; label: string; accessibilityLabel?: string }[] = [
+  { key: "6", label: "6M", accessibilityLabel: "6 months" },
+  { key: "12", label: "1Y", accessibilityLabel: "1 year" },
+  { key: "0", label: "All time" },
+];
+
+const signedExact = (p: number) => formatMoneyExact(p, { sign: "always" });
 
 type Props = {
   trend: PortfolioTrend;
   /** `ALL_SCOPE` or a holding id. The strip always starts with All, so it is one tap away. */
   initialScope?: string;
-  /** On a holding's own page: the pills stay visible but only that holding is live, so the
+  /** On a holding's own page: the chips stay visible but only that holding is live, so the
    *  screen's title and the figures under it can never disagree. */
   locked?: boolean;
 };
 
 /**
- * One screen for the whole portfolio and for any single holding: a strip of scope pills
- * re-scopes the charts in place, so there is no "how do I get back to all" — it is the first pill.
+ * One screen for the whole portfolio and for any single holding: a strip of scope chips
+ * re-scopes the charts in place, so there is no "how do I get back to all" — it is the first chip.
  */
 const TrendsView = ({ trend, initialScope = ALL_SCOPE, locked = false }: Props) => {
-  const masked = usePrivacyMask();
   const [scope, setScope] = useState(initialScope);
-  const [range, setRange] = useState<Range>(12);
+  const [range, setRange] = useState<Range>("12");
   // The one open tooltip. A tap anywhere that is not a chart closes it, as on Insights.
   const [tip, setTip] = useState<{ chart: "value" | "profit"; i: number } | null>(null);
 
   const holding = trend.holdings.find((h) => h.id === scope) ?? null;
   const series = holding ?? trend;
-  const cut = <T,>(xs: T[]) => (range === 0 ? xs : lastN(xs, range));
+  const months = Number(range);
+  const cut = <T,>(xs: T[]) => (months === 0 ? xs : lastN(xs, months));
   const points = useMemo(() => cut(series.points), [series, range]);
   const growth = useMemo(() => cut(series.growth), [series, range]);
 
@@ -60,34 +63,33 @@ const TrendsView = ({ trend, initialScope = ALL_SCOPE, locked = false }: Props) 
   const lastPoint = series.points[series.points.length - 1];
   const profit = lastPoint.value - lastPoint.invested;
 
-  const lastUpdate = holding?.lastUpdatedAt
-    ? new Date(holding.lastUpdatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })
-    : null;
-  const money = (n: number | null, signed = true) => (n === null ? "—" : masked ? "••" : compactMoney(n, signed));
-  const tone = (n: number | null) => (n === null ? "inkDim" : signTone(n));
+  const lastUpdate = holding?.lastUpdatedAt ? formatInstant(holding.lastUpdatedAt, "day") : null;
+  // Exact to the paisa (Q4): the row shrinks the figures and then reflows rather than round them.
+  const stat = (label: string, n: number | null): StatTileProps =>
+    n === null
+      ? { label, text: "—", tone: "inkDim" }
+      : { label, amount: n, signed: true, format: signedExact, tone: signTone(n) };
 
   return (
-    <Pressable style={styles.wrap} onPress={() => setTip(null)}>
+    // `accessible={false}`: a Pressable is one VoiceOver element by default, which would read
+    // the whole tab as a single button and hide the chips and charts inside it.
+    <Pressable style={styles.wrap} onPress={() => setTip(null)} accessible={false}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
-        <Pill label="All" big disabled={locked} on={scope === ALL_SCOPE} onPress={() => { setTip(null); setScope(ALL_SCOPE); }} />
+        <Chip label="All" singleLine disabled={locked} selected={scope === ALL_SCOPE} onPress={() => { setTip(null); setScope(ALL_SCOPE); }} />
         {trend.holdings.map((h) => (
-          <Pill key={h.id} label={h.name} big disabled={locked && h.id !== initialScope} on={scope === h.id} onPress={() => { setTip(null); setScope(h.id); }} />
+          <Chip key={h.id} label={h.name} singleLine disabled={locked && h.id !== initialScope} selected={scope === h.id} onPress={() => { setTip(null); setScope(h.id); }} />
         ))}
       </ScrollView>
 
-      <View style={styles.controls}>
-        <View style={styles.pills}>
-          <Pill label="6M" on={range === 6} onPress={() => { setTip(null); setRange(6); }} />
-          <Pill label="1Y" on={range === 12} onPress={() => { setTip(null); setRange(12); }} />
-          <Pill label="All time" on={range === 0} onPress={() => { setTip(null); setRange(0); }} />
-        </View>
-      </View>
+      <SegmentedControl
+        size="sm"
+        accessibilityLabel="Range"
+        segments={RANGES}
+        value={range}
+        onChange={(r) => { setTip(null); setRange(r); }}
+      />
 
-      <View style={styles.stats}>
-        <Stat label="Profit so far" text={money(profit)} color={tone(profit)} />
-        <Stat label="Best month" text={money(best)} color={tone(best)} />
-        <Stat label="Worst month" text={money(worst)} color={tone(worst)} />
-      </View>
+      <StatRow size="sm" items={[stat("Profit so far", profit), stat("Best month", best), stat("Worst month", worst)]} />
 
       {lastUpdate && <AppText size="xs" color="inkDim" style={styles.fresh}>Value last updated {lastUpdate}</AppText>}
 
@@ -98,12 +100,12 @@ const TrendsView = ({ trend, initialScope = ALL_SCOPE, locked = false }: Props) 
       )}
 
       <Card style={styles.card}>
-        <AppText size="xs" weight="semibold" color="inkDim" style={styles.caps}>VALUE</AppText>
+        <Caps>Value</Caps>
         <ValueHistoryChart key={`v-${scope}-${range}`} points={points} activeIndex={tip?.chart === "value" ? tip.i : null} onScrub={(i) => setTip(i === null ? null : { chart: "value", i })} />
       </Card>
 
       <Card style={styles.card}>
-        <AppText size="xs" weight="semibold" color="inkDim" style={styles.caps}>PROFIT / LOSS</AppText>
+        <Caps>Profit / loss</Caps>
         <ProfitChart key={`p-${scope}-${range}`} points={points} growth={growth} activeIndex={tip?.chart === "profit" ? tip.i : null} onScrub={(i) => setTip(i === null ? null : { chart: "profit", i })} />
         <AppText size="xs" color="inkDim">Profit or loss from value updates — money you add isn't counted as growth.</AppText>
       </Card>
@@ -114,20 +116,8 @@ const TrendsView = ({ trend, initialScope = ALL_SCOPE, locked = false }: Props) 
 const styles = StyleSheet.create({
   wrap: { gap: spacing.md },
   strip: { gap: 6, paddingRight: spacing.lg },
-  controls: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  pills: { flexDirection: "row", gap: 6 },
-  pill: {
-    height: 26, paddingHorizontal: 11, borderRadius: radius.full, justifyContent: "center",
-    backgroundColor: colors.glass, borderWidth: 1, borderColor: colors.glassBorder,
-  },
-  pillBig: { height: 32, paddingHorizontal: 14 },
-  pillOff: { opacity: 0.35 },
-  pillOn: { backgroundColor: colors.accentSoft, borderColor: colors.primary },
-  stats: { flexDirection: "row", gap: spacing.sm },
-  stat: { flex: 1, gap: 2, paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
   fresh: { paddingHorizontal: 2 },
   card: { gap: spacing.sm },
-  caps: { letterSpacing: 1, textTransform: "uppercase" },
 });
 
 export default TrendsView;

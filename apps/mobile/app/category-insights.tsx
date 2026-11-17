@@ -1,11 +1,9 @@
-import { useCallback, useRef, useState } from "react";
-import { StyleSheet, View } from "react-native";
-import { useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useRef, useState } from "react";
+import { Pressable, StyleSheet, View } from "react-native";
+import { useLocalSearchParams } from "expo-router";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { ITransaction, InsightsPeriod } from "@save-n-spend/types";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
-import BackButton from "@/components/shell/BackButton";
-import PeekButton from "@/components/shell/PeekButton";
 import GradientCard from "@/components/shell/GradientCard";
 import Card from "@/components/data/Card";
 import AreaChart from "@/components/charts/AreaChart";
@@ -15,17 +13,23 @@ import SegmentedControl from "@/components/ui/SegmentedControl";
 import PeriodNav from "@/components/ui/PeriodNav";
 import Button from "@/components/ui/Button";
 import { AppText } from "@/components/ui/AppText";
+import Caps from "@/components/ui/Caps";
 import EmptyState from "@/components/states/EmptyState";
 import ErrorState from "@/components/states/ErrorState";
+import ScreenStates from "@/components/states/ScreenStates";
 import SkeletonState from "@/components/states/SkeletonState";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { formatPct } from "@/lib/format/pct";
+import { count } from "@/lib/format/count";
 import { useCategoryInsights, buildTrend, pctChange } from "@/lib/insights";
 import { useTransactionFeed } from "@/lib/transactions";
 import { usePendingDeletes } from "@/store/pendingDeletes";
 import { rangeBounds, rangeNavLabel } from "@/lib/dateRange";
+import { relativePeriod } from "@/lib/format/period";
 import { useAppZone } from "@/lib/zone";
-import { colors, radius, spacing } from "@/theme";
+import { chartValueColor, colors, radius, spacing } from "@/theme";
 import { signTone } from "@/lib/signTone";
+import { mergeScreenStates } from "@/lib/screenStates";
 
 const SEGMENTS: { key: InsightsPeriod; label: string }[] = [
   { key: "day", label: "Day" },
@@ -36,12 +40,6 @@ const SEGMENTS: { key: InsightsPeriod; label: string }[] = [
 
 const isPeriod = (v: unknown): v is InsightsPeriod =>
   v === "day" || v === "week" || v === "month" || v === "year";
-
-const Caps = ({ children }: { children: React.ReactNode }) => (
-  <AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>
-    {children}
-  </AppText>
-);
 
 /**
  * One category's window: what it cost, how that moved, what sits under it, and the
@@ -75,7 +73,8 @@ const CategoryInsightsScreen = () => {
   });
   const [tip, setTip] = useState<number | null>(null);
 
-  const { data, loading, error, refetch } = useCategoryInsights(id, period, offset);
+  const insights = useCategoryInsights(id, period, offset);
+  const { data } = insights;
 
   // The same window the insights request used, in the shape the feed takes. Derived from
   // the period rather than from `data.periodStart`, so the list and the chart change
@@ -94,14 +93,15 @@ const CategoryInsightsScreen = () => {
   const detailRef = useRef<BottomSheetModal>(null);
   const [active, setActive] = useState<ITransaction | null>(null);
 
-  const refresh = useRef<() => void>(() => {});
-  refresh.current = () => {
-    refetch();
-    feed.refetch();
+  // The figures draw once the insights answer is in; the list below keeps its own section
+  // states, so a failed feed read with rows shown is only the refresh strip.
+  const merged = mergeScreenStates({ ...insights, hasData: data !== null }, { ...feed, hasData: feed.data !== null });
+  const state = {
+    ...merged,
+    hasData: data !== null,
+    error: data !== null ? merged.error : insights.error,
+    notFound: !id || insights.errorStatus === 404,
   };
-  useFocusEffect(useCallback(() => {
-    refresh.current();
-  }, []));
 
   const changePeriod = (p: InsightsPeriod) => {
     setPeriod(p);
@@ -115,18 +115,6 @@ const CategoryInsightsScreen = () => {
   };
 
   const renderBody = () => {
-    if (error) return <ErrorState message={error} onRetry={refetch} />;
-
-    if (loading && !data) {
-      return (
-        <View style={styles.skeletonCol}>
-          {Array.from({ length: 3 }).map((_, i) => (
-            <SkeletonState key={i} height={140} borderRadius={radius.lg} />
-          ))}
-        </View>
-      );
-    }
-
     if (!data) return null;
 
     const trend = buildTrend(data.trend, period);
@@ -136,28 +124,29 @@ const CategoryInsightsScreen = () => {
     return (
       <>
         <GradientCard gradient="brand" style={styles.stack}>
-          <Caps>SPENT HERE</Caps>
+          <Caps>Spent here</Caps>
           <View style={styles.heroRow}>
             <AppText size="xl" weight="black">
               {formatMoney(data.total)}
             </AppText>
             {data.previousTotal > 0 && (
               <AppText size="sm" weight="bold" color={signTone(delta, { goodWhen: "down" })}>
-                {`${delta > 0 ? "+" : delta < 0 ? "−" : ""}${Math.abs(Math.round(delta))}%`}
+                {formatPct(delta, { kind: "change" })}
               </AppText>
             )}
           </View>
           <AppText size="xs" color="inkDim">
             {data.previousTotal > 0
-              ? `${formatMoney(data.previousTotal)} the period before · ${Math.round(data.shareOfSpend)}% of all spending`
-              : `${Math.round(data.shareOfSpend)}% of all spending this period`}
+              ? `${formatMoney(data.previousTotal)} the period before · ${formatPct(data.shareOfSpend)} of all spending`
+              : `${formatPct(data.shareOfSpend)} of all spending this period`}
           </AppText>
           {data.total > 0 ? (
             <AreaChart
               data={trend.values}
               labels={trend.axis}
               tipLabels={trend.tipLabels}
-              color="#B0A2FF"
+              color={chartValueColor}
+              summaryTitle={`${data.name} spending, ${relativePeriod(period, offset)?.toLowerCase() ?? rangeNavLabel(period, offset)}`}
               activeIndex={tip}
               onScrub={setTip}
             />
@@ -170,7 +159,7 @@ const CategoryInsightsScreen = () => {
 
         {data.children.length > 0 && (
           <Card style={styles.stack}>
-            <Caps>WHAT IT BROKE DOWN INTO</Caps>
+            <Caps header>What it broke down into</Caps>
             <View style={styles.childList}>
               {data.children.map((child) => (
                 <View key={child.categoryId} style={styles.childRow}>
@@ -195,10 +184,10 @@ const CategoryInsightsScreen = () => {
         )}
 
         <View style={styles.stack}>
-          <Caps>{`${data.txnCount} TRANSACTION${data.txnCount === 1 ? "" : "S"}`}</Caps>
-          {feed.error ? (
+          <Caps header>{count(data.txnCount, "transaction")}</Caps>
+          {feed.error && feed.data === null ? (
             <ErrorState message={feed.error} onRetry={feed.refetch} />
-          ) : feed.loading ? (
+          ) : feed.data === null ? (
             <View style={styles.skeletonCol}>
               {Array.from({ length: 3 }).map((_, i) => (
                 <SkeletonState key={i} height={72} borderRadius={radius.lg} />
@@ -232,24 +221,12 @@ const CategoryInsightsScreen = () => {
 
   return (
     <ScreenScaffold
-      header={
-        <View style={styles.head}>
-          <BackButton />
-          <View style={styles.grow}>
-            <AppText size="lg" weight="black" numberOfLines={1}>
-              {data?.name ?? passedName}
-            </AppText>
-            {/* Only on a sub-category, and only then it is worth the line: it says the
-                figures below are this child's alone, not its parent's roll-up. */}
-            {data?.parentName && (
-              <AppText size="xs" color="inkDim">
-                {`in ${data.parentName}`}
-              </AppText>
-            )}
-          </View>
-          <PeekButton />
-        </View>
-      }
+      title={data?.name ?? passedName}
+      back
+      // Only on a sub-category: it says the figures below are this child's alone, not its
+      // parent's roll-up.
+      subtitle={data?.parentName ? `in ${data.parentName}` : undefined}
+      states={state}
     >
       <SegmentedControl segments={SEGMENTS} value={period} onChange={changePeriod} />
       <PeriodNav
@@ -258,26 +235,37 @@ const CategoryInsightsScreen = () => {
         onPrev={() => { setOffset((o) => o - 1); setTip(null); }}
         onNext={() => { setOffset((o) => Math.min(0, o + 1)); setTip(null); }}
       />
-      {renderBody()}
-      <TransactionDetailSheet ref={detailRef} transaction={active} onCommitted={refresh.current} />
+      {/* A plain Pressable around the content: a tap anywhere that isn't the chart closes its
+          tooltip, as on Insights. `accessible={false}` keeps its children reachable. */}
+      <Pressable style={styles.body} onPress={() => setTip(null)} accessible={false}>
+        <ScreenStates
+          state={state}
+          thing="category"
+          skeleton={
+            <View style={styles.skeletonCol}>
+              {Array.from({ length: 3 }).map((_, i) => (
+                <SkeletonState key={i} height={140} borderRadius={radius.lg} />
+              ))}
+            </View>
+          }
+        >
+          {renderBody}
+        </ScreenStates>
+      </Pressable>
+      <TransactionDetailSheet ref={detailRef} transaction={active} />
     </ScreenScaffold>
   );
 };
 
 const styles = StyleSheet.create({
-  head: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
+  body: {
+    gap: spacing.lg,
   },
   grow: {
     flex: 1,
   },
   stack: {
     gap: 12,
-  },
-  caps: {
-    letterSpacing: 1.2,
   },
   heroRow: {
     flexDirection: "row",

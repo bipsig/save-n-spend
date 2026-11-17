@@ -14,6 +14,7 @@ import { colors, spacing } from "@/theme";
 import { StyleSheet, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { AppText } from "../ui/AppText";
+import Caps from "../ui/Caps";
 import Button from "../ui/Button";
 import { formatFullDate } from "@/lib/date";
 import { categoryBg } from "@/lib/categories";
@@ -21,7 +22,7 @@ import { del } from "@/lib/api";
 import { toast } from "@/store/toast";
 import { useRouter } from "expo-router";
 import { useAccountStore } from "@/store/accounts";
-import { useConnectivity } from "@/store/connectivity";
+import { useOnlineGate } from "@/lib/onlineGate";
 import { pendingDeletes } from "@/store/pendingDeletes";
 import AccountPickerSheet from "@/components/sheets/AccountPickerSheet";
 import { convertToInvestment, holdingLook } from "@/lib/investments";
@@ -45,9 +46,7 @@ const SelRow = ({
   <View style={styles.selRow}>
     <Icon name={icon} size={19} color="inkDim" />
     <View style={styles.selCol}>
-      <AppText color="inkDim" weight="semibold" style={styles.selLabel}>
-        {label}
-      </AppText>
+      <Caps size="sm">{label}</Caps>
       <AppText size="sm" weight="bold" color={valueColor}>
         {value}
       </AppText>
@@ -81,7 +80,11 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
   const convertRef = useRef<BottomSheetModal>(null);
 
   const router = useRouter();
-  const offline = useConnectivity((s) => s.offline);
+  // Editing, converting and deleting reach the server directly; only a new transaction queues.
+  const editGate = useOnlineGate("Edit");
+  const convertGate = useOnlineGate("Convert to investment");
+  const deleteGate = useOnlineGate("Delete");
+  const confirmDeleteGate = useOnlineGate("Delete transaction");
 
   const account = useAccountById(transaction?.account);
   const toAccount = useAccountById(transaction?.toAccount);
@@ -118,12 +121,6 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
   const amount = !transaction ? 0 : transaction?.type === "expense" ? -transaction.amount : transaction?.amount;
 
   const handleEdit = () => {
-    // Editing patches the server directly (unlike a new transaction, it has no queue to
-    // fall back to) — the account/category it names must already exist for its own sake.
-    if (offline) {
-      toast.error("You're offline — editing needs a connection");
-      return;
-    }
     dismiss();
     router.push({
       pathname: "/add-transaction",
@@ -136,10 +133,6 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
   // Turn this expense into an investment contribution. Picks the destination holding,
   // then hands off to the API's convert endpoint (expense → transfer into that account).
   const openConvert = () => {
-    if (offline) {
-      toast.error("You're offline — converting needs a connection");
-      return;
-    }
     convertRef.current?.present();
   };
 
@@ -227,8 +220,8 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
                   precisely because they want to see the figure. A transfer gets no
                   sign and no colour: it neither earned nor spent anything. */}
               <Money
-                value={Math.abs(amount)}
-                prefix={isTransfer ? "" : amount < 0 ? "− " : "+ "}
+                value={amount}
+                sign={isTransfer ? "none" : "always"}
                 size="xl"
                 weight="black"
                 color={isTransfer ? "ink" : amount < 0 ? "danger" : "success"}
@@ -253,7 +246,7 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
                         numberOfLines={1}
                         style={[styles.badgeText, categoryLabel.isArchived && styles.badgeTextSplit]}
                       >
-                        {categoryLabel.name.toUpperCase()}
+                        {categoryLabel.name}
                       </AppText>
                       {categoryLabel.isArchived && <ArchivedBadgeSegment />}
                     </View>
@@ -276,21 +269,21 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
             <View style={styles.rows}>
               {isTransfer ? (
                 <>
-                  <SelRow icon="wallet" label="FROM" value={account?.name ?? "—"} />
-                  <SelRow icon={toInvestment ? "investments" : "transfer"} label={toInvestment ? "INVESTED IN" : "TO"} value={toAccount?.name ?? "—"} />
+                  <SelRow icon="wallet" label="From" value={account?.name ?? "—"} />
+                  <SelRow icon={toInvestment ? "investments" : "transfer"} label={toInvestment ? "Invested in" : "To"} value={toAccount?.name ?? "—"} />
                 </>
               ) : (
-                <SelRow icon="wallet" label="ACCOUNT" value={account?.name ?? "—"} />
+                <SelRow icon="wallet" label="Account" value={account?.name ?? "—"} />
               )}
-              <SelRow icon="date" label="DATE" value={formatFullDate(transaction.occurredAt)} />
+              <SelRow icon="date" label="Date" value={formatFullDate(transaction.occurredAt)} />
               {!!transaction.note && (
-                <SelRow icon="note" label="NOTE" value={transaction.note} />
+                <SelRow icon="note" label="Note" value={transaction.note} />
               )}
               {!!transaction.location && (
-                <SelRow icon="location" label="LOCATION" value={transaction.location} />
+                <SelRow icon="location" label="Location" value={transaction.location} />
               )}
               {!!transaction.receiptUrl && (
-                <SelRow icon="receipt" label="RECEIPT" value="View receipt" valueColor="primary" chevron />
+                <SelRow icon="receipt" label="Receipt" value="View receipt" valueColor="primary" chevron />
               )}
             </View>
 
@@ -325,9 +318,10 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
                 out of spending into a holding. Expense-only — income/transfers aren't it. */}
             {transaction.type === "expense" && !transaction.splitGroupId && (
               <Button
-                label="Convert to investment"
+                label={convertGate.label}
                 variant="secondary"
-                icon="investments"
+                icon={convertGate.icon ?? "investments"}
+                disabled={!convertGate.allowed}
                 onPress={openConvert}
               />
             )}
@@ -337,25 +331,21 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
               {transaction.type !== "transfer" && (
                 <View style={styles.actionBtn}>
                   <Button
-                    label="Edit"
+                    label={editGate.label}
                     variant="secondary"
-                    icon="edit"
+                    icon={editGate.icon ?? "edit"}
+                    disabled={!editGate.allowed}
                     onPress={() => handleEdit()}
                   />
                 </View>
               )}
               <View style={styles.actionBtn}>
                 <Button
-                  label="Delete"
+                  label={deleteGate.label}
                   variant="dangerGhost"
-                  icon="delete"
-                  onPress={() => {
-                    if (offline) {
-                      toast.error("You're offline — deleting needs a connection");
-                      return;
-                    }
-                    setConfirmView(true);
-                  }}
+                  icon={deleteGate.icon ?? "delete"}
+                  disabled={!deleteGate.allowed}
+                  onPress={() => setConfirmView(true)}
                 />
               </View>
             </View>
@@ -384,8 +374,10 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
             </View>
             <View style={styles.confirmActions}>
               <Button
-                label="Delete Transaction"
+                label={confirmDeleteGate.label}
+                icon={confirmDeleteGate.icon}
                 variant="danger"
+                disabled={!confirmDeleteGate.allowed}
                 onPress={handleDelete}
               />
               <Button label="Cancel" variant="ghost" onPress={() => setConfirmView(false)} />
@@ -440,9 +432,11 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     flexShrink: 1,
   },
+  // Capitals from the style, so VoiceOver reads the name rather than spelling it.
   badgeText: {
     fontSize: 11,
     letterSpacing: 1, // spec .08em caps tracking
+    textTransform: "uppercase",
   },
   // Archived: the badge becomes two segments, the name and ArchivedBadgeSegment.
   badgeSplit: {
@@ -476,10 +470,6 @@ const styles = StyleSheet.create({
   selCol: {
     flex: 1, // fills the middle so a trailing › lands at the far edge
     gap: 2,
-  },
-  selLabel: {
-    fontSize: 12, // spec .k 9.5px ×1.25
-    letterSpacing: 0.8,
   },
   actions: {
     flexDirection: "row",

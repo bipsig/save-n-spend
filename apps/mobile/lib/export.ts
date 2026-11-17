@@ -13,6 +13,7 @@ import { accountById } from "@/lib/accounts";
 import { formatMoneyExact as formatMoney } from "@/lib/money";
 import { appZone, dayKey, zonedParts } from "@/lib/zone";
 import { htmlEscape, kpiCard, kpiRow, pdfDocument } from "@/lib/pdfShell";
+import { count } from "@/lib/format/count";
 
 export { htmlEscape };
 
@@ -129,8 +130,11 @@ const buildHtml = (txns: ITransaction[], range: RangeKey, offset: number): strin
       const sub = tx.type === "transfer"
         ? `${accName(tx.account)} → ${accName(tx.toAccount)}`
         : [catPath(tx.category), accName(tx.account)].filter(Boolean).join(" · ");
-      const amount = formatMoney(signedPaise(tx));
-      const positive = signedPaise(tx) >= 0;
+      // A transfer prints plain, as on screen (D7): nothing was earned or spent. The CSV keeps
+      // it signed, so a column of amounts still sums to the net.
+      const isTransfer = tx.type === "transfer";
+      const amount = formatMoney(isTransfer ? tx.amount : signedPaise(tx));
+      const positive = !isTransfer && signedPaise(tx) >= 0;
       return `<tr>
         <td class="date">${dayStamp(d)}<span class="time">${clockStamp(d)}</span></td>
         <td><div class="desc">${htmlEscape(desc)}</div><div class="sub">${htmlEscape(sub)}</div></td>
@@ -142,7 +146,7 @@ const buildHtml = (txns: ITransaction[], range: RangeKey, offset: number): strin
   return pdfDocument({
     section: "Transactions",
     rangeLabel: rangeLabel(range, offset),
-    meta: `${txns.length} transactions`,
+    meta: count(txns.length, "transaction"),
     body: `${kpiRow([
       kpiCard("Income", htmlEscape(formatMoney(income)), "pos"),
       kpiCard("Expenses", htmlEscape(formatMoney(expense)), "neg"),

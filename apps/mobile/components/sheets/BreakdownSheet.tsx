@@ -61,11 +61,11 @@ const BreakdownSheet = forwardRef<BottomSheetModal, Props>(({ row, initial, onSa
                 <View style={styles.amount}><Input placeholder="₹" value={p.amount} onChangeText={(v) => set(i, { amount: v })} keyboardType="decimal-pad" InputComponent={BottomSheetTextInput} /></View>
               </View>
               <View style={styles.row}>
-                <PressableScale onPress={() => { setPicking(i); pickerRef.current?.present(); }} scaleTo={0.97} style={styles.catChip}>
+                <PressableScale onPress={() => { setPicking(i); pickerRef.current?.present(); }} scaleTo={0.97} style={styles.catChip} accessibilityLabel={cat ? `Category, ${cat.name}` : "Choose a category"}>
                   <AppText size="xs" weight="bold" color={cat ? "ink" : "inkDim"}>{cat?.name ?? "Category ▾"}</AppText>
                 </PressableScale>
                 {parts.length > 1 && (
-                  <PressableScale onPress={() => setParts((ps) => ps.filter((_, j) => j !== i))} hitSlop={8} scaleTo={0.9}>
+                  <PressableScale onPress={() => setParts((ps) => ps.filter((_, j) => j !== i))} hitSlop={14} scaleTo={0.9} accessibilityLabel={`Remove ${p.title.trim() || "this part"}`}>
                     <Icon name="close" size={16} color="inkDim" />
                   </PressableScale>
                 )}
@@ -73,7 +73,7 @@ const BreakdownSheet = forwardRef<BottomSheetModal, Props>(({ row, initial, onSa
             </View>
           );
         })}
-        <Button label="+ Add a part" variant="ghost" onPress={() => setParts((ps) => [...ps, { title: "", category: null, amount: "" }])} />
+        <Button label="Add a part" icon="add" variant="ghost" onPress={() => setParts((ps) => [...ps, { title: "", category: null, amount: "" }])} />
         <AppText size="xs" weight="bold" color={left === 0 ? "success" : "warning"}>
           {left === 0 ? "Adds up ✓" : left > 0 ? `${formatMoney(left)} still to assign` : `${formatMoney(-left)} too much`}
         </AppText>

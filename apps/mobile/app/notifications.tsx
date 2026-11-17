@@ -2,17 +2,16 @@ import { useCallback } from "react";
 import { StyleSheet, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import Animated, { LinearTransition } from "react-native-reanimated";
-import BackButton from "@/components/shell/BackButton";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import Card from "@/components/data/Card";
 import NotificationRow from "@/components/rows/NotificationRow";
-import { AppText } from "@/components/ui/AppText";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/states/EmptyState";
-import ErrorState from "@/components/states/ErrorState";
+import ScreenStates from "@/components/states/ScreenStates";
 import SkeletonState from "@/components/states/SkeletonState";
 import { haptics } from "@/lib/haptics";
 import { routeFor } from "@/lib/notifications";
+import { useOnlineGate } from "@/lib/onlineGate";
 import { useAppZone } from "@/lib/zone";
 import { useNotifications } from "@/store/notifications";
 import { radius, spacing } from "@/theme";
@@ -29,19 +28,24 @@ const NotificationsScreen = () => {
   const loadingMore = useNotifications((s) => s.loadingMore);
   const hasNextPage = useNotifications((s) => s.hasNextPage);
   const error = useNotifications((s) => s.error);
+  const fetchedAt = useNotifications((s) => s.fetchedAt);
   const load = useNotifications((s) => s.load);
 
-  // Refetched on focus like every other data screen: a reminder can arrive while the
-  // app sits in the background, and the feed is the thing that has to know.
+  // The feed lives in a store, not a query, so no write or focus rule refreshes it: this
+  // does. A reminder can arrive while the app sits in the background.
   useFocusEffect(
     useCallback(() => {
       void load();
     }, [load])
   );
 
+  const markGate = useOnlineGate("Mark all read");
+  const state = { loading, error, refetch: load, fetchedAt, hasData: items.length > 0 || (!loading && !error) };
+
   const open = (id: string) => {
     const notification = items.find((item) => item._id === id);
-    void useNotifications.getState().markRead(id);
+    // Offline the dot would go out and come back; the row still opens what it points at.
+    if (markGate.allowed) void useNotifications.getState().markRead(id);
 
     // Only navigate where the notification actually points. A weekly summary that
     // dumped the user on a random screen would be worse than one that stays put.
@@ -49,73 +53,57 @@ const NotificationsScreen = () => {
     if (route) router.push(route);
   };
 
-  const headerRight = unread > 0
-    ? (
-      <Button
-        label="Mark all read"
-        pill
-        size="sm"
-        onPress={() => {
+  // The same header in every state; "Mark all read" only while something is unread (Q2: an
+  // icon circle, spoken by name).
+  const header = {
+    title: "Notifications",
+    back: true,
+    actions: unread > 0
+      ? [{
+        kind: "markAllRead" as const,
+        label: markGate.allowed ? "Mark all read" : "Mark all read, needs a connection",
+        disabled: !markGate.allowed,
+        onPress: () => {
           haptics.success();
           void useNotifications.getState().markAllRead();
-        }}
-      />
-    )
-    : undefined;
+        },
+      }]
+      : [],
+  };
 
-  const header = (
-    <View style={styles.head}>
-      <BackButton />
-      <AppText size="xl" weight="black" style={styles.headTitle}>
-        Notifications
-      </AppText>
-      {headerRight}
+  const skeleton = (
+    <View style={styles.skeletonCol}>
+      {Array.from({ length: 6 }).map((_, i) => (
+        <SkeletonState key={i} height={64} borderRadius={radius.lg} />
+      ))}
     </View>
   );
 
-  if (error && items.length === 0) {
-    return (
-      <ScreenScaffold header={header}>
-        <ErrorState message={error} onRetry={load} />
-      </ScreenScaffold>
-    );
-  }
-
-  if (loading && items.length === 0) {
-    return (
-      <ScreenScaffold header={header}>
-        <View style={styles.skeletonCol}>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <SkeletonState key={i} height={64} borderRadius={radius.lg} />
-          ))}
-        </View>
-      </ScreenScaffold>
-    );
-  }
-
   return (
-    <ScreenScaffold header={header}>
-      {items.length === 0 ? (
-        <EmptyState
-          icon="bell"
-          title="Nothing to catch up on"
-          subtitle="Bill reminders, budget alerts and goal milestones land here as they happen."
-        />
-      ) : (
-        // `layout` so rows settle instead of jumping when a page is appended.
-        <Animated.View layout={LinearTransition.duration(220)}>
-          <Card padded={false} style={styles.group}>
-            {items.map((notification, i) => (
-              <NotificationRow
-                key={notification._id}
-                first={i === 0}
-                notification={notification}
-                onPress={() => open(notification._id)}
-              />
-            ))}
-          </Card>
-        </Animated.View>
-      )}
+    <ScreenScaffold {...header} states={state}>
+      <ScreenStates state={state} skeleton={skeleton}>
+        {items.length === 0 ? (
+          <EmptyState
+            icon="bell"
+            title="Nothing to catch up on"
+            subtitle="Bill reminders, budget alerts and goal milestones land here as they happen."
+          />
+        ) : (
+          // `layout` so rows settle instead of jumping when a page is appended.
+          <Animated.View layout={LinearTransition.duration(220)}>
+            <Card padded={false} style={styles.group}>
+              {items.map((notification, i) => (
+                <NotificationRow
+                  key={notification._id}
+                  first={i === 0}
+                  notification={notification}
+                  onPress={() => open(notification._id)}
+                />
+              ))}
+            </Card>
+          </Animated.View>
+        )}
+      </ScreenStates>
 
       {/* A button rather than infinite scroll: the list is a log people read the top of,
           and loading older pages should be something they ask for. */}
@@ -133,14 +121,6 @@ const NotificationsScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  head: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  headTitle: {
-    flex: 1,
-  },
   group: {
     paddingVertical: 2,
   },

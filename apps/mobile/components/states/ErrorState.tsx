@@ -1,26 +1,31 @@
 import { StyleSheet, View } from "react-native"
 import { AppText } from "../ui/AppText"
-import Icon from "../ui/Icon"
 import Button from "../ui/Button"
+import StateDisc from "./StateDisc"
+import { UNREADABLE_MESSAGE } from "@/lib/apiError"
 import { spacing } from "@/theme"
 
 type Props = {
+  /** The friendly line from `lib/apiError.ts` for this failure. */
   message?: string
   onRetry?: () => void
 }
 
-const ErrorState = ({ message = "Something went wrong.", onRetry }: Props) => {
+// EmptyState's twin in the danger tone (mockup 05): an alert mark, not a ✕, which reads as "close".
+const ErrorState = ({ message = UNREADABLE_MESSAGE, onRetry }: Props) => {
   return (
     <View style={styles.container}>
-      <Icon name="close" size={32} color="danger" container="circle" containerColor="dangerSoft" />
-      <AppText weight="bold" size="lg">
-        Oops
+      <StateDisc icon="alert" tone="danger" />
+      <AppText weight="black" size="md">
+        Couldn't load this
       </AppText>
-      <AppText size="sm" color="gray500" style={styles.text}>
+      <AppText size="sm" color="inkDim" style={styles.text}>
         {message}
       </AppText>
       {onRetry && (
-        <Button label="Try Again" variant="secondary" size="sm" onPress={onRetry} />
+        <View style={styles.action}>
+          <Button label="Try again" icon="refresh" variant="secondary" pill onPress={onRetry} />
+        </View>
       )}
     </View>
   )
@@ -34,7 +39,13 @@ const styles = StyleSheet.create({
     paddingVertical: spacing["3xl"]
   },
   text: {
-    textAlign: "center"
+    textAlign: "center",
+    maxWidth: 240,
+  },
+  action: {
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: spacing.xs,
   }
 })
 

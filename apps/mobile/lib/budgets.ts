@@ -1,49 +1,15 @@
 import type { IBudget, ICategory } from "@save-n-spend/types";
-import { useCallback, useEffect, useState } from "react";
-import { get } from "@/lib/api";
 import { appZone, calendarToday } from "@/lib/zone";
-import { useSession } from "@/store/session";
+import { useApiQuery } from "@/lib/query/useApiQuery";
 
 export type BudgetSummary = { budget: IBudget; spent: number };
 
+// Each month is its own key, so stepping months shows the skeleton (or that month's saved
+// figures), never the previous month's rows under the new month's heading.
 export const useBudgets = (month?: string) => {
-  const status = useSession((s) => s.status);
-  const [items, setItems] = useState<BudgetSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const refetch = useCallback(async () => {
-    if (useSession.getState().status !== "authed") return;
-    setLoading(true);
-    setError(null);
-    try {
-      const query = month ? `?month=${month}` : "";
-      const data = await get<BudgetSummary[]>(`/budgets${query}`);
-      setItems(data);
-    }
-    catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load budgets");
-    }
-    finally {
-      setLoading(false);
-    }
-  }, [month]);
-
-  useEffect(() => {
-    if (status === "authed") refetch();
-  }, [status, refetch]);
-
-  // Clear on month change so the screen falls back to its skeleton instead of holding
-  // the previous month's rows under the new month's heading. Without this, stepping back
-  // a month showed last month's limits and spend as though they were the answer — and
-  // the numbers were plausible enough that nothing looked wrong. Same treatment the
-  // insights window gets (see lib/insights.ts).
-  useEffect(() => {
-    setItems([]);
-    setLoading(true);
-  }, [month]);
-
-  return { items, loading, error, refetch };
+  const { data, ...rest } = useApiQuery<BudgetSummary[]>(`/budgets${month ? `?month=${month}` : ""}`, { errorMessage: "Failed to load budgets" });
+  // `data` stays null until the first answer, so a screen can tell "loading" from "none".
+  return { items: data ?? [], data, ...rest };
 };
 
 export const currentMonth = (): string => monthKey(0);
@@ -96,7 +62,7 @@ export const budgetTotals = (items: BudgetSummary[], month: string = currentMont
   const dailyLimit = daysLeft > 0 ? Math.round(Math.max(remaining, 0) / daysLeft) : 0;
   const dailyAverage = Math.round(spent / daysInMonth);
 
-  const status = percentUsed >= 100 ? "Over Budget" : percentUsed >= 80 ? "Warning" : "On Track";
+  const status = percentUsed >= 100 ? "Over budget" : percentUsed >= 80 ? "Warning" : "On track";
 
   return {
     total, spent, remaining, percentUsed, status,

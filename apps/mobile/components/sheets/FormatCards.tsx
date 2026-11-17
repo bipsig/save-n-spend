@@ -35,6 +35,9 @@ const FormatCards = ({ value, onChange, unavailable = [] }: { value: ExportForma
           haptic={false}
           disabled={off}
           style={[styles.card, on && styles.cardOn, off && styles.cardOff]}
+          accessibilityRole="radio"
+          accessibilityLabel={`${f.label}, ${off ? "not for this report" : f.desc}`}
+          accessibilityState={{ selected: on, disabled: off }}
         >
           <Icon name={f.icon} size={18} color={on ? "primary" : "inkDim"} />
           <View style={styles.text}>

@@ -10,8 +10,10 @@ import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
 import AmountHeroInput from "@/components/ui/AmountHeroInput";
 import { AppText } from "@/components/ui/AppText";
+import Caps from "@/components/ui/Caps";
 import ProgressBar from "@/components/data/ProgressBar";
-import formatMoney, { parseMoney, paiseToInput, usePrivacyMask } from "@/lib/money";
+import formatMoney, { formatRemaining, parseMoney, paiseToInput, usePrivacyMask } from "@/lib/money";
+import { formatPct } from "@/lib/format/pct";
 import { useCategoryById } from "@/lib/categories";
 import CategoryName from "@/components/ui/CategoryName";
 import { post, patch, del } from "@/lib/api";
@@ -23,6 +25,7 @@ import { toast } from "@/store/toast";
 import type { IconName } from "@/lib/icons";
 import { spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
+import { useOnlineGate } from "@/lib/onlineGate";
 
 type Props = {
   month: string;
@@ -30,7 +33,8 @@ type Props = {
   categoryId: string | null;
   /** Create mode — opens the category picker (the form stays mounted behind it). */
   onPickCategoryPress?: () => void;
-  onChanged: () => void;
+  /** Optional: the write already refreshes every screen showing budgets. */
+  onChanged?: () => void;
 };
 
 const schema = z.object({
@@ -50,6 +54,7 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
   // still be animating out on top of it (see CategoryPickerSheet).
   const innerRef = useRef<BottomSheetModal>(null);
   useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
+  const removeGate = useOnlineGate("Remove from budget");
   const dismiss = () => innerRef.current?.dismiss();
 
   const isEdit = !!summary;
@@ -110,7 +115,7 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
         idem.reset();
       }
       dismiss();
-      onChanged();
+      onChanged?.();
       const name = category?.name ?? "Budget";
       // Warned rather than plain success when the limit is already blown: the sheet
       // said so before saving, and the tone has to carry that through instead of
@@ -138,7 +143,7 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
     try {
       await del(`/budgets/${summary.budget._id}`);
       dismiss();
-      onChanged();
+      onChanged?.();
       // Says what removing it means, not just that it went: the category keeps its
       // spending, it simply stops being measured against a limit.
       toast.success(`${category?.name ?? "Category"} is no longer budgeted`);
@@ -158,9 +163,8 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
     ? "Choose a category"
     : !isValid
       ? isEdit ? "Save limit" : "Create budget"
-      : over
-        ? `${verb} · ${formatMoney(spent - entered)} over`
-        : `${verb} · ${formatMoney(entered - spent)} left`;
+      : `${verb} · ${formatRemaining(entered - spent)}`;
+  const saveGate = useOnlineGate(ctaLabel);
 
   // Create mode picks its category in-form; edit mode's category is fixed.
   const identity = (
@@ -205,9 +209,7 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
         </PressableScale>
       )}
 
-      <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
-        {closed ? `LIMIT FOR ${monthTitle(month).toUpperCase()}` : "MONTHLY LIMIT"}
-      </AppText>
+      <Caps>{closed ? `Limit for ${monthTitle(month)}` : "Monthly limit"}</Caps>
 
       <Controller
         control={control}
@@ -232,7 +234,7 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
             haptic={false}
           >
             <AppText size="sm" weight="bold" color="inkDim">
-              {`${delta < 0 ? "−" : "+"} ${formatMoney(Math.abs(delta))}`}
+              {formatMoney(delta, { sign: "always" })}
             </AppText>
           </PressableScale>
         ))}
@@ -241,10 +243,10 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
       <View style={styles.meter}>
         <View style={styles.meterTop}>
           <AppText size="xs" color="inkDim">
-            {over ? "Already over at this limit" : `At this limit you're at ${Math.round(percent)}% used`}
+            {over ? "Already over at this limit" : `At this limit you're at ${formatPct(percent)} used`}
           </AppText>
           <AppText size="xs" weight="bold" color={meterColor}>
-            {`${Math.round(percent)}%`}
+            {formatPct(percent)}
           </AppText>
         </View>
         <ProgressBar value={percent} color={meterColor} height={6} />
@@ -261,9 +263,9 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
         </AppText>
       )}
 
-      <Button label={ctaLabel} onPress={handleSubmit(onSave)} loading={saving} disabled={!isValid || needsCategory} />
+      <Button label={saveGate.label} icon={saveGate.icon} onPress={handleSubmit(onSave)} loading={saving} disabled={!saveGate.allowed || !isValid || needsCategory} />
       {isEdit && (
-        <Button label="Remove from budget" variant="dangerGhost" onPress={onRemove} loading={removing} />
+        <Button label={removeGate.label} icon={removeGate.icon} variant="dangerGhost" onPress={onRemove} loading={removing} disabled={!removeGate.allowed} />
       )}
     </AppSheet>
   );
@@ -275,9 +277,6 @@ const styles = StyleSheet.create({
   identity: {
     alignItems: "center",
     gap: 8,
-  },
-  label: {
-    letterSpacing: 1.3,
   },
   steps: {
     flexDirection: "row",

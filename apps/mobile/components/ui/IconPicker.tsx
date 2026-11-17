@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, View } from "react-native";
 import Icon from "./Icon";
 import PressableScale from "./PressableScale";
 import { haptics } from "@/lib/haptics";
+import { iconLabel } from "@/lib/iconLabel";
 import { PICKER_ICONS } from "@/lib/icons";
 import type { IconName } from "@/lib/icons";
 import { spacing } from "@/theme";
@@ -64,6 +65,8 @@ const IconPicker = ({ value, onChange, icons = PICKER_ICONS }: Props) => {
                 scaleTo={0.9}
                 haptic={false}
                 hitSlop={4}
+                accessibilityLabel={iconLabel(name)}
+                accessibilityState={{ selected }}
                 style={[styles.cell, selected && styles.cellOn]}
               >
                 <Icon name={name} size={22} color={selected ? "surface" : "inkDim"} />

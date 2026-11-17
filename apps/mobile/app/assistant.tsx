@@ -1,6 +1,4 @@
 import { StyleSheet, View } from "react-native";
-import BackButton from "@/components/shell/BackButton";
-import PeekButton from "@/components/shell/PeekButton";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import HighlightCard from "@/components/data/HighlightCard";
 import HighlightHistoryRow from "@/components/data/HighlightHistoryRow";
@@ -10,8 +8,11 @@ import { AppText } from "@/components/ui/AppText";
 import EmptyState from "@/components/states/EmptyState";
 import ErrorState from "@/components/states/ErrorState";
 import SkeletonState from "@/components/states/SkeletonState";
+import ScreenStates from "@/components/states/ScreenStates";
 import { useHighlights } from "@/lib/highlights";
 import { useHighlightHistory } from "@/lib/highlightHistory";
+import { groupIndian } from "@/lib/format/money";
+import { mergeScreenStates } from "@/lib/screenStates";
 import { radius, spacing } from "@/theme";
 
 // Highlights — what the charts don't say out loud.
@@ -24,63 +25,51 @@ import { radius, spacing } from "@/theme";
 // components/data/HighlightCard.tsx, shared with the preview embedded on Insights.
 
 const AssistantScreen = () => {
-  const { highlights, allDismissed, warmingUp, loading, error, refetch, dismiss } = useHighlights();
+  const live = useHighlights();
+  const { highlights, allDismissed, warmingUp, dismiss } = live;
+  // useHighlights has no `data`; `fetchedAt` is set exactly when an answer is on hand.
+  const liveState = { ...live, hasData: live.fetchedAt != null && !live.loading };
 
   // The permanent record — separate request, separate section below. Never affected by
   // dismissing something above: that only hides a live card for a week, this doesn't
   // know dismiss exists.
+  const historyQuery = useHighlightHistory();
   const {
     items: history, totalDocs, loadingMore: historyLoadingMore,
     hasMore: historyHasMore, error: historyError, refetch: refetchHistory, loadMore: loadMoreHistory,
-  } = useHighlightHistory();
+  } = historyQuery;
+  const state = mergeScreenStates(liveState, { ...historyQuery, hasData: historyQuery.data != null });
 
-  const header = (
-    <View style={styles.head}>
-      <BackButton />
-      <AppText size="xl" weight="black" style={styles.headTitle}>
-        Highlights
-      </AppText>
-      <PeekButton />
+  const skeleton = (
+    <View style={styles.skeletonCol}>
+      {Array.from({ length: 3 }).map((_, i) => (
+        <SkeletonState key={i} height={110} borderRadius={radius.lg} />
+      ))}
     </View>
   );
 
-  // The live section's own state — computed once, rendered below alongside History
-  // rather than in an early return, so History (never affected by any of this) shows
-  // regardless of whether there's anything current to say.
-  let live: React.ReactNode;
-  if (error) {
-    live = <ErrorState message={error} onRetry={refetch} />;
-  }
-  else if (loading) {
-    live = (
-      <View style={styles.skeletonCol}>
-        {Array.from({ length: 3 }).map((_, i) => (
-          <SkeletonState key={i} height={110} borderRadius={radius.lg} />
-        ))}
-      </View>
-    );
-  }
-  // Too new to compare against — an honest wait beats a verdict on two weeks.
-  else if (warmingUp) {
-    live = <EmptyState icon="clock" title="Warming up" subtitle={warmingUp} />;
-  }
-  else if (highlights.length === 0) {
-    live = (
-      <EmptyState
-        icon="budgetOk"
-        title={allDismissed ? "All caught up" : "All clear"}
-        subtitle={
-          allDismissed
-            ? "You've waved away everything current. Anything still true resurfaces in a week."
-            // Saying nothing is a valid good answer — padding this screen with weak
-            // observations is how it would teach you to stop reading it.
-            : "Nothing needs your attention — spending is tracking where it usually does. New highlights appear as the month develops."
-        }
-      />
-    );
-  }
-  else {
-    live = (
+  // The live section's own body, rendered beside History rather than in an early return, so
+  // History (never affected by any of this) shows regardless of whether there's anything
+  // current to say.
+  const liveBody = () => {
+    // Too new to compare against — an honest wait beats a verdict on two weeks.
+    if (warmingUp) return <EmptyState icon="clock" title="Warming up" subtitle={warmingUp} />;
+    if (highlights.length === 0) {
+      return (
+        <EmptyState
+          icon="budgetOk"
+          title={allDismissed ? "All caught up" : "All clear"}
+          subtitle={
+            allDismissed
+              ? "You've waved away everything current. Anything still true resurfaces in a week."
+              // Saying nothing is a valid good answer — padding this screen with weak
+              // observations is how it would teach you to stop reading it.
+              : "Nothing needs your attention — spending is tracking where it usually does. New highlights appear as the month develops."
+          }
+        />
+      );
+    }
+    return (
       <>
         <AppText size="xs" color="inkDim">
           What your money is doing that the charts don't say out loud, ranked by the
@@ -95,19 +84,20 @@ const AssistantScreen = () => {
         </AppText>
       </>
     );
-  }
+  };
 
   return (
-    <ScreenScaffold header={header}>
-      {live}
+    <ScreenScaffold title="Highlights" back states={state}>
+      <ScreenStates state={liveState} skeleton={skeleton}>{liveBody}</ScreenStates>
 
       {/* The permanent record. Unaffected by anything above — a dismissed card, a quiet
           month, a fresh account still warming up all still show every highlight this
           account has ever generated, newest first. Silent when there's truly nothing
           yet (a brand-new account) — the live section above already covers that case. */}
-      {(history.length > 0 || historyError) && (
+      {/* One error is enough when nothing loaded: the live section's says it. */}
+      {(history.length > 0 || (historyError && liveState.hasData)) && (
         <View style={styles.historySection}>
-          <SectionHeader label={`ALL HIGHLIGHTS (${totalDocs})`} />
+          <SectionHeader label={`All highlights (${groupIndian(totalDocs)})`} />
           {history.map((entry) => (
             <HighlightHistoryRow key={entry.key} entry={entry} />
           ))}
@@ -128,14 +118,6 @@ const AssistantScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  head: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  headTitle: {
-    flex: 1,
-  },
   skeletonCol: {
     gap: spacing.lg,
   },

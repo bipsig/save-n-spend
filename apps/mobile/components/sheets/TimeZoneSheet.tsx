@@ -6,6 +6,7 @@ import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
 import { KEYBOARD_DONE_ID } from "@/components/ui/KeyboardDoneBar";
 import PressableScale from "@/components/ui/PressableScale";
+import Caps from "@/components/ui/Caps";
 import { haptics } from "@/lib/haptics";
 import { searchZones, shortlistZones } from "@/lib/timezones";
 import { deviceZone } from "@/lib/zone";
@@ -89,6 +90,9 @@ const TimeZoneSheet = forwardRef<BottomSheetModal, Props>(({ value, onPick }, re
           haptics.select();
           void choose(zone);
         }}
+        accessibilityRole="radio"
+        accessibilityLabel={`${title}, ${subtitle}`}
+        accessibilityState={{ selected }}
       >
         <View style={styles.info}>
           <AppText size="sm" weight="bold" numberOfLines={1}>
@@ -141,17 +145,13 @@ const TimeZoneSheet = forwardRef<BottomSheetModal, Props>(({ value, onPick }, re
           list below to avoid the same zone appearing twice. */}
       {showDeviceRow && (
         <View style={styles.block}>
-          <AppText size="xs" weight="bold" color="inkDim" style={styles.blockLabel}>
-            THIS DEVICE
-          </AppText>
+          <Caps header>This device</Caps>
           {row(device, "Use this device's time zone", device.replace(/_/g, " "), `device-${device}`)}
         </View>
       )}
 
       <View style={styles.block}>
-        <AppText size="xs" weight="bold" color="inkDim" style={styles.blockLabel}>
-          {browsing ? "COMMON" : "RESULTS"}
-        </AppText>
+        <Caps header>{browsing ? "Common" : "Results"}</Caps>
         {results.length > 0 ? (
           results
             .filter((option) => !(showDeviceRow && option.zone === device))
@@ -202,9 +202,6 @@ const styles = StyleSheet.create({
   },
   block: {
     gap: spacing.sm,
-  },
-  blockLabel: {
-    letterSpacing: 1.3,
   },
   row: {
     flexDirection: "row",

@@ -1,10 +1,9 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { CashFlowDay, CashFlowItem } from "@save-n-spend/types";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
-import BackButton from "@/components/shell/BackButton";
 import Card from "@/components/data/Card";
 import CashFlowMonthGrid, { KIND_COLOR } from "@/components/charts/CashFlowMonthGrid";
 import ConfirmSheet from "@/components/sheets/ConfirmSheet";
@@ -12,20 +11,26 @@ import Money from "@/components/ui/Money";
 import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
 import { AppText } from "@/components/ui/AppText";
+import Caps from "@/components/ui/Caps";
+import ChartLegend from "@/components/ui/ChartLegend";
 import EmptyState from "@/components/states/EmptyState";
-import ErrorState from "@/components/states/ErrorState";
+import ScreenStates from "@/components/states/ScreenStates";
 import SkeletonState from "@/components/states/SkeletonState";
-import { useCashFlow, dayLabel } from "@/lib/cashFlow";
+import { useCashFlow } from "@/lib/cashFlow";
 import { dismissRecurring } from "@/lib/recurring";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { formatCalendar, MONTHS_LONG } from "@/lib/format/date";
+import { screenTitles } from "@/data/menu";
 import { toast } from "@/store/toast";
 import type { IconName } from "@/lib/icons";
 import { radius, spacing } from "@/theme";
 
 const ICON: Record<CashFlowItem["kind"], IconName> = { bill: "bills", sip: "investments", income: "income" };
 
-const monthTitle = (month: string): string =>
-  new Date(`${month}-01T00:00:00Z`).toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: "UTC" });
+const monthTitle = (month: string): string => (month ? formatCalendar(month, "monthLong") : "");
+const monthName = (month: string): string => (month ? MONTHS_LONG[Number(month.slice(5, 7)) - 1] : "");
+// Projection days are calendar keys, so they are never shifted by a zone: "Sat, 21 Nov".
+const dayLabel = (key: string): string => formatCalendar(key, "weekday");
 
 const ItemRow = ({ item, onPress }: { item: CashFlowItem; onPress: () => void }) => {
   const incoming = item.kind === "income";
@@ -40,7 +45,7 @@ const ItemRow = ({ item, onPress }: { item: CashFlowItem; onPress: () => void })
         <AppText size="sm" weight="bold" numberOfLines={1}>{item.name}</AppText>
         <AppText size="xs" color={item.overdue ? "danger" : "inkDim"} numberOfLines={1}>{meta}</AppText>
       </View>
-      <Money value={item.amount} prefix={incoming ? "+" : "−"} size="sm" weight="black" color={incoming ? "success" : "ink"} align="right" />
+      <Money value={incoming ? item.amount : -item.amount} sign="always" size="sm" weight="black" color={incoming ? "success" : "ink"} align="right" />
     </PressableScale>
   );
 };
@@ -52,10 +57,9 @@ const ItemRow = ({ item, onPress }: { item: CashFlowItem; onPress: () => void })
 const CashFlowScreen = () => {
   usePrivacyMask();
   const router = useRouter();
-  const { data, loading, error, refetch } = useCashFlow();
-  const [refreshing, setRefreshing] = useState(false);
-
-  useFocusEffect(useCallback(() => { void refetch(); }, [refetch]));
+  const cashFlow = useCashFlow();
+  const { data, refetch } = cashFlow;
+  const state = { ...cashFlow, hasData: data !== null };
 
   const byDate = useMemo(() => new Map((data?.days ?? []).map((d) => [d.date, d])), [data]);
   const todayKey = data?.days[0]?.date ?? "";
@@ -94,45 +98,34 @@ const CashFlowScreen = () => {
     }
   };
 
-  const header = (
-    <View style={styles.head}>
-      <BackButton />
-      <AppText size="xl" weight="black" style={styles.headTitle}>Cash flow</AppText>
-    </View>
-  );
-
   const nothingScheduled = !!data && data.days.every((d) => d.items.length === 0);
 
   return (
-    <ScreenScaffold
-      header={header}
-      onRefresh={async () => { setRefreshing(true); await refetch(); setRefreshing(false); }}
-      refreshing={refreshing}
-    >
-      {error && <ErrorState message={error} onRetry={refetch} />}
-
-      {!error && loading && !data && (
-        <View style={styles.stack}>
-          <SkeletonState height={130} borderRadius={radius.lg} />
-          <SkeletonState height={320} borderRadius={radius.lg} />
-        </View>
-      )}
-
-      {!error && data && (
+    <ScreenScaffold title={screenTitles.cashFlow} back states={state}>
+      <ScreenStates
+        state={state}
+        skeleton={
+          <View style={styles.stack}>
+            <SkeletonState height={130} borderRadius={radius.lg} />
+            <SkeletonState height={320} borderRadius={radius.lg} />
+          </View>
+        }
+      >
+        {() => data && (
         <>
           <Card style={styles.card}>
-            <AppText size="xs" weight="semibold" color="inkDim" style={styles.caps}>IN YOUR ACCOUNTS TODAY</AppText>
+            <Caps>In your accounts today</Caps>
             <Money value={data.startBalance} size="xl" weight="black" />
             <View style={styles.split}>
               <View style={styles.splitCell}>
-                <AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>Lowest</AppText>
-                <Money value={Math.abs(data.lowest.balance)} prefix={data.lowest.balance < 0 ? "− " : ""} size="sm" weight="black" color={data.lowest.balance < 0 ? "danger" : "ink"} />
+                <Caps>Lowest</Caps>
+                <Money value={data.lowest.balance} size="sm" weight="black" color={data.lowest.balance < 0 ? "danger" : "ink"} />
                 <AppText size="xs" color="inkDim">{dayLabel(data.lowest.date)}</AppText>
               </View>
               <View style={styles.splitDivider} />
               <View style={styles.splitCell}>
-                <AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>End of {monthTitle(months[months.length - 1] ?? month).split(" ")[0]}</AppText>
-                <Money value={Math.abs(data.endBalance)} prefix={data.endBalance < 0 ? "− " : ""} size="sm" weight="black" color={data.endBalance < 0 ? "danger" : "ink"} />
+                <Caps>{`End of ${monthName(months[months.length - 1] ?? month)}`}</Caps>
+                <Money value={data.endBalance} size="sm" weight="black" color={data.endBalance < 0 ? "danger" : "ink"} />
               </View>
             </View>
             {data.lowest.balance < 0 && (
@@ -184,29 +177,23 @@ const CashFlowScreen = () => {
 
             <CashFlowMonthGrid month={month} days={byDate} todayKey={todayKey} selected={selected} onSelect={setPicked} />
 
-            <View style={styles.legend}>
-              {(["bill", "sip", "income"] as const).map((k) => (
-                <View key={k} style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: KIND_COLOR[k] }]} />
-                  <AppText size="xs" color="inkDim">{k === "bill" ? "Bill" : k === "sip" ? "SIP" : "Income"}</AppText>
-                </View>
-              ))}
-            </View>
+            <ChartLegend
+              style={styles.legend}
+              items={(["bill", "sip", "income"] as const).map((k) => ({ label: k === "bill" ? "Bill" : k === "sip" ? "SIP" : "Income", color: KIND_COLOR[k] }))}
+            />
           </Card>
 
           {selectedDay && <DayCard day={selectedDay} isToday={selected === todayKey} dailySpend={data.dailySpend} onItem={openItem} />}
 
           {agenda.length > 0 && (
             <View style={styles.stack}>
-              <AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>COMING UP IN {monthTitle(month).split(" ")[0].toUpperCase()}</AppText>
+              <Caps header>{`Coming up in ${monthName(month)}`}</Caps>
               {agenda.map((d) => (
-                <PressableScale key={d.date} onPress={() => setPicked(d.date)} scaleTo={0.98}>
+                <PressableScale key={d.date} onPress={() => setPicked(d.date)} scaleTo={0.98} accessibilityState={{ selected: d.date === selected }}>
                   <Card style={[styles.agendaDay, d.date === selected && styles.agendaSelected]}>
                     <View style={styles.agendaHead}>
-                      <AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>
-                        {d.date === todayKey ? "TODAY" : dayLabel(d.date).toUpperCase()}
-                      </AppText>
-                      <Money value={Math.abs(d.balance)} prefix={d.balance < 0 ? "− " : ""} size="xs" weight="bold" color={d.balance < 0 ? "danger" : "inkDim"} align="right" />
+                      <Caps>{d.date === todayKey ? "Today" : dayLabel(d.date)}</Caps>
+                      <Money value={d.balance} size="xs" weight="bold" color={d.balance < 0 ? "danger" : "inkDim"} align="right" />
                     </View>
                     {d.items.map((it, i) => <ItemRow key={i} item={it} onPress={() => openItem(it)} />)}
                   </Card>
@@ -215,7 +202,8 @@ const CashFlowScreen = () => {
             </View>
           )}
         </>
-      )}
+        )}
+      </ScreenStates>
 
       <ConfirmSheet
         ref={incomeRef}
@@ -224,11 +212,14 @@ const CashFlowScreen = () => {
         title={`Not a regular income?`}
         body={`${incomeItem?.name ?? "This"} has come in about once a month, so it's expected here. If it won't keep coming, hide it and it'll stop being counted.`}
         confirmLabel="Hide it"
+        needsConnection
         cancelLabel="Keep it"
         onConfirm={async () => {
           if (!incomeItem?.patternKey) return;
           await dismissRecurring(incomeItem.patternKey);
           toast.info(`${incomeItem.name} won't be expected anymore`);
+          // A dismissal only refreshes the recurring reads (lib/query/invalidate.ts), and
+          // the projection is built from those patterns.
           await refetch();
         }}
       />
@@ -247,7 +238,7 @@ const DayCard = ({ day, isToday, dailySpend, onItem }: {
       <AppText size="sm" weight="black">{isToday ? "Today" : dayLabel(day.date)}</AppText>
       <View style={styles.dayBalance}>
         <AppText size="xs" color="inkDim">Projected</AppText>
-        <Money value={Math.abs(day.balance)} prefix={day.balance < 0 ? "− " : ""} size="sm" weight="black" color={day.balance < 0 ? "danger" : "ink"} align="right" />
+        <Money value={day.balance} size="sm" weight="black" color={day.balance < 0 ? "danger" : "ink"} align="right" />
       </View>
     </View>
     {day.items.length > 0
@@ -263,18 +254,13 @@ const DayCard = ({ day, isToday, dailySpend, onItem }: {
 );
 
 const styles = StyleSheet.create({
-  head: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  headTitle: { flex: 1 },
   stack: { gap: spacing.md },
   card: { gap: spacing.sm },
-  caps: { letterSpacing: 1, textTransform: "uppercase" },
   split: { flexDirection: "row", marginTop: spacing.xs },
   splitCell: { flex: 1, gap: 2 },
   splitDivider: { width: 1, backgroundColor: "rgba(255,255,255,0.08)", marginHorizontal: spacing.md },
   monthBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: spacing.xs },
-  legend: { flexDirection: "row", justifyContent: "center", gap: spacing.lg, paddingTop: spacing.xs },
-  legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
-  legendDot: { width: 8, height: 8, borderRadius: 4 },
+  legend: { justifyContent: "center", paddingTop: spacing.xs },
   agendaDay: { gap: spacing.sm },
   agendaSelected: { borderColor: "rgba(155,140,255,0.55)" },
   agendaHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },

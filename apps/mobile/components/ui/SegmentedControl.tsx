@@ -3,59 +3,81 @@ import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { AppText } from "./AppText";
 import { haptics } from "@/lib/haptics";
-import { gradients } from "@/theme";
+import { gradients, touchTarget } from "@/theme";
 
-type Segment<T extends string> = { key: T; label: string };
+type Segment<T extends string> = {
+  key: T;
+  label: string;
+  /** What VoiceOver says when the label is an abbreviation ("6M" → "6 months"). */
+  accessibilityLabel?: string;
+};
 
 type Props<T extends string> = {
   segments: Segment<T>[];
   value: T;
   onChange: (key: T) => void;
+  /** `sm` for a range or a pair of tabs inside a screen (Trends' 6M / 1Y / All time). */
+  size?: "md" | "sm";
+  /** Names the whole control for VoiceOver, e.g. "Range". */
+  accessibilityLabel?: string;
+};
+
+// Segment heights before the slop: md 9 + 18 + 9, sm 6 + 16 + 6. The slop makes each 44.
+const SIZE = {
+  md: { padV: 9, text: "sm" as const, slop: (touchTarget - 36) / 2 },
+  sm: { padV: 6, text: "xs" as const, slop: (touchTarget - 28) / 2 },
 };
 
 // Spec segmented control — one glass track; the selected segment carries the
 // violet gradient + glow, the rest stay quiet inkDim labels on a single line.
-// Used for the Activity time range (and any small either/or switch).
-const SegmentedControl = <T extends string>({ segments, value, onChange }: Props<T>) => (
-  <View style={styles.track}>
-    {segments.map((segment) => {
-      const selected = segment.key === value;
-      return (
-        <Pressable
-          key={segment.key}
-          onPress={() => {
-            if (selected) return; // re-picking the current segment changes nothing, so it says nothing
-            haptics.select();
-            onChange(segment.key);
-          }}
-          style={[styles.segment, selected && styles.segmentOn]}
-        >
-          {selected && (
-            // Fades in on the segment it moved to rather than hard-cutting. Not a
-            // sliding pill: the track is laid out by flex, so a slider would need
-            // measured positions to stay honest at any label length.
-            <Animated.View entering={FadeIn.duration(160)} style={styles.fill}>
-              <LinearGradient
-                colors={[...gradients.brand]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 0.9, y: 1 }}
-                style={styles.fill}
-              />
-            </Animated.View>
-          )}
-          <AppText
-            size="sm"
-            weight={selected ? "bold" : "semibold"}
-            color={selected ? "surface" : "inkDim"}
-            numberOfLines={1}
+// The pick-one-of-up-to-four control (D5 A); longer or scrolling sets are Chips.
+const SegmentedControl = <T extends string>({ segments, value, onChange, size = "md", accessibilityLabel }: Props<T>) => {
+  const s = SIZE[size];
+  return (
+    <View style={styles.track} accessibilityRole="tablist" accessibilityLabel={accessibilityLabel}>
+      {segments.map((segment) => {
+        const selected = segment.key === value;
+        return (
+          <Pressable
+            key={segment.key}
+            onPress={() => {
+              if (selected) return; // re-picking the current segment changes nothing, so it says nothing
+              haptics.select();
+              onChange(segment.key);
+            }}
+            hitSlop={{ top: s.slop, bottom: s.slop }}
+            accessibilityRole="tab"
+            accessibilityLabel={segment.accessibilityLabel ?? segment.label}
+            accessibilityState={{ selected }}
+            style={[styles.segment, { paddingVertical: s.padV }, selected && styles.segmentOn]}
           >
-            {segment.label}
-          </AppText>
-        </Pressable>
-      );
-    })}
-  </View>
-);
+            {selected && (
+              // Fades in on the segment it moved to rather than hard-cutting. Not a
+              // sliding pill: the track is laid out by flex, so a slider would need
+              // measured positions to stay honest at any label length.
+              <Animated.View entering={FadeIn.duration(160)} style={styles.fill}>
+                <LinearGradient
+                  colors={[...gradients.brand]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 0.9, y: 1 }}
+                  style={styles.fill}
+                />
+              </Animated.View>
+            )}
+            <AppText
+              size={s.text}
+              weight={selected || size === "sm" ? "bold" : "semibold"}
+              color={selected ? "surface" : "inkDim"}
+              numberOfLines={1}
+            >
+              {segment.label}
+            </AppText>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+};
 
 const styles = StyleSheet.create({
   track: {
@@ -71,7 +93,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 9,
     borderRadius: 999,
   },
   segmentOn: {

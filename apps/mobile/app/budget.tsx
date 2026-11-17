@@ -1,20 +1,23 @@
-import { useCallback, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { useFocusEffect } from "expo-router";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import GradientCard from "@/components/shell/GradientCard";
 import ProgressBar from "@/components/data/ProgressBar";
 import BudgetCategoryRow from "@/components/rows/BudgetCategoryRow";
 import { AppText } from "@/components/ui/AppText";
-import Button from "@/components/ui/Button";
+import Caps from "@/components/ui/Caps";
+import { StatRow, type StatTileProps } from "@/components/ui/StatTile";
 import PeriodNav from "@/components/ui/PeriodNav";
 import EmptyState from "@/components/states/EmptyState";
-import ErrorState from "@/components/states/ErrorState";
+import ScreenStates from "@/components/states/ScreenStates";
 import SkeletonState from "@/components/states/SkeletonState";
 import CategoryPickerSheet from "@/components/sheets/CategoryPickerSheet";
 import BudgetLimitSheet from "@/components/sheets/BudgetLimitSheet";
-import formatMoney, { usePrivacyMask } from "@/lib/money";
+import formatMoney, { formatMoneyExact, formatRemaining, usePrivacyMask } from "@/lib/money";
+import { formatPct } from "@/lib/format/pct";
+import { count } from "@/lib/format/count";
+import { screenTitles } from "@/data/menu";
 import {
   useBudgets,
   budgetTotals,
@@ -29,69 +32,63 @@ import { radius, spacing } from "@/theme";
 
 type Totals = ReturnType<typeof budgetTotals>;
 
-const BudgetStat = ({ label, stat }: { label: string; stat: string }) => (
-  <View>
-    <AppText size="xs" color="surface" style={styles.muted}>
-      {label}
-    </AppText>
-    <AppText weight="bold" color="surface">
-      {stat}
-    </AppText>
-  </View>
-);
+const exact = (p: number) => formatMoneyExact(p);
 
-const MonthlyBudgetCard = ({ totals }: { totals: Totals }) => (
-  <GradientCard style={styles.hero}>
-    <View style={styles.heroTop}>
-      <View>
-        <AppText size="sm" color="surface" style={styles.muted}>
-          Monthly Budget
+const MonthlyBudgetCard = ({ totals }: { totals: Totals }) => {
+  // A live month paces the days still to come; a closed one has none, so the same two slots
+  // report what the month actually did.
+  const stats: StatTileProps[] = [
+    { label: "Status", text: totals.status },
+    ...(totals.closed
+      ? [
+          { label: "Days", text: count(totals.daysInMonth, "day") },
+          { label: "A day", amount: totals.dailyAverage, format: exact },
+        ]
+      : [
+          { label: "Days left", text: count(totals.daysLeft, "day") },
+          { label: "Daily limit", amount: totals.dailyLimit, format: exact },
+        ]),
+  ];
+  // D11: "₹500.00 over", never a negative "remaining". A closed month that came in under
+  // keeps its own word.
+  const remaining = totals.closed && totals.remaining >= 0
+    ? `${formatMoney(totals.remaining)} unspent`
+    : formatRemaining(totals.remaining);
+
+  return (
+    <GradientCard style={styles.hero}>
+      <View style={styles.heroTop}>
+        <View>
+          <Caps color="onGradientDim">Monthly budget</Caps>
+          <AppText size="2xl" weight="black" color="surface">
+            {formatMoney(totals.total)}
+          </AppText>
+        </View>
+        <View style={styles.spentCol}>
+          <Caps color="onGradientDim">Spent</Caps>
+          <AppText size="lg" weight="black" color="surface">
+            {formatMoney(totals.spent)}
+          </AppText>
+        </View>
+      </View>
+
+      <View style={styles.remainingRow}>
+        <AppText color="surface" size="sm" style={styles.muted}>
+          {remaining}
         </AppText>
-        <AppText size="2xl" weight="black" color="surface">
-          {formatMoney(totals.total)}
+        <AppText color="surface" size="sm" style={styles.muted}>
+          {`${formatPct(totals.percentUsed)} used`}
         </AppText>
       </View>
-      <View style={styles.spentCol}>
-        <AppText size="xs" color="surface" style={styles.muted}>
-          Spent
-        </AppText>
-        <AppText size="lg" weight="black" color="surface">
-          {formatMoney(totals.spent)}
-        </AppText>
-      </View>
-    </View>
 
-    <View style={styles.remainingRow}>
-      <AppText color="surface" size="sm" style={styles.muted}>
-        {`${totals.closed ? "Unspent" : "Remaining"}: ${formatMoney(totals.remaining)}`}
-      </AppText>
-      <AppText color="surface" size="sm" style={styles.muted}>
-        {`${totals.percentUsed}% used`}
-      </AppText>
-    </View>
+      <ProgressBar value={totals.percentUsed} color="surface" trackColor="primaryInk" />
 
-    <ProgressBar value={totals.percentUsed} color="surface" trackColor="primaryInk" />
+      <View style={styles.divider} />
 
-    <View style={styles.divider} />
-
-    {/* A live month paces the days still to come; a closed one has none, so the
-        same two slots report what the month actually did. */}
-    <View style={styles.statsRow}>
-      <BudgetStat label="Status" stat={totals.status} />
-      {totals.closed ? (
-        <>
-          <BudgetStat label="Days" stat={`${totals.daysInMonth} days`} />
-          <BudgetStat label="Avg/Day" stat={formatMoney(totals.dailyAverage)} />
-        </>
-      ) : (
-        <>
-          <BudgetStat label="Days Left" stat={`${totals.daysLeft} days`} />
-          <BudgetStat label="Daily Limit" stat={formatMoney(totals.dailyLimit)} />
-        </>
-      )}
-    </View>
-  </GradientCard>
-);
+      <StatRow surface="gradient" gap={spacing.lg} items={stats} />
+    </GradientCard>
+  );
+};
 
 const BudgetScreen = () => {
   usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
@@ -100,21 +97,15 @@ const BudgetScreen = () => {
   const [offset, setOffset] = useState(0);
   const month = monthKey(offset);
 
-  const { items, loading, error, refetch } = useBudgets(month);
+  const budgets = useBudgets(month);
+  const { items, refetch } = budgets;
+  const state = { ...budgets, hasData: budgets.data !== null };
   const categories = useCategories();
 
   const pickerRef = useRef<BottomSheetModal>(null);
   const limitRef = useRef<BottomSheetModal>(null);
   const [active, setActive] = useState<BudgetSummary | null>(null);
   const [pendingCategory, setPendingCategory] = useState<string | null>(null);
-
-  // Refresh on focus only. Stepping months already refetches inside `useBudgets`,
-  // so depending on `refetch` here would fire a second request for every step.
-  const refetchRef = useRef(refetch);
-  refetchRef.current = refetch;
-  useFocusEffect(useCallback(() => {
-    refetchRef.current();
-  }, []));
 
   const openEdit = (summary: BudgetSummary) => {
     setActive(summary);
@@ -135,24 +126,10 @@ const BudgetScreen = () => {
     setPendingCategory(categoryId);
   };
 
-  const headerRight = (
-    <Button label="+ New" pill size="sm" onPress={openCreate} />
-  );
-
   const totals = budgetTotals(items, month);
   const excludedIds = budgetExcludedCategoryIds(items, categories);
 
-  // One tree for every state, so stepping months keeps the navigator in place —
-  // and so a refetch can never unmount a sheet that is currently open.
-  const body = error ? (
-    <ErrorState message={error} onRetry={refetch} />
-  ) : loading && items.length === 0 ? (
-    <View style={styles.skeletonCol}>
-      {Array.from({ length: 5 }).map((_, i) => (
-        <SkeletonState key={i} height={72} borderRadius={radius.lg} />
-      ))}
-    </View>
-  ) : items.length === 0 ? (
+  const body = items.length === 0 ? (
     <EmptyState
       icon="insights"
       title={totals.closed ? `Nothing budgeted in ${monthTitle(month)}` : "No budgets yet"}
@@ -181,7 +158,13 @@ const BudgetScreen = () => {
   );
 
   return (
-    <ScreenScaffold title="Budget" headerRight={headerRight}>
+    <ScreenScaffold
+      title={screenTitles.budget}
+      back
+      actions={[{ kind: "new", label: "New budget", onPress: openCreate }]}
+      states={state}
+    >
+      {/* Outside the states, so stepping months keeps the navigator in place. */}
       <PeriodNav
         label={rangeNavLabel("month", offset)}
         canNext={offset < 0}
@@ -189,7 +172,18 @@ const BudgetScreen = () => {
         onNext={() => setOffset((o) => Math.min(0, o + 1))}
       />
 
-      {body}
+      <ScreenStates
+        state={state}
+        skeleton={
+          <View style={styles.skeletonCol}>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <SkeletonState key={i} height={72} borderRadius={radius.lg} />
+            ))}
+          </View>
+        }
+      >
+        {body}
+      </ScreenStates>
 
       <CategoryPickerSheet ref={pickerRef} kind="expense" excludeIds={excludedIds} onPick={onPickCategory} />
       <BudgetLimitSheet
@@ -227,10 +221,6 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     backgroundColor: "rgba(255,255,255,0.25)",
-  },
-  statsRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
   },
   skeletonCol: {
     gap: spacing.lg,

@@ -25,7 +25,11 @@ afterEach(() => mock.timers.reset());
 test("rows say Today and Yesterday by the account's day", () => {
   assert.match(date.formatTxnDate("2026-11-15T18:45:00Z"), /^Today, /);
   assert.match(date.formatTxnDate("2026-11-15T18:15:00Z"), /^Yesterday, /);
-  assert.match(date.formatTxnDate("2026-11-10T06:00:00Z"), /Nov/);
+  assert.equal(date.formatTxnDate("2026-11-15T18:45:00Z"), "Today, 12:15 am");
+  assert.equal(date.formatTxnDate("2026-11-15T10:28:00Z"), "Yesterday, 3:58 pm");
+  assert.equal(date.formatTxnDate("2026-11-10T06:00:00Z"), "10 Nov");
+  // An older year keeps its year.
+  assert.equal(date.formatTxnDate("2025-03-05T06:00:00Z"), "5 Mar 2025");
   // The same instant in New York is still the 15th.
   session.user.prefs.timeZone = "America/New_York";
   assert.match(date.formatTxnDate("2026-11-15T18:45:00Z"), /^Today, /);
@@ -38,7 +42,10 @@ test("due labels count whole days in the account's zone", () => {
   assert.equal(date.formatDueLabel(istMidnight("2026-11-19"), "pending"), "Due in 3 days");
   assert.equal(date.formatDueLabel(istMidnight("2026-11-15"), "overdue"), "Overdue by 1 day");
   assert.equal(date.formatDueLabel(istMidnight("2026-11-13"), "overdue"), "Overdue by 3 days");
-  assert.match(date.formatDueLabel(istMidnight("2026-11-20"), "paid", "2026-11-15T19:00:00Z"), /^Paid Today, /);
+  // A paid bill names the day, never a time.
+  assert.equal(date.formatDueLabel(istMidnight("2026-11-20"), "paid", "2026-11-15T19:00:00Z"), "Paid today");
+  assert.equal(date.formatDueLabel(istMidnight("2026-11-20"), "paid", "2026-11-15T18:15:00Z"), "Paid yesterday");
+  assert.equal(date.formatDueLabel(istMidnight("2026-11-20"), "paid", "2026-11-12T06:00:00Z"), "Paid 12 Nov");
 });
 
 test("rolling a due date clamps to the month's last day, in the account's zone", () => {
@@ -57,10 +64,12 @@ test("a picked day becomes that day's midnight in the account's zone", () => {
 test("Activity headers", () => {
   assert.equal(date.dayGroupLabel("2026-11-15T18:45:00Z"), "TODAY");
   assert.equal(date.dayGroupLabel("2026-11-15T10:00:00Z"), "YESTERDAY");
-  assert.match(date.dayGroupLabel("2026-11-07T10:00:00Z"), /^SAT, 7 NOV$/);
-  assert.match(date.dayGroupLabel("2025-11-07T10:00:00Z"), /2025/);
+  assert.equal(date.dayGroupLabel("2026-11-07T10:00:00Z"), "SAT, 7 NOV");
+  assert.equal(date.dayGroupLabel("2026-09-01T10:00:00Z"), "TUE, 1 SEP");
+  assert.equal(date.dayGroupLabel("2025-11-07T10:00:00Z"), "FRI, 7 NOV 2025");
   assert.equal(date.monthGroupLabel("2026-11-30T19:00:00Z"), "DECEMBER 2026");
-  assert.match(date.formatFullDate("2026-11-30T19:00:00Z"), /1 Dec 2026/);
+  assert.equal(date.formatFullDate("2026-11-30T19:00:00Z"), "1 Dec 2026");
+  assert.equal(date.formatFullDate("2026-09-12T06:00:00Z"), "12 Sep 2026");
 });
 
 test("ranges anchor on today in the account's zone", () => {
@@ -86,6 +95,8 @@ test("range labels for the summary card and the navigator", () => {
   assert.equal(range.rangeLabel("day"), "16 NOV 2026");
   assert.equal(range.rangeLabel("week", -1), "9–15 NOV 2026");
   assert.equal(range.rangeLabel("week", -3), "26 OCT – 1 NOV 2026");
+  assert.equal(range.rangeLabel("week", -11), "31 AUG – 6 SEP 2026");
+  assert.equal(range.rangeLabel("month", -2), "SEPTEMBER 2026");
   assert.equal(range.rangeLabel("month"), "NOVEMBER 2026");
   assert.equal(range.rangeLabel("year", -1), "2025");
   assert.equal(range.rangeLabel("all"), "ALL TIME");
@@ -93,13 +104,18 @@ test("range labels for the summary card and the navigator", () => {
   assert.equal(range.rangeNavLabel("day"), "Today");
   assert.equal(range.rangeNavLabel("day", -1), "Yesterday");
   assert.equal(range.rangeNavLabel("day", -2), "14 Nov");
-  assert.equal(range.rangeNavLabel("week", -1), "Last Week");
+  assert.equal(range.rangeNavLabel("week"), "This week");
+  assert.equal(range.rangeNavLabel("week", -1), "Last week");
   assert.equal(range.rangeNavLabel("week", -3), "26 Oct – 1 Nov");
-  assert.equal(range.rangeNavLabel("month", -1), "Last Month");
+  assert.equal(range.rangeNavLabel("week", -11), "31 Aug – 6 Sep");
+  assert.equal(range.rangeNavLabel("week", -51), "24–30 Nov 2025");
+  assert.equal(range.rangeNavLabel("month"), "This month");
+  assert.equal(range.rangeNavLabel("month", -1), "Last month");
   assert.equal(range.rangeNavLabel("month", -2), "September 2026");
-  assert.equal(range.rangeNavLabel("year"), "This Year");
+  assert.equal(range.rangeNavLabel("year"), "This year");
+  assert.equal(range.rangeNavLabel("year", -1), "Last year");
   assert.equal(range.rangeNavLabel("year", -2), "2024");
-  assert.equal(range.rangeNavLabel("all"), "All Time");
+  assert.equal(range.rangeNavLabel("all"), "All time");
 });
 
 test("isRangeKey accepts only the five keys", () => {

@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, { LinearTransition } from "react-native-reanimated";
-import { useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { IBill, RecurringPattern } from "@save-n-spend/types";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
@@ -9,9 +9,9 @@ import Card from "@/components/data/Card";
 import BillRow from "@/components/rows/BillRow";
 import { AppText } from "@/components/ui/AppText";
 import Badge from "@/components/ui/Badge";
-import Button from "@/components/ui/Button";
+import Caps from "@/components/ui/Caps";
 import EmptyState from "@/components/states/EmptyState";
-import ErrorState from "@/components/states/ErrorState";
+import ScreenStates from "@/components/states/ScreenStates";
 import SkeletonState from "@/components/states/SkeletonState";
 import MarkPaidSheet from "@/components/sheets/MarkPaidSheet";
 import EditBillSheet, { type BillDraft } from "@/components/sheets/EditBillSheet";
@@ -20,6 +20,9 @@ import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
 import ConfirmSheet from "@/components/sheets/ConfirmSheet";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { count } from "@/lib/format/count";
+import { screenTitles } from "@/data/menu";
+import type { HeaderAction } from "@/lib/screenHeader";
 import { useBills, groupBills, outstandingTotal, isActionable, deleteBill } from "@/lib/bills";
 import { bulkConvertToInvestment, dismissRecurring, useRecurringSuggestions } from "@/lib/recurring";
 import { useAccountById } from "@/lib/accounts";
@@ -41,9 +44,7 @@ const Section = ({ label, bills, onPick, onEdit, onDelete }: SectionProps) => {
   if (bills.length === 0) return null;
   return (
     <View style={styles.section}>
-      <AppText size="xs" weight="bold" color="inkDim" style={styles.sectionLabel}>
-        {label}
-      </AppText>
+      <Caps header>{label}</Caps>
       {bills.map((bill) => (
         // Every row is editable and deletable, including a paid one: a wrong amount is
         // worth correcting for next cycle, and the row body's own action is what a paid
@@ -63,11 +64,12 @@ const Section = ({ label, bills, onPick, onEdit, onDelete }: SectionProps) => {
 
 const BillsScreen = () => {
   usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
-  const { items: allItems, loading, error, refetch } = useBills();
+  const bills = useBills();
+  const state = { ...bills, hasData: bills.data !== null };
   // Hidden the instant delete is confirmed — the real DELETE only fires if the undo
   // grace window elapses undisturbed (see store/pendingDeletes.ts).
   const pendingKeys = usePendingDeletes((s) => s.keys);
-  const items = allItems.filter((b) => !pendingKeys.has(`bill:${b._id}`));
+  const items = bills.items.filter((b) => !pendingKeys.has(`bill:${b._id}`));
 
   const markRef = useRef<BottomSheetModal>(null);
   const editRef = useRef<BottomSheetModal>(null);
@@ -78,7 +80,7 @@ const BillsScreen = () => {
   const [editing, setEditing] = useState<IBill | null>(null);
   const [removing, setRemoving] = useState<IBill | null>(null);
 
-  const { data: suggestions, refetch: refetchSuggestions } = useRecurringSuggestions();
+  const { data: suggestions } = useRecurringSuggestions();
   const suggestionsRef = useRef<BottomSheetModal>(null);
   const convertRef = useRef<BottomSheetModal>(null);
   const [draft, setDraft] = useState<BillDraft | null>(null);
@@ -86,11 +88,6 @@ const BillsScreen = () => {
   // A SIP just set up from a suggestion, whose past payments can be moved into the holding.
   const [convert, setConvert] = useState<{ pattern: RecurringPattern; toInvestment: string } | null>(null);
   const convertHolding = useAccountById(convert?.toInvestment ?? null);
-
-  useFocusEffect(useCallback(() => {
-    refetch();
-    void refetchSuggestions();
-  }, [refetch, refetchSuggestions]));
 
   // Arriving from the "payments look like they repeat" notification opens the review list.
   const { suggestions: openSuggestions } = useLocalSearchParams<{ suggestions?: string }>();
@@ -123,7 +120,6 @@ const BillsScreen = () => {
   const dismissSuggestion = async (pattern: RecurringPattern) => {
     try {
       await dismissRecurring(pattern.key);
-      await refetchSuggestions();
       toast.info(`Won't suggest ${pattern.title} again`);
     }
     catch (err) {
@@ -132,7 +128,6 @@ const BillsScreen = () => {
   };
 
   const afterSave = (bill: IBill | null) => {
-    void refetchSuggestions();
     const pattern = draftPattern;
     setDraft(null);
     setDraftPattern(null);
@@ -174,7 +169,7 @@ const BillsScreen = () => {
       onPress={() => suggestionsRef.current?.present()}
       scaleTo={0.98}
       accessibilityRole="button"
-      accessibilityLabel={`${suggestionCount} recurring payment${suggestionCount === 1 ? "" : "s"} found. Review.`}
+      accessibilityLabel={`${count(suggestionCount, "recurring payment")} found. Review.`}
     >
       <Card style={styles.suggest}>
         <Icon name="repeat" size={18} container="square" containerSize={40} containerRadius={13} gradient="blue" />
@@ -191,33 +186,27 @@ const BillsScreen = () => {
     </PressableScale>
   );
 
-  const headerRight = <Button label="+ Add Bill" pill size="sm" onPress={openAdd} />;
-
-  if (error) {
-    return (
-      <ScreenScaffold title="Bills" headerRight={headerRight}>
-        <ErrorState message={error} onRetry={refetch} />
-      </ScreenScaffold>
-    );
-  }
-
-  if (loading && items.length === 0) {
-    return (
-      <ScreenScaffold title="Bills" headerRight={headerRight}>
-        <View style={styles.skeletonCol}>
-          {Array.from({ length: 5 }).map((_, i) => (
-            <SkeletonState key={i} height={72} borderRadius={radius.lg} />
-          ))}
-        </View>
-      </ScreenScaffold>
-    );
-  }
+  const header = {
+    title: screenTitles.bills,
+    back: true,
+    actions: [{ kind: "new", label: "New bill", onPress: openAdd }] satisfies HeaderAction[],
+  };
 
   const groups = groupBills(items);
   const { total, pending, overdue } = outstandingTotal(items);
 
   return (
-    <ScreenScaffold title="Bills" headerRight={headerRight}>
+    <ScreenScaffold {...header} states={state}>
+      <ScreenStates
+        state={state}
+        skeleton={
+          <View style={styles.skeletonCol}>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <SkeletonState key={i} height={72} borderRadius={radius.lg} />
+            ))}
+          </View>
+        }
+      >
       {suggestionBanner}
       {items.length === 0 ? (
         <EmptyState
@@ -230,26 +219,25 @@ const BillsScreen = () => {
       ) : (
         <>
           <Card style={styles.strip}>
-            <AppText size="xs" weight="bold" color="inkDim" style={styles.sectionLabel}>
-              OUTSTANDING THIS MONTH
-            </AppText>
+            <Caps>Outstanding this month</Caps>
             <AppText size="2xl" weight="black">
               {formatMoney(total)}
             </AppText>
             <View style={styles.counts}>
-              <Badge label={`${pending} pending`} status="pending" size="sm" />
-              {overdue > 0 && <Badge label={`${overdue} overdue`} status="overdue" size="sm" />}
+              <Badge label={`${pending} pending`} tone="warning" size="sm" />
+              {overdue > 0 && <Badge label={`${overdue} overdue`} tone="danger" size="sm" />}
             </View>
           </Card>
 
-          <Section label="OVERDUE" bills={groups.overdue} onPick={onPick} onEdit={onEdit} onDelete={onDelete} />
-          <Section label="UPCOMING" bills={groups.upcoming} onPick={onPick} onEdit={onEdit} onDelete={onDelete} />
-          <Section label="PAID THIS MONTH" bills={groups.paid} onPick={onPick} onEdit={onEdit} onDelete={onDelete} />
+          <Section label="Overdue" bills={groups.overdue} onPick={onPick} onEdit={onEdit} onDelete={onDelete} />
+          <Section label="Upcoming" bills={groups.upcoming} onPick={onPick} onEdit={onEdit} onDelete={onDelete} />
+          <Section label="Paid this month" bills={groups.paid} onPick={onPick} onEdit={onEdit} onDelete={onDelete} />
         </>
       )}
+      </ScreenStates>
 
-      <MarkPaidSheet ref={markRef} bill={active} onChanged={refetch} />
-      <EditBillSheet ref={editRef} bill={editing} draft={draft} onChanged={refetch} onSaved={afterSave} />
+      <MarkPaidSheet ref={markRef} bill={active} onChanged={bills.refetch} />
+      <EditBillSheet ref={editRef} bill={editing} draft={draft} onChanged={bills.refetch} onSaved={afterSave} />
       <RecurringSuggestionsSheet
         ref={suggestionsRef}
         suggestions={suggestions.expenses}
@@ -263,6 +251,7 @@ const BillsScreen = () => {
         title={`Move ${convert?.pattern.transactionIds.length ?? 0} past payments into ${convertHolding?.name ?? "the holding"}?`}
         body="They're logged as spending right now. Moving them makes them contributions to this holding, so your spending drops and the holding's invested amount goes up. Your bank balance doesn't change."
         confirmLabel="Move them"
+        needsConnection
         cancelLabel="Not now"
         onConfirm={async () => {
           if (!convert) return;
@@ -274,7 +263,7 @@ const BillsScreen = () => {
           convertKey.reset();
           toast.success(moved === null
             ? `Payments moved to ${convertHolding?.name ?? "the holding"}`
-            : `${moved} payment${moved === 1 ? "" : "s"} moved to ${convertHolding?.name ?? "the holding"}`);
+            : `${count(moved, "payment")} moved to ${convertHolding?.name ?? "the holding"}`);
           setConvert(null);
         }}
       />
@@ -287,13 +276,13 @@ const BillsScreen = () => {
         // holding that history: it isn't. The payments are transactions in their own right.
         body="The reminder stops and the bill leaves this list. Any payment you already recorded stays in your transactions, so your balances and totals don't move."
         confirmLabel="Delete bill"
+        needsConnection
         onConfirm={() => {
           if (!removing) return;
           const key = `bill:${removing._id}`;
           const name = removing.name;
           pendingDeletes.schedule(key, name, async (opts) => {
             await deleteBill(removing._id, opts);
-            refetch();
           });
           toast.action("info", `${name} deleted`, {
             label: "Undo",
@@ -324,9 +313,6 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: spacing.md,
-  },
-  sectionLabel: {
-    letterSpacing: 1.3,
   },
   skeletonCol: {
     gap: spacing.lg,

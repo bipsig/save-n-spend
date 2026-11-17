@@ -13,7 +13,7 @@ const DESTINATIONS: Record<string, string> = {
   "/investments": "Investments",
   "/investments?export=1": "the Investments export",
   "/investments?tab=trends": "Investments, on Trends",
-  "/manage-accounts": "Manage accounts",
+  "/manage-accounts": "Accounts",
   "/review-history": "your reviews",
   "/trips": "Trips",
   "/whats-new": "What's new",

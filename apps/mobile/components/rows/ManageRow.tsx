@@ -63,6 +63,8 @@ const ManageRow = ({
       disabled={reordering}
       scaleTo={0.985}
       style={styles.body}
+      accessibilityLabel={sub ? `${label}, ${sub}` : label}
+      accessibilityHint={reordering ? "Drag to move" : "Edits it"}
     >
       <Icon
         name={icon}

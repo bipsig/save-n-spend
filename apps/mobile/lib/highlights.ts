@@ -2,9 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import type { HighlightScreen, HighlightSeverity, HighlightsPayload } from "@save-n-spend/types";
 import type { ColorToken } from "@/theme";
 import type { IconName } from "@/lib/icons";
-import { get } from "./api";
+import { useApiQuery } from "@/lib/query/useApiQuery";
 import { readJson, writeJson } from "./deviceStore";
-import { useSession } from "@/store/session";
 
 // The client half of Highlights. Like lib/health, everything judged is judged
 // server-side — ranking, thresholds, copy — and everything here is presentation:
@@ -79,60 +78,44 @@ const prune = (map: DismissedMap, now: number): DismissedMap =>
   Object.fromEntries(Object.entries(map).filter(([, at]) => now - at < DISMISS_FOR_MS));
 
 export const useHighlights = () => {
-  const status = useSession((s) => s.status);
-  const [data, setData] = useState<HighlightsPayload | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [dismissed, setDismissed] = useState<DismissedMap>({});
-
-  const refetch = useCallback(async () => {
-    if (useSession.getState().status !== "authed") return;
-    setError(null);
-
-    try {
-      // The stored map rides along with the fetch so a freshly opened screen never
-      // flashes a card that was dismissed yesterday and hides it a frame later.
-      const [payload, stored] = await Promise.all([
-        get<HighlightsPayload>("/highlights"),
-        readJson<DismissedMap>(DISMISSED_KEY),
-      ]);
-      setDismissed(prune(stored ?? {}, Date.now()));
-      setData(payload);
-    }
-    catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load");
-    }
-    finally {
-      setLoading(false);
-    }
-  }, []);
-
+  const { data, loading, refreshing, error, errorStatus, refetch, fetchedAt } = useApiQuery<HighlightsPayload>("/highlights");
+  // Null until read. Read again with each new answer, so a card waved away on another
+  // screen stays hidden here; until the first read no card shows, so a freshly opened
+  // screen never flashes one dismissed yesterday.
+  const [dismissed, setDismissed] = useState<DismissedMap | null>(null);
   useEffect(() => {
-    if (status === "authed") void refetch();
-  }, [status, refetch]);
+    let live = true;
+    void readJson<DismissedMap>(DISMISSED_KEY).then((stored) => {
+      if (live) setDismissed(prune(stored ?? {}, Date.now()));
+    });
+    return () => { live = false; };
+  }, [fetchedAt]);
 
   const dismiss = useCallback((key: string) => {
     setDismissed((prev) => {
       // Pruned on every write, so the blob never accumulates a history of expired
       // keys from months of use.
-      const nextMap = prune({ ...prev, [key]: Date.now() }, Date.now());
+      const nextMap = prune({ ...(prev ?? {}), [key]: Date.now() }, Date.now());
       void writeJson(DISMISSED_KEY, nextMap);
       return nextMap;
     });
   }, []);
 
-  const highlights = (data?.highlights ?? []).filter((h) => !(h.key in dismissed));
+  const highlights = dismissed ? (data?.highlights ?? []).filter((h) => !(h.key in dismissed)) : [];
 
   return {
     /** Server order preserved — it is already ranked by rupees at stake. */
     highlights,
     /** True when cards exist but every one has been waved away, so the empty state
      *  can say "dismissed" rather than pretending the month is spotless. */
-    allDismissed: (data?.highlights.length ?? 0) > 0 && highlights.length === 0,
+    allDismissed: dismissed !== null && (data?.highlights.length ?? 0) > 0 && highlights.length === 0,
     warmingUp: data?.warmingUp ?? null,
-    loading,
+    loading: loading || (data !== null && dismissed === null),
+    refreshing,
     error,
+    errorStatus,
     refetch,
+    fetchedAt,
     dismiss,
   };
 };

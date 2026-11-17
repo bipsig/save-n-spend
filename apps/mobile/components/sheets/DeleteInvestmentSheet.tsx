@@ -10,7 +10,10 @@ import PressableScale from "@/components/ui/PressableScale";
 import { deleteInvestment, type DeleteInvestmentMode } from "@/lib/investments";
 import { haptics } from "@/lib/haptics";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { count } from "@/lib/format/count";
+import Caps from "@/components/ui/Caps";
 import { colors, spacing } from "@/theme";
+import { useOnlineGate } from "@/lib/onlineGate";
 
 export type DeleteInvestmentSummary = {
   id: string;
@@ -55,6 +58,8 @@ const DeleteInvestmentSheet = forwardRef<BottomSheetModal, Props>(({ summary, on
   usePrivacyMask();
   const innerRef = useRef<BottomSheetModal>(null);
   useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
+  // Needs the server: offline the button says so before the tap.
+  const gate = useOnlineGate("");
   // Keep by default: it's the choice that never changes another account's balance.
   const [mode, setMode] = useState<DeleteInvestmentMode>("keep");
   const [busy, setBusy] = useState(false);
@@ -84,9 +89,9 @@ const DeleteInvestmentSheet = forwardRef<BottomSheetModal, Props>(({ summary, on
   };
 
   const goes: string[] = [];
-  if (moneyIn.count) goes.push(`${moneyIn.count} payment${moneyIn.count === 1 ? "" : "s"} in (${formatMoney(moneyIn.total)})`);
-  if (moneyOut.count) goes.push(`${moneyOut.count} redemption${moneyOut.count === 1 ? "" : "s"} (${formatMoney(moneyOut.total)})`);
-  if (summary.valueUpdates) goes.push(`${summary.valueUpdates} value update${summary.valueUpdates === 1 ? "" : "s"}`);
+  if (moneyIn.count) goes.push(`${count(moneyIn.count, "payment")} in (${formatMoney(moneyIn.total)})`);
+  if (moneyOut.count) goes.push(`${count(moneyOut.count, "redemption")} (${formatMoney(moneyOut.total)})`);
+  if (summary.valueUpdates) goes.push(count(summary.valueUpdates, "value update"));
   if (summary.sipBills.length) goes.push(`the SIP bill${summary.sipBills.length === 1 ? "" : "s"} ${names(summary.sipBills)}`);
 
   return (
@@ -105,7 +110,7 @@ const DeleteInvestmentSheet = forwardRef<BottomSheetModal, Props>(({ summary, on
 
       {movedMoney && (
         <View style={styles.choices}>
-          <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>THE MONEY YOU MOVED</AppText>
+          <Caps header>The money you moved</Caps>
           <Choice
             selected={mode === "keep"}
             onPress={() => setMode("keep")}
@@ -127,7 +132,7 @@ const DeleteInvestmentSheet = forwardRef<BottomSheetModal, Props>(({ summary, on
       {error && <AppText size="sm" color="danger">{error}</AppText>}
 
       <View style={styles.actions}>
-        <HoldButton label="Hold to delete" holdingLabel="Keep holding to delete…" icon="delete" loading={busy} onComplete={run} />
+        <HoldButton label={gate.allowed ? "Hold to delete" : gate.label} accessibilityLabel={gate.allowed ? `Delete ${summary.name}` : gate.label} holdingLabel="Keep holding to delete…" icon="delete" loading={busy} disabled={!gate.allowed} onComplete={run} />
         <Button label="Cancel" variant="ghost" disabled={busy} onPress={() => innerRef.current?.dismiss()} />
       </View>
     </AppSheet>
@@ -140,7 +145,6 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   headerText: { flex: 1, gap: 3 },
   lh: { lineHeight: 17 },
-  label: { letterSpacing: 1.3 },
   choices: { gap: spacing.sm },
   choice: {
     flexDirection: "row",

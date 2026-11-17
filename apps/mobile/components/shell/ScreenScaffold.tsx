@@ -1,23 +1,35 @@
-import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AppText } from "../ui/AppText";
 import GlowBackground from "./GlowBackground";
-import PeekButton from "./PeekButton";
-import OfflineBanner from "./OfflineBanner";
-import { colors, spacing } from "@/theme";
+import ScreenStrip, { type ScreenStripInput } from "./ScreenStrip";
+import { useScreenRefresh } from "./ScreenRefresh";
+import ScreenHeader, { type HeaderAction } from "./ScreenHeader";
+import { spacing } from "@/theme";
 
 type Props = {
   title?: string;
   subtitle?: string;
+  /** `true` or "back" for the chevron, "close" on a modal. */
+  back?: boolean | "back" | "close";
+  onBack?: () => void;
+  actions?: readonly HeaderAction[];
+  /** Hide the privacy eye on a screen that shows no amounts. */
+  peek?: boolean;
+  /** For screens not yet moved onto `actions`. */
   headerRight?: React.ReactNode;
+  /** Replaces the standard header entirely (Home's greeting row). Must include `PeekButton` itself. */
   header?: React.ReactNode;
   scroll?: boolean;
   /** Off while a row is being dragged, so the drag doesn't scroll the screen under it. */
   scrollEnabled?: boolean;
-  /** Pull-to-refresh. Only meaningful with `scroll` (the default) — a screen that
-   *  renders its own scroller (e.g. Activity's FlatList) wires RefreshControl itself. */
-  onRefresh?: () => void | Promise<void>;
+  /** The screen's fetch state: picks the strip under the header (offline with this data's
+   *  age, the server starting up, or "Couldn't refresh"), and `refetch` becomes pull-to-refresh. */
+  states?: ScreenStripInput;
+  /** Pull-to-refresh, defaulting to `states.refetch`; the spinner runs until its promise settles.
+   *  Only on the scaffold's own scroll view: a screen with its own list uses `useScreenRefresh`. */
+  onRefresh?: () => unknown;
+  /** Only for screens that still hold their own pull state. */
   refreshing?: boolean;
   /** Rendered above the scroll content, pinned to the screen (e.g. the FAB). */
   floating?: React.ReactNode;
@@ -27,16 +39,22 @@ type Props = {
 const ScreenScaffold = ({
   title,
   subtitle,
+  back,
+  onBack,
+  actions,
+  peek,
   headerRight,
   header,
   scroll = true,
   scrollEnabled = true,
-  onRefresh,
+  states,
+  onRefresh = states?.refetch,
   refreshing = false,
   floating,
   children,
 }: Props) => {
   const { top, bottom } = useSafeAreaInsets();
+  const refreshControl = useScreenRefresh(scroll ? onRefresh : undefined, refreshing);
 
   return (
     // Full-bleed dark ground + glow — no padding here, so the glow reaches the
@@ -49,35 +67,13 @@ const ScreenScaffold = ({
     >
       <GlowBackground />
       <View style={[styles.inner, { paddingTop: top, paddingBottom: bottom }]}>
-        {header ? (
-          header
-        ) : (
-          <View style={styles.titleBlock}>
-            <View style={styles.titleRow}>
-              {/* Spec .titlerow .t — 24 / 800 / −.02em */}
-              <AppText weight="black" size="xl">
-                {title}
-              </AppText>
-              {/* Every screen gets the eye, not just the dashboard: privacy mode masks
-                  amounts app-wide, so a screen that hides figures without offering the
-                  way to reveal them is a dead end. It renders nothing at all while
-                  privacy mode is off, so this costs the other screens no space.
-                  Screens passing a custom `header` have to include it themselves. */}
-              <View style={styles.titleActions}>
-                <PeekButton />
-                {headerRight}
-              </View>
-            </View>
-            {subtitle && (
-              <AppText size="sm" color="inkDim">
-                {subtitle}
-              </AppText>
-            )}
-          </View>
+        {header ?? (
+          <ScreenHeader title={title} subtitle={subtitle} back={back} onBack={onBack} actions={actions} peek={peek}>
+            {headerRight}
+          </ScreenHeader>
         )}
-        {/* Renders nothing while online — every screen built on this scaffold gets the
-            offline notice for free, the same way every screen already gets PeekButton. */}
-        <OfflineBanner />
+        {/* One strip at most, nothing while all is well. Every scaffold screen gets it. */}
+        <ScreenStrip states={states} />
         {scroll ? (
           <ScrollView
             style={styles.scroll}
@@ -86,19 +82,7 @@ const ScreenScaffold = ({
             showsVerticalScrollIndicator={false}
             keyboardDismissMode="on-drag"
             keyboardShouldPersistTaps="handled"
-            refreshControl={
-              onRefresh ? (
-                // Tinted to the brand rather than left as the system default — a plain
-                // black/white spinner over this ground reads as broken, not loading.
-                <RefreshControl
-                  refreshing={refreshing}
-                  onRefresh={onRefresh}
-                  tintColor={colors.primary}
-                  colors={[colors.primary]}
-                  progressBackgroundColor="#1B1730"
-                />
-              ) : undefined
-            }
+            refreshControl={refreshControl}
           >
             {children}
           </ScrollView>
@@ -120,23 +104,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, // spec 15px screen padding × device scale
     gap: spacing.lg,
   },
-  titleBlock: {
-    gap: spacing.xs,
-  },
-  titleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  titleActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-  },
   scroll: {
     flex: 1,
   },
   content: {
+    // Fills the view on short content, so a pull that starts below it still refreshes.
+    flexGrow: 1,
     gap: spacing.lg, // spec .ui-stack 12px rhythm × device scale
     paddingBottom: spacing.xl,
   },

@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
-import BackButton from "@/components/shell/BackButton";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import Card from "@/components/data/Card";
 import { AppText } from "@/components/ui/AppText";
@@ -9,6 +8,7 @@ import Icon from "@/components/ui/Icon";
 import { haptics } from "@/lib/haptics";
 import type { IconName } from "@/lib/icons";
 import type { ChipTint } from "@/theme/gradients";
+import { screenTitles } from "@/data/menu";
 import { spacing } from "@/theme";
 
 type Faq = {
@@ -115,6 +115,9 @@ const FaqRow = ({ faq, first }: { faq: Faq; first: boolean }) => {
         haptics.tap();
         setOpen((o) => !o);
       }}
+      accessibilityRole="button"
+      accessibilityLabel={faq.question}
+      accessibilityState={{ expanded: open }}
     >
       {/* The answer's height isn't known ahead of time, so `layout` tweens the
           row's own resize rather than us animating a measured value. */}
@@ -149,16 +152,7 @@ const FaqRow = ({ faq, first }: { faq: Faq; first: boolean }) => {
 };
 
 const HelpScreen = () => (
-  <ScreenScaffold
-    header={
-      <View style={styles.head}>
-        <BackButton />
-        <AppText size="xl" weight="black">
-          Help & FAQ
-        </AppText>
-      </View>
-    }
-  >
+  <ScreenScaffold title={screenTitles.help} back>
     <Card padded={false} style={styles.group}>
       {FAQS.map((faq, i) => (
         <FaqRow key={faq.question} faq={faq} first={i === 0} />
@@ -173,11 +167,6 @@ const HelpScreen = () => (
 );
 
 const styles = StyleSheet.create({
-  head: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
   group: {
     paddingVertical: 2,
   },

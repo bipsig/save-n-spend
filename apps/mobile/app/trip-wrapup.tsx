@@ -4,20 +4,25 @@ import { useLocalSearchParams } from "expo-router";
 import { goBackOrHome } from "@/lib/navigation";
 import { LinearGradient } from "expo-linear-gradient";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
-import BackButton from "@/components/shell/BackButton";
 import Card from "@/components/data/Card";
 import Button from "@/components/ui/Button";
 import Chip from "@/components/ui/Chip";
 import Icon from "@/components/ui/Icon";
 import { NameWithArchived } from "@/components/ui/ArchivedMark";
 import Money from "@/components/ui/Money";
+import Caps from "@/components/ui/Caps";
 import { AppText } from "@/components/ui/AppText";
 import SkeletonState from "@/components/states/SkeletonState";
+import ScreenStates from "@/components/states/ScreenStates";
 import { useCategoryById } from "@/lib/categories";
 import { haptics } from "@/lib/haptics";
-import formatMoney, { roundToRupee, usePrivacyMask } from "@/lib/money";
+import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { count } from "@/lib/format/count";
+import { formatInstant } from "@/lib/format/date";
+import { formatPct, percentOf } from "@/lib/format/pct";
 import { closeTrip, tripDays, useTrip } from "@/lib/trips";
 import { holderFor } from "@/lib/idempotency";
+import { useOnlineGate } from "@/lib/onlineGate";
 import { toast } from "@/store/toast";
 import { radius, spacing } from "@/theme";
 
@@ -34,11 +39,11 @@ const Step = ({ done, title, detail, warn }: { done: boolean; title: string; det
   </View>
 );
 
-const TopCategory = ({ id, pct }: { id: string | null; pct: number }) => {
+const TopCategory = ({ id, pct }: { id: string | null; pct: string }) => {
   const cat = useCategoryById(id);
   return (
     <View style={styles.grow}>
-      <AppText size="md" weight="black">{pct}%</AppText>
+      <AppText size="md" weight="black">{pct}</AppText>
       <NameWithArchived archived={!!cat?.isArchived}>
         <AppText size="xs" color="inkDim" numberOfLines={1} style={styles.shrink}>on {(cat?.name ?? "one category").toLowerCase()}</AppText>
       </NameWithArchived>
@@ -52,7 +57,10 @@ const TopCategory = ({ id, pct }: { id: string | null; pct: number }) => {
 const TripWrapUpScreen = () => {
   usePrivacyMask();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { data } = useTrip(id);
+  const q = useTrip(id);
+  const { data } = q;
+  const state = { ...q, hasData: data != null, notFound: !id || q.errorStatus === 404 };
+  const closeGate = useOnlineGate("Close trip");
   const [choice, setChoice] = useState<Record<string, "keep" | "letGo">>({});
   const [busy, setBusy] = useState(false);
 
@@ -63,7 +71,13 @@ const TripWrapUpScreen = () => {
       .map((m) => [m.account, Math.abs(m.balance) <= LET_GO_BELOW ? "letGo" : "keep"])));
   }, [data]);
 
-  if (!data) return <ScreenScaffold header={<BackButton />}><SkeletonState height={240} borderRadius={radius.lg} /></ScreenScaffold>;
+  if (!data || state.notFound) {
+    return (
+      <ScreenScaffold title="Wrap up" back states={state}>
+        <ScreenStates state={state} thing="trip" skeleton={<SkeletonState height={240} borderRadius={radius.lg} />}>{null}</ScreenStates>
+      </ScreenScaffold>
+    );
+  }
 
   const { trip, totals, members, expenses, byCategory } = data;
   const open = members.filter((m) => m.balance !== 0);
@@ -71,7 +85,7 @@ const TripWrapUpScreen = () => {
   const lastImport = expenses.filter((e) => e.source === "splitwise").sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
   const days = tripDays(trip.startDate, trip.endDate);
   const top = byCategory[0];
-  const topPct = top && totals.myShare > 0 ? Math.round((top.total / totals.myShare) * 100) : 0;
+  const topPct = formatPct(top ? percentOf(top.total, totals.myShare) : 0);
 
   const close = async () => {
     setBusy(true);
@@ -95,12 +109,12 @@ const TripWrapUpScreen = () => {
   };
 
   return (
-    <ScreenScaffold header={<View style={styles.head}><BackButton /><AppText size="xl" weight="black" numberOfLines={1} style={styles.grow}>Wrap up {trip.name}</AppText></View>}>
+    <ScreenScaffold title={`Wrap up ${trip.name}`} back states={state}>
       <Card style={styles.card}>
         <Step
           done={expenses.length > 0}
           title="All expenses in"
-          detail={`${expenses.length} ${expenses.length === 1 ? "expense" : "expenses"}${lastImport ? ` · Splitwise imported ${new Date(lastImport.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : ""}`}
+          detail={`${count(expenses.length, "expense")}${lastImport ? ` · Splitwise imported ${formatInstant(lastImport.createdAt, "day")}` : ""}`}
         />
         <Step
           done={uncategorised === 0}
@@ -124,8 +138,8 @@ const TripWrapUpScreen = () => {
                 <AppText size="sm" style={styles.grow}>
                   {m.balance > 0 ? <><AppText size="sm" weight="bold">{m.name}</AppText> owes {formatMoney(m.balance)}</> : <>You owe <AppText size="sm" weight="bold">{m.name}</AppText> {formatMoney(-m.balance)}</>}
                 </AppText>
-                <Chip label="Keep" selected={choice[m.account] !== "letGo"} onPress={() => setChoice((c) => ({ ...c, [m.account]: "keep" }))} />
-                <Chip label="Let go" selected={choice[m.account] === "letGo"} onPress={() => setChoice((c) => ({ ...c, [m.account]: "letGo" }))} />
+                <Chip label="Keep" accessibilityLabel={`Keep ${m.name}'s balance`} selected={choice[m.account] !== "letGo"} onPress={() => setChoice((c) => ({ ...c, [m.account]: "keep" }))} />
+                <Chip label="Let go" accessibilityLabel={`Let go of ${m.name}'s balance`} selected={choice[m.account] === "letGo"} onPress={() => setChoice((c) => ({ ...c, [m.account]: "letGo" }))} />
               </View>
             ))}
           </Card>
@@ -136,25 +150,23 @@ const TripWrapUpScreen = () => {
       )}
 
       <LinearGradient colors={["rgba(20,184,166,0.22)", "rgba(109,92,246,0.18)"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.summary}>
-        <AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>Your {trip.name} in numbers</AppText>
+        <Caps>Your {trip.name} in numbers</Caps>
         <View style={styles.three}>
           <View style={styles.grow}><Money value={totals.myShare} size="md" weight="black" /><AppText size="xs" color="inkDim">your share</AppText></View>
-          <View style={styles.grow}><Money value={roundToRupee(totals.myShare / days)} size="md" weight="black" /><AppText size="xs" color="inkDim">a day</AppText></View>
+          <View style={styles.grow}><Money value={totals.myShare / days} size="md" weight="black" /><AppText size="xs" color="inkDim">a day</AppText></View>
           {top ? <TopCategory id={top.category} pct={topPct} /> : <View style={styles.grow} />}
         </View>
       </LinearGradient>
 
-      <Button label="Close trip" loading={busy} onPress={close} />
+      <Button label={closeGate.label} icon={closeGate.icon} disabled={!closeGate.allowed} loading={busy} onPress={close} />
       <Button label="Not yet" variant="ghost" onPress={goBackOrHome} />
     </ScreenScaffold>
   );
 };
 
 const styles = StyleSheet.create({
-  head: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   grow: { flex: 1, minWidth: 0 },
   shrink: { flexShrink: 1, minWidth: 0 },
-  caps: { letterSpacing: 1.2, textTransform: "uppercase" },
   lh: { lineHeight: 17 },
   card: { gap: spacing.md },
   list: { paddingVertical: 2 },

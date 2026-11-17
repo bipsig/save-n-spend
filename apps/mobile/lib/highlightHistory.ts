@@ -1,7 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import type { IHighlightLog, Paginated } from "@save-n-spend/types";
-import { get } from "./api";
-import { useSession } from "@/store/session";
+import type { IHighlightLog } from "@save-n-spend/types";
+import { useApiPages } from "@/lib/query/useApiQuery";
 
 const PAGE_SIZE = 20;
 
@@ -12,43 +10,6 @@ const PAGE_SIZE = 20;
  * rather than all at once, since it only grows over the life of the account.
  */
 export const useHighlightHistory = () => {
-  const [items, setItems] = useState<IHighlightLog[]>([]);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
-  const [totalDocs, setTotalDocs] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async (targetPage: number, replace: boolean) => {
-    if (useSession.getState().status !== "authed") return;
-    replace ? setLoading(true) : setLoadingMore(true);
-    setError(null);
-    try {
-      const res = await get<Paginated<IHighlightLog>>(`/highlights/history?page=${targetPage}&limit=${PAGE_SIZE}`);
-      setItems((prev) => (replace ? res.items : [...prev, ...res.items]));
-      setPage(res.page);
-      setHasMore(res.hasNextPage);
-      setTotalDocs(res.total);
-    }
-    catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load");
-    }
-    finally {
-      replace ? setLoading(false) : setLoadingMore(false);
-    }
-  }, []);
-
-  const status = useSession((s) => s.status);
-  useEffect(() => {
-    if (status === "authed") load(1, true);
-  }, [status, load]);
-
-  const refetch = useCallback(() => load(1, true), [load]);
-  const loadMore = useCallback(() => {
-    if (!hasMore || loading || loadingMore) return;
-    load(page + 1, false);
-  }, [hasMore, loading, loadingMore, page, load]);
-
-  return { items, totalDocs, loading, loadingMore, hasMore, error, refetch, loadMore };
+  const { total, ...rest } = useApiPages<IHighlightLog>((page) => `/highlights/history?page=${page}&limit=${PAGE_SIZE}`);
+  return { ...rest, totalDocs: total };
 };

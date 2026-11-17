@@ -1,44 +1,43 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
-import BackButton from "@/components/shell/BackButton";
 import Card from "@/components/data/Card";
 import DonutChart from "@/components/charts/DonutChart";
+import ChartLegend from "@/components/ui/ChartLegend";
 import Money from "@/components/ui/Money";
 import Icon from "@/components/ui/Icon";
 import Button from "@/components/ui/Button";
 import PressableScale from "@/components/ui/PressableScale";
 import { AppText } from "@/components/ui/AppText";
+import Caps from "@/components/ui/Caps";
+import SegmentedControl from "@/components/ui/SegmentedControl";
 import EmptyState from "@/components/states/EmptyState";
-import ErrorState from "@/components/states/ErrorState";
+import ScreenStates from "@/components/states/ScreenStates";
 import SkeletonState from "@/components/states/SkeletonState";
 import EditAccountSheet from "@/components/sheets/EditAccountSheet";
 import RevalueSheet from "@/components/sheets/RevalueSheet";
 import InvestmentsExportSheet, { type InvestmentsExportHandle } from "@/components/sheets/InvestmentsExportSheet";
-import OverviewTrendsTabs, { type InvestTab } from "@/components/investments/OverviewTrendsTabs";
-import TrendsView from "@/components/investments/TrendsView";
+import TrendsView, { INVEST_TABS, type InvestTab } from "@/components/investments/TrendsView";
 import { useInvestments, useInvestmentTrend, returnPct, formatAnnual, holdingLook } from "@/lib/investments";
 import { useAccounts } from "@/lib/accounts";
 import { useBills } from "@/lib/bills";
 import { formatDueLabel } from "@/lib/date";
-import { useAccountStore } from "@/store/accounts";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { formatPct, percentOf } from "@/lib/format/pct";
+import { count } from "@/lib/format/count";
+import { screenTitles } from "@/data/menu";
 import type { InvestmentHolding } from "@save-n-spend/types";
 import type { IconName } from "@/lib/icons";
 import { chartPalette, chartOthers, colors, radius, spacing } from "@/theme";
 import { chipTintFor } from "@/theme/gradients";
 import { signTone } from "@/lib/signTone";
-
-const GroupLabel = ({ children }: { children: string }) => (
-  <AppText size="xs" weight="bold" color="inkDim" style={styles.groupLabel}>
-    {children}
-  </AppText>
-);
+import { mergeScreenStates } from "@/lib/screenStates";
 
 const gainColor = (n: number) => signTone(n);
-const gainStr = (n: number) => `${n > 0 ? "▲ " : n < 0 ? "▼ " : ""}${formatMoney(Math.abs(n))}`;
+const gainStr = (n: number) => formatMoney(n, { sign: "always" });
+const returnStr = (pct: number | null) => (pct !== null ? formatPct(pct, { kind: "return" }) : null);
 
 const HoldingRow = ({ h, onPress }: { h: InvestmentHolding; onPress: () => void }) => {
   const pct = returnPct(h.invested, h.gain);
@@ -64,7 +63,7 @@ const HoldingRow = ({ h, onPress }: { h: InvestmentHolding; onPress: () => void 
         <View style={styles.holdRight}>
           <Money value={h.current} weight="bold" size="sm" align="right" />
           <AppText size="xs" weight="bold" color={gainColor(h.gain)}>
-            {gainStr(h.gain)}{pct !== null ? ` · ${pct >= 0 ? "+" : ""}${Math.round(pct)}%` : ""}
+            {[gainStr(h.gain), returnStr(pct)].filter(Boolean).join(" · ")}
           </AppText>
         </View>
       </View>
@@ -76,18 +75,27 @@ const InvestmentsScreen = () => {
   usePrivacyMask();
   const router = useRouter();
   const { revalue, tab: tabParam, export: exportParam } = useLocalSearchParams<{ revalue?: string; tab?: string; export?: string }>();
-  const { data, loading, error, refetch } = useInvestments();
-  const { data: trend, refetch: refetchTrend } = useInvestmentTrend();
+  const investments = useInvestments();
+  const { data } = investments;
+  const trendQuery = useInvestmentTrend();
+  const trend = trendQuery.data;
   const [tab, setTab] = useState<InvestTab>("overview");
   const investmentAccounts = useAccounts().filter((a) => a.type === "investment");
-  const { items: bills, refetch: refetchBills } = useBills();
-  const sipBills = bills.filter((b) => b.toInvestment);
+  const billsQuery = useBills();
+  const sipBills = billsQuery.items.filter((b) => b.toInvestment);
+
+  // The hub draws once the portfolio is in; Trends and the SIP rows join when theirs are.
+  // So a failed trend or bills read only ever shows as the refresh strip.
+  const merged = mergeScreenStates(
+    { ...investments, hasData: data !== null },
+    { ...trendQuery, hasData: trend !== null },
+    { ...billsQuery, hasData: billsQuery.data !== null },
+  );
+  const state = { ...merged, hasData: data !== null, error: data !== null ? merged.error : investments.error };
 
   const newRef = useRef<BottomSheetModal>(null);
   const revalueRef = useRef<BottomSheetModal>(null);
   const exportRef = useRef<InvestmentsExportHandle>(null);
-
-  useFocusEffect(useCallback(() => { void refetch(); void refetchTrend(); void refetchBills(); }, [refetch, refetchTrend, refetchBills]));
 
   // Arriving from the monthly reminder ("your investment values are due") opens the
   // revalue sheet straight away. Guarded so it only fires once per arrival.
@@ -112,32 +120,6 @@ const InvestmentsScreen = () => {
     if (data.holdings.length > 0) exportRef.current?.present();
     router.setParams({ export: undefined });
   }, [exportParam, data, router]);
-
-  const afterChange = () => {
-    void refetch();
-    void refetchTrend();
-    void useAccountStore.getState().load();
-  };
-
-  const header = (
-    <View style={styles.head}>
-      <BackButton />
-      <AppText size="xl" weight="black" numberOfLines={1} style={styles.headTitle}>Investments</AppText>
-      {(data?.holdings.length ?? 0) > 0 && (
-        <PressableScale onPress={() => exportRef.current?.present()} scaleTo={0.94} hitSlop={8} accessibilityRole="button" accessibilityLabel="Export">
-          <View style={styles.iconBtn}>
-            <Icon name="download" size={17} color="ink" />
-          </View>
-        </PressableScale>
-      )}
-      <PressableScale onPress={() => newRef.current?.present()} scaleTo={0.94} hitSlop={8}>
-        <View style={styles.newBtn}>
-          <Icon name="add" size={15} color="ink" />
-          <AppText size="xs" weight="bold">New</AppText>
-        </View>
-      </PressableScale>
-    </View>
-  );
 
   const holdings = data?.holdings ?? [];
   // Holdings whose opening amount has no date — the yearly return can't be worked out.
@@ -166,18 +148,26 @@ const InvestmentsScreen = () => {
     .map((d, i) => ({ id: d.label, name: d.label, total: d.value, pct: donutTotal > 0 ? (d.value / donutTotal) * 100 : 0, color: i < chartPalette.length ? chartPalette[i] : chartOthers }));
 
   return (
-    <ScreenScaffold header={header}>
-      {error && <ErrorState message={error} onRetry={refetch} />}
-
-      {!error && loading && !data && (
-        <View style={{ gap: spacing.md }}>
-          {Array.from({ length: 4 }).map((_, i) => (
-            <SkeletonState key={i} height={80} borderRadius={radius.lg} />
-          ))}
-        </View>
-      )}
-
-      {!error && data && holdings.length === 0 && (
+    <ScreenScaffold
+      title={screenTitles.investments}
+      back
+      actions={[
+        ...(holdings.length > 0 ? [{ kind: "export" as const, label: "Export investments", onPress: () => exportRef.current?.present() }] : []),
+        { kind: "new", label: "New investment", onPress: () => newRef.current?.present() },
+      ]}
+      states={state}
+    >
+      <ScreenStates
+        state={state}
+        skeleton={
+          <View style={{ gap: spacing.md }}>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <SkeletonState key={i} height={80} borderRadius={radius.lg} />
+            ))}
+          </View>
+        }
+      >
+      {data && holdings.length === 0 && (
         <EmptyState
           icon="investments"
           title="No investments yet"
@@ -187,22 +177,24 @@ const InvestmentsScreen = () => {
         />
       )}
 
-      {!error && data && holdings.length > 0 && trend && trend.points.length > 0 && <OverviewTrendsTabs tab={tab} onChange={setTab} />}
+      {data && holdings.length > 0 && trend && trend.points.length > 0 && (
+        <SegmentedControl size="sm" accessibilityLabel="View" segments={INVEST_TABS} value={tab} onChange={setTab} />
+      )}
 
-      {!error && data && holdings.length > 0 && tab === "trends" && trend && trend.points.length > 0 && (
+      {data && holdings.length > 0 && tab === "trends" && trend && trend.points.length > 0 && (
         <TrendsView trend={trend} />
       )}
 
-      {!error && data && holdings.length > 0 && tab === "overview" && (
+      {data && holdings.length > 0 && tab === "overview" && (
         <>
           <Card style={styles.card}>
-            <AppText size="xs" weight="semibold" color="inkDim" style={styles.caps}>TOTAL VALUE</AppText>
+            <Caps>Total value</Caps>
             <Money value={data.totals.current} weight="black" size="xl" />
             {(() => {
               const pct = returnPct(data.totals.invested, data.totals.gain);
               return (
                 <AppText size="sm" weight="bold" color={gainColor(data.totals.gain)} style={styles.heroDelta}>
-                  {gainStr(data.totals.gain)}{pct !== null ? ` (${pct >= 0 ? "+" : ""}${Math.round(pct)}%)` : ""} all time
+                  {gainStr(data.totals.gain)}{pct !== null ? ` (${returnStr(pct)})` : ""} all time
                 </AppText>
               );
             })()}
@@ -212,9 +204,9 @@ const InvestmentsScreen = () => {
               </AppText>
             )}
             <View style={styles.split}>
-              <View style={styles.splitCell}><AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>Invested</AppText><Money value={data.totals.invested} weight="black" size="sm" /></View>
+              <View style={styles.splitCell}><Caps>Invested</Caps><Money value={data.totals.invested} weight="black" size="sm" /></View>
               <View style={styles.splitDivider} />
-              <View style={styles.splitCell}><AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>Current</AppText><Money value={data.totals.current} weight="black" size="sm" /></View>
+              <View style={styles.splitCell}><Caps>Current</Caps><Money value={data.totals.current} weight="black" size="sm" /></View>
             </View>
           </Card>
 
@@ -228,7 +220,7 @@ const InvestmentsScreen = () => {
                 <Icon name="date" size={16} containerSize={38} containerRadius={12} container="square" gradient="blue" />
                 <View style={styles.holdInfo}>
                   <AppText size="sm" weight="bold" numberOfLines={1}>
-                    {undated.length === 1 ? `Add when ${undated[0].name} started` : `Add start dates to ${undated.length} holdings`}
+                    {undated.length === 1 ? `Add when ${undated[0].name} started` : `Add start dates to ${count(undated.length, "holding")}`}
                   </AppText>
                   <AppText size="xs" color="inkDim">To see yearly returns</AppText>
                 </View>
@@ -239,7 +231,7 @@ const InvestmentsScreen = () => {
 
           {donutSlices.length > 1 && (
             <Card style={styles.card}>
-              <AppText size="xs" weight="semibold" color="inkDim" style={styles.caps}>ALLOCATION</AppText>
+              <Caps>Allocation</Caps>
               <View style={styles.allocRow}>
                 <DonutChart
                   data={donutSlices}
@@ -247,16 +239,13 @@ const InvestmentsScreen = () => {
                   centerValue={data.totals.current}
                   size={150}
                   thickness={22}
+                  summaryTitle="Allocation"
                 />
-                <View style={styles.legend}>
-                  {donutSlices.map((s) => (
-                    <View key={s.id} style={styles.legendRow}>
-                      <View style={[styles.swatch, { backgroundColor: s.color }]} />
-                      <AppText size="sm" weight="semibold" numberOfLines={1} style={styles.legendName}>{s.name}</AppText>
-                      <AppText size="xs" weight="bold" color="inkDim">{Math.round(s.pct)}%</AppText>
-                    </View>
-                  ))}
-                </View>
+                <ChartLegend
+                  layout="column"
+                  style={styles.legend}
+                  items={donutSlices.map((s) => ({ label: s.name, color: s.color, value: formatPct(s.pct) }))}
+                />
               </View>
             </Card>
           )}
@@ -264,12 +253,12 @@ const InvestmentsScreen = () => {
           <Card style={styles.card}>
             <View style={styles.split}>
               <View style={styles.splitCell}>
-                <AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>Invested this month</AppText>
+                <Caps>Invested this month</Caps>
                 <Money value={data.thisMonth.contributed} weight="black" size="sm" />
               </View>
               <View style={styles.splitDivider} />
               <View style={styles.splitCell}>
-                <AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>Portfolio this month</AppText>
+                <Caps>Portfolio this month</Caps>
                 <AppText size="sm" weight="black" color={gainColor(data.thisMonth.portfolioChange)}>
                   {gainStr(data.thisMonth.portfolioChange)}
                 </AppText>
@@ -277,7 +266,7 @@ const InvestmentsScreen = () => {
             </View>
             {data.thisMonth.income > 0 && data.thisMonth.contributed > 0 && (
               <AppText size="xs" color="inkDim" style={styles.rateNote}>
-                You invested {Math.round((data.thisMonth.contributed / data.thisMonth.income) * 100)}% of the {formatMoney(data.thisMonth.income)} income you logged this month.
+                You invested {formatPct(percentOf(data.thisMonth.contributed, data.thisMonth.income))} of the {formatMoney(data.thisMonth.income)} income you logged this month.
               </AppText>
             )}
           </Card>
@@ -295,7 +284,7 @@ const InvestmentsScreen = () => {
                   <AppText size="xs" color="inkDim">{byYear ? "Your strongest holding, per year" : "Your strongest holding"}</AppText>
                 </View>
                 <AppText size="sm" weight="black" color="success">
-                  {byYear ? `+${best.value.toFixed(1)}% a year` : `+${Math.round(best.value)}%`}
+                  {byYear ? `${returnStr(best.value)} a year` : returnStr(best.value)}
                 </AppText>
               </Card>
             </PressableScale>
@@ -308,7 +297,7 @@ const InvestmentsScreen = () => {
             return (
               <View key={group.kind}>
                 <View style={styles.groupHead}>
-                  <GroupLabel>{group.kind}</GroupLabel>
+                  <Caps style={styles.groupLabel}>{group.kind}</Caps>
                   <AppText size="xs" weight="bold" color={gain !== 0 ? gainColor(gain) : "inkDim"}>
                     {formatMoney(subtotal)}{gain !== 0 ? ` · ${gainStr(gain)}` : ""}
                   </AppText>
@@ -329,7 +318,7 @@ const InvestmentsScreen = () => {
           {sipBills.length > 0 && (
             <View>
               <View style={styles.groupHead}>
-                <GroupLabel>Recurring</GroupLabel>
+                <Caps style={styles.groupLabel}>Recurring</Caps>
                 <AppText size="xs" weight="bold" color="inkDim">SIPs</AppText>
               </View>
               <Card style={styles.card}>
@@ -364,41 +353,27 @@ const InvestmentsScreen = () => {
           </View>
         </>
       )}
+      </ScreenStates>
 
-      <EditAccountSheet ref={newRef} account={null} defaultType="investment" onSaved={afterChange} />
+      <EditAccountSheet ref={newRef} account={null} defaultType="investment" />
       <InvestmentsExportSheet ref={exportRef} />
-      <RevalueSheet ref={revalueRef} holdings={holdings} onSaved={afterChange} />
+      <RevalueSheet ref={revalueRef} holdings={holdings} />
     </ScreenScaffold>
   );
 };
 
 const styles = StyleSheet.create({
-  head: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  headTitle: { flex: 1 },
-  iconBtn: {
-    width: 34, height: 34, borderRadius: radius.full, alignItems: "center", justifyContent: "center",
-    backgroundColor: colors.glass, borderWidth: 1, borderColor: colors.glassBorder,
-  },
-  newBtn: {
-    flexDirection: "row", alignItems: "center", gap: 4,
-    height: 34, paddingHorizontal: 12, borderRadius: radius.full,
-    backgroundColor: colors.glass, borderWidth: 1, borderColor: colors.glassBorder,
-  },
   card: { gap: spacing.sm },
-  caps: { letterSpacing: 1, textTransform: "uppercase" },
   rateNote: { marginTop: spacing.xs, lineHeight: 17 },
   heroDelta: { marginTop: 2 },
   split: { flexDirection: "row", marginTop: spacing.xs },
   splitCell: { flex: 1, gap: 3 },
   splitDivider: { width: 1, backgroundColor: colors.line, marginHorizontal: spacing.md },
   allocRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  legend: { flex: 1, gap: 8 },
-  legendRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  swatch: { width: 10, height: 10, borderRadius: 3 },
-  legendName: { flex: 1 },
+  legend: { flex: 1 },
   perfCard: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   groupHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginBottom: spacing.sm },
-  groupLabel: { letterSpacing: 1, paddingHorizontal: 2 },
+  groupLabel: { paddingHorizontal: 2 },
   holdRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.lineSoft },
   holdInfo: { flex: 1, gap: 2 },
   holdRight: { alignItems: "flex-end", gap: 2 },

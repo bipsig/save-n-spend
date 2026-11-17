@@ -1,12 +1,15 @@
 import { StyleSheet, View } from "react-native";
 import Card from "./Card";
 import { AppText } from "../ui/AppText";
+import Caps from "../ui/Caps";
 import Icon from "../ui/Icon";
 import PressableScale from "../ui/PressableScale";
 import Button from "../ui/Button";
 import Money from "../ui/Money";
 import ForecastLine from "../charts/ForecastLine";
-import formatMoney, { usePrivacyMask } from "@/lib/money";
+import formatMoney, { formatRemaining, usePrivacyMask } from "@/lib/money";
+import { count } from "@/lib/format/count";
+import { formatCalendar } from "@/lib/format/date";
 import type { SafeToSpendForecast } from "@/lib/forecast";
 
 type Props = {
@@ -42,9 +45,7 @@ const SafeToSpendCard = ({ hasBudgets, safeToSpend, budgetRemaining, billsOwed, 
         <View style={styles.topContainer}>
           <Icon name="wallet" size={22} containerSize={47} container="square" gradient="violet" />
           <View style={styles.titleCol}>
-            <AppText size="xs" weight="semibold" color="inkDim" style={styles.label}>
-              SAFE TO SPEND
-            </AppText>
+            <Caps>Safe to spend</Caps>
             <AppText size="md" weight="black" color="inkSecondary">No budget set</AppText>
           </View>
         </View>
@@ -57,7 +58,7 @@ const SafeToSpendCard = ({ hasBudgets, safeToSpend, budgetRemaining, billsOwed, 
   }
 
   // Not clamped at zero — a negative figure is the honest signal this card exists to
-  // give, the same way budgetTotals's own "Over Budget" status is never floored either.
+  // give, the same way budgetTotals's own "Over budget" status is never floored either.
   const overNow = safeToSpend < 0;
   // Negative for one of two reasons, and they read differently. Spending already past the
   // budgets is "Over budget". Budgets intact but the bills still due add up to more than is
@@ -79,15 +80,18 @@ const SafeToSpendCard = ({ hasBudgets, safeToSpend, budgetRemaining, billsOwed, 
   const heroValue = daysLeft > 0 ? dailySafeToSpend : safeToSpend;
 
   const runsShortLabel = forecast?.goesNegativeOn
-    ? ` Projected to run short around ${new Date(forecast.goesNegativeOn).toLocaleDateString("en-IN", { day: "numeric", month: "long" })}.`
+    // A calendar day (UTC midnight of the account-zone day, see lib/forecast), so never shifted.
+    ? ` Projected to run short around ${formatCalendar(new Date(forecast.goesNegativeOn), "dayLong")}.`
     : "";
 
   // Stated in words, not just drawn: this is the one thing a screen reader has no other
   // way to get, since the forecast line's SVG path carries no accessibility of its own.
+  // "Tight later this month" already names the month.
+  const verdictMonth = verdict.endsWith("this month") ? verdict.toLowerCase() : `${verdict.toLowerCase()} this month`;
   const label = (daysLeft > 0
-    ? `Safe to spend: ${formatMoney(Math.abs(heroValue))} a day, ${verdict.toLowerCase()} this month.`
-    : `Safe to spend: ${formatMoney(Math.abs(heroValue))} left this month, ${verdict.toLowerCase()}.`)
-    + runsShortLabel + " Opens Budgets.";
+    ? `Safe to spend: ${formatMoney(heroValue)} a day, ${verdictMonth}.`
+    : `Safe to spend: ${formatRemaining(heroValue)} this month, ${verdict.toLowerCase()}.`)
+    + runsShortLabel + " Opens Budget.";
 
   return (
     <PressableScale
@@ -108,21 +112,18 @@ const SafeToSpendCard = ({ hasBudgets, safeToSpend, budgetRemaining, billsOwed, 
             gradient={tone}
           />
           <View style={styles.titleCol}>
-            <AppText size="xs" weight="semibold" color="inkDim" style={styles.label}>
-              SAFE TO SPEND
-            </AppText>
+            <Caps>Safe to spend</Caps>
             <AppText size="lg" weight="black">{verdict}</AppText>
           </View>
           <View style={styles.score}>
             <Money
-              value={Math.abs(heroValue)}
-              prefix={overNow ? "− " : ""}
+              value={heroValue}
               size="xl"
               weight="black"
               color={overspent ? "danger" : overNow ? "warning" : "ink"}
             />
             {daysLeft > 0 && (
-              <AppText size="xs" weight="semibold" color="inkDim">/day</AppText>
+              <AppText size="xs" weight="semibold" color="inkDim">a day</AppText>
             )}
           </View>
         </View>
@@ -139,7 +140,7 @@ const SafeToSpendCard = ({ hasBudgets, safeToSpend, budgetRemaining, billsOwed, 
           {billsAhead
             ? `${formatMoney(billsOwed)} of bills still due — ${formatMoney(Math.abs(safeToSpend))} more than your budgets have left`
             : daysLeft > 0
-              ? `${formatMoney(Math.abs(safeToSpend))} ${overNow ? "over" : "left"} this month · ${daysLeft} day${daysLeft === 1 ? "" : "s"} to go`
+              ? `${formatRemaining(safeToSpend)} this month · ${count(daysLeft, "day")} to go`
               : "The month is over — this is what's left."}
         </AppText>
       </Card>
@@ -159,9 +160,6 @@ const styles = StyleSheet.create({
   titleCol: {
     flex: 1,
     gap: 3,
-  },
-  label: {
-    letterSpacing: 1,
   },
   score: {
     alignItems: "flex-end",

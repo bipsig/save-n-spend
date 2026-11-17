@@ -1,39 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
 import type { ReviewPayload, ReviewPeriod } from "@save-n-spend/types";
-import { get } from "@/lib/api";
 import { rangeBounds, rangeNavLabel } from "@/lib/dateRange";
-import { useSession } from "@/store/session";
+import { useApiQuery } from "@/lib/query/useApiQuery";
 
 // GET /reviews?period=&offset= — computed on demand, same shape as useHealthScore/
 // useDashboardSummary. `offset` must be -1 or older (a review is a CLOSED period; the
 // server rejects 0).
-export const useReview = (period: ReviewPeriod, offset: number) => {
-  const status = useSession((s) => s.status);
-  const [data, setData] = useState<ReviewPayload | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const refetch = useCallback(async () => {
-    if (useSession.getState().status !== "authed") return;
-    setLoading(true);
-    setError(null);
-    try {
-      setData(await get<ReviewPayload>(`/reviews?period=${period}&offset=${offset}`));
-    }
-    catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load");
-    }
-    finally {
-      setLoading(false);
-    }
-  }, [period, offset]);
-
-  useEffect(() => {
-    if (status === "authed") void refetch();
-  }, [status, refetch]);
-
-  return { data, loading, error, refetch };
-};
+export const useReview = (period: ReviewPeriod, offset: number, enabled = true) =>
+  useApiQuery<ReviewPayload>(enabled ? `/reviews?period=${period}&offset=${offset}` : null);
 
 /** The "YYYY-MM-DD" a period's own start falls on — reused as a stable key: two calls
  *  with the same period/offset always agree, and it doubles as something a human could

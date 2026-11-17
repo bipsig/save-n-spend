@@ -1,9 +1,12 @@
 import { StyleSheet, View } from "react-native";
 import Card from "./Card";
 import { AppText } from "../ui/AppText";
+import Caps from "../ui/Caps";
 import PressableScale from "../ui/PressableScale";
 import { foldCategories, type Slice } from "@/lib/insights";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { count } from "@/lib/format/count";
+import { formatPct } from "@/lib/format/pct";
 import type { InsightsCategorySlice } from "@save-n-spend/types";
 
 const Bar = ({ slice }: { slice: Slice }) => (
@@ -15,7 +18,7 @@ const Bar = ({ slice }: { slice: Slice }) => (
       <View style={[styles.fill, { width: `${Math.max(slice.pct, 2)}%`, backgroundColor: slice.color }]} />
     </View>
     <AppText size="xs" weight="bold" color="inkDim">
-      {Math.round(slice.pct)}%
+      {formatPct(slice.pct)}
     </AppText>
   </View>
 );
@@ -37,21 +40,19 @@ const SpendingSnapshotCard = ({ byCategory, biggestExpense, onPress }: Props) =>
   if (byCategory.length === 0) return null;
 
   const top = foldCategories(byCategory, 3);
-  const label = `Where it went: ${top.map((s) => `${s.name} ${Math.round(s.pct)}%`).join(", ")}. Opens Insights.`;
+  const label = `Where it went: ${top.map((s) => `${s.name} ${formatPct(s.pct)}`).join(", ")}. Opens Insights.`;
 
   return (
     <PressableScale onPress={onPress} scaleTo={0.98} accessibilityRole="button" accessibilityLabel={label}>
       <Card style={styles.card}>
-        <AppText size="xs" weight="semibold" color="inkDim" style={styles.label}>
-          WHERE IT WENT
-        </AppText>
+        <Caps>Where it went</Caps>
         {top.map((slice) => (
           <Bar key={slice.id} slice={slice} />
         ))}
         {biggestExpense && (
           <AppText size="xs" color="inkDim" style={styles.biggest}>
             Biggest expense: <AppText size="xs" weight="bold" color="ink">{formatMoney(biggestExpense.amount)}</AppText>
-            {` · ${biggestExpense.title} · ${biggestExpense.daysAgo === 0 ? "today" : `${biggestExpense.daysAgo} day${biggestExpense.daysAgo === 1 ? "" : "s"} ago`}`}
+            {` · ${biggestExpense.title} · ${biggestExpense.daysAgo === 0 ? "today" : `${count(biggestExpense.daysAgo, "day")} ago`}`}
           </AppText>
         )}
       </Card>
@@ -62,9 +63,6 @@ const SpendingSnapshotCard = ({ byCategory, biggestExpense, onPress }: Props) =>
 const styles = StyleSheet.create({
   card: {
     gap: 10,
-  },
-  label: {
-    letterSpacing: 1,
   },
   barRow: {
     flexDirection: "row",

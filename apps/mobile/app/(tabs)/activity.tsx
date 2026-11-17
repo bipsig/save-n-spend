@@ -1,9 +1,10 @@
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from "react-native";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { ActivityIndicator, FlatList, StyleSheet, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { ITransaction } from "@save-n-spend/types";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
+import { useScreenRefresh } from "@/components/shell/ScreenRefresh";
 import GradientCard from "@/components/shell/GradientCard";
 import TransactionRow from "@/components/rows/TransactionRow";
 import TransactionDetailSheet from "@/components/sheets/TransactionDetailSheet";
@@ -11,9 +12,9 @@ import FailedTransactionSheet from "@/components/sheets/FailedTransactionSheet";
 import ActivityFiltersSheet, { TYPES, type TypeKey } from "@/components/sheets/ActivityFiltersSheet";
 import ExportSheet from "@/components/sheets/ExportSheet";
 import { AppText } from "@/components/ui/AppText";
+import Caps from "@/components/ui/Caps";
 import Search from "@/components/ui/Search";
 import Icon from "@/components/ui/Icon";
-import Button from "@/components/ui/Button";
 import PressableScale from "@/components/ui/PressableScale";
 import SegmentedControl from "@/components/ui/SegmentedControl";
 import PeriodNav from "@/components/ui/PeriodNav";
@@ -22,16 +23,19 @@ import EmptyState from "@/components/states/EmptyState";
 import ErrorState from "@/components/states/ErrorState";
 import SkeletonState from "@/components/states/SkeletonState";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { count } from "@/lib/format/count";
+import { screenTitles } from "@/data/menu";
 import { useCategories } from "@/lib/categories";
 import { useTransactionFeed, useTransactionSummary, useTripMatches, type TripMatches } from "@/lib/transactions";
 import { useTripName } from "@/store/tripNames";
 import { RANGES, rangeBounds, rangeLabel, rangeNavLabel, isRangeKey, type RangeKey } from "@/lib/dateRange";
-import { dayGroupLabel, monthGroupLabel } from "@/lib/date";
+import { dayHeaderLabel, monthHeaderLabel } from "@/lib/activityHeaders";
 import { dayKey, monthKeyOf, useAppZone } from "@/lib/zone";
 import { useOutbox } from "@/store/outbox";
 import { usePendingDeletes } from "@/store/pendingDeletes";
 import { colors, radius, spacing } from "@/theme";
 import { signTone } from "@/lib/signTone";
+import { screenView } from "@/lib/screenStates";
 
 // A flat feed row is either a transaction or a group header injected between days
 // (and a heavier month break when the list spans months).
@@ -41,17 +45,15 @@ type ListRow =
   | { kind: "txn"; key: string; tx: ITransaction; pending: boolean; failed: boolean };
 
 const DayHeader = ({ label }: { label: string }) => (
-  <AppText size="xs" weight="bold" color="inkDim" style={styles.dayHeader}>
+  <Caps header style={styles.dayHeader}>
     {label}
-  </AppText>
+  </Caps>
 );
 
 const MonthDivider = ({ label }: { label: string }) => (
   <View style={styles.monthDivider}>
     <View style={styles.monthLine} />
-    <AppText size="xs" weight="black" color="inkDim" style={styles.monthLabel}>
-      {label}
-    </AppText>
+    <Caps header>{label}</Caps>
     <View style={styles.monthLine} />
   </View>
 );
@@ -84,14 +86,12 @@ const SummaryCard = ({
 
   return (
     <GradientCard gradient="brand" style={styles.summary}>
-      <AppText color="inkDim" size="xs" weight="semibold" style={styles.summaryLabel}>
-        {label}
-      </AppText>
+      <Caps>{label}</Caps>
 
       <View style={styles.summaryRow}>
         <View style={styles.summaryCol}>
           <AppText color="inkDim" size="xs">
-            Total Income
+            Total income
           </AppText>
           <AppText size="lg" weight="black">
             {money(income)}
@@ -100,7 +100,7 @@ const SummaryCard = ({
 
         <View style={[styles.summaryCol, styles.summaryColRight]}>
           <AppText color="inkDim" size="xs">
-            Total Expenses
+            Total expenses
           </AppText>
           <AppText size="lg" weight="black">
             {money(expense)}
@@ -112,7 +112,7 @@ const SummaryCard = ({
 
       <View style={styles.netRow}>
         <AppText color="inkDim" size="xs">
-          Net Savings
+          Net savings
         </AppText>
         <AppText size="lg" weight="black" color={blank ? "ink" : signTone(savings, { neutral: "ink" })}>
           {money(savings)}
@@ -120,7 +120,12 @@ const SummaryCard = ({
       </View>
 
       {!blank && !!tripExpenses && tripExpenses > 0 && (
-        <PressableScale onPress={onOpenTrips} scaleTo={0.98} style={styles.tripNote}>
+        <PressableScale
+          onPress={onOpenTrips}
+          scaleTo={0.98}
+          style={styles.tripNote}
+          accessibilityLabel={`Plus ${formatMoney(tripExpenses)} on trips, counted in savings. See trips`}
+        >
           <Icon name="flight" size={14} color="inkDim" />
           <AppText color="inkDim" size="xs" style={styles.tripNoteText}>
             {`Plus ${formatMoney(tripExpenses)} on trips · counted in savings`}
@@ -137,12 +142,12 @@ const SummaryCard = ({
 const TripMatchHint = ({ matches, onOpen }: { matches: TripMatches; onOpen: () => void }) => {
   const single = matches.tripIds.length === 1;
   const trip = useTripName(single ? matches.tripIds[0] : null);
-  const where = single ? (trip?.name ?? "a trip") : `${matches.tripIds.length} trips`;
+  const where = single ? (trip?.name ?? "a trip") : count(matches.tripIds.length, "trip");
   return (
     <PressableScale onPress={onOpen} scaleTo={0.98} style={styles.tripHint} accessibilityRole="button">
       <Icon name="flight" size={16} color="primary" />
       <AppText size="sm" weight="semibold" color="inkSecondary" style={styles.tripNoteText}>
-        {`${matches.count} ${matches.count === 1 ? "match" : "matches"} in ${where}`}
+        {`${count(matches.count, "match", "matches")} in ${where}`}
       </AppText>
       <Icon name="chevronRight" size={18} color="inkDim" />
     </PressableScale>
@@ -262,7 +267,6 @@ const ActivityScreen = () => {
   // Queued transactions waiting on this phone — merged into the rows below rather than
   // shown separately, so a quiet Tuesday with one offline entry still reads as one list.
   const pendingItems = useOutbox((s) => s.items);
-  const lastDrainedAt = useOutbox((s) => s.lastDrainedAt);
   const pendingByClientId = useMemo(
     () => new Map(pendingItems.map((item) => [item.clientId, item])),
     [pendingItems]
@@ -318,35 +322,18 @@ const ActivityScreen = () => {
       );
   }, [feed.items, pendingTransactions, pendingDeleteKeys]);
 
-  // Refresh on focus (e.g. returning from Add Transaction). The hooks already reload
-  // themselves when filters change.
-  const refresh = useRef<() => void>(() => {});
-  refresh.current = () => {
-    feed.refetch();
-    summary.refetch();
+  // The list is the screen: its rows (live, saved, or kept across a search) decide the state.
+  // The totals card shows a dash until its own answer lands, and a failed totals refresh
+  // shows the same strip as a failed list refresh.
+  const refetchAll = () => Promise.all([feed.refetch(), summary.refetch()]);
+  const states = {
+    hasData: feed.fetchedAt !== null,
+    error: feed.error ?? summary.error,
+    refetch: refetchAll,
+    refreshing: feed.refreshing || summary.refreshing,
+    fetchedAt: feed.fetchedAt !== null && summary.fetchedAt !== null ? Math.min(feed.fetchedAt, summary.fetchedAt) : feed.fetchedAt,
   };
-  useFocusEffect(useCallback(() => {
-    refresh.current();
-  }, []));
-
-  // A drain can land while this screen is already on-screen (reconnecting mid-browse),
-  // not only on the way back to it — the focus effect above wouldn't otherwise catch it.
-  useEffect(() => {
-    if (lastDrainedAt) refresh.current();
-  }, [lastDrainedAt]);
-
-  // Pull-to-refresh — its own state rather than `feed.loading`, which is also true for
-  // every ordinary filter change and would pop the pull spinner for those too.
-  const [refreshing, setRefreshing] = useState(false);
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    try {
-      await Promise.all([feed.refetch(), summary.refetch()]);
-    }
-    finally {
-      setRefreshing(false);
-    }
-  };
+  const refreshControl = useScreenRefresh(refetchAll);
 
   const openTransactionDetail = (transaction: ITransaction) => {
     setActiveTransaction(transaction);
@@ -375,11 +362,11 @@ const ActivityScreen = () => {
       const month = monthKeyOf(instant, zone);
       const day = dayKey(instant, zone);
       if (showMonths && month !== lastMonth) {
-        rows.push({ kind: "month", key: `m-${month}`, label: monthGroupLabel(tx.occurredAt as string) });
+        rows.push({ kind: "month", key: `m-${month}`, label: monthHeaderLabel(tx.occurredAt as string, zone) });
         lastMonth = month;
       }
       if (day !== lastDay) {
-        rows.push({ kind: "day", key: `d-${day}`, label: dayGroupLabel(tx.occurredAt as string) });
+        rows.push({ kind: "day", key: `d-${day}`, label: dayHeaderLabel(tx.occurredAt as string, zone) });
         lastDay = day;
       }
       const outboxEntry = tx.clientId ? pendingByClientId.get(tx.clientId) : undefined;
@@ -396,21 +383,13 @@ const ActivityScreen = () => {
 
   return (
     <ScreenScaffold
-      title="All Activity"
+      title={screenTitles.activity}
       scroll={false}
-      headerRight={
-        <Button
-          label="Export"
-          icon="download"
-          pill
-          size="sm"
-          variant="secondary"
-          onPress={() => exportRef.current?.present()}
-        />
-      }
+      states={states}
+      actions={[{ kind: "export", label: "Export activity", onPress: () => exportRef.current?.present() }]}
       floating={<Fab onPress={() => router.push("/add-transaction")} />}
     >
-      <SegmentedControl segments={RANGES} value={range} onChange={changeRange} />
+      <SegmentedControl segments={RANGES} value={range} onChange={changeRange} accessibilityLabel="Range" />
 
       {range !== "all" && (
         <PeriodNav
@@ -433,6 +412,7 @@ const ActivityScreen = () => {
           style={[styles.filterBtn, activeFilterCount > 0 && styles.filterBtnActive]}
           onPress={() => filtersRef.current?.present()}
           scaleTo={0.94}
+          accessibilityLabel={activeFilterCount > 0 ? `Filters, ${activeFilterCount} on` : "Filters"}
         >
           <Icon name="filter" size={19} color={activeFilterCount > 0 ? "primary" : "inkDim"} />
           {activeFilterCount > 0 && (
@@ -445,8 +425,8 @@ const ActivityScreen = () => {
         </PressableScale>
       </View>
 
-      {feed.error ? (
-        <ErrorState message={feed.error} onRetry={feed.refetch} />
+      {screenView({ hasData: states.hasData, error: feed.error }) === "error" ? (
+        <ErrorState message={feed.error ?? undefined} onRetry={feed.refetch} />
       ) : (
         <FlatList
           data={listData}
@@ -478,15 +458,7 @@ const ActivityScreen = () => {
           keyboardShouldPersistTaps="handled"
           onEndReached={feed.loadMore}
           onEndReachedThreshold={0.4}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
-              tintColor={colors.primary}
-              colors={[colors.primary]}
-              progressBackgroundColor="#1B1730"
-            />
-          }
+          refreshControl={refreshControl}
           ListHeaderComponent={
             <>
             <SummaryCard
@@ -514,7 +486,7 @@ const ActivityScreen = () => {
             feed.loadingMore ? <ActivityIndicator color={colors.primary} style={styles.footer} /> : null
           }
           ListEmptyComponent={
-            feed.loading ? (
+            !states.hasData ? (
               <View style={styles.skeletonCol}>
                 {Array.from({ length: 6 }).map((_, i) => (
                   <SkeletonState key={i} height={64} borderRadius={radius.md} />
@@ -546,7 +518,7 @@ const ActivityScreen = () => {
         />
       )}
 
-      <TransactionDetailSheet ref={detailRef} transaction={activeTransaction} onCommitted={refresh.current} />
+      <TransactionDetailSheet ref={detailRef} transaction={activeTransaction} />
       <FailedTransactionSheet
         ref={failedRef}
         error={activeFailed?.error ?? null}
@@ -581,7 +553,6 @@ const styles = StyleSheet.create({
     gap: spacing.md, // rhythm between rows and their day/month headers
   },
   dayHeader: {
-    letterSpacing: 1.3,
     paddingTop: spacing.xs,
   },
   monthDivider: {
@@ -595,9 +566,6 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 1,
     backgroundColor: "rgba(255,255,255,0.12)",
-  },
-  monthLabel: {
-    letterSpacing: 1.2,
   },
   skeletonCol: {
     gap: spacing.lg, // mirror the real list's row rhythm so the swap doesn't jump
@@ -648,9 +616,6 @@ const styles = StyleSheet.create({
   },
   summary: {
     gap: 12, // spec .hero gap × device scale
-  },
-  summaryLabel: {
-    letterSpacing: 1.2, // spec .lbl caps tracking
   },
   summaryRow: {
     flexDirection: "row",

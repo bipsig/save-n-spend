@@ -3,14 +3,17 @@ import { Modal, Platform, Pressable, StyleSheet, View } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import type { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { AppText } from "./AppText";
+import Caps from "./Caps";
 import Icon from "./Icon";
 import Button from "./Button";
 import PressableScale from "./PressableScale";
 import { colors } from "@/theme";
+import { formatCalendar, formatClock, localCalendar } from "@/lib/format/date";
 
 type Mode = "date" | "datetime";
 
 type Props = {
+  /** Sentence case; the capitals come from `Caps`. */
   label: string;
   value: Date;
   onChange: (date: Date) => void;
@@ -24,11 +27,9 @@ type Props = {
 // native picker's own Date, whose fields ARE what the user spun the wheels to. Reading
 // it in the account's zone would show a different day than the one just picked.
 // Crossing into the account's zone happens on the way out, in `toZonedDayISO`.
-const formatDate = (d: Date): string =>
-  d.toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" });
+const formatDate = (d: Date): string => formatCalendar(localCalendar(d), "dayYear");
 
-const formatTime = (d: Date): string =>
-  d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
+const formatTime = (d: Date): string => formatClock(d.getHours(), d.getMinutes());
 
 // Merge a picked time (hours/minutes) onto a picked date, so the datetime flow
 // keeps both halves instead of one clobbering the other.
@@ -78,12 +79,10 @@ const DateField = ({ label, value, onChange, minimumDate, maximumDate, mode = "d
   return (
     <>
       {/* Same squeeze as every other selrow it sits among in the add forms. */}
-      <PressableScale style={styles.row} onPress={open} scaleTo={0.98}>
+      <PressableScale style={styles.row} onPress={open} scaleTo={0.98} accessibilityLabel={`${label}, ${display}`}>
         <Icon name="date" size={18} color="inkDim" />
         <View style={styles.text}>
-          <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
-            {label}
-          </AppText>
+          <Caps>{label}</Caps>
           <AppText size="sm" weight="bold">
             {display}
           </AppText>
@@ -141,9 +140,6 @@ const styles = StyleSheet.create({
   text: {
     flex: 1,
     gap: 2,
-  },
-  label: {
-    letterSpacing: 1.3,
   },
   backdrop: {
     flex: 1,

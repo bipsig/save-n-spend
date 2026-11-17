@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import type { WeekdayHeatmapCell } from "@save-n-spend/types";
 import Card from "./Card";
 import { AppText } from "../ui/AppText";
+import Caps from "../ui/Caps";
 import PressableScale from "../ui/PressableScale";
 import WeekdayHeatmap from "../charts/WeekdayHeatmap";
 import { FOR_YOU_SLIDE_HEIGHT } from "./ForYouCarousel";
@@ -28,9 +29,7 @@ const WeekdayHeatmapSlide = ({ cells }: Props) => {
       accessibilityLabel={label}
     >
       <Card style={styles.card}>
-        <AppText size="xs" weight="semibold" color="inkDim" style={styles.label}>
-          SPENDING BY WEEKDAY
-        </AppText>
+        <Caps>Spending by weekday</Caps>
         <WeekdayHeatmap cells={cells} />
         {busiest && (
           <AppText size="xs" color="inkDim">
@@ -46,9 +45,6 @@ const styles = StyleSheet.create({
   card: {
     gap: 12,
     minHeight: FOR_YOU_SLIDE_HEIGHT,
-  },
-  label: {
-    letterSpacing: 1,
   },
 });
 

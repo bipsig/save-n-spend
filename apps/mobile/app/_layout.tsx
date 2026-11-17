@@ -17,6 +17,7 @@ import AppLockGate from "@/components/shell/AppLockGate";
 import PeekBar from "@/components/shell/PeekBar";
 import Toast from "@/components/shell/Toast";
 import KeyboardDoneBar from "@/components/ui/KeyboardDoneBar";
+import { ServerWakingAnnouncer } from "@/components/ui/ServerWakingStrip";
 import WakeGate from "@/components/shell/WakeGate";
 import WhatsNewHost from "@/components/whatsNew/WhatsNewHost";
 import { ping, useWake } from "@/store/wake";
@@ -291,6 +292,7 @@ const RootLayout = () => {
               one instance serves every field. It draws nothing until a field that asks for
               it has focus. */}
           <KeyboardDoneBar />
+          <ServerWakingAnnouncer />
         </SafeAreaProvider>
       </QueryClientProvider>
     </GestureHandlerRootView>

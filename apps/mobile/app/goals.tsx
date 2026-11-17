@@ -1,7 +1,7 @@
-import { useCallback, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, { LinearTransition } from "react-native-reanimated";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { IGoal } from "@save-n-spend/types";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
@@ -9,13 +9,17 @@ import GradientCard from "@/components/shell/GradientCard";
 import ProgressBar from "@/components/data/ProgressBar";
 import GoalCard from "@/components/rows/GoalCard";
 import { AppText } from "@/components/ui/AppText";
-import Button from "@/components/ui/Button";
+import Caps from "@/components/ui/Caps";
 import EmptyState from "@/components/states/EmptyState";
-import ErrorState from "@/components/states/ErrorState";
+import ScreenStates from "@/components/states/ScreenStates";
 import SkeletonState from "@/components/states/SkeletonState";
 import ContributeSheet from "@/components/sheets/ContributeSheet";
 import ConfirmSheet from "@/components/sheets/ConfirmSheet";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { formatPct } from "@/lib/format/pct";
+import { count } from "@/lib/format/count";
+import { screenTitles } from "@/data/menu";
+import type { HeaderAction } from "@/lib/screenHeader";
 import { useGoals, goalsSummary, sortGoals, deleteGoal } from "@/lib/goals";
 import { toast } from "@/store/toast";
 import { pendingDeletes, usePendingDeletes } from "@/store/pendingDeletes";
@@ -24,20 +28,17 @@ import { radius, spacing } from "@/theme";
 const GoalsScreen = () => {
   usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
   const router = useRouter();
-  const { items: allItems, loading, error, refetch } = useGoals();
+  const goals = useGoals();
+  const state = { ...goals, hasData: goals.data !== null };
   // Hidden the instant delete is confirmed — the real DELETE only fires if the undo
   // grace window elapses undisturbed (see store/pendingDeletes.ts).
   const pendingKeys = usePendingDeletes((s) => s.keys);
-  const items = allItems.filter((g) => !pendingKeys.has(`goal:${g._id}`));
+  const items = goals.items.filter((g) => !pendingKeys.has(`goal:${g._id}`));
 
   const contributeRef = useRef<BottomSheetModal>(null);
   const deleteRef = useRef<BottomSheetModal>(null);
   const [active, setActive] = useState<IGoal | null>(null);
   const [removing, setRemoving] = useState<IGoal | null>(null);
-
-  useFocusEffect(useCallback(() => {
-    refetch();
-  }, [refetch]));
 
   const onPick = (goal: IGoal) => {
     setActive(goal);
@@ -50,42 +51,34 @@ const GoalsScreen = () => {
   };
 
   // Creating a goal is a full modal route, not a sheet — it needs the numpad and
-  // the icon/colour grids at full height. Focus-refetch picks up the new goal.
+  // the icon/colour grids at full height. Saving it refreshes this list (lib/query/invalidate.ts).
   const openCreate = () => router.push("/add-goal");
 
   // The same route, which loads the goal from its id — so editing gets the numpad and
   // the grids too, rather than a cut-down sheet that can only rename.
   const openEdit = (goal: IGoal) => router.push({ pathname: "/add-goal", params: { id: goal._id } });
 
-  const headerRight = (
-    <Button label="+ New Goal" pill size="sm" onPress={openCreate} />
-  );
-
-  if (error) {
-    return (
-      <ScreenScaffold title="Goals" headerRight={headerRight}>
-        <ErrorState message={error} onRetry={refetch} />
-      </ScreenScaffold>
-    );
-  }
-
-  if (loading && items.length === 0) {
-    return (
-      <ScreenScaffold title="Goals" headerRight={headerRight}>
-        <View style={styles.skeletonCol}>
-          {Array.from({ length: 4 }).map((_, i) => (
-            <SkeletonState key={i} height={92} borderRadius={radius.lg} />
-          ))}
-        </View>
-      </ScreenScaffold>
-    );
-  }
+  const header = {
+    title: screenTitles.goals,
+    back: true,
+    actions: [{ kind: "new", label: "New goal", onPress: openCreate }] satisfies HeaderAction[],
+  };
 
   const summary = goalsSummary(items);
   const sorted = sortGoals(items);
 
   return (
-    <ScreenScaffold title="Goals" headerRight={headerRight}>
+    <ScreenScaffold {...header} states={state}>
+      <ScreenStates
+        state={state}
+        skeleton={
+          <View style={styles.skeletonCol}>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <SkeletonState key={i} height={92} borderRadius={radius.lg} />
+            ))}
+          </View>
+        }
+      >
       {items.length === 0 ? (
         <EmptyState
           icon="savings"
@@ -97,15 +90,13 @@ const GoalsScreen = () => {
       ) : (
         <>
           <GradientCard style={styles.hero}>
-            <AppText size="xs" weight="bold" color="surface" style={styles.heroLabel}>
-              {`TOTAL SAVED · ${summary.count} ${summary.count === 1 ? "GOAL" : "GOALS"}`}
-            </AppText>
+            <Caps color="onGradientDim">{`Total saved · ${count(summary.count, "goal")}`}</Caps>
             <View style={styles.heroRow}>
               <AppText size="2xl" weight="black" color="surface">
                 {formatMoney(summary.totalSaved)}
               </AppText>
               <AppText size="lg" weight="black" color="surface">
-                {`${summary.percent}%`}
+                {formatPct(summary.percent)}
               </AppText>
             </View>
             <AppText size="sm" color="surface" style={styles.heroSub}>
@@ -128,8 +119,9 @@ const GoalsScreen = () => {
           ))}
         </>
       )}
+      </ScreenStates>
 
-      <ContributeSheet ref={contributeRef} goal={active} onChanged={refetch} />
+      <ContributeSheet ref={contributeRef} goal={active} onChanged={goals.refetch} />
 
       <ConfirmSheet
         ref={deleteRef}
@@ -144,13 +136,13 @@ const GoalsScreen = () => {
             : "The target goes and the card leaves this list. Nothing else changes."
         }
         confirmLabel="Delete goal"
+        needsConnection
         onConfirm={() => {
           if (!removing) return;
           const key = `goal:${removing._id}`;
           const name = removing.name;
           pendingDeletes.schedule(key, name, async (opts) => {
             await deleteGoal(removing._id, opts);
-            refetch();
           });
           toast.action("info", `${name} deleted`, {
             label: "Undo",
@@ -165,10 +157,6 @@ const GoalsScreen = () => {
 const styles = StyleSheet.create({
   hero: {
     gap: spacing.sm,
-  },
-  heroLabel: {
-    letterSpacing: 1.3,
-    opacity: 0.85,
   },
   heroRow: {
     flexDirection: "row",

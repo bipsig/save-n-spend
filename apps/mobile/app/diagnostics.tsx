@@ -1,16 +1,18 @@
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { goBackOrHome } from "@/lib/navigation";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
-import BackButton from "@/components/shell/BackButton";
 import Card from "@/components/data/Card";
+import Caps from "@/components/ui/Caps";
+import { StatRow } from "@/components/ui/StatTile";
 import SegmentedControl from "@/components/ui/SegmentedControl";
 import Chip from "@/components/ui/Chip";
 import Button from "@/components/ui/Button";
 import { AppText } from "@/components/ui/AppText";
 import EmptyState from "@/components/states/EmptyState";
-import { get } from "@/lib/api";
+import ScreenStates from "@/components/states/ScreenStates";
+import { useApiQuery } from "@/lib/query/useApiQuery";
 import {
   applyFilter, detailOf, formatMs, groupByTime, kindOf, labelOf, summarise,
   type DiagFilter, type DiagRow, type LogKind,
@@ -87,20 +89,12 @@ const DiagnosticsScreen = () => {
   const [view, setView] = useState<"phone" | "server">("phone");
   const [filter, setFilter] = useState<DiagFilter>("all");
   const local = useRequestLog((s) => s.entries);
-  const [server, setServer] = useState<ServerRow[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const loadServer = useCallback(async () => {
-    setError(null);
-    try {
-      setServer(await get<ServerRow[]>("/diagnostics/requests"));
-    }
-    catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't load the server log");
-    }
-  }, []);
-
-  useFocusEffect(useCallback(() => { if (view === "server") void loadServer(); }, [view, loadServer]));
+  const serverQuery = useApiQuery<ServerRow[]>(view === "server" ? "/diagnostics/requests" : null, { errorMessage: "Couldn't load the server log" });
+  const server = serverQuery.data;
+  // "This phone" is read from the device, so it has nothing to fetch, pull or fail.
+  const state = view === "server"
+    ? { ...serverQuery, hasData: server != null }
+    : { loading: false, error: null, hasData: true, refetch: () => {} };
 
   const rows: DiagRow[] = useMemo(() => (view === "phone"
     ? local.map((e) => ({ requestId: e.requestId, source: "api" as const, method: e.method, route: e.route, status: e.status, durationMs: e.durationMs, message: e.message ?? null, at: e.at }))
@@ -118,39 +112,26 @@ const DiagnosticsScreen = () => {
     ...(view === "server" ? [{ key: "app" as const, label: "App errors" }, { key: "notify" as const, label: "Notifications" }] : []),
   ];
 
-  const header = (
-    <View style={styles.head}>
-      <BackButton />
-      <AppText size="xl" weight="black" style={styles.headTitle}>Diagnostics</AppText>
-    </View>
-  );
-
   return (
-    <ScreenScaffold header={header} onRefresh={view === "server" ? loadServer : undefined}>
+    <ScreenScaffold title="Diagnostics" back states={view === "server" ? state : undefined}>
       <SegmentedControl
         segments={[{ key: "phone", label: "This phone" }, { key: "server", label: "Server" }]}
         value={view}
         onChange={(v) => { setView(v); setFilter("all"); }}
+        accessibilityLabel="Which log"
       />
 
       <Card style={styles.summary}>
-        <AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>
-          {view === "phone" ? "Today on this phone" : "Today on the server"}
-        </AppText>
-        <View style={styles.stats}>
-          <View style={styles.stat}>
-            <AppText size="xl" weight="black">{summary.calls}</AppText>
-            <AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>calls</AppText>
-          </View>
-          <View style={styles.stat}>
-            <AppText size="xl" weight="black" color={summary.failed ? "danger" : "ink"}>{summary.failed}</AppText>
-            <AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>failed</AppText>
-          </View>
-          <View style={styles.stat}>
-            <AppText size="xl" weight="black">{summary.typical !== null ? formatMs(summary.typical) : "—"}</AppText>
-            <AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>typical</AppText>
-          </View>
-        </View>
+        <Caps header>{view === "phone" ? "Today on this phone" : "Today on the server"}</Caps>
+        <StatRow
+          size="lg"
+          surface="plain"
+          items={[
+            { label: "Calls", text: String(summary.calls) },
+            { label: "Failed", text: String(summary.failed), tone: summary.failed ? "danger" : "ink" },
+            { label: "Typical", text: summary.typical !== null ? formatMs(summary.typical) : "—" },
+          ]}
+        />
         {summary.slowest && (
           <AppText size="xs" color="inkDim" style={styles.slow}>
             Slowest: <AppText size="xs" weight="bold" color="ink">{labelOf(summary.slowest).replace(/^Loaded /, "")} · {formatMs(summary.slowest.durationMs ?? 0)}</AppText>
@@ -165,22 +146,22 @@ const DiagnosticsScreen = () => {
         ))}
       </View>
 
-      {error && <AppText size="sm" color="danger">{error}</AppText>}
-
-      {groups.length === 0 ? (
-        <EmptyState
-          icon="receipt"
-          title={filter === "all" ? "Nothing yet" : "Nothing here"}
-          subtitle={filter !== "all" ? "No calls match this filter." : view === "phone" ? "Calls show up here as you use the app." : "Nothing logged for your account in the last 7 days."}
-        />
-      ) : groups.map((g) => (
-        <View key={g.label} style={styles.group}>
-          <AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>{g.label}</AppText>
-          <Card style={styles.card}>
-            {g.rows.map((row, i) => <TimelineRow key={`${row.requestId ?? "x"}-${i}`} row={row} />)}
-          </Card>
-        </View>
-      ))}
+      <ScreenStates state={state}>
+        {groups.length === 0 ? (
+          <EmptyState
+            icon="receipt"
+            title={filter === "all" ? "Nothing yet" : "Nothing here"}
+            subtitle={filter !== "all" ? "No calls match this filter." : view === "phone" ? "Calls show up here as you use the app." : "Nothing logged for your account in the last 7 days."}
+          />
+        ) : groups.map((g) => (
+          <View key={g.label} style={styles.group}>
+            <Caps header>{g.label}</Caps>
+            <Card style={styles.card}>
+              {g.rows.map((row, i) => <TimelineRow key={`${row.requestId ?? "x"}-${i}`} row={row} />)}
+            </Card>
+          </View>
+        ))}
+      </ScreenStates>
 
       <View style={styles.actions}>
         {/* Opens a screen that throws while rendering, to check the crash screen and that its
@@ -204,12 +185,7 @@ const DiagnosticsScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  head: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  headTitle: { flex: 1 },
-  caps: { letterSpacing: 1.2, textTransform: "uppercase" },
   summary: { gap: spacing.sm },
-  stats: { flexDirection: "row" },
-  stat: { flex: 1, gap: 1 },
   slow: { paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.07)" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   group: { gap: spacing.sm },

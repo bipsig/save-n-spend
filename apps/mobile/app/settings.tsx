@@ -2,7 +2,6 @@ import { useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
-import BackButton from "@/components/shell/BackButton";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import Card from "@/components/data/Card";
 import SettingsRow from "@/components/rows/SettingsRow";
@@ -16,12 +15,15 @@ import DayOfMonthSheet from "@/components/sheets/DayOfMonthSheet";
 import TimeZoneSheet from "@/components/sheets/TimeZoneSheet";
 import { AppText } from "@/components/ui/AppText";
 import Avatar from "@/components/ui/Avatar";
-import PressableScale from "@/components/ui/PressableScale";
-import Tag from "@/components/whatsNew/Tag";
+import Badge from "@/components/ui/Badge";
+import Caps from "@/components/ui/Caps";
+import IconButton from "@/components/ui/IconButton";
 import { useAccounts, useDefaultAccount } from "@/lib/accounts";
 import { exportBackup, pickBackupFile, restoreBackup, type PickedBackup } from "@/lib/backup";
 import { useCategories } from "@/lib/categories";
 import { formatFullDate } from "@/lib/date";
+import { count } from "@/lib/format/count";
+import { screenTitles } from "@/data/menu";
 import { lockCapability, authenticate } from "@/lib/lock";
 import { detachPush, registerForPush } from "@/lib/push";
 import {
@@ -31,6 +33,7 @@ import {
   updatePrefs,
 } from "@/lib/profile";
 import { zoneLabel } from "@/lib/timezones";
+import { NEEDS_CONNECTION, useOnlineGate } from "@/lib/onlineGate";
 import { zoneMatchesDevice } from "@/lib/zone";
 import { useAccountStore } from "@/store/accounts";
 import { useCategoryStore } from "@/store/categories";
@@ -41,13 +44,6 @@ import { APP_VERSION, useWhatsNewState } from "@/store/whatsNew";
 import { toast } from "@/store/toast";
 import { spacing } from "@/theme";
 import type { BillReminderLead } from "@save-n-spend/types";
-
-// Tiny caps group label (spec .flabel) — same treatment as the More hub's.
-const GroupLabel = ({ children }: { children: string }) => (
-  <AppText size="xs" weight="bold" color="inkDim" style={styles.groupLabel}>
-    {children}
-  </AppText>
-);
 
 // 1 → "1st", 2 → "2nd", 22 → "22nd". Only ever 1–28 here, but general anyway.
 const ordinal = (n: number): string => {
@@ -101,6 +97,11 @@ const SettingsScreen = () => {
   // store/outbox.ts) — real, but worth naming before someone signs out mid-flight and
   // wonders where a transaction went.
   const pendingSync = useOutbox((s) => s.items.length);
+
+  // Account settings are saved on the server and don't queue: offline those rows are locked
+  // and say why. Privacy mode, App Lock and Auto-lock live on the phone and stay usable.
+  const online = useOnlineGate(NEEDS_CONNECTION).allowed;
+  const needs = (sub?: string) => (online ? sub : NEEDS_CONNECTION);
 
   // Every account-level write goes through here, so one place owns the failure message.
   // Success is silent: each row prints the value it just saved, so a "Saved" banner would
@@ -169,10 +170,8 @@ const SettingsScreen = () => {
     }
   };
 
-  // Everything budgets/goals/bills need is picked up by their own screens'
-  // useFocusEffect the next time they're visited — only the two long-lived
-  // Zustand stores (accounts, categories) and the cached session user need an
-  // explicit refresh here.
+  // The restore's own write refreshes every query; only the two long-lived Zustand stores
+  // (accounts, categories) and the cached session user need an explicit refresh here.
   const handleRestore = async () => {
     if (!picked) return;
     const result = await restoreBackup(picked.payload);
@@ -189,16 +188,7 @@ const SettingsScreen = () => {
   const diagnostics = useSettings((s) => s.diagnostics);
 
   return (
-    <ScreenScaffold
-      header={
-        <View style={styles.head}>
-          <BackButton />
-          <AppText size="xl" weight="black">
-            Settings
-          </AppText>
-        </View>
-      }
-    >
+    <ScreenScaffold title={screenTitles.settings} back>
       {/* Profile card — the profile surface lives here, one tap from Edit. */}
       <Card style={styles.profileCard}>
         <Avatar initials={initialsOf(user?.name)} size="lg" gradient />
@@ -210,20 +200,16 @@ const SettingsScreen = () => {
             {user?.email ?? ""}
           </AppText>
         </View>
-        <PressableScale
+        <IconButton
+          icon="edit"
           onPress={() => profileRef.current?.present()}
-          scaleTo={0.9}
-          hitSlop={8}
+          disabled={!online}
           accessibilityRole="button"
-          accessibilityLabel="Edit profile"
-        >
-          <AppText size="sm" weight="bold" color="primary">
-            Edit
-          </AppText>
-        </PressableScale>
+          accessibilityLabel={online ? "Edit profile" : "Edit profile, needs a connection"}
+        />
       </Card>
 
-      <GroupLabel>PREFERENCES</GroupLabel>
+      <Caps header style={styles.groupLabel}>Preferences</Caps>
       <Card padded={false} style={styles.group}>
         <SettingsRow
           kind="value"
@@ -231,6 +217,8 @@ const SettingsScreen = () => {
           icon="wallet"
           tint="blue"
           label="Default account"
+          sub={needs()}
+          locked={!online}
           value={defaultAccount?.name ?? "No default"}
           onPress={() => accountRef.current?.present()}
         />
@@ -242,7 +230,8 @@ const SettingsScreen = () => {
           icon="clock"
           tint="violet"
           label="Time zone"
-          sub={zoneMatchesDevice(prefs.timeZone) ? undefined : "Doesn't match this device"}
+          sub={needs(zoneMatchesDevice(prefs.timeZone) ? undefined : "Doesn't match this device")}
+          locked={!online}
           value={zoneLabel(prefs.timeZone)}
           onPress={() => zoneRef.current?.present()}
         />
@@ -268,7 +257,7 @@ const SettingsScreen = () => {
         />
       </Card>
 
-      <GroupLabel>NOTIFICATIONS</GroupLabel>
+      <Caps header style={styles.groupLabel}>Notifications</Caps>
       <Card padded={false} style={styles.group}>
         <SettingsRow
           kind="toggle"
@@ -276,7 +265,8 @@ const SettingsScreen = () => {
           icon="notificationsOn"
           tint="amber"
           label="Allow notifications"
-          sub="Reminders always appear under the bell — this controls the ones that reach your phone"
+          sub={needs("Reminders always appear under the bell — this controls the ones that reach your phone")}
+          locked={!online}
           on={notifications.enabled}
           onToggle={(next) => {
             setNotification({ enabled: next });
@@ -292,7 +282,9 @@ const SettingsScreen = () => {
           icon="alarm"
           tint="orange"
           label="Bill reminders"
-          value={`${notifications.billReminderLead} day${notifications.billReminderLead === 1 ? "" : "s"} before`}
+          value={`${count(notifications.billReminderLead, "day")} before`}
+          sub={needs()}
+          locked={!online}
           dimmed={!notifications.enabled}
           onPress={() => reminderRef.current?.present()}
         />
@@ -301,7 +293,8 @@ const SettingsScreen = () => {
           icon="insights"
           tint="violet"
           label="Budget alerts"
-          sub="At 80% and when a category goes over"
+          sub={needs("At 80% and when a category goes over")}
+          locked={!online}
           dimmed={!notifications.enabled}
           on={notifications.budgetAlerts}
           onToggle={(next) => setNotification({ budgetAlerts: next })}
@@ -311,7 +304,8 @@ const SettingsScreen = () => {
           icon="flag"
           tint="green"
           label="Goal milestones"
-          sub="At 25 / 50 / 75 / 100%"
+          sub={needs("At 25 / 50 / 75 / 100%")}
+          locked={!online}
           dimmed={!notifications.enabled}
           on={notifications.goalMilestones}
           onToggle={(next) => setNotification({ goalMilestones: next })}
@@ -327,7 +321,8 @@ const SettingsScreen = () => {
           icon="summary"
           tint="teal"
           label="Daily summary"
-          sub="Yesterday's spending, each evening"
+          sub={needs("Yesterday's spending, each evening")}
+          locked={!online}
           dimmed={!notifications.enabled}
           on={notifications.dailySummary}
           onToggle={(next) => setNotification({ dailySummary: next })}
@@ -337,7 +332,8 @@ const SettingsScreen = () => {
           icon="summary"
           tint="teal"
           label="Weekly summary"
-          sub="The week just gone, every Monday"
+          sub={needs("The week just gone, every Monday")}
+          locked={!online}
           dimmed={!notifications.enabled}
           on={notifications.weeklySummary}
           onToggle={(next) => setNotification({ weeklySummary: next })}
@@ -347,7 +343,8 @@ const SettingsScreen = () => {
           icon="summary"
           tint="teal"
           label="Monthly summary"
-          sub="Last month on the 1st, with your biggest category"
+          sub={needs("Last month on the 1st, with your biggest category")}
+          locked={!online}
           dimmed={!notifications.enabled}
           on={notifications.monthlySummary}
           onToggle={(next) => setNotification({ monthlySummary: next })}
@@ -357,7 +354,8 @@ const SettingsScreen = () => {
           icon="investments"
           tint="teal"
           label="Investment updates"
-          sub="A monthly nudge to update what your investments are worth"
+          sub={needs("A monthly nudge to update what your investments are worth")}
+          locked={!online}
           dimmed={!notifications.enabled}
           on={notifications.investmentReminder}
           onToggle={(next) => setNotification({ investmentReminder: next })}
@@ -368,12 +366,14 @@ const SettingsScreen = () => {
           tint="violet"
           label="Reminder day"
           value={`${ordinal(notifications.investmentReminderDay)} of the month`}
+          sub={needs()}
+          locked={!online}
           dimmed={!notifications.enabled || !notifications.investmentReminder}
           onPress={() => investmentDayRef.current?.present()}
         />
       </Card>
 
-      <GroupLabel>SECURITY</GroupLabel>
+      <Caps header style={styles.groupLabel}>Security</Caps>
       <Card padded={false} style={styles.group}>
         <SettingsRow
           kind="toggle"
@@ -399,18 +399,20 @@ const SettingsScreen = () => {
           icon="key"
           tint="blue"
           label="Change password"
+          sub={needs()}
+          locked={!online}
           onPress={() => passwordRef.current?.present()}
         />
       </Card>
 
-      <GroupLabel>DATA</GroupLabel>
+      <Caps header style={styles.groupLabel}>Data</Caps>
       <Card padded={false} style={styles.group}>
         <SettingsRow
           kind="value"
           first
           icon="category"
           tint="pink"
-          label="Manage categories"
+          label={screenTitles.categories}
           value={String(categories.length)}
           onPress={() => router.push("/manage-categories")}
         />
@@ -418,7 +420,7 @@ const SettingsScreen = () => {
           kind="value"
           icon="bank"
           tint="blue"
-          label="Manage accounts"
+          label={screenTitles.accounts}
           value={String(accounts.length)}
           onPress={() => router.push("/manage-accounts")}
         />
@@ -435,21 +437,22 @@ const SettingsScreen = () => {
           icon="cloudBackup"
           tint="indigo"
           label="Backup data"
-          sub="A full copy you can restore from later"
+          sub={needs("A full copy you can restore from later")}
+          locked={!online}
           value={backingUp ? "…" : "JSON"}
           dimmed={backingUp}
           onPress={() => void handleBackup()}
         />
       </Card>
 
-      <GroupLabel>ABOUT</GroupLabel>
+      <Caps header style={styles.groupLabel}>About</Caps>
       <Card padded={false} style={styles.group}>
         <SettingsRow
           kind="nav"
           first
           icon="help"
           tint="amber"
-          label="Help & FAQ"
+          label={screenTitles.help}
           onPress={() => router.push("/help")}
         />
         <SettingsRow
@@ -465,7 +468,7 @@ const SettingsScreen = () => {
           tint="violet"
           label="What's new"
           value={APP_VERSION}
-          tag={showNewTag ? <Tag label="NEW" /> : undefined}
+          tag={showNewTag ? <Badge size="sm" tone="neutral" label="New" /> : undefined}
           onPress={() => router.push("/whats-new")}
         />
         {diagnostics && (
@@ -493,14 +496,16 @@ const SettingsScreen = () => {
           kind="danger"
           icon="delete"
           label="Delete account"
-          sub="Signs you out and stops all reminders"
+          sub={needs("Signs you out and stops all reminders")}
+          locked={!online}
           onPress={() => deleteRef.current?.present()}
         />
         <SettingsRow
           kind="danger"
           icon="restore"
           label="Restore from backup"
-          sub="Replaces everything currently in the app — cannot be undone"
+          sub={needs("Replaces everything currently in the app — cannot be undone")}
+          locked={!online}
           onPress={() => void handlePickBackup()}
         />
       </Card>
@@ -564,7 +569,7 @@ const SettingsScreen = () => {
         title="Log out?"
         body={
           pendingSync > 0
-            ? `${pendingSync} transaction${pendingSync === 1 ? "" : "s"} haven't synced yet — they'll sync once you're signed back in. Your data stays on the server. You'll need your password to sign back in.`
+            ? `${count(pendingSync, "transaction")} ${pendingSync === 1 ? "hasn't" : "haven't"} synced yet — they'll sync once you're signed back in. Your data stays on the server. You'll need your password to sign back in.`
             : "Your data stays on the server. You'll need your password to sign back in."
         }
         confirmLabel="Log out"
@@ -585,6 +590,7 @@ const SettingsScreen = () => {
         body="You'll be signed out and we'll stop sending you reminders. Nothing is erased — sign in again with the same email and password and every transaction, budget, bill, goal, and account comes back as it was."
         confirmLabel="Delete my account"
         hold
+        needsConnection
         onConfirm={deleteAccount}
       />
 
@@ -594,11 +600,12 @@ const SettingsScreen = () => {
         title="Restore this backup?"
         body={
           picked
-            ? `This replaces every account, transaction, budget, bill, and goal currently in the app with the backup from ${formatFullDate(picked.exportedAt)} — ${picked.counts.transactions} transaction${picked.counts.transactions === 1 ? "" : "s"} across ${picked.counts.accounts} account${picked.counts.accounts === 1 ? "" : "s"}. This cannot be undone.`
+            ? `This replaces every account, transaction, budget, bill, and goal currently in the app with the backup from ${formatFullDate(picked.exportedAt)} — ${count(picked.counts.transactions, "transaction")} across ${count(picked.counts.accounts, "account")}. This cannot be undone.`
             : ""
         }
         confirmLabel="Restore"
         hold
+        needsConnection
         onConfirm={handleRestore}
       />
     </ScreenScaffold>
@@ -606,11 +613,6 @@ const SettingsScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  head: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
   profileCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -621,7 +623,6 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   groupLabel: {
-    letterSpacing: 1.5, // spec .flabel tracking
     paddingHorizontal: 2,
     marginTop: spacing.xs,
   },

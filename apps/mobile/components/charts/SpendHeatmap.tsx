@@ -2,6 +2,7 @@ import { StyleSheet, View } from "react-native";
 import { AppText } from "@/components/ui/AppText";
 import PressableScale from "@/components/ui/PressableScale";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { count } from "@/lib/format/count";
 import type { HeatCell, Heatmap } from "@/lib/insights";
 
 type Props = {
@@ -102,7 +103,7 @@ const SpendHeatmap = ({ heatmap, active, onSelect }: Props) => {
       ) : (
         <AppText size="xs" color="inkDim">
           {busiest
-            ? `Heaviest day ${formatMoney(busiest.amount)} · ${clearDays} clear day${clearDays === 1 ? "" : "s"}`
+            ? `Heaviest day ${formatMoney(busiest.amount)} · ${count(clearDays, "clear day")}`
             : "Nothing spent in this window"}
         </AppText>
       )}

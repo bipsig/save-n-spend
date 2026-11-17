@@ -5,6 +5,7 @@ import type { TripMemberBalance } from "@save-n-spend/types";
 import AppSheet from "./AppSheet";
 import AccountPickerSheet from "./AccountPickerSheet";
 import { AppText } from "@/components/ui/AppText";
+import Caps from "@/components/ui/Caps";
 import AmountHeroInput from "@/components/ui/AmountHeroInput";
 import Button from "@/components/ui/Button";
 import Icon from "@/components/ui/Icon";
@@ -16,12 +17,14 @@ import { settleTrip } from "@/lib/trips";
 import { holderFor } from "@/lib/idempotency";
 import { toast } from "@/store/toast";
 import { spacing } from "@/theme";
+import { useOnlineGate } from "@/lib/onlineGate";
 
 type Props = {
   tripId: string;
   /** The person being settled with, and where things stand. */
   member: TripMemberBalance | null;
-  onSaved: () => void;
+  /** Optional: the write already refreshes the trip. */
+  onSaved?: () => void;
 };
 
 // Settling up with one person. The direction follows the balance — they owe you, so they're
@@ -32,6 +35,8 @@ const SettleSheet = forwardRef<BottomSheetModal, Props>(({ tripId, member, onSav
   usePrivacyMask();
   const innerRef = useRef<BottomSheetModal>(null);
   useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
+  // Needs the server: offline the button says so before the tap.
+  const gate = useOnlineGate("");
   const accountRef = useRef<BottomSheetModal>(null);
   const defaultAccount = useDefaultAccount();
 
@@ -64,7 +69,7 @@ const SettleSheet = forwardRef<BottomSheetModal, Props>(({ tripId, member, onSav
       await settleTrip(tripId, body, { idempotencyKey: idem.keyFor("POST", `/trips/${tripId}/settle`, body) });
       idem.reset();
       innerRef.current?.dismiss();
-      onSaved();
+      onSaved?.();
       toast.success(theyOwe ? `${member.name} paid you ${formatMoney(value)}` : `You paid ${member.name} ${formatMoney(value)}`);
     }
     catch (err) {
@@ -86,10 +91,16 @@ const SettleSheet = forwardRef<BottomSheetModal, Props>(({ tripId, member, onSav
               {theyOwe ? `${member.name} owes you ${formatMoney(owed)} on this trip.` : `You owe ${member.name} ${formatMoney(owed)} on this trip.`} Paying part of it is fine.
             </AppText>
             <AmountHeroInput value={amount} onChangeText={setAmount} />
-            <PressableScale style={styles.selRow} onPress={() => accountRef.current?.present()} scaleTo={0.98}>
+            <PressableScale
+              style={styles.selRow}
+              onPress={() => accountRef.current?.present()}
+              scaleTo={0.98}
+              accessibilityLabel={`${theyOwe ? "Received into" : "Paid from"}, ${account?.name ?? "no account yet"}`}
+              accessibilityHint="Picks the account"
+            >
               <Icon name="wallet" size={18} color="inkDim" />
               <View style={styles.grow}>
-                <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>{theyOwe ? "RECEIVED INTO" : "PAID FROM"}</AppText>
+                <Caps>{theyOwe ? "Received into" : "Paid from"}</Caps>
                 <AppText size="sm" weight="semibold">{account?.name ?? "Choose an account"}</AppText>
               </View>
               <Icon name="chevronRight" size={20} color="inkDim" />
@@ -99,7 +110,7 @@ const SettleSheet = forwardRef<BottomSheetModal, Props>(({ tripId, member, onSav
             )}
             <AppText size="xs" color="inkDim">Settling up isn't spending or income — it only moves money between you.</AppText>
             {error && <AppText size="sm" color="danger">{error}</AppText>}
-            <Button label={theyOwe ? "Record payment received" : "Record payment"} loading={busy} onPress={save} />
+            <Button label={!gate.allowed ? gate.label : theyOwe ? "Record payment received" : "Record payment"} icon={gate.icon} loading={busy} disabled={!gate.allowed} onPress={save} />
           </>
         )}
       </AppSheet>
@@ -112,7 +123,6 @@ SettleSheet.displayName = "SettleSheet";
 
 const styles = StyleSheet.create({
   grow: { flex: 1 },
-  label: { letterSpacing: 1.3 },
   selRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.13)", marginTop: spacing.xs },
 });
 

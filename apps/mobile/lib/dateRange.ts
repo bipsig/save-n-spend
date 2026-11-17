@@ -1,4 +1,6 @@
 import { appZone, calendarToday } from "@/lib/zone";
+import { formatCalendar } from "@/lib/format/date";
+import { formatSpan, relativePeriod } from "@/lib/format/period";
 
 // Time-range filter for the Activity feed. `all` means no bounds — the whole
 // history. `offset` slides the window back whole periods (0 = current, -1 =
@@ -26,12 +28,6 @@ export const RANGES: { key: RangeKey; label: string }[] = [
 /** For a range arriving as a navigation param, where anything could be in the string. */
 export const isRangeKey = (value: unknown): value is RangeKey =>
   typeof value === "string" && RANGES.some((r) => r.key === value);
-
-const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const MON_FULL = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
 
 const isoDate = (d: Date): string => d.toISOString().slice(0, 10);
 
@@ -77,11 +73,6 @@ export const rangeBounds = (key: RangeKey, offset = 0): RangeBounds => {
   }
 };
 
-const weekRange = (start: Date, end: Date): string =>
-  start.getUTCMonth() === end.getUTCMonth()
-    ? `${start.getUTCDate()}–${end.getUTCDate()} ${MON[end.getUTCMonth()]} ${end.getUTCFullYear()}`
-    : `${start.getUTCDate()} ${MON[start.getUTCMonth()]} – ${end.getUTCDate()} ${MON[end.getUTCMonth()]} ${end.getUTCFullYear()}`;
-
 // Concrete caps label for the summary card and exported report headers
 // ("AUGUST 2026", "4–10 AUG 2026", "2025", "ALL TIME").
 export const rangeLabel = (key: RangeKey, offset = 0): string => {
@@ -92,16 +83,15 @@ export const rangeLabel = (key: RangeKey, offset = 0): string => {
   switch (key) {
     case "day": {
       const dd = new Date(Date.UTC(y, m, d + offset));
-      return `${dd.getUTCDate()} ${MON[dd.getUTCMonth()]} ${dd.getUTCFullYear()}`.toUpperCase();
+      return formatCalendar(dd, "dayYear").toUpperCase();
     }
     case "week": {
       const start = weekStartDate(now, offset);
       const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate() + 6));
-      return weekRange(start, end).toUpperCase();
+      return formatSpan(start, end, { year: "always" }).toUpperCase();
     }
     case "month": {
-      const dd = new Date(Date.UTC(y, m + offset, 1));
-      return `${MON_FULL[dd.getUTCMonth()]} ${dd.getUTCFullYear()}`.toUpperCase();
+      return formatCalendar(new Date(Date.UTC(y, m + offset, 1)), "monthLong").toUpperCase();
     }
     case "year":
       return `${y + offset}`;
@@ -110,40 +100,29 @@ export const rangeLabel = (key: RangeKey, offset = 0): string => {
   }
 };
 
-// Friendly relative label for the period navigator ("This Month", "Last Week",
-// "Yesterday", "July 2026").
+// Friendly relative label for the period navigator, sentence case ("This month", "Last week",
+// "Yesterday", "July 2026", "26 Oct – 1 Nov").
 export const rangeNavLabel = (key: RangeKey, offset = 0): string => {
+  const named = relativePeriod(key, offset);
+  if (named) return named;
+
   const now = calendarToday(appZone());
   const y = now.getUTCFullYear();
   const m = now.getUTCMonth();
   const d = now.getUTCDate();
   switch (key) {
-    case "day": {
-      if (offset === 0) return "Today";
-      if (offset === -1) return "Yesterday";
-      const dd = new Date(Date.UTC(y, m, d + offset));
-      return `${dd.getUTCDate()} ${MON[dd.getUTCMonth()]}`;
-    }
+    case "day":
+      return formatCalendar(new Date(Date.UTC(y, m, d + offset)), "day");
     case "week": {
-      if (offset === 0) return "This Week";
-      if (offset === -1) return "Last Week";
       const start = weekStartDate(now, offset);
       const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate() + 6));
-      return start.getUTCMonth() === end.getUTCMonth()
-        ? `${start.getUTCDate()}–${end.getUTCDate()} ${MON[end.getUTCMonth()]}`
-        : `${start.getUTCDate()} ${MON[start.getUTCMonth()]} – ${end.getUTCDate()} ${MON[end.getUTCMonth()]}`;
+      return formatSpan(start, end);
     }
-    case "month": {
-      if (offset === 0) return "This Month";
-      if (offset === -1) return "Last Month";
-      const dd = new Date(Date.UTC(y, m + offset, 1));
-      return `${MON_FULL[dd.getUTCMonth()]} ${dd.getUTCFullYear()}`;
-    }
+    case "month":
+      return formatCalendar(new Date(Date.UTC(y, m + offset, 1)), "monthLong");
     case "year":
-      if (offset === 0) return "This Year";
-      if (offset === -1) return "Last Year";
       return `${y + offset}`;
     case "all":
-      return "All Time";
+      return "All time";
   }
 };

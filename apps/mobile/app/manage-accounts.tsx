@@ -1,27 +1,27 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { useFocusEffect } from "expo-router";
 import { GestureDetector } from "react-native-gesture-handler";
 import Animated, { LinearTransition } from "react-native-reanimated";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { AccountType, IAccount } from "@save-n-spend/types";
-import BackButton from "@/components/shell/BackButton";
-import PeekButton from "@/components/shell/PeekButton";
-import ReorderToggle from "@/components/shell/ReorderToggle";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import Card from "@/components/data/Card";
 import ManageRow from "@/components/rows/ManageRow";
 import ConfirmSheet from "@/components/sheets/ConfirmSheet";
 import EditAccountSheet from "@/components/sheets/EditAccountSheet";
 import { AppText } from "@/components/ui/AppText";
-import Button from "@/components/ui/Button";
+import Caps from "@/components/ui/Caps";
 import PressableScale from "@/components/ui/PressableScale";
 import DragList from "@/components/ui/DragList";
 import EmptyState from "@/components/states/EmptyState";
-import { ACCOUNT_GROUPS, archiveAccount, owedLine, reorderAccounts, useAccounts } from "@/lib/accounts";
+import ScreenStates from "@/components/states/ScreenStates";
+import { ACCOUNT_GROUPS, archiveAccount, reorderAccounts, useAccounts } from "@/lib/accounts";
 import { mergeSectionOrder } from "@/lib/accountOrder";
-import formatMoney, { usePrivacyMask } from "@/lib/money";
+import formatMoney, { formatBalance, usePrivacyMask } from "@/lib/money";
+import { screenTitles } from "@/data/menu";
 import { updatePrefs } from "@/lib/profile";
+import { useOnlineGate } from "@/lib/onlineGate";
+import { useStoreLoad } from "@/lib/useStoreLoad";
 import { useAccountStore } from "@/store/accounts";
 import { useSession } from "@/store/session";
 import { toast } from "@/store/toast";
@@ -83,13 +83,10 @@ const ManageAccountsScreen = () => {
   const editRef = useRef<BottomSheetModal>(null);
   const deleteRef = useRef<BottomSheetModal>(null);
 
-  // Balances move with every transaction, so a stale list here would show wrong
-  // money — refetch on focus like every other data screen.
-  useFocusEffect(
-    useCallback(() => {
-      void useAccountStore.getState().load();
-    }, [])
-  );
+  // The list lives in a store, not a query, so no write or focus rule refreshes it. Balances
+  // move with every transaction, so a stale list here would show wrong money.
+  const state = useStoreLoad(useAccountStore((s) => s.loaded), useAccountStore.getState().load);
+  const reorderGate = useOnlineGate("Reorder accounts");
 
   const openNew = () => {
     setEditing(null);
@@ -126,88 +123,87 @@ const ManageAccountsScreen = () => {
   return (
     <ScreenScaffold
       scrollEnabled={!dragging}
-      header={
-        <View style={styles.head}>
-          <BackButton />
-          <AppText size="xl" weight="black" style={styles.headTitle}>
-            Accounts
-          </AppText>
-          <PeekButton />
-          <ReorderToggle
-            active={reordering}
-            onPress={() => setReordering((on) => !on)}
-            disabled={accounts.length < 2}
-          />
-          {/* Gone while reordering: the mode has one job, and the header has no room for
-              a second action beside the tick that leaves it. */}
-          {!reordering && <Button label="New" icon="add" pill onPress={openNew} />}
-        </View>
-      }
+      title={screenTitles.accounts}
+      back
+      // New is gone while reordering: the mode has one job, and the tick is what leaves it.
+      actions={[
+        ...(accounts.length >= 2
+          ? [{
+            kind: "reorder" as const,
+            label: reordering ? "Finish reordering" : reorderGate.allowed ? "Reorder accounts" : "Reorder accounts, needs a connection",
+            selected: reordering,
+            disabled: !reordering && !reorderGate.allowed,
+            onPress: () => setReordering((on) => !on),
+          }]
+          : []),
+        ...(reordering ? [] : [{ kind: "new" as const, label: "New account", onPress: openNew }]),
+      ]}
+      states={state}
     >
-      {accounts.length === 0 ? (
-        <EmptyState
-          icon="bank"
-          title="No accounts yet"
-          subtitle="Every transaction comes from an account — add the first one and the rest of the app has somewhere to point."
-          actionLabel="New account"
-          onAction={openNew}
-        />
-      ) : (
-        // `layout` so a card shrinks into place when a row is archived, instead of
-        // the list snapping up a row-height in one frame.
-        <Animated.View layout={LinearTransition.duration(220)} style={styles.groups}>
-          {groups.map((group) => (
-            <View key={group.label} style={styles.section}>
-              <View style={styles.sectionHead}>
-                <AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>
-                  {group.label}
-                </AppText>
-                <AppText size="xs" color="inkDim" style={styles.note}>{group.note}</AppText>
-                {group.hidden > 0 && !reordering && (
-                  <PressableScale onPress={() => setShowSettled((on) => !on)} scaleTo={0.95} hitSlop={8}>
-                    <AppText size="xs" weight="black" color="primary">
-                      {showSettled ? "Hide settled" : `Show ${group.hidden} settled`}
-                    </AppText>
-                  </PressableScale>
+      <ScreenStates state={state}>
+        {accounts.length === 0 ? (
+          <EmptyState
+            icon="bank"
+            title="No accounts yet"
+            subtitle="Every transaction comes from an account — add the first one and the rest of the app has somewhere to point."
+            actionLabel="New account"
+            onAction={openNew}
+          />
+        ) : (
+          // `layout` so a card shrinks into place when a row is archived, instead of
+          // the list snapping up a row-height in one frame.
+          <Animated.View layout={LinearTransition.duration(220)} style={styles.groups}>
+            {groups.map((group) => (
+              <View key={group.label} style={styles.section}>
+                <View style={styles.sectionHead}>
+                  <Caps header style={styles.caps}>{group.label}</Caps>
+                  <AppText size="xs" color="inkDim" style={styles.note}>{group.note}</AppText>
+                  {group.hidden > 0 && !reordering && (
+                    <PressableScale onPress={() => setShowSettled((on) => !on)} scaleTo={0.95} hitSlop={8} accessibilityState={{ expanded: showSettled }}>
+                      <AppText size="xs" weight="black" color="primary">
+                        {showSettled ? "Hide settled" : `Show ${group.hidden} settled`}
+                      </AppText>
+                    </PressableScale>
+                  )}
+                </View>
+                {group.rows.length > 0 && (
+                <Card padded={false} style={styles.card}>
+                  <DragList
+                    items={group.rows}
+                    keyOf={(account) => account._id}
+                    enabled={reordering && reorderGate.allowed}
+                    onReorder={(ids) => commitOrder(group.label, ids)}
+                    onDragChange={setDragging}
+                    render={(account, i, { dragging: held, gesture }) => (
+                      <GestureDetector gesture={gesture}>
+                        <View>
+                          <ManageRow
+                            first={i === 0}
+                            icon={(account.icon ?? "wallet") as IconName}
+                            color={(account.color ?? "info") as ColorToken}
+                            label={account.name}
+                            sub={
+                              (account.type === "person"
+                                ? formatBalance(account.balance, account.type)
+                                : `${TYPE_LABELS[account.type]} · ${formatBalance(account.balance, account.type)}`) +
+                              (account._id === defaultAccountId ? " · Default" : "")
+                            }
+                            onEdit={() => openEdit(account)}
+                            onDelete={() => openDelete(account)}
+                            reordering={reordering}
+                            dragging={held}
+                          />
+                        </View>
+                      </GestureDetector>
+                    )}
+                  />
+                </Card>
                 )}
               </View>
-              {group.rows.length > 0 && (
-              <Card padded={false} style={styles.card}>
-                <DragList
-                  items={group.rows}
-                  keyOf={(account) => account._id}
-                  enabled={reordering}
-                  onReorder={(ids) => commitOrder(group.label, ids)}
-                  onDragChange={setDragging}
-                  render={(account, i, { dragging: held, gesture }) => (
-                    <GestureDetector gesture={gesture}>
-                      <View>
-                        <ManageRow
-                          first={i === 0}
-                          icon={(account.icon ?? "wallet") as IconName}
-                          color={(account.color ?? "info") as ColorToken}
-                          label={account.name}
-                          sub={
-                            (account.type === "person"
-                              ? owedLine(account.balance)
-                              : `${TYPE_LABELS[account.type]} · ${formatMoney(account.balance)}`) +
-                            (account._id === defaultAccountId ? " · Default" : "")
-                          }
-                          onEdit={() => openEdit(account)}
-                          onDelete={() => openDelete(account)}
-                          reordering={reordering}
-                          dragging={held}
-                        />
-                      </View>
-                    </GestureDetector>
-                  )}
-                />
-              </Card>
-              )}
-            </View>
-          ))}
-        </Animated.View>
-      )}
+            ))}
+          </Animated.View>
+        )}
+      </ScreenStates>
 
       <EditAccountSheet ref={editRef} account={editing} />
 
@@ -217,6 +213,7 @@ const ManageAccountsScreen = () => {
         title={`Delete ${pendingDelete?.name ?? "account"}?`}
         body={deleteBody}
         confirmLabel="Delete account"
+        needsConnection
         onConfirm={() => {
           if (!pendingDelete) return;
           const key = `account:${pendingDelete._id}`;
@@ -246,14 +243,6 @@ const ManageAccountsScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  head: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  headTitle: {
-    flex: 1,
-  },
   groups: {
     gap: spacing.lg,
   },
@@ -267,8 +256,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xs,
   },
   caps: {
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
     flexShrink: 0,
   },
   note: {

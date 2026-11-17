@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import type { DashboardPace } from "@save-n-spend/types";
 import Card from "./Card";
 import { AppText } from "../ui/AppText";
+import Caps from "../ui/Caps";
 import PressableScale from "../ui/PressableScale";
 import DualLineChart from "../charts/DualLineChart";
 import { cumulativePair } from "@/lib/insights";
@@ -36,9 +37,7 @@ const PaceCard = ({ pace }: Props) => {
       accessibilityLabel={label}
     >
       <Card style={styles.card}>
-        <AppText size="xs" weight="semibold" color="inkDim" style={styles.label}>
-          THIS MONTH VS YOUR AVERAGE
-        </AppText>
+        <Caps>This month vs your average</Caps>
         <DualLineChart current={current} previous={previous} currentLabel="This month" previousLabel="Your average" />
         <AppText size="xs" color="inkDim">
           You're pacing{" "}
@@ -55,9 +54,6 @@ const PaceCard = ({ pace }: Props) => {
 const styles = StyleSheet.create({
   card: {
     gap: 10,
-  },
-  label: {
-    letterSpacing: 1,
   },
 });
 

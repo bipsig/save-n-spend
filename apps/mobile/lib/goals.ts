@@ -1,36 +1,13 @@
 import type { IGoal } from "@save-n-spend/types";
-import { useCallback, useEffect, useState } from "react";
 import { del, get, patch, type RequestOptions } from "@/lib/api";
-import { useSession } from "@/store/session";
+import { useApiQuery } from "@/lib/query/useApiQuery";
 import { appZone, zonedParts } from "@/lib/zone";
+import { percentOf } from "@/lib/format/pct";
 
 export const useGoals = () => {
-  const status = useSession((s) => s.status);
-  const [items, setItems] = useState<IGoal[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const refetch = useCallback(async () => {
-    if (useSession.getState().status !== "authed") return;
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await get<IGoal[]>("/goals");
-      setItems(data);
-    }
-    catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load goals");
-    }
-    finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (status === "authed") refetch();
-  }, [status, refetch]);
-
-  return { items, loading, error, refetch };
+  const { data, ...rest } = useApiQuery<IGoal[]>("/goals", { errorMessage: "Failed to load goals" });
+  // `data` stays null until the first answer, so a screen can tell "loading" from "none".
+  return { items: data ?? [], data, ...rest };
 };
 
 /** The fields the goal form can change. `deadline: null` clears the target date. */
@@ -59,7 +36,7 @@ export const fetchGoal = async (id: string): Promise<IGoal | null> => {
 export const goalsSummary = (items: IGoal[]) => {
   const totalSaved = items.reduce((sum, g) => sum + g.saved, 0);
   const totalTarget = items.reduce((sum, g) => sum + g.target, 0);
-  const percent = totalTarget > 0 ? Math.min(Math.round((totalSaved / totalTarget) * 100), 100) : 0;
+  const percent = Math.min(percentOf(totalSaved, totalTarget), 100);
   return { totalSaved, totalTarget, percent, count: items.length };
 };
 

@@ -1,36 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
 import type { RecurringSuggestionsPayload } from "@save-n-spend/types";
-import { get, post, type RequestOptions } from "@/lib/api";
+import { post, type RequestOptions } from "@/lib/api";
 import { useAccountStore } from "@/store/accounts";
-import { useSession } from "@/store/session";
+import { useApiQuery } from "@/lib/query/useApiQuery";
 
 const EMPTY: RecurringSuggestionsPayload = { expenses: [], income: [] };
 
 // Repeating payments and income the server spotted in the history. Bills shows the expenses
 // as "set these up as bills"; the cash-flow calendar uses the income as what's expected.
 export const useRecurringSuggestions = () => {
-  const status = useSession((s) => s.status);
-  const [data, setData] = useState<RecurringSuggestionsPayload>(EMPTY);
-  const [loading, setLoading] = useState(true);
-
-  const refetch = useCallback(async () => {
-    if (useSession.getState().status !== "authed") return;
-    try {
-      setData(await get<RecurringSuggestionsPayload>("/recurring"));
-    }
-    catch {
-      // Suggestions are a nicety — a failed fetch just shows none, never an error state.
-    }
-    finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (status === "authed") void refetch();
-  }, [status, refetch]);
-
-  return { data, loading, refetch };
+  // Suggestions are a nicety: a failed fetch just shows none, never an error state.
+  const { data, loading, refreshing, refetch, fetchedAt } = useApiQuery<RecurringSuggestionsPayload>("/recurring");
+  return { data: data ?? EMPTY, loading, refreshing, refetch, fetchedAt };
 };
 
 /** "Not recurring" / "not a regular income" — remembered on the account, so it holds on

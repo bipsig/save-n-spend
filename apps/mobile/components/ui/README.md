@@ -13,10 +13,42 @@ forms, and sheets are put together.
 This file used to duplicate those tables and had drifted out of date. Keeping a
 single copy is the reason it no longer does.
 
-The primitives in this directory: `AmountHeroInput`, `AppText`, `Avatar`, `Badge`, `Button`,
-`CategoryForm`, `CategoryName`, `Chip`, `ColorPicker`, `DateField`, `Divider`, `DragList`, `Fab`,
-`GhostTitleInput`, `HoldButton`, `Icon`, `IconPicker`, `Input`, `KeyboardDoneBar`, `Money`,
-`PasswordMeter`, `PeriodNav`, `PressableScale`, `Search`, `SectionHeader`, `SegmentedControl`,
-`Toggle`. Charts are not primitives: they live in `components/charts/`, and their colour,
-axis and tooltip rules are in
-[Chart conventions](../../../../docs/design-system.md#chart-conventions).
+The primitives in this directory: `AmountHeroInput`, `AppText`, `ArchivedMark`, `Avatar`, `Badge`, `Button`,
+`Caps`, `CategoryForm`, `CategoryName`, `ChartLegend`, `ChartTooltip`, `Chip`, `ColorPicker`,
+`DateField`, `Divider`, `DragList`, `Fab`, `GhostTitleInput`, `HoldButton`, `Icon`, `IconButton`,
+`IconPicker`, `Input`, `KeyboardDoneBar`, `Money`, `PasswordMeter`, `PeriodNav`, `PressableScale`,
+`Search`, `SectionHeader`, `SegmentedControl`, `ServerWakingStrip` (`ServerWakingNotice`,
+`ServerWakingAnnouncer`), `StatTile` (`StatTile`, `StatRow`), `Toggle`.
+
+The 2.8.2 shared pieces, in one line each (props and rules in the design system):
+
+| Piece | What it is for |
+|---|---|
+| `components/shell/ScreenHeader` | The one header: title (one line, shrinks to 24 pt, then "…"), back or close, the privacy eye, and actions passed as data. Screens get it through `ScreenScaffold`'s `title`, `back`, `actions` and `peek` props. |
+| `IconButton` | The 40 pt header circle (44 pt target), with a required VoiceOver label. |
+| `Caps` | The small uppercase caption. Write sentence case; the style adds the capitals. `size="sm"` for tight slots. |
+| `StatTile`, `StatRow` | Caption above an exact figure, optional change line; the row drops columns when a figure won't fit. |
+| `ChartLegend` | Dot, line or dashed marks; `layout="column"` with right-aligned values beside a donut. |
+| `ChartTooltip` | The 164 pt bubble every chart uses. |
+| `SegmentedControl size="sm"` | Ranges and in-screen tabs (Trends, Overview \| Trends, export spans). |
+| `ServerWakingNotice` | "The server is starting up · showing saved data" while Render wakes (D19). |
+| `lib/format/` | Money, compact axis ticks, percentages, dates, periods and counts, following D6 to D14. |
+| `lib/chartSummary.ts` | The one-sentence VoiceOver summary every chart carries. |
+
+The 2.8.3 state pieces (how a screen adopts them:
+[Handle loading, empty, and error states](../../../../docs/mobile-patterns.md#handle-loading-empty-and-error-states)):
+
+| Piece | What it is for |
+|---|---|
+| `ScreenScaffold` `states` | The fetch state `{ loading, refreshing, error, hasData, refetch, fetchedAt }`: picks the one strip under the header and makes `refetch` the pull-to-refresh. |
+| `components/shell/ScreenStrip` | The strip slot: offline (with this screen's data age), else "The server is starting up", else "Couldn't refresh · Try again" (`RefreshFailedStrip`). |
+| `components/shell/ScreenRefresh` | `useScreenRefresh(onRefresh)`: the one brand-tinted `RefreshControl`, for the scaffold and for Activity's `FlatList`. |
+| `components/states/ScreenStates` | The body: skeleton before the first answer, `ErrorState` only with nothing to show, `NotFoundState`, else the content. `ListSkeleton` is its default skeleton. |
+| `components/states/NotFoundState` | "This trip isn't here any more" + Go back; `thing` names the record. |
+| `components/states/HomeCard` | A Home card that fails keeps its caption and height and says "Couldn't load this · Try again" (D16 A). |
+| `lib/onlineGate.ts` | `useOnlineGate(label)`: a write that doesn't queue is disabled and reads "Needs a connection" while offline. |
+
+Charts are not primitives: they live in `components/charts/`, and their colour, axis, legend,
+tooltip and VoiceOver rules are in
+[Chart conventions](../../../../docs/design-system.md#chart-conventions). Formatting rules are in
+[Formatting rules](../../../../docs/design-system.md#formatting-rules).

@@ -49,6 +49,9 @@ const SettingsRow = (props: SettingsRowProps) => {
   // switch turning its children grey should not also hide what they say.
   const onPress = locked ? undefined : props.kind === "toggle" ? undefined : props.onPress;
   const faded = locked || dimmed;
+  // VoiceOver reads the row as one element: "Time zone, India (IST)". A toggle row stays
+  // apart, so its switch is the element that says on or off.
+  const a11yLabel = [label, props.kind === "value" ? props.value : null, sub].filter(Boolean).join(", ");
 
   const body = (
     <View style={[styles.row, !first && styles.divider, faded && styles.faded]}>
@@ -87,7 +90,7 @@ const SettingsRow = (props: SettingsRowProps) => {
       {tag}
 
       {props.kind === "toggle" && (
-        <Toggle value={props.on} onValueChange={props.onToggle} disabled={locked} />
+        <Toggle label={label} value={props.on} onValueChange={props.onToggle} disabled={locked} />
       )}
 
       {props.kind === "value" && (
@@ -101,12 +104,23 @@ const SettingsRow = (props: SettingsRowProps) => {
     </View>
   );
 
-  if (!onPress) return body;
+  if (!onPress) {
+    return props.kind === "toggle" ? body : (
+      <View accessible accessibilityLabel={a11yLabel} accessibilityState={{ disabled: locked }}>
+        {body}
+      </View>
+    );
+  }
 
   // Shallower than the default 0.97 — a full-width row travels a long way at that
   // ratio, and the gap it opens beside the card's edge reads as a glitch.
   return (
-    <PressableScale onPress={onPress} scaleTo={0.985}>
+    <PressableScale
+      onPress={onPress}
+      scaleTo={0.985}
+      accessibilityRole={danger ? "button" : props.kind === "nav" ? "link" : "button"}
+      accessibilityLabel={a11yLabel}
+    >
       {body}
     </PressableScale>
   );

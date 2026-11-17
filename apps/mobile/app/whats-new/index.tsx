@@ -2,7 +2,6 @@ import { Fragment, useEffect, useRef } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import BackButton from "@/components/shell/BackButton";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import { AppText } from "@/components/ui/AppText";
 import TimelineEntry, { MonthLabel, RAIL_CENTRE, RAIL_GUTTER } from "@/components/whatsNew/TimelineEntry";
@@ -13,6 +12,7 @@ import { useAppZone } from "@/lib/zone";
 import { useSettings } from "@/store/settings";
 import { toast } from "@/store/toast";
 import { APP_VERSION, useWhatsNew } from "@/store/whatsNew";
+import { count } from "@/lib/format/count";
 import { colors, spacing } from "@/theme";
 
 // Notes for a version newer than this build (written ahead of a bump) stay hidden.
@@ -44,23 +44,14 @@ const WhatsNewScreen = () => {
     }
     else if (left <= 3) {
       haptics.tap();
-      toast.info(`${left} more tap${left === 1 ? "" : "s"}`);
+      toast.info(`${count(left, "more tap", "more taps")}`);
     }
   };
 
   const open = (version: string) => router.push(`/whats-new/${version}`);
 
   return (
-    <ScreenScaffold
-      header={
-        <View style={styles.head}>
-          <BackButton />
-          <AppText size="xl" weight="black" numberOfLines={1} style={styles.headTitle}>
-            What's new
-          </AppText>
-        </View>
-      }
-    >
+    <ScreenScaffold title="What's new" back>
       <View style={styles.youWrap}>
         {/* A plain press target: the row states a fact, and seven quick taps on it switch
             the hidden Diagnostics screen on or off. */}
@@ -71,7 +62,7 @@ const WhatsNewScreen = () => {
         </Pressable>
         {groups.length > 0 && (
           <AppText size="xs" color="inkDim">
-            {`${SHIPPED.length} version${SHIPPED.length === 1 ? "" : "s"} since ${groups[groups.length - 1].label}`}
+            {`${count(SHIPPED.length, "version")} since ${groups[groups.length - 1].label}`}
           </AppText>
         )}
       </View>
@@ -103,14 +94,6 @@ const WhatsNewScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  head: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  headTitle: {
-    flex: 1,
-  },
   youWrap: {
     alignItems: "flex-start",
     gap: 3,

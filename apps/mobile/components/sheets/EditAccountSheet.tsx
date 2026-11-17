@@ -6,6 +6,7 @@ import type { AccountType, IAccount, InvestedHow } from "@save-n-spend/types";
 import { NAME_MIN } from "@save-n-spend/types";
 import AppSheet from "./AppSheet";
 import { AppText } from "@/components/ui/AppText";
+import Caps from "@/components/ui/Caps";
 import AmountHeroInput from "@/components/ui/AmountHeroInput";
 import Button from "@/components/ui/Button";
 import Chip from "@/components/ui/Chip";
@@ -19,11 +20,13 @@ import { formatTxnDate, startOfToday } from "@/lib/date";
 import { updateInvestmentBasis, type InvestmentBasis } from "@/lib/investments";
 import { haptics } from "@/lib/haptics";
 import type { IconName } from "@/lib/icons";
-import formatMoney, { usePrivacyMask } from "@/lib/money";
+import formatMoney, { formatBalance, usePrivacyMask } from "@/lib/money";
+import { formatPct } from "@/lib/format/pct";
 import { holderFor } from "@/lib/idempotency";
 import { toast } from "@/store/toast";
 import type { ColorToken } from "@/theme";
 import { spacing } from "@/theme";
+import { useOnlineGate } from "@/lib/onlineGate";
 
 type Props = {
   /** The account being edited, or `null` to create a new one. */
@@ -80,6 +83,8 @@ const toPaise = (rupees: string): number | null => {
 const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, defaultType, invested, onSaved }, ref) => {
   const innerRef = useRef<BottomSheetModal>(null);
   useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
+  // Needs the server: offline the button says so before the tap.
+  const gate = useOnlineGate("");
   const dismiss = () => innerRef.current?.dismiss();
   const router = useRouter();
 
@@ -268,8 +273,10 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
       onDismiss={resetForm}
       footer={
         <Button
-          label={editing ? "Save changes" : "Create account"}
+          label={!gate.allowed ? gate.label : editing ? "Save changes" : "Create account"}
+          icon={gate.icon}
           loading={busy}
+          disabled={!gate.allowed}
           onPress={save}
         />
       }
@@ -284,7 +291,7 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
             {/* `formatMoney`, not the exact formatter this used to call: privacy mode
                 has to hold inside a sheet too, or the one screen showing a real
                 balance would be the one the user opened by accident in public. */}
-            {editing ? `Balance ${formatMoney(account.balance)}` : "Where money sits or is owed"}
+            {editing ? formatBalance(account.balance, account.type) : "Where money sits or is owed"}
           </AppText>
         </View>
       </View>
@@ -311,9 +318,7 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
       />
 
       <View style={styles.field}>
-        <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>
-          TYPE
-        </AppText>
+        <Caps>Type</Caps>
         {editing ? (
           // Fixed once created — changing it would silently recategorise the account and
           // its history (e.g. an investment dropping out of the Investments hub). Reclassify
@@ -344,9 +349,7 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
           free-text field so an unlisted kind is kept verbatim. */}
       {type === "investment" && (
         <View style={styles.field}>
-          <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>
-            KIND
-          </AppText>
+          <Caps>Kind</Caps>
           <View style={styles.types}>
             {INVESTMENT_KINDS.map((k) => (
               <Chip
@@ -376,14 +379,14 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
       {editing && isInvestment ? (
         <>
           <View style={styles.field}>
-            <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>INVESTED SO FAR</AppText>
+            <Caps>Invested so far</Caps>
             <AmountHeroInput value={investedInput} onChangeText={setInvestedInput} />
             <AppText size="xs" color="inkDim" style={styles.note}>
               We have {formatMoney(invested ?? 0)} recorded as invested. Enter the real total to correct it — this changes your gain, not what it&apos;s worth. Leave blank to keep it.
             </AppText>
           </View>
           <View style={styles.field}>
-            <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>WORTH TODAY</AppText>
+            <Caps>Worth today</Caps>
             <AmountHeroInput value={actual} onChangeText={setActual} />
             <AppText size="xs" color="inkDim" style={styles.note}>
               Recorded as {formatMoney(account.balance)}. Leave blank to keep it.
@@ -401,9 +404,7 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
         </>
       ) : editing ? (
         <View style={styles.field}>
-          <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>
-            UPDATE BALANCE
-          </AppText>
+          <Caps>Update balance</Caps>
 
           {CAN_GO_NEGATIVE.includes(type) && (
             <View style={styles.types}>
@@ -423,10 +424,10 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
           <AmountHeroInput value={actual} onChangeText={setActual} />
 
           <AppText size="xs" color="inkDim" style={styles.note}>
-            {/* The recorded figure goes through `formatMoney`, so privacy mode still
+            {/* The recorded figure goes through `formatBalance`, so privacy mode still
                 holds — which is also why the field above starts blank rather than
                 prefilled with it. */}
-            We have {formatMoney(account.balance)} recorded. Enter what your bank shows
+            On record: {formatBalance(account.balance, account.type)}. Enter what your bank shows
             and we&apos;ll square the difference. Leave it blank to keep what you have.
           </AppText>
 
@@ -463,7 +464,7 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
       ) : isInvestment ? (
         <>
           <View style={styles.field}>
-            <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>INVESTED SO FAR</AppText>
+            <Caps>Invested so far</Caps>
             <AmountHeroInput value={opening} onChangeText={setOpening} />
             <AppText size="xs" color="inkDim" style={styles.note}>
               What you&apos;ve put in until now. Leave blank if you&apos;re just starting.
@@ -472,7 +473,7 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
           {(openingPaise ?? 0) > 0 && (
             <>
               <View style={styles.field}>
-                <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>WORTH TODAY</AppText>
+                <Caps>Worth today</Caps>
                 <AmountHeroInput value={worth} onChangeText={setWorth} />
                 <AppText size="xs" color="inkDim" style={styles.note}>
                   What it&apos;s worth right now. Leave blank if it&apos;s the same as what you put in.
@@ -485,9 +486,7 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
         </>
       ) : (
         <View style={styles.field}>
-          <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>
-            OPENING BALANCE
-          </AppText>
+          <Caps>Opening balance</Caps>
           <AmountHeroInput value={opening} onChangeText={setOpening} />
           <AppText size="xs" color="inkDim" style={styles.note}>
             What&apos;s in the account today. Leave blank for zero.
@@ -496,16 +495,12 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
       )}
 
       <View style={styles.field}>
-        <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>
-          ICON
-        </AppText>
+        <Caps>Icon</Caps>
         <IconPicker value={icon} onChange={setIcon} />
       </View>
 
       <View style={styles.field}>
-        <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>
-          COLOUR
-        </AppText>
+        <Caps>Colour</Caps>
         <ColorPicker value={color} onChange={setColor} />
       </View>
 
@@ -520,7 +515,7 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
 
 EditAccountSheet.displayName = "EditAccountSheet";
 
-// "▼ ₹10,000 (−10%) so far" — what the two figures imply, before saving.
+// "−₹10,000.00 (−10.0%) so far" — what the two figures imply, before saving.
 const GainPreview = ({ gain, basis, show }: { gain: number; basis: number; show: boolean }) => {
   if (!show) return null;
   const pct = basis > 0 ? (gain / basis) * 100 : null;
@@ -528,7 +523,7 @@ const GainPreview = ({ gain, basis, show }: { gain: number; basis: number; show:
     <AppText size="xs" weight="bold" color={gain > 0 ? "success" : gain < 0 ? "danger" : "inkDim"}>
       {gain === 0
         ? "No gain or loss so far"
-        : `${gain > 0 ? "▲" : "▼"} ${formatMoney(Math.abs(gain))}${pct !== null ? ` (${gain > 0 ? "+" : "−"}${Math.abs(pct).toFixed(1)}%)` : ""} so far`}
+        : `${formatMoney(gain, { sign: "always" })}${pct !== null ? ` (${formatPct(pct, { kind: "return" })})` : ""} so far`}
     </AppText>
   );
 };
@@ -542,8 +537,8 @@ const StartFields = ({ date, how, onDate, onHow }: {
   onHow: (h: InvestedHow) => void;
 }) => (
   <View style={styles.field}>
-    <DateField label="STARTED" value={date} onChange={onDate} maximumDate={new Date()} />
-    <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>HOW</AppText>
+    <DateField label="Started" value={date} onChange={onDate} maximumDate={new Date()} />
+    <Caps>How</Caps>
     <View style={styles.types}>
       <Chip label="Monthly SIP" selected={how === "sip"} onPress={() => onHow("sip")} />
       <Chip label="Lump sum" selected={how === "lump"} onPress={() => onHow("lump")} />
@@ -568,10 +563,6 @@ const styles = StyleSheet.create({
   },
   field: {
     gap: spacing.sm,
-  },
-  // spec .flabel — tiny caps, wide tracking
-  fieldLabel: {
-    letterSpacing: 1.3,
   },
   types: {
     flexDirection: "row",

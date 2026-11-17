@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { signTone, toneSoft } from "./signTone";
+import { signTone, toneSoft, zeroNeutral } from "./signTone";
 
 test("a net or gain: positive is income colour, negative is expense colour, zero neutral", () => {
   assert.equal(signTone(277000), "success");
@@ -24,4 +24,14 @@ test("each tone has its pill background", () => {
   assert.equal(toneSoft("success"), "successSoft");
   assert.equal(toneSoft("danger"), "dangerSoft");
   assert.equal(toneSoft("inkDim"), "surface2");
+});
+
+test("a figure coloured for what it is goes neutral at zero", () => {
+  assert.equal(zeroNeutral(0, "danger"), undefined);
+  assert.equal(zeroNeutral(0.4, "success"), undefined);
+  assert.equal(zeroNeutral(0, "warning"), undefined);
+  assert.equal(zeroNeutral(0, "inkDim"), "inkDim");
+  assert.equal(zeroNeutral(0, undefined), undefined);
+  assert.equal(zeroNeutral(1, "danger"), "danger");
+  assert.equal(zeroNeutral(-100, "success"), "success");
 });

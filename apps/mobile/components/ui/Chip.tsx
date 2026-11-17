@@ -31,6 +31,9 @@ const Chip = ({ label, selected = false, active = false, grow = false, icon, sin
         onPress?.(event)
       }}
       disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected, disabled: !!disabled }}
       style={({ pressed }) => [
         styles.base,
         grow ? styles.grow : styles.hug,

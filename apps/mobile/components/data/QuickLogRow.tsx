@@ -68,7 +68,7 @@ const QuickLogRow = () => {
 
   return (
     <View style={styles.section}>
-      <SectionHeader label="QUICK LOG" />
+      <SectionHeader label="Quick log" />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
         {top.map((s) => (
           <QuickLogChip key={`${s.title}:${s.category ?? ""}`} suggestion={s} />

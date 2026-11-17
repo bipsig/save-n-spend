@@ -11,6 +11,7 @@ import SegmentedControl from "@/components/ui/SegmentedControl";
 import { useCategories } from "@/lib/categories";
 import { useAccounts } from "@/lib/accounts";
 import type { IconName } from "@/lib/icons";
+import { count } from "@/lib/format/count";
 import type { FeedType } from "@/lib/transactions";
 import type { ChipTint } from "@/theme/gradients";
 import { spacing } from "@/theme";
@@ -120,7 +121,7 @@ const ActivityFiltersSheet = forwardRef<BottomSheetModal, Props>(({
     <AppSheet
       ref={innerRef}
       scrollable
-      footer={<Button label={`Show ${resultCount} result${resultCount === 1 ? "" : "s"}`} onPress={dismiss} />}
+      footer={<Button label={`Show ${count(resultCount, "result")}`} onPress={dismiss} />}
     >
       <View style={styles.titleRow}>
         <AppText size="md" weight="black">Filters</AppText>
@@ -131,7 +132,7 @@ const ActivityFiltersSheet = forwardRef<BottomSheetModal, Props>(({
       </View>
 
       <GroupHeader icon="activity" tint="violet" label="Type" />
-      <SegmentedControl segments={TYPES} value={activeType} onChange={onChangeType} />
+      <SegmentedControl segments={TYPES} value={activeType} onChange={onChangeType} accessibilityLabel="Type" />
 
       <View style={styles.divider} />
 

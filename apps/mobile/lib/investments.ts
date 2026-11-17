@@ -1,42 +1,17 @@
-import { useCallback, useEffect, useState } from "react";
 import type { InvestedHow, InvestmentsPayload, ITransaction, PortfolioTrend } from "@save-n-spend/types";
-import { del, get, patch, post, type RequestOptions } from "@/lib/api";
+import { del, patch, post, type RequestOptions } from "@/lib/api";
+import { useApiQuery } from "@/lib/query/useApiQuery";
 import { useAccountStore } from "@/store/accounts";
-import { useSession } from "@/store/session";
 import { chartPalette, chartOthers } from "@/theme";
 import type { DonutSlice } from "@/components/charts/DonutChart";
 import type { IconName } from "@/lib/icons";
 import { chipTintFor, type ChipTint } from "@/theme/gradients";
+import { formatPct } from "@/lib/format/pct";
 
-// The Investments hub's data — same single-fetch shape as useHealthScore/useDashboardSummary.
+// The Investments hub's data.
 // `enabled` lets a screen that only sometimes needs this (add-transaction, in redeem mode)
 // mount the hook unconditionally without paying for the fetch when it doesn't.
-export const useInvestments = (enabled = true) => {
-  const status = useSession((s) => s.status);
-  const [data, setData] = useState<InvestmentsPayload | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const refetch = useCallback(async () => {
-    if (useSession.getState().status !== "authed") return;
-    setError(null);
-    try {
-      setData(await get<InvestmentsPayload>("/investments"));
-    }
-    catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load");
-    }
-    finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (enabled && status === "authed") void refetch();
-  }, [enabled, status, refetch]);
-
-  return { data, loading, error, refetch };
-};
+export const useInvestments = (enabled = true) => useApiQuery<InvestmentsPayload>("/investments", { enabled });
 
 /** Allocation-by-kind → the shared DonutChart's slice shape. Colours assigned by rank
  *  from the validated chart palette, the tail folding into a neutral grey, exactly as the
@@ -64,12 +39,8 @@ export const convertToInvestment = async (transactionId: string, toAccount: stri
   await useAccountStore.getState().load().catch(() => {});
 };
 
-/** "+12.4% a year" / "−6.8% a year". One decimal: a yearly return reads to a tenth. */
-export const formatAnnual = (rate: number): string => {
-  const pct = rate * 100;
-  const sign = pct > 0.05 ? "+" : pct < -0.05 ? "−" : "";
-  return `${sign}${Math.abs(pct).toFixed(1)}% a year`;
-};
+/** "+12.4% a year" / "−6.8% a year". `rate` is a fraction (0.124). */
+export const formatAnnual = (rate: number): string => `${formatPct(rate * 100, { kind: "return" })} a year`;
 
 export type InvestmentBasis = {
   /** Total invested so far, paise. The server works out the opening amount from it. */
@@ -102,42 +73,9 @@ export const holdingLook = (holding?: { icon?: string; color?: string } | null):
 });
 
 /** Month-end history of every holding, derived on the server from records already kept. */
-export const useInvestmentTrend = (enabled = true) => {
-  const status = useSession((s) => s.status);
-  const [data, setData] = useState<PortfolioTrend | null>(null);
-  const [error, setError] = useState<string | null>(null);
+export const useInvestmentTrend = (enabled = true) => useApiQuery<PortfolioTrend>("/investments/trend", { enabled });
 
-  const refetch = useCallback(async () => {
-    if (useSession.getState().status !== "authed") return;
-    setError(null);
-    try {
-      setData(await get<PortfolioTrend>("/investments/trend"));
-    }
-    catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load");
-    }
-  }, []);
-
-  useEffect(() => {
-    if (enabled && status === "authed") void refetch();
-  }, [enabled, status, refetch]);
-
-  return { data, error, refetch };
-};
-
-/** Compact money for a chart label: ₹1.2L, ₹3.4Cr, ₹850. Sign kept when `signed`. */
-export const compactMoney = (paise: number, signed = false): string => {
-  const rupees = Math.abs(paise) / 100;
-  const body = rupees >= 1e7 ? `${(rupees / 1e7).toFixed(1)}Cr`
-    : rupees >= 1e5 ? `${(rupees / 1e5).toFixed(1)}L`
-    : rupees >= 1e3 ? `${(rupees / 1e3).toFixed(1)}k`
-    : `${Math.round(rupees)}`;
-  const sign = paise < 0 ? "−" : signed && paise > 0 ? "+" : "";
-  return `${sign}₹${body.replace(".0", "")}`;
-};
-
-/** "Updated this month" / "Not updated for 2 months". */
-export const freshness = (monthsSinceUpdate: number): { text: string; stale: boolean } =>
-  monthsSinceUpdate <= 0
-    ? { text: "Updated this month", stale: false }
-    : { text: `Not updated for ${monthsSinceUpdate} month${monthsSinceUpdate === 1 ? "" : "s"}`, stale: true };
+/** One holding's money moves and value updates, newest first. The general transactions feed
+ *  drops the value updates (adjustments); this keeps them. A 404 for an id that isn't a holding. */
+export const useInvestmentHistory = (id: string | null | undefined) =>
+  useApiQuery<ITransaction[]>(id ? `/investments/${id}/history` : null, { errorMessage: "Couldn't load history" });

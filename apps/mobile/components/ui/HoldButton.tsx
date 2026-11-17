@@ -15,6 +15,9 @@ type Props = {
   durationMs?: number;
   loading?: boolean;
   disabled?: boolean;
+  /** What the hold does, for VoiceOver ("Delete trip"); the visible label is about the
+   *  gesture ("Hold to delete"). Also names the VoiceOver action that completes it. */
+  accessibilityLabel?: string;
   onComplete: () => void;
 };
 
@@ -32,6 +35,7 @@ const HoldButton = ({
   durationMs = 1500,
   loading = false,
   disabled = false,
+  accessibilityLabel,
   onComplete,
 }: Props) => {
   const progress = useRef(new Animated.Value(0)).current;
@@ -96,12 +100,28 @@ const HoldButton = ({
     outputRange: ["0%", "100%"],
   });
 
+  const name = accessibilityLabel ?? label;
+  // A VoiceOver user can't easily hold. The hold stays available (double-tap and hold), and a
+  // named action in the actions rotor completes it: still a deliberate second step, never a
+  // plain double-tap.
+  const onAccessibilityAction = (e: { nativeEvent: { actionName: string } }) => {
+    if (e.nativeEvent.actionName !== "confirm" || disabled || loading) return;
+    haptics.heavy();
+    onComplete();
+  };
+
   return (
     <View style={[styles.wrap, disabled && styles.disabled]}>
       <Pressable
         onPressIn={start}
         onPressOut={cancel}
         disabled={disabled || loading}
+        accessibilityRole="button"
+        accessibilityLabel={name}
+        accessibilityHint="Double-tap and hold to confirm"
+        accessibilityState={{ disabled: disabled || loading, busy: loading }}
+        accessibilityActions={[{ name: "confirm", label: name }]}
+        onAccessibilityAction={onAccessibilityAction}
         style={styles.surface}
       >
         {/* The unfilled bar reads as a red outline, so the button looks dangerous

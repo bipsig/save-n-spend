@@ -49,7 +49,8 @@ native configuration through `app.json` and config plugins instead.
 ```
 mobile screen
   → lib/<domain>.ts hook           (useBudgets, useGoals, …)
-    → lib/api.ts                   (fetch wrapper; attaches the bearer token)
+    → lib/query/useApiQuery.ts     (TanStack Query: keys, focus rule, write invalidation)
+      → lib/api.ts                 (fetch wrapper; attaches the bearer token)
       → POST /api/v1/<resource>
         → routes/v1/<domain>Routes.ts
           → protect                (JWT verification)

@@ -7,6 +7,7 @@ import Button from "@/components/ui/Button";
 import HoldButton from "@/components/ui/HoldButton";
 import Icon from "@/components/ui/Icon";
 import { haptics } from "@/lib/haptics";
+import { onlineGate, useOnlineGate } from "@/lib/onlineGate";
 import type { IconName } from "@/lib/icons";
 import { spacing } from "@/theme";
 
@@ -24,6 +25,8 @@ type Props = {
    * undone at all — see HoldButton.
    */
   hold?: boolean;
+  /** The confirm writes and doesn't queue offline: dimmed, "Needs a connection", until online. */
+  needsConnection?: boolean;
   /** Awaited; the sheet stays open on a rejection so the message can be read. */
   onConfirm: () => Promise<void> | void;
 };
@@ -32,12 +35,14 @@ type Props = {
 // destructive action in Settings routes through this rather than a bare Alert, so
 // they all state their consequence in the same voice and the same place.
 const ConfirmSheet = forwardRef<BottomSheetModal, Props>((
-  { icon, title, body, confirmLabel, cancelLabel = "Cancel", tone = "danger", hold = false, onConfirm },
+  { icon, title, body, confirmLabel, cancelLabel = "Cancel", tone = "danger", hold = false, needsConnection = false, onConfirm },
   ref
 ) => {
   const innerRef = useRef<BottomSheetModal>(null);
   useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
   const dismiss = () => innerRef.current?.dismiss();
+  const online = useOnlineGate(confirmLabel);
+  const gate = needsConnection ? online : onlineGate(false, confirmLabel);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,14 +108,16 @@ const ConfirmSheet = forwardRef<BottomSheetModal, Props>((
       <View style={styles.actions}>
         {hold ? (
           <HoldButton
-            label={confirmLabel}
+            label={gate.label}
+            disabled={!gate.allowed}
             holdingLabel="Keep holding to delete…"
             icon="delete"
             loading={busy}
             onComplete={run}
+            accessibilityLabel={gate.label}
           />
         ) : (
-          <Button label={confirmLabel} variant={tone} loading={busy} onPress={run} />
+          <Button label={gate.label} icon={gate.icon} variant={tone} loading={busy} disabled={!gate.allowed} onPress={run} />
         )}
         <Button label={cancelLabel} variant="ghost" disabled={busy} onPress={dismiss} />
       </View>

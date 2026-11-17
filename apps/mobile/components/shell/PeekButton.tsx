@@ -8,7 +8,7 @@ import { useSettings } from "@/store/settings"
 // user can find without hunting, and the one that puts the mask back.
 //
 // Absent entirely with privacy mode off: an eye that does nothing would imply the app is
-// hiding something. That self-hiding is what lets `ScreenScaffold` render it on every screen
+// hiding something. That self-hiding is what lets `ScreenHeader` render it on every screen
 // unconditionally, which is why it lives here rather than in `AppHeader` — on a screen without
 // it, masked figures would have no way to be revealed.
 const PeekButton = () => {
@@ -28,6 +28,7 @@ const PeekButton = () => {
       }}
       scaleTo={0.9}
       haptic={false}
+      accessibilityRole="button"
       accessibilityLabel={peeking ? "Hide amounts" : "Show amounts"}
     >
       {/* The glyph shows what a tap DOES, not what the current state is — an open

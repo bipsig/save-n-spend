@@ -1,32 +1,28 @@
-import { useCallback, useRef } from "react";
+import { useRef } from "react";
 import { StyleSheet, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { router, useFocusEffect } from "expo-router";
+import { router } from "expo-router";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import Card from "@/components/data/Card";
 import ConfirmSheet from "@/components/sheets/ConfirmSheet";
 import Avatar from "@/components/ui/Avatar";
+import Caps from "@/components/ui/Caps";
 import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
 import { AppText } from "@/components/ui/AppText";
-import { moneyItems, appItems } from "@/data/menu";
+import { moneyItems, appItems, screenTitles } from "@/data/menu";
 import type { MoreItem } from "@/data/menu";
 import { budgetTotals, useBudgets } from "@/lib/budgets";
 import { outstandingTotal, useBills } from "@/lib/bills";
 import { goalsSummary, useGoals } from "@/lib/goals";
 import { initialsOf } from "@/lib/profile";
+import { mergeScreenStates } from "@/lib/screenStates";
+import { formatPct } from "@/lib/format/pct";
 import { detachPush } from "@/lib/push";
 import { useSession } from "@/store/session";
 import { spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
-
-// Tiny caps group label (spec .flabel).
-const GroupLabel = ({ children }: { children: string }) => (
-  <AppText size="xs" weight="bold" color="inkDim" style={styles.groupLabel}>
-    {children}
-  </AppText>
-);
 
 // One destination row (spec .srow): 28px gradient chip · 12.5/700 label ·
 // live status value + chevron on the right. Rows stack inside ONE glass card,
@@ -44,7 +40,11 @@ const MenuRow = ({
 }) => (
   // Shallow, like every other full-width row: a deeper squeeze opens a visible gap
   // beside the card's edge and reads as a rendering glitch rather than a press.
-  <PressableScale onPress={() => router.push(item.path)} scaleTo={0.985}>
+  <PressableScale
+    onPress={() => router.push(item.path)}
+    scaleTo={0.985}
+    accessibilityLabel={value ? `${item.label}, ${value}` : item.label}
+  >
     <View style={[styles.row, !first && styles.rowDivider]}>
       <Icon
         name={item.icon}
@@ -70,21 +70,20 @@ const MenuRow = ({
 const MoreScreen = () => {
   const user = useSession((s) => s.user);
 
-  const { items: budgets, refetch: refetchBudgets } = useBudgets();
-  const { items: bills, refetch: refetchBills } = useBills();
-  const { items: goals, refetch: refetchGoals } = useGoals();
+  const budgetsQuery = useBudgets();
+  const billsQuery = useBills();
+  const goalsQuery = useGoals();
+  const { items: budgets } = budgetsQuery;
+  const { items: bills } = billsQuery;
+  const { items: goals } = goalsQuery;
+  // The menu always draws; only the status values wait on these, and a row with no answer
+  // shows no value. So the state feeds the strip and the pull, never the body, and counts as
+  // having data: a failed first load then shows the "Couldn't refresh" strip, not nothing.
+  const states = mergeScreenStates(
+    ...[budgetsQuery, billsQuery, goalsQuery].map((q) => ({ ...q, hasData: true })),
+  );
 
   const logoutRef = useRef<BottomSheetModal>(null);
-
-  // The status values are the point of these rows — a stale "82% used" is worse
-  // than none, so refresh all three whenever the hub comes back into view.
-  useFocusEffect(
-    useCallback(() => {
-      void refetchBudgets();
-      void refetchBills();
-      void refetchGoals();
-    }, [refetchBudgets, refetchBills, refetchGoals])
-  );
 
   const budget = budgetTotals(budgets);
   const outstanding = outstandingTotal(bills);
@@ -97,7 +96,7 @@ const MoreScreen = () => {
   const liveValues: Record<string, { value: string; color?: ColorToken }> = {
     ...(budgets.length > 0 && {
       budget: {
-        value: `${Math.round(budget.percentUsed)}% used`,
+        value: `${formatPct(budget.percentUsed)} used`,
         color: budget.percentUsed >= 100 ? "danger" : budget.percentUsed >= 80 ? "warning" : "inkDim",
       },
     }),
@@ -108,14 +107,18 @@ const MoreScreen = () => {
       },
     }),
     ...(goals.length > 0 && {
-      goals: { value: `${savings.percent}% saved` },
+      goals: { value: `${formatPct(savings.percent)} saved` },
     }),
   };
 
   return (
-    <ScreenScaffold title="More">
+    <ScreenScaffold title={screenTitles.more} states={states}>
       {/* Profile card — one tap into Settings (spec .profcard) */}
-      <PressableScale onPress={() => router.push("/settings")} scaleTo={0.98}>
+      <PressableScale
+        onPress={() => router.push("/settings")}
+        scaleTo={0.98}
+        accessibilityLabel={`${user?.name ?? "Profile"}. Opens Settings.`}
+      >
         <Card style={styles.profileCard}>
           <Avatar initials={initialsOf(user?.name)} size="lg" gradient />
           <View style={styles.profileInfo}>
@@ -159,7 +162,7 @@ const MoreScreen = () => {
         </View>
       </PressableScale>
 
-      <GroupLabel>YOUR MONEY</GroupLabel>
+      <Caps header style={styles.groupLabel}>Your money</Caps>
       <Card padded={false} style={styles.group}>
         {moneyItems.map((item, i) => (
           <MenuRow
@@ -172,7 +175,7 @@ const MoreScreen = () => {
         ))}
       </Card>
 
-      <GroupLabel>APP</GroupLabel>
+      <Caps header style={styles.groupLabel}>App</Caps>
       <Card padded={false} style={styles.group}>
         {appItems.map((item, i) => (
           <MenuRow key={item.key} item={item} first={i === 0} />
@@ -245,7 +248,6 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   groupLabel: {
-    letterSpacing: 1.5, // spec .flabel tracking
     paddingHorizontal: 2,
     marginTop: spacing.xs,
   },

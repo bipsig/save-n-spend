@@ -2,12 +2,12 @@ import { StyleSheet, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Card from "@/components/data/Card";
 import { AppText } from "@/components/ui/AppText";
+import Badge from "@/components/ui/Badge";
 import type { Release } from "@/data/releaseNotes";
 import { formatReleaseDate } from "@/lib/whatsNew";
 import { TRIP_GRADIENTS } from "@/lib/trips";
 import { gradients, radius, spacing } from "@/theme";
 import { KIND_LOOK, QUIET_SENTENCE, countParts } from "./kinds";
-import Tag from "./Tag";
 
 // The head of a version page: a gradient band with the headline (a trip card's band),
 // then the date, build and counts. A quiet release gets the calmer blue band and one
@@ -25,7 +25,7 @@ const VersionBand = ({ release, current }: { release: Release; current: boolean 
         <AppText size="lg" weight="black" style={styles.headline}>
           {release.headline}
         </AppText>
-        {current && <Tag label="YOU'RE ON THIS" tone="band" />}
+        {current && <Badge size="sm" tone="onGradient" label="You're on this" />}
       </LinearGradient>
       <View style={[styles.body, quiet && styles.quietBody]}>
         <AppText size="sm" weight="bold">

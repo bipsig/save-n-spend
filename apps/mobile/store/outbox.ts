@@ -9,6 +9,7 @@
 import { create } from "zustand";
 import type { ITransaction } from "@save-n-spend/types";
 import { post } from "@/lib/api";
+import { afterWrite } from "@/lib/query/invalidate";
 import { readOutbox, writeOutbox, type OutboxItem } from "@/lib/outbox";
 import { drainQueue } from "@/lib/outboxDrain";
 import { makeIdempotencyKey } from "@/lib/idempotency";
@@ -64,7 +65,8 @@ export const useOutbox = create<OutboxState>((set, get) => {
           const { userId, items } = get();
           if (userId) await writeOutbox(userId, items);
         },
-        send: (item, idempotencyKey) => post("/transactions", item.payload, { idempotencyKey }),
+        // One refresh after the pass, not one per queued row.
+        send: (item, idempotencyKey) => post("/transactions", item.payload, { idempotencyKey, invalidate: false }),
         makeKey: makeIdempotencyKey,
         attempt,
       });
@@ -81,6 +83,7 @@ export const useOutbox = create<OutboxState>((set, get) => {
 
       if (result.synced > 0) {
         set({ lastDrainedAt: Date.now() });
+        afterWrite("/transactions");
         toast.success(`Synced ${result.synced} transaction${result.synced === 1 ? "" : "s"}`);
         void useAccountStore.getState().load().catch(() => {});
       }

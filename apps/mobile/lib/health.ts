@@ -1,9 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
 import type { HealthBand, HealthPillarKey, HealthScore } from "@save-n-spend/types";
 import type { ColorToken } from "@/theme";
 import type { IconName } from "@/lib/icons";
-import { get } from "./api";
-import { useSession } from "@/store/session";
+import { useApiQuery } from "@/lib/query/useApiQuery";
 
 // The client half of the financial health score. The arithmetic is entirely
 // server-side (see the API's services/healthService) — everything here is presentation:
@@ -49,30 +47,4 @@ export const pillarColor = (score: number | null): ColorToken => {
   return "danger";
 };
 
-export const useHealthScore = () => {
-  const status = useSession((s) => s.status);
-  const [data, setData] = useState<HealthScore | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const refetch = useCallback(async () => {
-    if (useSession.getState().status !== "authed") return;
-    setError(null);
-
-    try {
-      setData(await get<HealthScore>("/dashboard/health"));
-    }
-    catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load");
-    }
-    finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (status === "authed") void refetch();
-  }, [status, refetch]);
-
-  return { data, loading, error, refetch };
-};
+export const useHealthScore = () => useApiQuery<HealthScore>("/dashboard/health");

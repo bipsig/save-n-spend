@@ -1,19 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { goBackOrHome } from "@/lib/navigation";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { ITripExpense, TripEntry, TripMemberBalance } from "@save-n-spend/types";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
-import BackButton from "@/components/shell/BackButton";
 import Card from "@/components/data/Card";
 import Money from "@/components/ui/Money";
+import Caps from "@/components/ui/Caps";
+import { StatRow } from "@/components/ui/StatTile";
 import Icon from "@/components/ui/Icon";
 import { ArchivedChip, NameWithArchived } from "@/components/ui/ArchivedMark";
 import Button from "@/components/ui/Button";
 import PressableScale from "@/components/ui/PressableScale";
 import { AppText } from "@/components/ui/AppText";
-import ErrorState from "@/components/states/ErrorState";
+import ScreenStates from "@/components/states/ScreenStates";
 import SkeletonState from "@/components/states/SkeletonState";
 import TripSheet from "@/components/sheets/TripSheet";
 import TripExpenseSheet from "@/components/sheets/TripExpenseSheet";
@@ -21,10 +22,15 @@ import SettleSheet from "@/components/sheets/SettleSheet";
 import MatchSplitwiseSheet from "@/components/sheets/MatchSplitwiseSheet";
 import { useCategoryById } from "@/lib/categories";
 import { useAccountById } from "@/lib/accounts";
-import { reopenTrip, tripDates, tripDayNumber, tripDays, useTrip } from "@/lib/trips";
-import formatMoney, { roundToRupee, usePrivacyMask } from "@/lib/money";
+import { reopenTrip, tripDayNumber, tripDays, useTrip } from "@/lib/trips";
+import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { count } from "@/lib/format/count";
+import { formatCalendar, formatInstant } from "@/lib/format/date";
+import { formatSpan } from "@/lib/format/period";
+import { chartA11y, chartSummary, peakPhrase } from "@/lib/chartSummary";
 import { appZone, calendarToday, dayKey, instantInZone } from "@/lib/zone";
 import { toast } from "@/store/toast";
+import { useOnlineGate } from "@/lib/onlineGate";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { chartPalette, colors, radius, spacing } from "@/theme";
@@ -79,27 +85,31 @@ const EntryLine = ({ entry, nameOf, onPress }: { entry: TripEntry; nameOf: (id?:
       </View>
     </View>
   );
-  return onPress ? <PressableScale onPress={onPress} scaleTo={0.98}>{body}</PressableScale> : body;
+  return onPress ? (
+    <PressableScale onPress={onPress} scaleTo={0.98} accessibilityLabel={`${title}, ${meta}, your share ${formatMoney(entry.amount)}`} accessibilityHint="Edits this expense">
+      {body}
+    </PressableScale>
+  ) : body;
 };
 
 /** "₹6,465.43 yours + ₹3,080.43 via Splitwise" — what makes up a person's matched amount. */
 const routedNote = (m: { exact: number; routed: number }): string => {
   if (m.exact >= 0 && m.routed >= 0) return `${formatMoney(m.exact)} yours + ${formatMoney(m.routed)} via Splitwise`;
-  const signed = (v: number) => `${v < 0 ? "−" : "+"}${formatMoney(Math.abs(v))}`;
-  return `Exact ${signed(m.exact)} · Splitwise ${signed(m.routed)}`;
+  return `Exact ${formatMoney(m.exact, { sign: "always" })} · Splitwise ${formatMoney(m.routed, { sign: "always" })}`;
 };
 
-const dayTitle = (key: string) =>
-  new Date(`${key}T00:00:00Z`).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+const dayTitle = (key: string) => formatCalendar(key, "weekday");
 
 // One trip, on one long page: what it's cost you, who owes whom, where your share went, how
 // it went day by day, and every expense and settle-up in a day-by-day journal.
 const TripDetailScreen = () => {
-  usePrivacyMask();
+  const masked = usePrivacyMask();
   const router = useRouter();
   const { id, match } = useLocalSearchParams<{ id: string; match?: string }>();
-  const { data, loading, error, refetch } = useTrip(id);
-  const [refreshing, setRefreshing] = useState(false);
+  const q = useTrip(id);
+  const { data, refetch } = q;
+  const state = { ...q, hasData: data != null, notFound: !id || q.errorStatus === 404 };
+  const reopenGate = useOnlineGate("Reopen");
 
   const editTripRef = useRef<BottomSheetModal>(null);
   const expenseRef = useRef<BottomSheetModal>(null);
@@ -109,8 +119,6 @@ const TripDetailScreen = () => {
   const [settling, setSettling] = useState<TripMemberBalance | null>(null);
   const [openDay, setOpenDay] = useState<string | null>(null);
   const [showAllDays, setShowAllDays] = useState(false);
-
-  useFocusEffect(useCallback(() => { void refetch(); }, [refetch]));
 
   // An import that could have changed someone's number sends us here asking to match Splitwise.
   // Refetched first, so the sheet opens on the balances the import just wrote.
@@ -142,8 +150,16 @@ const TripDetailScreen = () => {
     }));
   }, [data?.entries, zone]);
 
-  if (error) return <ScreenScaffold header={<BackButton />}><ErrorState message={error} onRetry={refetch} /></ScreenScaffold>;
-  if (!data) return <ScreenScaffold header={<BackButton />}>{loading && <SkeletonState height={220} borderRadius={radius.lg} />}</ScreenScaffold>;
+  // The same header in every state: "Trip" with Edit dimmed until the record lands.
+  const loadingActions = [{ kind: "edit" as const, label: "Edit trip", onPress: () => {}, disabled: true }];
+  // No sheet is mounted yet without a trip, and a trip that's gone has nothing left to edit.
+  if (!data || state.notFound) {
+    return (
+      <ScreenScaffold title="Trip" back actions={loadingActions} states={state}>
+        <ScreenStates state={state} thing="trip" skeleton={<SkeletonState height={220} borderRadius={radius.lg} />}>{null}</ScreenStates>
+      </ScreenScaffold>
+    );
+  }
 
   const { trip, totals, members, byCategory, byDay, plan } = data;
   const active = trip.status === "active";
@@ -184,36 +200,41 @@ const TripDetailScreen = () => {
     expenseRef.current?.present();
   };
 
-  const header = (
-    <View style={styles.head}>
-      <BackButton />
-      <AppText size="xl" weight="black" numberOfLines={1} style={styles.grow}>{trip.emoji} {trip.name}</AppText>
-      <PressableScale onPress={() => editTripRef.current?.present()} scaleTo={0.9} hitSlop={8} accessibilityRole="button" accessibilityLabel="Edit trip">
-        <Icon name="edit" size={20} color="inkDim" />
-      </PressableScale>
-    </View>
-  );
-
   return (
-    <ScreenScaffold header={header} onRefresh={async () => { setRefreshing(true); await refetch(); setRefreshing(false); }} refreshing={refreshing}>
+    <ScreenScaffold
+      title={`${trip.emoji} ${trip.name}`}
+      back
+      actions={[{ kind: "edit", label: "Edit trip", onPress: () => editTripRef.current?.present() }]}
+      states={state}>
       {!active && (
         <Card style={styles.closedBanner}>
           <Icon name="check" size={16} color="success" />
-          <AppText size="xs" color="inkSecondary" style={styles.grow}>Closed{trip.closedAt ? ` on ${new Date(trip.closedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : ""}. Balances still open can be settled any time.</AppText>
-          <PressableScale onPress={async () => { await reopenTrip(trip._id); void refetch(); toast.info(`${trip.name} reopened`); }} scaleTo={0.95}>
-            <AppText size="xs" weight="black" color="primary">Reopen</AppText>
+          <AppText size="xs" color="inkSecondary" style={styles.grow}>Closed{trip.closedAt ? ` on ${formatInstant(trip.closedAt, "day")}` : ""}. Balances still open can be settled any time.</AppText>
+          <PressableScale
+            onPress={async () => {
+              try { await reopenTrip(trip._id); toast.info(`${trip.name} reopened`); }
+              catch (err) { toast.fromError(err, "Couldn't reopen the trip"); }
+            }}
+            disabled={!reopenGate.allowed}
+            style={!reopenGate.allowed && styles.gated}
+            scaleTo={0.95}
+            accessibilityRole="button"
+          >
+            <AppText size="xs" weight="black" color="primary">{reopenGate.label}</AppText>
           </PressableScale>
         </Card>
       )}
 
       <Card style={styles.card}>
+        {/* The header may cut a long name short; this is where all of it shows. */}
+        <AppText size="md" weight="black">{trip.emoji} {trip.name}</AppText>
         <View style={styles.between}>
-          <AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>Your share</AppText>
-          {active && dayNo && <AppText size="xs" weight="black" color="success">DAY {dayNo} OF {length}</AppText>}
+          <Caps>Your share</Caps>
+          {active && dayNo && <Caps color="success">Day {dayNo} of {length}</Caps>}
         </View>
         <Money value={totals.myShare} size="xl" weight="black" />
         <AppText size="xs" color="inkDim">
-          {tripDates(trip.startDate, trip.endDate)} · {members.length === 0 ? "just you" : `${members.length + 1} people`} · {formatMoney(roundToRupee(totals.myShare / length))} a day
+          {formatSpan(new Date(trip.startDate), new Date(trip.endDate))} · {members.length === 0 ? "just you" : count(members.length + 1, "person", "people")} · {formatMoney(totals.myShare / length)} a day
         </AppText>
         {trip.budget && (
           <>
@@ -225,14 +246,20 @@ const TripDetailScreen = () => {
             </AppText>
           </>
         )}
-        <View style={styles.three}>
-          <View style={styles.grow}><AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>You paid</AppText><Money value={totals.paid} size="sm" weight="black" /></View>
-          <View style={styles.grow}><AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>Whole trip</AppText><Money value={totals.wholeTrip} size="sm" weight="black" /></View>
-          <View style={styles.grow}>
-            <AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>{totals.balance >= 0 ? "Owed to you" : "You owe"}</AppText>
-            <Money value={Math.abs(totals.balance)} size="sm" weight="black" color={totals.balance > 0 ? "success" : totals.balance < 0 ? "warning" : "ink"} />
-          </View>
-        </View>
+        <StatRow
+          size="sm"
+          surface="plain"
+          style={styles.three}
+          items={[
+            { label: "You paid", amount: totals.paid },
+            { label: "Whole trip", amount: totals.wholeTrip },
+            {
+              label: totals.balance >= 0 ? "Owed to you" : "You owe",
+              amount: Math.abs(totals.balance),
+              tone: totals.balance > 0 ? "success" : totals.balance < 0 ? "warning" : "ink",
+            },
+          ]}
+        />
       </Card>
 
       {active && (
@@ -245,11 +272,11 @@ const TripDetailScreen = () => {
       {members.length > 0 && (
         <>
           <View style={styles.between}>
-            <AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>People</AppText>
+            <Caps header>People</Caps>
             {plan ? (
               <PressableScale onPress={() => matchRef.current?.present()} scaleTo={0.95} hitSlop={8} accessibilityRole="button" accessibilityLabel="Edit the Splitwise match">
                 <AppText size="xs" weight="black" color={plan.stale ? "warning" : "success"}>
-                  {plan.stale ? "Splitwise numbers may be out of date · Update" : `Matches Splitwise · ${new Date(plan.savedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`}
+                  {plan.stale ? "Splitwise numbers may be out of date · Update" : `Matches Splitwise · ${formatInstant(plan.savedAt, "day")}`}
                 </AppText>
               </PressableScale>
             ) : members.length > 1 && (
@@ -269,13 +296,13 @@ const TripDetailScreen = () => {
                     <Icon name="person" size={14} containerSize={30} containerRadius={15} container="square" gradient="violet" />
                     <AppText size="sm" weight="bold" style={styles.grow}>{m.name}</AppText>
                     {m.balance === 0 ? (
-                      <AppText size="xs" color="inkDim">{routedAway ? "₹0" : "settled"}</AppText>
+                      <AppText size="xs" color="inkDim">{routedAway ? formatMoney(0) : "settled"}</AppText>
                     ) : (
                       <>
                         <AppText size="sm" weight="bold" color={m.balance > 0 ? "success" : "warning"}>
                           {m.balance > 0 ? `owes ${formatMoney(m.balance)}` : `you owe ${formatMoney(-m.balance)}`}
                         </AppText>
-                        <PressableScale onPress={() => { setSettling(m); settleRef.current?.present(); }} scaleTo={0.95} style={styles.settleBtn}>
+                        <PressableScale onPress={() => { setSettling(m); settleRef.current?.present(); }} scaleTo={0.95} style={styles.settleBtn} accessibilityLabel={`Settle with ${m.name}`}>
                           <AppText size="xs" weight="bold">Settle</AppText>
                         </PressableScale>
                       </>
@@ -296,7 +323,7 @@ const TripDetailScreen = () => {
 
       {byCategory.length > 0 && (
         <>
-          <AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>Your share by category</AppText>
+          <Caps header>Your share by category</Caps>
           <Card style={styles.card}>
             {byCategory.map((c, i) => <CategoryBar key={c.category ?? "none"} category={c.category} total={c.total} max={maxCat} index={i} />)}
           </Card>
@@ -305,9 +332,16 @@ const TripDetailScreen = () => {
 
       {chartDays.length > 1 && byDay.length > 0 && (
         <>
-          <AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>Spend by day</AppText>
+          <Caps header>Spend by day</Caps>
           <Card style={styles.card}>
-            <View style={styles.chart}>
+            <View
+              style={styles.chart}
+              {...chartA11y(chartSummary({
+                title: "Spend by day",
+                masked,
+                parts: [peakPhrase(chartDays.map((d) => d.total), chartDays.map((d) => dayTitle(d.date)), formatMoney, { word: "biggest day" })],
+              }))}
+            >
               {chartDays.map((d) => (
                 <View key={d.date} style={[styles.chartBar, d.total === 0 ? styles.chartBarEmpty : { height: `${Math.max(6, (d.total / maxDay) * 100)}%`, backgroundColor: d.date === biggest?.date ? colors.teal : colors.primary }]} />
               ))}
@@ -317,7 +351,7 @@ const TripDetailScreen = () => {
         </>
       )}
 
-      <AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>Day by day</AppText>
+      <Caps header>Day by day</Caps>
       {days.length === 0 && (
         <Card><AppText size="sm" color="inkDim">Nothing yet. Add what's been spent — who paid, and who it's split between.</AppText></Card>
       )}
@@ -325,11 +359,16 @@ const TripDetailScreen = () => {
         const expanded = openDay === d.date || (openDay === null && i === 0);
         return (
           <Card key={d.date} style={styles.card}>
-            <PressableScale onPress={() => setOpenDay(expanded ? "" : d.date)} scaleTo={0.99}>
+            <PressableScale
+              onPress={() => setOpenDay(expanded ? "" : d.date)}
+              scaleTo={0.99}
+              accessibilityLabel={`${dayTitle(d.date)}, ${count(d.entries.length, "entry", "entries")}, ${d.spend === 0 ? "settle-ups only" : formatMoney(d.spend)}`}
+              accessibilityState={{ expanded }}
+            >
               <View style={styles.between}>
                 <View>
                   <AppText size="sm" weight="bold">{dayTitle(d.date)}</AppText>
-                  <AppText size="xs" color="inkDim">{d.entries.length} {d.entries.length === 1 ? "entry" : "entries"}</AppText>
+                  <AppText size="xs" color="inkDim">{count(d.entries.length, "entry", "entries")}</AppText>
                 </View>
                 {/* A day of only settle-ups had no spending, which "₹0" reads as a mistake. */}
                 <AppText size="sm" weight="bold" color={d.spend === 0 ? "inkDim" : "ink"}>
@@ -355,31 +394,30 @@ const TripDetailScreen = () => {
         <Button label="Wrap up this trip" variant="secondary" onPress={() => router.push({ pathname: "/trip-wrapup", params: { id: trip._id } })} />
       )}
 
-      <TripSheet ref={editTripRef} trip={trip} onSaved={() => { void refetch(); }} onDeleted={goBackOrHome} />
-      <TripExpenseSheet ref={expenseRef} tripId={trip._id} members={members} expense={editing} defaultDate={defaultDate} onSaved={() => { void refetch(); }} />
-      <MatchSplitwiseSheet ref={matchRef} tripId={trip._id} members={members} plan={plan} onSaved={() => { void refetch(); }} />
-      <SettleSheet ref={settleRef} tripId={trip._id} member={settling} onSaved={() => { void refetch(); }} />
+      <TripSheet ref={editTripRef} trip={trip} onDeleted={goBackOrHome} />
+      <TripExpenseSheet ref={expenseRef} tripId={trip._id} members={members} expense={editing} defaultDate={defaultDate} />
+      <MatchSplitwiseSheet ref={matchRef} tripId={trip._id} members={members} plan={plan} />
+      <SettleSheet ref={settleRef} tripId={trip._id} member={settling} />
     </ScreenScaffold>
   );
 };
 
 const styles = StyleSheet.create({
-  head: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   grow: { flex: 1, minWidth: 0 },
   shrink: { flexShrink: 1, minWidth: 0 },
   between: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   inline: { flexDirection: "row", alignItems: "center", gap: 6 },
   right: { alignItems: "flex-end" },
   center: { textAlign: "center" },
-  caps: { letterSpacing: 1.2, textTransform: "uppercase" },
   card: { gap: spacing.sm },
   list: { paddingVertical: 2 },
   closedBanner: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  three: { flexDirection: "row", marginTop: spacing.xs },
+  three: { marginTop: spacing.xs },
   bar: { height: 7, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.08)", overflow: "hidden" },
   barFill: { height: "100%", borderRadius: 4 },
   actions: { flexDirection: "row", gap: spacing.sm },
   dim: { opacity: 0.5 },
+  gated: { opacity: 0.45 },
   personBlock: { paddingVertical: 9, gap: 4, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.06)" },
   personLine: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   personNote: { marginLeft: 30 + spacing.md },

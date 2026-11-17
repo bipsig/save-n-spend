@@ -16,5 +16,8 @@ export const radius = {
   full: 9999,
 } as const;
 
+// Smallest tap area for anything pressable (Apple HIG). Smaller visuals reach it with hitSlop.
+export const touchTarget = 44;
+
 export type SpacingToken = keyof typeof spacing;
 export type RadiusToken = keyof typeof radius;

@@ -8,7 +8,7 @@ import GetStartedCard from "@/components/data/GetStartedCard";
 import QuickLogRow from "@/components/data/QuickLogRow";
 import SpendingSnapshotCard from "@/components/data/SpendingSnapshotCard";
 import BudgetsAtAGlanceCard from "@/components/data/BudgetsAtAGlanceCard";
-import BillsGlanceCard from "@/components/data/BillsGlanceCard";
+import BillsGlanceCard, { billsGlanceEmpty } from "@/components/data/BillsGlanceCard";
 import ForYouCarousel, { FOR_YOU_SLIDE_HEIGHT } from "@/components/data/ForYouCarousel";
 import HighlightCard from "@/components/data/HighlightCard";
 import SectionHeader from "@/components/ui/SectionHeader";
@@ -16,9 +16,10 @@ import Fab from "@/components/ui/Fab";
 import TransactionRow from "@/components/rows/TransactionRow";
 import NetWorthSheet from "@/components/sheets/NetWorthSheet";
 import { usePrivacyMask } from "@/lib/money";
+import { formatPct, percentOf } from "@/lib/format/pct";
 import { signTone } from "@/lib/signTone";
 import { radius, spacing } from "@/theme";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { useDashboardSummary, useDashboardInsights } from "@/lib/dashboard";
 import GoalWatchSlide from "@/components/data/GoalWatchSlide";
 import NoSpendDaysSlide from "@/components/data/NoSpendDaysSlide";
@@ -27,12 +28,13 @@ import { useHealthScore } from "@/lib/health";
 import { useBills, owedAgainstBudgets } from "@/lib/bills";
 import { useCategories } from "@/lib/categories";
 import { useCashFlow } from "@/lib/cashFlow";
-import CashFlowGlanceCard from "@/components/data/CashFlowGlanceCard";
+import CashFlowGlanceCard, { cashFlowGlanceEmpty } from "@/components/data/CashFlowGlanceCard";
 import { useGoals } from "@/lib/goals";
 import { useTransactions } from "@/lib/transactions";
 import { useInsights } from "@/lib/insights";
 import { useHighlights } from "@/lib/highlights";
 import { useBudgets, budgetTotals, currentMonth } from "@/lib/budgets";
+import { mergeScreenStates } from "@/lib/screenStates";
 import { projectSafeToSpend } from "@/lib/forecast";
 import { milestoneCrossed } from "@/lib/netWorthMilestone";
 import NetWorthMilestoneBanner from "@/components/data/NetWorthMilestoneBanner";
@@ -52,9 +54,10 @@ import SinceLastOpenedCard from "@/components/data/SinceLastOpenedCard";
 import WeekPulseRow from "@/components/data/WeekPulseRow";
 import PaceCard from "@/components/data/PaceCard";
 import EmptyState from "@/components/states/EmptyState";
-import ErrorState from "@/components/states/ErrorState";
+import HomeCard from "@/components/states/HomeCard";
+import ScreenStates from "@/components/states/ScreenStates";
 import SkeletonState from "@/components/states/SkeletonState";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { ITransaction } from "@save-n-spend/types";
 
@@ -70,17 +73,22 @@ const HomeScreen = () => {
   // Read once at mount and held for the whole session (see store/lastOpened) — the
   // moment this specific screen instance's own digest is anchored to.
   const previousOpenedAt = useLastOpened((s) => s.previousOpenedAt);
-  const { data: dashboardSummary, loading: summaryLoading, error: summaryError, refetch: summaryRefetch } = useDashboardSummary(previousOpenedAt);
+  const summaryQuery = useDashboardSummary(previousOpenedAt);
+  const dashboardSummary = summaryQuery.data;
 
   // The three previews (action queue / motivation / recency), composed client-side from the
   // live list endpoints — the same shapes an eventual GET /dashboard would return.
-  const { items: bills, loading: billsLoading, refetch: billsRefetch } = useBills();
-  const { items: goals, loading: goalsLoading, refetch: goalsRefetch } = useGoals();
-  const { items: transactions, loading: transactionsLoading, refetch: transactionsRefetch } = useTransactions();
+  const billsQuery = useBills();
+  const bills = billsQuery.items;
+  const goalsQuery = useGoals();
+  const goals = goalsQuery.items;
+  const transactionsQuery = useTransactions();
+  const transactions = transactionsQuery.items;
 
   // Feeds both the Get started checklist and the Safe to spend card below — no month
   // param, so the server's own default (the current month) is what comes back.
-  const { items: budgets, loading: budgetsLoading, refetch: budgetsRefetch } = useBudgets();
+  const budgetsQuery = useBudgets();
+  const budgets = budgetsQuery.items;
   // Which bills a budget covers goes by category, children included.
   const categories = useCategories();
   const accounts = useAccountStore((s) => s.list);
@@ -88,83 +96,76 @@ const HomeScreen = () => {
 
   // Its own request, not a field on the summary: the summary describes a named month and the
   // score the trailing 90 days as of now, so one response would span two windows.
-  const { data: health, refetch: healthRefetch } = useHealthScore();
+  const healthQuery = useHealthScore();
+  const health = healthQuery.data;
 
   // Feeds the Spending Snapshot's top categories — the same window Insights itself opens
   // on, so the two never disagree about what "this month" means.
-  const { data: insights, refetch: insightsRefetch } = useInsights("month", 0);
+  const insightsQuery = useInsights("month", 0);
+  const insights = insightsQuery.data;
 
   // The same ranked, dismissible list Highlights/Insights already show — the dashboard
   // just takes the single worst warning and the single best win off the top rather than
   // re-deriving anything.
-  const { highlights, dismiss: dismissHighlight, refetch: highlightsRefetch } = useHighlights();
+  const highlightsQuery = useHighlights();
+  const { highlights, dismiss: dismissHighlight } = highlightsQuery;
 
   // The carousel's genuinely-new slides — a goal's ETA, a no-spend-day count, a weekday
   // pattern. Its own request, ranked/omit-shaped rather than the scalars the summary
   // above deals in.
-  const { data: dashboardInsights, refetch: dashboardInsightsRefetch } = useDashboardInsights();
+  const dashboardInsightsQuery = useDashboardInsights();
+  const dashboardInsights = dashboardInsightsQuery.data;
 
   // Queued transactions waiting on this phone — a stable selector (the raw items array),
   // mapped to displayable rows in a memo rather than in the selector itself, so this
   // doesn't re-render on every unrelated store change.
   const pendingItems = useOutbox((s) => s.items);
-  const lastDrainedAt = useOutbox((s) => s.lastDrainedAt);
   const pendingTransactions = useMemo(
     () => pendingItems.map((item) => ({ ...item.payload, _id: item.clientId, clientId: item.clientId }) as unknown as ITransaction),
     [pendingItems]
   );
   const pendingClientIds = useMemo(() => new Set(pendingItems.map((item) => item.clientId)), [pendingItems]);
 
-  const { data: cashFlow, refetch: cashFlowRefetch } = useCashFlow();
+  const cashFlowQuery = useCashFlow();
+  const cashFlow = cashFlowQuery.data;
 
-  useFocusEffect(useCallback(() => {
-    summaryRefetch();
-    void cashFlowRefetch();
-    healthRefetch();
-    billsRefetch();
-    goalsRefetch();
-    transactionsRefetch();
-    budgetsRefetch();
-    insightsRefetch();
-    highlightsRefetch();
-    dashboardInsightsRefetch();
-    // Accounts are NOT refetched here: every write that can move a balance — the
-    // mutations in `lib/accounts`, and transaction create/edit/delete in
-    // add-transaction.tsx / TransactionDetailSheet — reloads the store itself, so a
-    // focus reload would be a second request for an already-correct list.
-  }, [summaryRefetch, cashFlowRefetch, healthRefetch, billsRefetch, goalsRefetch, transactionsRefetch, budgetsRefetch, insightsRefetch, highlightsRefetch, dashboardInsightsRefetch]));
-
-  // A drain can land while the dashboard is already on screen, not only on the way back
-  // to it — the focus effect above wouldn't otherwise catch that.
-  useEffect(() => {
-    if (lastDrainedAt) transactionsRefetch();
-  }, [lastDrainedAt, transactionsRefetch]);
-
-  // Pull-to-refresh: everything the focus effect reloads, plus accounts — which that
-  // effect deliberately skips (every balance-moving write already reloads the store
-  // itself) but a manual "get me the truth right now" pull should still cover.
-  const [refreshing, setRefreshing] = useState(false);
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    try {
-      await Promise.all([
-        summaryRefetch(),
-        cashFlowRefetch(),
-        healthRefetch(),
-        billsRefetch(),
-        goalsRefetch(),
-        transactionsRefetch(),
-        budgetsRefetch(),
-        insightsRefetch(),
-        highlightsRefetch(),
-        dashboardInsightsRefetch(),
-        useAccountStore.getState().load().catch(() => {}),
-      ]);
-    }
-    finally {
-      setRefreshing(false);
-    }
+  // A card's state: an answer (live or saved) is on hand once it has a fetch time.
+  const stateOf = (q: { error: string | null; fetchedAt: number | null; refetch: () => Promise<void> }) => ({
+    hasData: q.fetchedAt !== null,
+    error: q.error,
+    refetch: q.refetch,
+  });
+  const summaryState = { ...summaryQuery, hasData: summaryQuery.fetchedAt !== null };
+  const healthState = stateOf(healthQuery);
+  const billsState = stateOf(billsQuery);
+  const budgetsState = stateOf(budgetsQuery);
+  const transactionsState = stateOf(transactionsQuery);
+  const insightsState = stateOf(insightsQuery);
+  const cashFlowState = stateOf(cashFlowQuery);
+  const dashboardInsightsState = stateOf(dashboardInsightsQuery);
+  const safeToSpendState = mergeScreenStates({ ...budgetsState, loading: false }, { ...billsState, loading: false });
+  // Highlights or the dashboard's own slides are enough to fill it; it fails only with neither.
+  const forYouState = {
+    hasData: highlightsQuery.fetchedAt !== null || dashboardInsightsState.hasData,
+    error: highlightsQuery.error ?? dashboardInsightsQuery.error,
+    refetch: () => Promise.all([highlightsQuery.refetch(), dashboardInsightsQuery.refetch()]),
   };
+
+  // Pull-to-refresh reloads every card, plus accounts: every balance-moving write already
+  // reloads that store, but a pull asks for the truth right now.
+  const handleRefresh = () => Promise.all([
+    summaryQuery.refetch(),
+    cashFlowQuery.refetch(),
+    healthQuery.refetch(),
+    billsQuery.refetch(),
+    goalsQuery.refetch(),
+    transactionsQuery.refetch(),
+    budgetsQuery.refetch(),
+    insightsQuery.refetch(),
+    highlightsQuery.refetch(),
+    dashboardInsightsQuery.refetch(),
+    useAccountStore.getState().load().catch(() => {}),
+  ]);
 
   const dismissedBy = useSettings((s) => s.getStartedDismissed);
   const settingsHydrated = useSettings((s) => s.hydrated);
@@ -174,11 +175,11 @@ const HomeScreen = () => {
 
   const progress = progressOf(buildSteps({ transactions, accounts, budgets, bills, goals }));
 
-  // Every list hook starts at `loading: true` with an empty array, which for one frame looks
-  // like a brand-new account, so an established user would see the checklist flash. Latched
-  // rather than read from `loading`, which `useFocusEffect` re-enters on every focus.
+  // Every list hook starts with an empty array, which looks like a brand-new account, so the
+  // checklist waits for a real answer from each (a failed one never counts as empty). Latched,
+  // so a later failed refresh doesn't take it away again.
   const listsSettled =
-    !transactionsLoading && !budgetsLoading && !billsLoading && !goalsLoading && accountsLoaded;
+    transactionsState.hasData && budgetsState.hasData && billsState.hasData && goalsQuery.fetchedAt !== null && accountsLoaded;
   const [listsReady, setListsReady] = useState(false);
   useEffect(() => {
     if (listsSettled) setListsReady(true);
@@ -269,48 +270,73 @@ const HomeScreen = () => {
 
   // Savings rate is the only delta stated from values in hand; the rest need last month.
   const savingsCaption = dashboardSummary && dashboardSummary.income > 0
-    ? `${Math.round((dashboardSummary.savings / dashboardSummary.income) * 100)}% saved`
+    ? `${formatPct(percentOf(dashboardSummary.savings, dashboardSummary.income))} saved`
     : undefined;
 
-  if (summaryError) {
-    return (
-      <ScreenScaffold title="Dashboard">
-        <ErrorState message={summaryError} onRetry={summaryRefetch} />
-      </ScreenScaffold>
-    )
-  }
+  // One horizontally swipeable stack in place of several separate vertical cards — same
+  // signal (a highlight, a goal's pace, a pattern), without permanently claiming that much
+  // space when a brand-new account has none of it yet.
+  const forYouSlides = [
+    highlights.find((h) => h.severity === "warning") && (
+      <HighlightCard
+        highlight={highlights.find((h) => h.severity === "warning")!}
+        onDismiss={dismissHighlight}
+        minHeight={FOR_YOU_SLIDE_HEIGHT}
+      />
+    ),
+    highlights.find((h) => h.severity === "win") && (
+      <HighlightCard
+        highlight={highlights.find((h) => h.severity === "win")!}
+        onDismiss={dismissHighlight}
+        minHeight={FOR_YOU_SLIDE_HEIGHT}
+      />
+    ),
+    dashboardInsights?.forYou.goalWatch && (
+      <GoalWatchSlide slice={dashboardInsights.forYou.goalWatch} />
+    ),
+    dashboardInsights?.forYou.noSpendDays !== null && dashboardInsights?.forYou.noSpendDays !== undefined && (
+      <NoSpendDaysSlide
+        noSpendDays={dashboardInsights.forYou.noSpendDays}
+        daysElapsed={calendarToday(appZone()).getUTCDate()}
+        avgDailySpendCurrent={insights?.avgDailySpendCurrent}
+        avgDailySpendPrevious={insights?.avgDailySpendPrevious}
+      />
+    ),
+    dashboardInsights?.forYou.weekdayHeatmap && (
+      <WeekdayHeatmapSlide cells={dashboardInsights.forYou.weekdayHeatmap} />
+    ),
+  ];
 
-  if (summaryLoading && !dashboardSummary) {
-    return (
-      <ScreenScaffold title="Dashboard">
-        <View>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <SkeletonState key={i} height={64} borderRadius={radius.md} />
-          ))}
-        </View>
-      </ScreenScaffold>
-    )
-  }
-
-  if (!dashboardSummary) {
-    return null;
-  }
+  // The greeting header in every state (mockup 01), so nothing jumps when the summary lands.
+  const header = (
+    <AppHeader
+      name={userName ?? ""}
+      onBellPress={() => router.push("/notifications")}
+      streakDays={dashboardSummary?.currentStreak}
+    />
+  );
 
   return (
     <ScreenScaffold
-      header={
-        <AppHeader
-          name={userName ?? ""}
-          onBellPress={() => router.push("/notifications")}
-          streakDays={dashboardSummary?.currentStreak}
-        />
-      }
-      floating={
-        <Fab onPress={() => router.push("/add-transaction")} />
-      }
+      header={header}
+      floating={summaryState.hasData && <Fab onPress={() => router.push("/add-transaction")} />}
+      states={summaryState}
       onRefresh={handleRefresh}
-      refreshing={refreshing}
     >
+      {/* The month summary is the screen: the full error only when it fails with nothing
+          saved. Every other card keeps its own place when its request fails (HomeCard). */}
+      <ScreenStates
+        state={summaryState}
+        skeleton={
+          <View>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <SkeletonState key={i} height={64} borderRadius={radius.md} />
+            ))}
+          </View>
+        }
+      >
+      {() => dashboardSummary && (
+      <>
       {/* First on the screen, above the score and the tiles. For an account with nothing
           in it yet, this is the only thing here that can be acted on — everything below
           is a reading of data that does not exist. It retires itself once the five steps
@@ -338,45 +364,18 @@ const HomeScreen = () => {
       {/* Absent until it has loaded rather than rendered as a placeholder: a score is a
           judgement, and a skeleton in the shape of one invites the user to read a number
           that isn't there yet. */}
-      {health && (
-        <HealthScoreCard health={health} onPress={() => router.push("/health")} />
-      )}
+      <HomeCard title="Finance health score" state={healthState} skeletonHeight={132}>
+        {health && <HealthScoreCard health={health} onPress={() => router.push("/health")} />}
+      </HomeCard>
 
-      {/* One horizontally swipeable stack in place of several separate vertical cards —
-          same signal (a highlight, a goal's pace, a pattern), without permanently
-          claiming that much space when a brand-new account has none of it yet. */}
-      <ForYouCarousel
-        slides={[
-          highlights.find((h) => h.severity === "warning") && (
-            <HighlightCard
-              highlight={highlights.find((h) => h.severity === "warning")!}
-              onDismiss={dismissHighlight}
-              minHeight={FOR_YOU_SLIDE_HEIGHT}
-            />
-          ),
-          highlights.find((h) => h.severity === "win") && (
-            <HighlightCard
-              highlight={highlights.find((h) => h.severity === "win")!}
-              onDismiss={dismissHighlight}
-              minHeight={FOR_YOU_SLIDE_HEIGHT}
-            />
-          ),
-          dashboardInsights?.forYou.goalWatch && (
-            <GoalWatchSlide slice={dashboardInsights.forYou.goalWatch} />
-          ),
-          dashboardInsights?.forYou.noSpendDays !== null && dashboardInsights?.forYou.noSpendDays !== undefined && (
-            <NoSpendDaysSlide
-              noSpendDays={dashboardInsights.forYou.noSpendDays}
-              daysElapsed={calendarToday(appZone()).getUTCDate()}
-              avgDailySpendCurrent={insights?.avgDailySpendCurrent}
-              avgDailySpendPrevious={insights?.avgDailySpendPrevious}
-            />
-          ),
-          dashboardInsights?.forYou.weekdayHeatmap && (
-            <WeekdayHeatmapSlide cells={dashboardInsights.forYou.weekdayHeatmap} />
-          ),
-        ]}
-      />
+      <HomeCard
+        title="For you"
+        state={forYouState}
+        empty={forYouSlides.every((slide) => !slide)}
+        skeletonHeight={FOR_YOU_SLIDE_HEIGHT + 40}
+      >
+        <ForYouCarousel slides={forYouSlides} />
+      </HomeCard>
 
       {/* All four together, right after the carousel — one reading of the month, not
           split across the screen. Every tile still leads to where its figure comes
@@ -428,7 +427,7 @@ const HomeScreen = () => {
             icon="investments"
             iconColor="primary"
             iconBg="accentSoft"
-            label="Net Worth"
+            label="Net worth"
             amount={dashboardSummary.netWorth}
             onPress={accounts.length > 0 ? () => netWorthRef.current?.present() : undefined}
             destination="your accounts"
@@ -451,11 +450,9 @@ const HomeScreen = () => {
         />
       )}
 
-      {/* Leads even the health score — a daily "what can I spend" number is checked far
-          more often than a slower, reflective one. Absent only while budgets/bills are
-          still loading, since its own empty state (no budget set) is a real answer, not
-          a placeholder. */}
-      {!budgetsLoading && !billsLoading && (
+      {/* Absent only while budgets/bills are still loading, since its own empty state (no
+          budget set) is a real answer, not a placeholder. */}
+      <HomeCard title="Safe to spend" state={safeToSpendState} skeletonHeight={168}>
         <SafeToSpendCard
           hasBudgets={budgets.length > 0}
           safeToSpend={safeToSpend}
@@ -467,13 +464,27 @@ const HomeScreen = () => {
           onPress={budgets.length > 0 ? () => router.push("/budget") : undefined}
           onSetBudget={() => router.push("/budget")}
         />
-      )}
+      </HomeCard>
 
-      {health && <EmergencyFundCard runwayMonths={health.runwayMonths} />}
+      {/* The score's card above already says when its request failed: no second box. */}
+      <HomeCard
+        title="Emergency buffer"
+        state={{ ...healthState, error: null }}
+        empty={health?.runwayMonths == null}
+        skeletonHeight={96}
+      >
+        {health && <EmergencyFundCard runwayMonths={health.runwayMonths} />}
+      </HomeCard>
 
       <QuickLogRow />
 
-      {insights && (
+      <HomeCard
+        title="Where it went"
+        state={insightsState}
+        empty={!insights || insights.byCategory.length === 0}
+        skeletonHeight={220}
+      >
+        {insights && (
         <SpendingSnapshotCard
           byCategory={insights.byCategory}
           biggestExpense={
@@ -490,18 +501,24 @@ const HomeScreen = () => {
           }
           onPress={() => router.push("/insights")}
         />
-      )}
+        )}
+      </HomeCard>
 
-      {!budgetsLoading && (
+      <HomeCard title="Budgets at a glance" state={budgetsState} empty={budgets.length === 0} skeletonHeight={170}>
         <BudgetsAtAGlanceCard items={budgets} onPress={() => router.push("/budget")} />
-      )}
+      </HomeCard>
 
       {/* Under the month's figures: those are a reading of thirty days, which doesn't change
           between two glances, while these three rows answer "did that go in?" — the question
           the app is usually opened to check. */}
-      {recentTransactions.length > 0 && (
+      <HomeCard
+        title="Recent transactions"
+        state={transactionsState}
+        empty={recentTransactions.length === 0}
+        skeletonHeight={230}
+      >
         <View style={styles.section}>
-          <SectionHeader label="RECENT TRANSACTIONS" actionLabel="See all" onAction={() => router.push("/activity")} />
+          <SectionHeader label="Recent transactions" actionLabel="See all" onAction={() => router.push("/activity")} />
           {recentTransactions.map((transaction) => (
             <TransactionRow
               key={transaction._id}
@@ -511,9 +528,16 @@ const HomeScreen = () => {
             />
           ))}
         </View>
-      )}
+      </HomeCard>
 
-      {dashboardInsights?.pace && <PaceCard pace={dashboardInsights.pace} />}
+      <HomeCard
+        title="This month vs your average"
+        state={dashboardInsightsState}
+        empty={!dashboardInsights?.pace}
+        skeletonHeight={130}
+      >
+        {dashboardInsights?.pace && <PaceCard pace={dashboardInsights.pace} />}
+      </HomeCard>
 
       <WeekPulseRow
         income={dashboardSummary.weekIncome}
@@ -521,11 +545,18 @@ const HomeScreen = () => {
         savingsPace={savingsPace}
       />
 
-      {!billsLoading && (
+      <HomeCard title="Bills" state={billsState} empty={billsGlanceEmpty(bills)} skeletonHeight={96}>
         <BillsGlanceCard items={bills} onPress={() => router.push("/bills")} />
-      )}
+      </HomeCard>
 
-      {cashFlow && <CashFlowGlanceCard data={cashFlow} onPress={() => router.push("/cash-flow")} />}
+      <HomeCard
+        title="Next 30 days"
+        state={cashFlowState}
+        empty={!cashFlow || cashFlowGlanceEmpty(cashFlow)}
+        skeletonHeight={110}
+      >
+        {cashFlow && <CashFlowGlanceCard data={cashFlow} onPress={() => router.push("/cash-flow")} />}
+      </HomeCard>
 
       {/* The floor of the screen when there is genuinely nothing to list. Reachable two
           ways — a fresh account that dismissed the checklist, and one whose transactions
@@ -540,8 +571,11 @@ const HomeScreen = () => {
           onAction={() => router.push("/add-transaction")}
         />
       )}
+      </>
+      )}
+      </ScreenStates>
 
-      <NetWorthSheet ref={netWorthRef} netWorth={dashboardSummary.netWorth} trend={netWorthTrend} />
+      <NetWorthSheet ref={netWorthRef} netWorth={dashboardSummary?.netWorth ?? 0} trend={netWorthTrend} />
     </ScreenScaffold>
   );
 };

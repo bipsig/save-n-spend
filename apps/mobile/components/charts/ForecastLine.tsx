@@ -1,5 +1,8 @@
 import { StyleSheet, View } from "react-native";
 import Svg, { Circle, Line, Polyline } from "react-native-svg";
+import { usePrivacyMask } from "@/lib/money";
+import { chartA11y } from "@/lib/chartSummary";
+import { forecastSummary } from "@/lib/chartSummaries";
 import { colors } from "@/theme";
 
 const WIDTH = 320;
@@ -16,6 +19,7 @@ type Props = {
 // The one thing this exists to show is whether the line crosses the baseline before it
 // ends, so that crossing gets its own marker rather than being left for the eye to find.
 const ForecastLine = ({ series }: Props) => {
+  const masked = usePrivacyMask();
   if (series.length < 2) return null;
 
   const max = Math.max(...series, 0);
@@ -31,7 +35,7 @@ const ForecastLine = ({ series }: Props) => {
   const tone = crossIndex === -1 ? colors.success : colors.warning;
 
   return (
-    <View style={styles.wrap}>
+    <View style={styles.wrap} {...chartA11y(forecastSummary(series, masked))}>
       <Svg width="100%" height={HEIGHT} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} preserveAspectRatio="none">
         {min < 0 && (
           <Line x1={0} y1={zeroY} x2={WIDTH} y2={zeroY} stroke="rgba(255,255,255,0.15)" strokeWidth={1} strokeDasharray="3 4" />

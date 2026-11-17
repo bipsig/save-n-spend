@@ -1,10 +1,12 @@
 import { StyleSheet, View } from "react-native";
 import Card from "./Card";
 import { AppText } from "../ui/AppText";
+import Caps from "../ui/Caps";
 import PressableScale from "../ui/PressableScale";
 import { NameWithArchived } from "../ui/ArchivedMark";
 import { useCategoryById } from "@/lib/categories";
 import { budgetPace, budgetTotals, currentMonth, type BudgetSummary } from "@/lib/budgets";
+import { formatPct } from "@/lib/format/pct";
 import { colors } from "@/theme";
 
 const DOT_COLOR: Record<"success" | "warning" | "danger", string> = {
@@ -28,7 +30,7 @@ const Row = ({ item, daysElapsed, daysInMonth }: { item: BudgetSummary; daysElap
         </NameWithArchived>
       </View>
       <AppText size="xs" weight="bold" color="inkDim">
-        {Math.round(pace.ratio * 100)}%
+        {formatPct(pace.ratio * 100)}
       </AppText>
     </View>
   );
@@ -50,15 +52,13 @@ const BudgetsAtAGlanceCard = ({ items, onPress }: Props) => {
   const { daysElapsed, daysInMonth } = budgetTotals(items, currentMonth());
   const overCount = items.filter((item) => budgetPace(item, daysElapsed, daysInMonth).ratio > 1).length;
   const label = overCount === 0
-    ? `Budgets at a glance: all ${items.length} on track. Opens Budgets.`
-    : `Budgets at a glance: ${overCount} of ${items.length} over pace. Opens Budgets.`;
+    ? `Budgets at a glance: all ${items.length} on track. Opens Budget.`
+    : `Budgets at a glance: ${overCount} of ${items.length} over pace. Opens Budget.`;
 
   return (
     <PressableScale onPress={onPress} scaleTo={0.98} accessibilityRole="button" accessibilityLabel={label}>
       <Card style={styles.card}>
-        <AppText size="xs" weight="semibold" color="inkDim" style={styles.label}>
-          BUDGETS AT A GLANCE
-        </AppText>
+        <Caps>Budgets at a glance</Caps>
         {items.map((item) => (
           <Row key={item.budget._id} item={item} daysElapsed={daysElapsed} daysInMonth={daysInMonth} />
         ))}
@@ -70,9 +70,6 @@ const BudgetsAtAGlanceCard = ({ items, onPress }: Props) => {
 const styles = StyleSheet.create({
   card: {
     gap: 10,
-  },
-  label: {
-    letterSpacing: 1,
   },
   row: {
     flexDirection: "row",

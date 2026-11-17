@@ -8,6 +8,7 @@ import Icon from "../ui/Icon";
 import PressableScale from "../ui/PressableScale";
 import { FOR_YOU_SLIDE_HEIGHT } from "./ForYouCarousel";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { formatInstant } from "@/lib/format/date";
 
 type Props = {
   slice: GoalWatchSlice;
@@ -21,7 +22,7 @@ const GoalWatchSlide = ({ slice }: Props) => {
   usePrivacyMask(); // subscribe: the amounts below read formatMoney() directly
 
   const percent = Math.round((slice.saved / slice.target) * 100);
-  const monthLabel = new Date(slice.projectedDate).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+  const monthLabel = formatInstant(slice.projectedDate, "monthLong");
   const label = `Goal watch: ${slice.goalName}, ${formatMoney(slice.saved)} of ${formatMoney(slice.target)} saved. `
     + `At this pace, done around ${monthLabel}. Opens Goals.`;
 

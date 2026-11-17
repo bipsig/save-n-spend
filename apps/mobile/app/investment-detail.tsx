@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { goBackOrHome } from "@/lib/navigation";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { ITransaction } from "@save-n-spend/types";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
-import BackButton from "@/components/shell/BackButton";
 import Card from "@/components/data/Card";
 import Sparkline from "@/components/charts/Sparkline";
 import Money from "@/components/ui/Money";
@@ -13,7 +12,11 @@ import Icon from "@/components/ui/Icon";
 import Button from "@/components/ui/Button";
 import PressableScale from "@/components/ui/PressableScale";
 import { AppText } from "@/components/ui/AppText";
-import EmptyState from "@/components/states/EmptyState";
+import Caps from "@/components/ui/Caps";
+import SegmentedControl from "@/components/ui/SegmentedControl";
+import { StatRow } from "@/components/ui/StatTile";
+import ScreenStates from "@/components/states/ScreenStates";
+import SkeletonState from "@/components/states/SkeletonState";
 import RevalueSheet from "@/components/sheets/RevalueSheet";
 import EditAccountSheet from "@/components/sheets/EditAccountSheet";
 import DeleteInvestmentSheet, { type DeleteInvestmentSummary } from "@/components/sheets/DeleteInvestmentSheet";
@@ -21,15 +24,18 @@ import { useBills } from "@/lib/bills";
 import { toast } from "@/store/toast";
 import { useAccountById, useAccounts } from "@/lib/accounts";
 import { useAccountStore } from "@/store/accounts";
-import { get } from "@/lib/api";
 import { formatTxnDate } from "@/lib/date";
-import formatMoney, { usePrivacyMask } from "@/lib/money";
-import { formatAnnual, returnPct, useInvestments, useInvestmentTrend } from "@/lib/investments";
+import formatMoney, { formatMoneyExact, usePrivacyMask } from "@/lib/money";
+import { formatPct } from "@/lib/format/pct";
+import { formatInstant } from "@/lib/format/date";
+import { returnPct, useInvestmentHistory, useInvestments, useInvestmentTrend } from "@/lib/investments";
+import { holdingSparkSummary } from "@/lib/chartSummaries";
+import { mergeScreenStates } from "@/lib/screenStates";
 import InvestmentsExportSheet, { type InvestmentsExportHandle } from "@/components/sheets/InvestmentsExportSheet";
-import OverviewTrendsTabs, { type InvestTab } from "@/components/investments/OverviewTrendsTabs";
-import TrendsView from "@/components/investments/TrendsView";
+import TrendsView, { INVEST_TABS, type InvestTab } from "@/components/investments/TrendsView";
 import type { IconName } from "@/lib/icons";
-import { colors, spacing } from "@/theme";
+import { colors, radius, spacing } from "@/theme";
+import type { HeaderAction } from "@/lib/screenHeader";
 import type { ColorToken } from "@/theme";
 import { signTone } from "@/lib/signTone";
 
@@ -50,85 +56,75 @@ const effectOn = (t: ITransaction, id: string): number => {
 };
 
 const InvestmentDetailScreen = () => {
-  usePrivacyMask();
+  const masked = usePrivacyMask();
   const router = useRouter();
   const { id, edit } = useLocalSearchParams<{ id: string; edit?: string }>();
   const account = useAccountById(id);
+  const accountsLoaded = useAccountStore((s) => s.loaded);
   const allAccounts = useAccounts();
 
-  const [txns, setTxns] = useState<ITransaction[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const history = useInvestmentHistory(id);
+  const txns = history.data;
   const revalueRef = useRef<BottomSheetModal>(null);
   const exportRef = useRef<InvestmentsExportHandle>(null);
   const editRef = useRef<BottomSheetModal>(null);
   const deleteRef = useRef<BottomSheetModal>(null);
-  const { items: bills } = useBills();
+  const billsQuery = useBills();
+  const bills = billsQuery.items;
   // The server's figures for this holding — the yearly return is worked out there.
-  const { data: portfolio, refetch: refetchPortfolio } = useInvestments();
+  const portfolioQuery = useInvestments();
+  const portfolio = portfolioQuery.data;
   const holding = portfolio?.holdings.find((h) => h.accountId === id) ?? null;
-  const { data: trendData, refetch: refetchTrend } = useInvestmentTrend();
+  const trendQuery = useInvestmentTrend();
+  const trendData = trendQuery.data;
   const [tab, setTab] = useState<InvestTab>("overview");
+
+  // The page draws once its own history is in; the yearly figure, Trends and the SIP names
+  // join when theirs are, so their failures only ever show as the refresh strip.
+  const notFound = !id || (accountsLoaded && !account) || history.errorStatus === 404;
+  const merged = mergeScreenStates(
+    { ...history, hasData: txns !== null },
+    { ...portfolioQuery, hasData: portfolio !== null },
+    { ...trendQuery, hasData: trendData !== null },
+    { ...billsQuery, hasData: billsQuery.data !== null },
+  );
+  const hasData = txns !== null && !!account;
+  const state = { ...merged, hasData, notFound, error: hasData ? merged.error : history.error };
 
   // Arriving from the hub's "add when it started" nudge opens the editor straight away.
   const [autoEdited, setAutoEdited] = useState(false);
   useEffect(() => {
-    if (edit === "1" && !autoEdited && account) {
+    if (edit === "1" && !autoEdited && account && txns) {
       setAutoEdited(true);
       editRef.current?.present();
     }
-  }, [edit, autoEdited, account]);
+  }, [edit, autoEdited, account, txns]);
 
-  const load = useCallback(async () => {
-    if (!id) return;
-    setError(null);
-    try {
-      // The investment-specific history — includes value-updates (adjustments), which the
-      // general transactions feed drops.
-      const res = await get<ITransaction[]>(`/investments/${id}/history`);
-      setTxns(res);
-    }
-    catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't load history");
-    }
-  }, [id]);
-
-  useFocusEffect(useCallback(() => { void load(); void refetchPortfolio(); void refetchTrend(); }, [load, refetchPortfolio, refetchTrend]));
-
-  const afterChange = () => {
-    void load();
-    void refetchPortfolio();
-    void refetchTrend();
-    void useAccountStore.getState().load();
+  // The same header while loading and once loaded; the actions wait for the record.
+  // The sheets behind the actions mount with the page, once the history is in.
+  const ready = !!account && !!txns && !notFound;
+  const headerProps = {
+    title: account && !notFound ? account.name : "Investment",
+    back: true,
+    actions: [
+      { kind: "export", label: "Export investment", onPress: () => exportRef.current?.present(), disabled: !ready },
+      { kind: "edit", label: "Edit investment", onPress: () => editRef.current?.present(), disabled: !ready },
+    ] satisfies HeaderAction[],
   };
 
-  const header = (
-    <View style={styles.head}>
-      <BackButton />
-      <AppText size="xl" weight="black" numberOfLines={1} style={styles.headTitle}>{account?.name ?? "Investment"}</AppText>
-      {account && (
-        <PressableScale onPress={() => exportRef.current?.present()} scaleTo={0.9} hitSlop={8} accessibilityRole="button" accessibilityLabel="Export investment">
-          <Icon name="download" size={20} color="inkDim" />
-        </PressableScale>
-      )}
-      {account && (
-        <PressableScale onPress={() => editRef.current?.present()} scaleTo={0.9} hitSlop={8} accessibilityRole="button" accessibilityLabel="Edit investment">
-          <Icon name="edit" size={20} color="inkDim" />
-        </PressableScale>
-      )}
-    </View>
-  );
-
-  if (!account) {
+  if (!account || !txns || notFound) {
     return (
-      <ScreenScaffold header={header}>
-        <EmptyState icon="investments" title="Not found" subtitle="This investment may have been removed." />
+      <ScreenScaffold {...headerProps} states={state}>
+        <ScreenStates state={state} thing="investment" skeleton={<DetailSkeleton />}>
+          {null}
+        </ScreenStates>
       </ScreenScaffold>
     );
   }
 
   // Cost basis and gain from the holding's own history; current is the live balance.
-  const contributions = (txns ?? []).filter((t) => t.type === "transfer" && t.toAccount === id).reduce((s, t) => s + t.amount, 0);
-  const redemptions = (txns ?? []).filter((t) => t.type === "transfer" && t.account === id).reduce((s, t) => s + t.amount, 0);
+  const contributions = txns.filter((t) => t.type === "transfer" && t.toAccount === id).reduce((s, t) => s + t.amount, 0);
+  const redemptions = txns.filter((t) => t.type === "transfer" && t.account === id).reduce((s, t) => s + t.amount, 0);
   // Opening balance is the initial cost basis, not gain (see investmentService).
   const invested = account.startingBalance + contributions - redemptions;
   const current = account.balance;
@@ -138,7 +134,7 @@ const InvestmentDetailScreen = () => {
   // Value over time — oldest first. Counted back from today's value rather than up from the
   // opening balance: a holding can start worth something other than what went in (bought at
   // ₹1L, worth ₹90k when added), so only the current value is a sure anchor.
-  const chronological = [...(txns ?? [])].sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime());
+  const chronological = [...txns].sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime());
   const totalEffect = chronological.reduce((sum, t) => sum + effectOn(t, id!), 0);
   const line: number[] = [current - totalEffect];
   let running = current - totalEffect;
@@ -149,8 +145,8 @@ const InvestmentDetailScreen = () => {
   const nameOf = (accId?: string | null) => (accId ? allAccounts.find((a) => a._id === accId)?.name : undefined);
 
   // What deleting it would take with it, for the confirm sheet to spell out.
-  const moneyIn = (txns ?? []).filter((t) => t.type === "transfer" && t.toAccount === id);
-  const moneyOut = (txns ?? []).filter((t) => t.type === "transfer" && t.account === id);
+  const moneyIn = txns.filter((t) => t.type === "transfer" && t.toAccount === id);
+  const moneyOut = txns.filter((t) => t.type === "transfer" && t.account === id);
   const uniqueNames = (ids: (string | null | undefined)[]) =>
     [...new Set(ids.map((x) => nameOf(x) ?? "another account"))];
   const deleteSummary: DeleteInvestmentSummary = {
@@ -158,51 +154,61 @@ const InvestmentDetailScreen = () => {
     name: account.name,
     moneyIn: { count: moneyIn.length, total: contributions, from: uniqueNames(moneyIn.map((t) => t.account)) },
     moneyOut: { count: moneyOut.length, total: redemptions, to: uniqueNames(moneyOut.map((t) => t.toAccount)) },
-    valueUpdates: (txns ?? []).filter((t) => t.type === "positiveAdjustment" || t.type === "negativeAdjustment").length,
+    valueUpdates: txns.filter((t) => t.type === "positiveAdjustment" || t.type === "negativeAdjustment").length,
     sipBills: bills.filter((b) => b.toInvestment === id).map((b) => b.name),
   };
 
-  const sinceLabel = holding?.investedSince
-    ? new Date(holding.investedSince).toLocaleDateString("en-IN", { month: "short", year: "numeric" })
-    : null;
+  // In the account zone (U4): a start on 1 March in India is still 28 February in UTC.
+  const sinceLabel = holding?.investedSince ? formatInstant(holding.investedSince, "month") : null;
+  const signedMoney = (n: number) => formatMoney(n, { sign: "always" });
 
 
   const historyRow = (t: ITransaction): HistoryRow => {
     const eff = effectOn(t, id!);
     if (t.type === "transfer" && t.toAccount === id) {
-      return { icon: "add", tint: "success", soft: "successSoft", title: `Invested from ${nameOf(t.account) ?? "an account"}`, amt: `+${formatMoney(t.amount)}`, amtColor: "success" };
+      return { icon: "add", tint: "success", soft: "successSoft", title: `Invested from ${nameOf(t.account) ?? "an account"}`, amt: signedMoney(t.amount), amtColor: "success" };
     }
     if (t.type === "transfer" && t.account === id) {
-      return { icon: "transfer", tint: "info", soft: "infoSoft", title: `Redeemed to ${nameOf(t.toAccount) ?? "an account"}`, amt: `−${formatMoney(t.amount)}`, amtColor: "inkDim" };
+      return { icon: "transfer", tint: "info", soft: "infoSoft", title: `Redeemed to ${nameOf(t.toAccount) ?? "an account"}`, amt: signedMoney(-t.amount), amtColor: "inkDim" };
     }
     const up = eff >= 0;
-    return { icon: up ? "income" : "expenses", tint: up ? "success" : "danger", soft: up ? "successSoft" : "dangerSoft", title: "Value updated", amt: `${up ? "▲ " : "▼ "}${formatMoney(Math.abs(eff))}`, amtColor: gainColor(eff) };
+    return { icon: up ? "income" : "expenses", tint: up ? "success" : "danger", soft: up ? "successSoft" : "dangerSoft", title: "Value updated", amt: signedMoney(eff), amtColor: gainColor(eff) };
   };
 
   return (
-    <ScreenScaffold header={header}>
-      {trendData && trendData.points.length > 0 && <OverviewTrendsTabs tab={tab} onChange={setTab} />}
+    <ScreenScaffold {...headerProps} states={state}>
+      {trendData && trendData.points.length > 0 && (
+        <SegmentedControl size="sm" accessibilityLabel="View" segments={INVEST_TABS} value={tab} onChange={setTab} />
+      )}
       {tab === "trends" && trendData && trendData.points.length > 0 ? (
         <TrendsView trend={trendData} initialScope={id} locked />
       ) : (
         <>
       <Card style={styles.card}>
-        <AppText size="xs" weight="semibold" color="inkDim" style={styles.caps}>
-          {account.investmentKind ?? "Investment"}
-        </AppText>
+        {/* The full name: the header shrinks a long one and then cuts it off. */}
+        <AppText size="md" weight="black" style={styles.fullName}>{account.name}</AppText>
+        <Caps>{account.investmentKind ?? "Investment"}</Caps>
         <Money value={current} weight="black" size="xl" />
         <AppText size="sm" weight="bold" color={gainColor(gain)} style={styles.delta}>
-          {gain > 0 ? "▲ " : gain < 0 ? "▼ " : ""}{formatMoney(Math.abs(gain))}{pct !== null ? ` (${pct >= 0 ? "+" : ""}${Math.round(pct)}%)` : ""}
+          {signedMoney(gain)}{pct !== null ? ` (${formatPct(pct, { kind: "return" })})` : ""}
         </AppText>
-        {line.length >= 2 && <Sparkline values={line} />}
+        {line.length >= 2 && (
+          <Sparkline values={line} summary={holdingSparkSummary(line, chronological[0]?.occurredAt, masked)} />
+        )}
       </Card>
 
-      <Card style={styles.statCard}>
-        <View style={styles.stat}><AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>Invested</AppText><Money value={invested} weight="black" size="sm" /></View>
-        <View style={styles.statDivider} />
-        <View style={styles.stat}><AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>Gain</AppText><AppText size="sm" weight="black" color={gainColor(gain)}>{formatMoney(gain)}</AppText></View>
-        <View style={styles.statDivider} />
-        <View style={styles.stat}><AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>Per year</AppText><AppText size="sm" weight="black" color={annual !== null ? gainColor(annual) : "inkDim"}>{annual !== null ? formatAnnual(annual).replace(" a year", "") : "—"}</AppText></View>
+      <Card>
+        <StatRow
+          surface="plain"
+          gap={spacing.md}
+          items={[
+            { label: "Invested", amount: invested, format: (p) => formatMoneyExact(p) },
+            { label: "Gain", amount: gain, signed: true, format: (p) => formatMoneyExact(p, { sign: "always" }), tone: gainColor(gain) },
+            annual !== null
+              ? { label: "Per year", text: formatPct(annual * 100, { kind: "return" }), tone: gainColor(annual) }
+              : { label: "Per year", text: "—", tone: "inkDim" },
+          ]}
+        />
       </Card>
 
       {/* Why the yearly figure is what it is — or how to get one. */}
@@ -213,7 +219,7 @@ const InvestmentDetailScreen = () => {
       ) : (
         <AppText size="xs" color="inkDim">
           {holding?.annualReturnStatus === "ok"
-            ? `${pct !== null ? `${pct >= 0 ? "+" : "−"}${Math.abs(pct).toFixed(1)}% all time. ` : ""}Per year counts each rupee for the time it's been invested${sinceLabel ? `, since ${sinceLabel}` : ""}.`
+            ? `${pct !== null ? `${formatPct(pct, { kind: "return" })} all time. ` : ""}Per year counts each rupee for the time it's been invested${sinceLabel ? `, since ${sinceLabel}` : ""}.`
             : holding?.annualReturnStatus === "tooEarly"
               ? "A yearly return shows once your money has been in for about three months."
               : ""}
@@ -238,9 +244,9 @@ const InvestmentDetailScreen = () => {
         onPress={() => router.push({ pathname: "/add-transaction", params: { redeemFrom: account._id } })}
       />
 
-      {txns && txns.length > 0 && (
+      {txns.length > 0 && (
         <>
-          <AppText size="xs" weight="bold" color="inkDim" style={styles.sectionLabel}>HISTORY</AppText>
+          <Caps header style={styles.sectionLabel}>History</Caps>
           <Card style={styles.card}>
             {txns.map((t) => {
               const row = historyRow(t);
@@ -259,8 +265,6 @@ const InvestmentDetailScreen = () => {
         </>
       )}
 
-      {error && <AppText size="sm" color="danger">{error}</AppText>}
-
       <Button label="Delete investment" variant="ghost" icon="delete" onPress={() => deleteRef.current?.present()} />
         </>
       )}
@@ -270,10 +274,9 @@ const InvestmentDetailScreen = () => {
       <RevalueSheet
         ref={revalueRef}
         holdings={[{ accountId: account._id, name: account.name, invested, current }]}
-        onSaved={afterChange}
       />
 
-      <EditAccountSheet ref={editRef} account={account} invested={invested} onSaved={afterChange} />
+      <EditAccountSheet ref={editRef} account={account} invested={invested} />
 
       <DeleteInvestmentSheet
         ref={deleteRef}
@@ -287,18 +290,23 @@ const InvestmentDetailScreen = () => {
   );
 };
 
+// The value card, the stat row and the two buttons, before the history is in.
+const DetailSkeleton = () => (
+  <View style={styles.skeleton}>
+    <SkeletonState height={170} borderRadius={radius.lg} />
+    <SkeletonState height={76} borderRadius={radius.lg} />
+    <SkeletonState height={48} borderRadius={radius.lg} />
+  </View>
+);
+
 const styles = StyleSheet.create({
-  head: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  headTitle: { flex: 1 },
+  skeleton: { gap: spacing.lg },
   card: { gap: spacing.sm },
-  caps: { letterSpacing: 1, textTransform: "uppercase" },
+  fullName: { lineHeight: 23 },
   delta: { marginTop: 2 },
-  statCard: { flexDirection: "row", alignItems: "center" },
-  stat: { flex: 1, gap: 3 },
-  statDivider: { width: 1, backgroundColor: colors.line, marginHorizontal: spacing.md, alignSelf: "stretch" },
   ctaRow: { flexDirection: "row", gap: spacing.md },
   ctaHalf: { flex: 1 },
-  sectionLabel: { letterSpacing: 1.5, paddingHorizontal: 2 },
+  sectionLabel: { paddingHorizontal: 2 },
   hRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.lineSoft },
   hInfo: { flex: 1, gap: 2 },
 });

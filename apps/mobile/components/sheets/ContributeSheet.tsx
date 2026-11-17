@@ -13,8 +13,9 @@ import PressableScale from "@/components/ui/PressableScale";
 import { AppText } from "@/components/ui/AppText";
 import ProgressBar from "@/components/data/ProgressBar";
 import { haptics } from "@/lib/haptics";
-import { parseMoney, usePrivacyMask } from "@/lib/money";
-import formatMoney from "@/lib/money";
+import formatMoney, { parseMoney, usePrivacyMask } from "@/lib/money";
+import { formatPct } from "@/lib/format/pct";
+import Caps from "@/components/ui/Caps";
 import { post } from "@/lib/api";
 import { splitIssues } from "@/lib/apiError";
 import { holderFor } from "@/lib/idempotency";
@@ -24,10 +25,12 @@ import { toast } from "@/store/toast";
 import type { IconName } from "@/lib/icons";
 import { spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
+import { useOnlineGate } from "@/lib/onlineGate";
 
 type Props = {
   goal: IGoal | null;
-  onChanged: () => void;
+  /** Optional: the write already refreshes every screen that shows it. */
+  onChanged?: () => void;
 };
 
 // Quick-set presets (paise) — spec .presetrow. Tapping writes into the same
@@ -40,6 +43,8 @@ const ContributeSheet = forwardRef<BottomSheetModal, Props>(({ goal, onChanged }
   // on top of the provider-wide queue (see CategoryPickerSheet).
   const innerRef = useRef<BottomSheetModal>(null);
   useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
+  // Needs the server: offline the button says so before the tap.
+  const gate = useOnlineGate("");
   const dismiss = () => innerRef.current?.dismiss();
 
   const [submitting, setSubmitting] = useState(false);
@@ -82,8 +87,8 @@ const ContributeSheet = forwardRef<BottomSheetModal, Props>(({ goal, onChanged }
 
   const entered = parseMoney(watch("amount"));
   const projected = goal ? Math.min(goal.saved + (entered > 0 ? entered : 0), goal.target) : 0;
-  const projectedPct = goal && goal.target > 0 ? Math.round((projected / goal.target) * 100) : 0;
-  const currentPct = goal && goal.target > 0 ? Math.round((goal.saved / goal.target) * 100) : 0;
+  const projectedPct = goal && goal.target > 0 ? (projected / goal.target) * 100 : 0;
+  const currentPct = goal && goal.target > 0 ? (goal.saved / goal.target) * 100 : 0;
 
   const onSubmit = async (data: FormValues) => {
     if (!goal) return;
@@ -101,7 +106,7 @@ const ContributeSheet = forwardRef<BottomSheetModal, Props>(({ goal, onChanged }
       // reaches the lock screen — but it must never hold up the contribution itself.
       void fireGoalMilestone(goal, added, useSession.getState().user?.prefs?.notifications);
       dismiss();
-      onChanged();
+      onChanged?.();
       // Hitting the target is the whole point of a goal, so it gets said outright
       // rather than left for the user to work out from a percentage on the card.
       toast.success(
@@ -141,16 +146,14 @@ const ContributeSheet = forwardRef<BottomSheetModal, Props>(({ goal, onChanged }
               {goal.name}
             </AppText>
             <AppText size="xs" color="inkDim">
-              {`${formatMoney(goal.saved)} of ${formatMoney(goal.target)} · ${currentPct}%`}
+              {`${formatMoney(goal.saved)} of ${formatMoney(goal.target)} · ${formatPct(currentPct)}`}
             </AppText>
           </View>
 
           <ProgressBar value={projectedPct} color={color} height={8} />
 
           <View style={styles.field}>
-            <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
-              ADD MONEY
-            </AppText>
+            <Caps>Add money</Caps>
 
             {/* Spec .presetrow — quick amounts; typing overrides */}
             <View style={styles.presetRow}>
@@ -213,13 +216,15 @@ const ContributeSheet = forwardRef<BottomSheetModal, Props>(({ goal, onChanged }
           {/* Spec: live CTA — the amount AND the resulting % */}
           <Button
             label={
-              isValid && entered > 0
-                ? `Add ${formatMoney(entered)} · goal reaches ${projectedPct}%`
+              !gate.allowed ? gate.label
+              : isValid && entered > 0
+                ? `Add ${formatMoney(entered)} · goal reaches ${formatPct(projectedPct)}`
                 : "Add money"
             }
+            icon={gate.icon}
             onPress={handleSubmit(onSubmit)}
             loading={submitting}
-            disabled={!isValid}
+            disabled={!isValid || !gate.allowed}
           />
         </>
       )}
@@ -236,9 +241,6 @@ const styles = StyleSheet.create({
   },
   field: {
     gap: spacing.sm,
-  },
-  label: {
-    letterSpacing: 1.3, // spec .flabel
   },
   presetRow: {
     flexDirection: "row",

@@ -6,12 +6,15 @@ type Props = {
   value: boolean;
   onValueChange: (next: boolean) => void;
   disabled?: boolean;
+  /** What the switch controls ("Privacy mode"). VoiceOver reads it with "switch, on/off";
+   *  the visible row text beside a switch isn't attached to it. */
+  label?: string;
 };
 
 // The platform switch in Midnight Glass colours. Deliberately the native control
 // rather than a hand-rolled one: a settings toggle is where a user most expects
 // the OS gesture (drag as well as tap) and the OS accessibility behaviour.
-const Toggle = ({ value, onValueChange, disabled = false }: Props) => (
+const Toggle = ({ value, onValueChange, disabled = false, label }: Props) => (
   <Switch
     value={value}
     // Every toggle in the app buzzes from here, so no screen has to remember to
@@ -21,6 +24,7 @@ const Toggle = ({ value, onValueChange, disabled = false }: Props) => (
       onValueChange(next);
     }}
     disabled={disabled}
+    accessibilityLabel={label}
     // On iOS `trackColor.true` is the on-tint and `ios_backgroundColor` shows
     // through in the off state — the default grey reads as a light-mode leftover
     // against the dark ground, so both are set.

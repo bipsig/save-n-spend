@@ -2,7 +2,10 @@ import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import Svg, { G, Line, Rect } from "react-native-svg";
 import { AppText } from "@/components/ui/AppText";
+import ChartTooltip from "@/components/ui/ChartTooltip";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { chartA11y } from "@/lib/chartSummary";
+import { pairedSummary } from "@/lib/chartSummaries";
 import { useScrubTick } from "@/lib/useScrubTick";
 import { incomeColor, expenseColor } from "@/theme/charts";
 
@@ -14,14 +17,12 @@ type Props = {
   height?: number;
 };
 
-const TIP_W = 128;
-
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 // Paired columns (spec income vs expense). Tap a unit to read its exact income
 // and expense — a highlighted slot + tooltip.
 const PairedColumns = ({ data, labels, activeIndex, onScrub, height = 96 }: Props) => {
-  usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
+  const masked = usePrivacyMask(); // also subscribes: a peek has to re-render the amounts below
   const [w, setW] = useState(0);
   const active = activeIndex ?? null;
   const padB = 4;
@@ -43,7 +44,7 @@ const PairedColumns = ({ data, labels, activeIndex, onScrub, height = 96 }: Prop
   };
 
   return (
-    <View>
+    <View {...chartA11y(pairedSummary(data, labels, masked))}>
       <View
         onLayout={(e) => setW(e.nativeEvent.layout.width)}
         style={{ height }}
@@ -72,23 +73,15 @@ const PairedColumns = ({ data, labels, activeIndex, onScrub, height = 96 }: Prop
           </Svg>
         )}
         {active !== null && (
-          <View style={[styles.tip, { left: clamp(slotW * active + slotW / 2 - TIP_W / 2, 0, Math.max(0, w - TIP_W)) }]}>
-            <AppText size="xs" color="inkDim" style={styles.tipHead}>
-              {labels[active]}
-            </AppText>
-            <View style={styles.tipRow}>
-              <View style={[styles.tipDot, { backgroundColor: incomeColor }]} />
-              <AppText size="sm" weight="semibold">
-                {formatMoney(data[active].income)}
-              </AppText>
-            </View>
-            <View style={styles.tipRow}>
-              <View style={[styles.tipDot, { backgroundColor: expenseColor }]} />
-              <AppText size="sm" weight="semibold">
-                {formatMoney(data[active].expense)}
-              </AppText>
-            </View>
-          </View>
+          <ChartTooltip
+            x={slotW * active + slotW / 2}
+            chartWidth={w}
+            title={labels[active] ?? ""}
+            lines={[
+              { label: "Income", value: formatMoney(data[active].income), dot: incomeColor },
+              { label: "Expenses", value: formatMoney(data[active].expense), dot: expenseColor },
+            ]}
+          />
         )}
       </View>
       <View style={styles.labels}>
@@ -110,31 +103,6 @@ const styles = StyleSheet.create({
   label: {
     flex: 1,
     textAlign: "center",
-  },
-  tip: {
-    position: "absolute",
-    top: 0,
-    width: TIP_W,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-    backgroundColor: "#241E42",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    gap: 3,
-  },
-  tipHead: {
-    letterSpacing: 0.5,
-  },
-  tipRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  tipDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 2,
   },
 });
 

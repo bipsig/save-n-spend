@@ -1,15 +1,14 @@
 import { StyleSheet, View } from "react-native";
-import BackButton from "@/components/shell/BackButton";
-import PeekButton from "@/components/shell/PeekButton";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import Card from "@/components/data/Card";
 import ProgressBar from "@/components/data/ProgressBar";
 import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
 import EmptyState from "@/components/states/EmptyState";
-import ErrorState from "@/components/states/ErrorState";
+import ScreenStates from "@/components/states/ScreenStates";
 import SkeletonState from "@/components/states/SkeletonState";
 import { BAND_COLOR, PILLAR_ICON, pillarColor, useHealthScore } from "@/lib/health";
+import { count } from "@/lib/format/count";
 import { radius, spacing } from "@/theme";
 import type { HealthPillar } from "@save-n-spend/types";
 
@@ -42,7 +41,7 @@ const PillarCard = ({ pillar }: { pillar: HealthPillar }) => {
           <AppText size="xs" color="inkDim">
             {/* The weight is shown because it is the honest answer to "why did my score
                 barely move when I fixed this" — some pillars are worth more. */}
-            {applies ? `${pillar.verdict} · worth ${pillar.weight} points` : "Not counted yet"}
+            {applies ? `${pillar.verdict} · worth ${count(pillar.weight, "point")}` : "Not counted yet"}
           </AppText>
         </View>
         {/* Rounded on arrival as well as at the source: a deployed API from before that fix
@@ -66,88 +65,58 @@ const PillarCard = ({ pillar }: { pillar: HealthPillar }) => {
 };
 
 const HealthScreen = () => {
-  const { data, loading, error, refetch } = useHealthScore();
+  const q = useHealthScore();
+  const { data } = q;
+  const state = { ...q, hasData: data != null };
 
-  const header = (
-    <View style={styles.head}>
-      <BackButton />
-      <AppText size="xl" weight="black" style={styles.headTitle}>
-        Health score
-      </AppText>
-      <PeekButton />
+  const skeleton = (
+    <View style={styles.skeletonCol}>
+      {Array.from({ length: 5 }).map((_, i) => (
+        <SkeletonState key={i} height={96} borderRadius={radius.lg} />
+      ))}
     </View>
   );
 
-  if (error && !data) {
-    return (
-      <ScreenScaffold header={header}>
-        <ErrorState message={error} onRetry={refetch} />
-      </ScreenScaffold>
-    );
-  }
-
-  if (loading && !data) {
-    return (
-      <ScreenScaffold header={header}>
-        <View style={styles.skeletonCol}>
-          {Array.from({ length: 5 }).map((_, i) => (
-            <SkeletonState key={i} height={96} borderRadius={radius.lg} />
-          ))}
-        </View>
-      </ScreenScaffold>
-    );
-  }
-
-  if (!data) return null;
-
-  if (data.score === null) {
-    return (
-      <ScreenScaffold header={header}>
-        <EmptyState icon="healthPulse" title="Not enough data yet" subtitle={data.reason ?? ""} />
-      </ScreenScaffold>
-    );
-  }
-
   return (
-    <ScreenScaffold header={header}>
-      <Card style={styles.hero}>
-        <View style={styles.heroTop}>
-          <View style={styles.heroTitle}>
-            <AppText size="lg" weight="black">{data.rating}</AppText>
-            <AppText size="xs" color="inkDim">
-              Measured over the last {data.windowDays} days
-            </AppText>
-          </View>
-          <AppText size="xl" weight="black">
-            {data.score}
-            <AppText size="xs" weight="semibold" color="inkDim">/100</AppText>
-          </AppText>
-        </View>
-        <ProgressBar value={data.score} color={BAND_COLOR[data.band]} />
-        {/* Said plainly, once, so nobody has to guess whether an untouched feature is
-            costing them points. It is the question this screen exists to answer. */}
-        <AppText size="xs" color="inkDim">
-          Your score is the weighted average of the pillars below that apply to you.
-          Anything not counted yet is left out rather than scored as zero.
-        </AppText>
-      </Card>
+    <ScreenScaffold title="Health score" back states={state}>
+      <ScreenStates state={state} skeleton={skeleton}>
+        {() => !data ? null : data.score === null ? (
+          <EmptyState icon="healthPulse" title="Not enough data yet" subtitle={data.reason ?? ""} />
+        ) : (
+          <>
+            <Card style={styles.hero}>
+              <View style={styles.heroTop}>
+                <View style={styles.heroTitle}>
+                  <AppText size="lg" weight="black">{data.rating}</AppText>
+                  <AppText size="xs" color="inkDim">
+                    Measured over the last {count(data.windowDays, "day")}
+                  </AppText>
+                </View>
+                <AppText size="xl" weight="black">
+                  {data.score}
+                  <AppText size="xs" weight="semibold" color="inkDim">/100</AppText>
+                </AppText>
+              </View>
+              <ProgressBar value={data.score} color={BAND_COLOR[data.band]} />
+              {/* Said plainly, once, so nobody has to guess whether an untouched feature is
+                  costing them points. It is the question this screen exists to answer. */}
+              <AppText size="xs" color="inkDim">
+                Your score is the weighted average of the pillars below that apply to you.
+                Anything not counted yet is left out rather than scored as zero.
+              </AppText>
+            </Card>
 
-      {data.pillars.map((pillar) => (
-        <PillarCard key={pillar.key} pillar={pillar} />
-      ))}
+            {data.pillars.map((pillar) => (
+              <PillarCard key={pillar.key} pillar={pillar} />
+            ))}
+          </>
+        )}
+      </ScreenStates>
     </ScreenScaffold>
   );
 };
 
 const styles = StyleSheet.create({
-  head: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  headTitle: {
-    flex: 1,
-  },
   skeletonCol: {
     gap: spacing.lg,
   },

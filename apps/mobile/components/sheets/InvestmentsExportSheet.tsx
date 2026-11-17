@@ -5,6 +5,7 @@ import type { InvestmentReport } from "@save-n-spend/types";
 import AppSheet from "@/components/sheets/AppSheet";
 import FormatCards from "@/components/sheets/FormatCards";
 import Button from "@/components/ui/Button";
+import Caps from "@/components/ui/Caps";
 import Chip from "@/components/ui/Chip";
 import Icon from "@/components/ui/Icon";
 import SegmentedControl from "@/components/ui/SegmentedControl";
@@ -13,11 +14,13 @@ import { AppText } from "@/components/ui/AppText";
 import type { ExportFormat } from "@/lib/export";
 import { exportInvestments, fetchInvestmentReport } from "@/lib/investmentsExport";
 import {
-  PRESETS, SECTIONS, availableFys, estimatePages, fyLabel, ledgerInPeriod, matchPreset, monthLabel,
+  PRESETS, SECTIONS, availableFys, estimatePages, fyLabel, ledgerInPeriod, matchPreset,
   periodBounds, periodLabel, presetSections, type Period, type PresetKey, type SectionKey,
 } from "@/lib/investmentsReportMath";
 import { haptics } from "@/lib/haptics";
 import { appZone, monthKeyOf } from "@/lib/zone";
+import { formatCalendar } from "@/lib/format/date";
+import { count } from "@/lib/format/count";
 import { toast } from "@/store/toast";
 import { useConnectivity } from "@/store/connectivity";
 import { colors, spacing } from "@/theme";
@@ -28,10 +31,6 @@ type Props = {
   /** A holding's id when opened from its own page; null for the whole portfolio. */
   holdingId?: string | null;
 };
-
-const Caps = ({ children }: { children: React.ReactNode }) => (
-  <AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>{children}</AppText>
-);
 
 const monthOf = (iso: string) => monthKeyOf(new Date(iso), appZone());
 
@@ -93,7 +92,7 @@ const InvestmentsExportSheet = forwardRef<InvestmentsExportHandle, Props>(({ hol
     setSections((cur) => (on ? [...cur, key] : cur.filter((k) => k !== key)));
 
   const dates = bounds
-    ? `${monthLabel(bounds.from)} – ${monthLabel(bounds.to)} · ${months.filter((m) => m >= bounds.from && m <= bounds.to).length} month${months.length === 1 ? "" : "s"} of history`
+    ? `${formatCalendar(bounds.from, "month")} – ${formatCalendar(bounds.to, "month")} · ${count(months.filter((m) => m >= bounds.from && m <= bounds.to).length, "month")} of history`
     : null;
   const emptyPeriod = !!report && months.length > 0 && !bounds;
   const noHoldings = !!report && months.length === 0;
@@ -149,7 +148,7 @@ const InvestmentsExportSheet = forwardRef<InvestmentsExportHandle, Props>(({ hol
         <View style={styles.footer}>
           {!csv && !blocked && (
             <AppText size="xs" color="inkDim" style={styles.center}>
-              {`${sections.length} of ${total} sections · about ${pages} page${pages === 1 ? "" : "s"}`}
+              {`${sections.length} of ${count(total, "section")} · about ${count(pages, "page")}`}
             </AppText>
           )}
           {message && <AppText size="sm" color={message.tone} style={styles.center}>{message.text}</AppText>}
@@ -184,7 +183,7 @@ const InvestmentsExportSheet = forwardRef<InvestmentsExportHandle, Props>(({ hol
           ))}
         </View>
         {dates && <AppText size="xs" color="inkDim">{dates}</AppText>}
-        {emptyPeriod && <AppText size="xs" color="warning">{`Your history starts ${monthLabel(months[0])}.`}</AppText>}
+        {emptyPeriod && <AppText size="xs" color="warning">{`Your history starts ${formatCalendar(months[0], "month")}.`}</AppText>}
       </View>
 
       <View style={styles.section}>
@@ -218,7 +217,7 @@ const InvestmentsExportSheet = forwardRef<InvestmentsExportHandle, Props>(({ hol
                     <AppText size="sm" weight="bold">{item.label}</AppText>
                     <AppText size="xs" color="inkDim">{item.sub}</AppText>
                   </View>
-                  <Toggle value={sections.includes(item.key)} onValueChange={(on) => flip(item.key, on)} />
+                  <Toggle label={item.label} value={sections.includes(item.key)} onValueChange={(on) => flip(item.key, on)} />
                 </View>
               ))}
             </View>
@@ -235,7 +234,6 @@ const styles = StyleSheet.create({
   identity: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   identityText: { flex: 1, gap: 3 },
   section: { gap: spacing.sm },
-  caps: { letterSpacing: 1.3, textTransform: "uppercase" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.lineSoft },
   rowText: { flex: 1, gap: 2 },

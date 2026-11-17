@@ -14,9 +14,12 @@ import {
   projectDay,
   hourAbbr,
   seriesLabel,
-  windowLabel,
   prevLabel,
 } from "@/lib/insights";
+import { rangeNavLabel } from "@/lib/dateRange";
+import { formatCompactExact } from "@/lib/format/compact";
+import { formatPct, percentOf } from "@/lib/format/pct";
+import { count } from "@/lib/format/count";
 import type { Slice, HeatCell, Heatmap, HourCell, HourlyPattern, CompareRow } from "@/lib/insights";
 import { incomeColor, expenseColor } from "@/theme";
 // The exact formatter, never the privacy-masked default: an exported file is
@@ -34,7 +37,6 @@ import { formatMoneyExact as formatMoney } from "@/lib/money";
 // lib/insights.ts helpers the screen uses, gated the same way (a year has no
 // daily rhythm; a window with no movers gets no section).
 
-const pct = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 100) : 0);
 const unitsWord = (period: InsightsPeriod) =>
   period === "year" ? "years" : period === "week" ? "weeks" : period === "day" ? "days" : "months";
 
@@ -43,7 +45,7 @@ const unitsWord = (period: InsightsPeriod) =>
 const currentTotals = (data: InsightsSummary) => {
   const cur = data.incomeVsExpense[data.incomeVsExpense.length - 1] ?? { income: 0, expense: 0 };
   const net = cur.income - cur.expense;
-  return { income: cur.income, expense: cur.expense, net, savings: pct(net, cur.income) };
+  return { income: cur.income, expense: cur.expense, net, savings: percentOf(net, cur.income) };
 };
 
 // PDF: the graphs, redrawn as vector SVG.
@@ -58,23 +60,13 @@ const W = 520, H = 150, PAD_L = 48, PAD_B = 22;
 const PLOT_W = W - PAD_L;
 const PLOT_H = H - PAD_B;
 
-// Compact rupee for axis ticks: ₹8.2k, ₹1.2L, ₹3Cr.
-const shortMoney = (paise: number): string => {
-  const r = paise / 100;
-  const fmt = (n: number, suffix: string) => `₹${n.toFixed(1).replace(/\.0$/, "")}${suffix}`;
-  if (r >= 1e7) return fmt(r / 1e7, "Cr");
-  if (r >= 1e5) return fmt(r / 1e5, "L");
-  if (r >= 1e3) return fmt(r / 1e3, "k");
-  return `₹${Math.round(r)}`;
-};
-
 // Horizontal gridlines + left-hand amount labels (0 → max), shared by every line/column chart.
 const yAxis = (max: number): string =>
   [0, 0.5, 1]
     .map((f) => {
       const y = PLOT_H - f * PLOT_H;
       return `<line x1="${PAD_L}" y1="${y.toFixed(1)}" x2="${W}" y2="${y.toFixed(1)}" stroke="${GRID}" stroke-width="1"/>` +
-        `<text x="${PAD_L - 6}" y="${(y + 3).toFixed(1)}" font-size="8" fill="${AXIS}" text-anchor="end">${htmlEscape(shortMoney(max * f))}</text>`;
+        `<text x="${PAD_L - 6}" y="${(y + 3).toFixed(1)}" font-size="8" fill="${AXIS}" text-anchor="end">${htmlEscape(formatCompactExact(max * f))}</text>`;
     })
     .join("");
 
@@ -242,7 +234,7 @@ const heatmapHtml = (heatmap: Heatmap): string => {
     .join("");
 
   const caption = heatmap.busiest
-    ? `Heaviest day ${formatMoney(heatmap.busiest.amount)} · ${heatmap.clearDays} clear day${heatmap.clearDays === 1 ? "" : "s"}`
+    ? `Heaviest day ${formatMoney(heatmap.busiest.amount)} · ${count(heatmap.clearDays, "clear day")}`
     : "Nothing spent in this window";
 
   return `<div class="heat"><div class="hrow">${head}</div>${rows}</div><div class="heat-note">${htmlEscape(caption)}</div>`;
@@ -258,7 +250,7 @@ const hourlyPatternHtml = (rhythm: HourlyPattern): string => {
     .join("");
 
   const caption = rhythm.busiest
-    ? `Heaviest hour ${formatMoney(rhythm.busiest.amount)} at ${htmlEscape(hourAbbr(rhythm.busiest.hour))} · ${rhythm.clearHours} clear hour${rhythm.clearHours === 1 ? "" : "s"}`
+    ? `Heaviest hour ${formatMoney(rhythm.busiest.amount)} at ${htmlEscape(hourAbbr(rhythm.busiest.hour))} · ${count(rhythm.clearHours, "clear hour")}`
     : "Nothing spent yet today";
 
   return `<div class="strip">${bars}</div><div class="heat-note">${htmlEscape(caption)}</div>`;
@@ -270,8 +262,7 @@ const hourlyPatternHtml = (rhythm: HourlyPattern): string => {
 const moverChange = (row: CompareRow): string => {
   if (row.previous === 0) return `<span style="color:#b8860b">new</span>`;
   if (row.current === 0) return `<span style="color:#0f9d63">stopped</span>`;
-  const p = Math.round(row.deltaPct ?? 0);
-  return `<span style="color:${row.delta <= 0 ? "#0f9d63" : "#d64550"}">${row.delta > 0 ? "+" : "−"}${Math.abs(p)}%</span>`;
+  return `<span style="color:${row.delta <= 0 ? "#0f9d63" : "#d64550"}">${formatPct(row.deltaPct ?? 0, { kind: "change" })}</span>`;
 };
 
 const moversHtml = (rows: CompareRow[], previousLabel: string): string => {
@@ -297,9 +288,9 @@ const legendDash = (color: string, label: string) =>
   `<span class="ld"><span class="dashline"><span style="background:${color}"></span><span style="background:${color}"></span></span>${htmlEscape(label)}</span>`;
 
 const buildHtml = (data: InsightsSummary, period: InsightsPeriod, offset: number): string => {
-  const label = windowLabel(period, offset);
+  const label = rangeNavLabel(period, offset);
   const vsLabel = prevLabel(period, offset);
-  const prevWindowLabel = windowLabel(period, offset - 1);
+  const prevWindowLabel = rangeNavLabel(period, offset - 1);
 
   const { income, expense, net, savings } = currentTotals(data);
   const cats = foldCategories(data.byCategory);
@@ -345,31 +336,31 @@ const buildHtml = (data: InsightsSummary, period: InsightsPeriod, offset: number
       <td class="desc">${htmlEscape(c.name)}</td>
       <td class="barcell"><div class="bar"><span style="width:${Math.max(Math.round(c.pct), 1)}%;background:${c.color}"></span></div></td>
       <td class="amt">${htmlEscape(formatMoney(c.total))}</td>
-      <td class="sh">${Math.round(c.pct)}%</td></tr>${kids}`;
+      <td class="sh">${formatPct(c.pct)}</td></tr>${kids}`;
     })
     .join("");
 
   const stack = accts.map((a) => `<span style="flex:${Math.max(a.pct, 0.5)};background:${a.color}"></span>`).join("");
-  const acctLegend = accts.map((a) => legendDot(a.color, `${a.name} · ${Math.round(a.pct)}%`)).join("");
+  const acctLegend = accts.map((a) => legendDot(a.color, `${a.name} · ${formatPct(a.pct)}`)).join("");
 
   return pdfDocument({
     section: "Insights",
     rangeLabel: label,
-    meta: `${data.txnCount} transactions`,
+    meta: count(data.txnCount, "transaction"),
     body: `${kpiRow([
       kpi("Income", htmlEscape(formatMoney(income)), "pos"),
       kpi("Expenses", htmlEscape(formatMoney(expense)), "neg"),
       kpi("Net", htmlEscape(formatMoney(net)), net >= 0 ? "pos" : "neg"),
-      kpi("Savings Rate", `${savings}%`),
+      kpi("Savings rate", formatPct(savings)),
       period === "day"
-        ? kpi("Avg Hourly Spend", htmlEscape(formatMoney(dayProjection?.avgPerHour ?? 0)), "", "so far today")
-        : kpi("Avg Daily Spend", htmlEscape(formatMoney(data.avgDailySpendCurrent))),
-      kpi("Top Category", htmlEscape(data.topCategory ?? "—")),
+        ? kpi("An hour", htmlEscape(formatMoney(dayProjection?.avgPerHour ?? 0)), "", "so far today")
+        : kpi("A day", htmlEscape(formatMoney(data.avgDailySpendCurrent))),
+      kpi("Top category", htmlEscape(data.topCategory ?? "—")),
       ...(projection
-        ? [kpi(`Projected ${windowLabel(period, 0)}`, htmlEscape(formatMoney(projection.total)), "", `${projection.daysRemaining} day${projection.daysRemaining === 1 ? "" : "s"} left`)]
+        ? [kpi(`Projected ${rangeNavLabel(period, 0).toLowerCase()}`, htmlEscape(formatMoney(projection.total)), "", `${count(projection.daysRemaining, "day")} left`)]
         : []),
       ...(dayProjection
-        ? [kpi("Projected Today", htmlEscape(formatMoney(dayProjection.total)), "", `${dayProjection.hoursRemaining} hour${dayProjection.hoursRemaining === 1 ? "" : "s"} left`)]
+        ? [kpi("Projected today", htmlEscape(formatMoney(dayProjection.total)), "", `${count(dayProjection.hoursRemaining, "hour")} left`)]
         : []),
     ])}
 

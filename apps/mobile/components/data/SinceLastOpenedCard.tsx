@@ -5,15 +5,8 @@ import { AppText } from "../ui/AppText";
 import Icon from "../ui/Icon";
 import PressableScale from "../ui/PressableScale";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
-import { appZone, calendarDate, calendarDaysBetween, calendarToday } from "@/lib/zone";
-
-const sinceLabel = (iso: string): string => {
-  const zone = appZone();
-  const distance = calendarDaysBetween(calendarDate(new Date(iso), zone), calendarToday(zone));
-  if (distance === 0) return "today";
-  if (distance === 1) return "yesterday";
-  return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: zone });
-};
+import { count } from "@/lib/format/count";
+import { formatInstant } from "@/lib/format/date";
 
 type Props = {
   previousOpenedAt: string;
@@ -27,10 +20,10 @@ type Props = {
 const SinceLastOpenedCard = ({ previousOpenedAt, transactions, spent }: Props) => {
   usePrivacyMask(); // subscribe: the amount below reads formatMoney() directly
 
-  const since = sinceLabel(previousOpenedAt);
+  const since = formatInstant(previousOpenedAt, "relativeDay");
   const body = transactions === 0
     ? `Nothing logged since ${since}`
-    : `${transactions} transaction${transactions === 1 ? "" : "s"} · ${formatMoney(spent)} spent`;
+    : `${count(transactions, "transaction")} · ${formatMoney(spent)} spent`;
   const label = `Since ${since}: ${body}. Opens Activity.`;
 
   return (

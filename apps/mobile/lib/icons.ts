@@ -35,6 +35,9 @@ export const iconMap = {
   repeat: 'replay', // "log again" on a past transaction
   cloudBackup: 'cloud-upload',
   restore: 'restore',
+  doneAll: 'done-all',
+  refresh: 'refresh',
+  alert: 'error-outline',
 
   // Spending categories
   food: 'restaurant',

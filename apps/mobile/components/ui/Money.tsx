@@ -1,16 +1,20 @@
 import { Pressable, StyleSheet } from "react-native";
 import { AppText } from "@/components/ui/AppText";
 import { haptics } from "@/lib/haptics";
-import { MASKED_MONEY, formatMoneyExact, usePrivacyMask } from "@/lib/money";
+import { formatMoneyExact, maskedMoney, usePrivacyMask, type Sign } from "@/lib/money";
+import { zeroNeutral } from "@/lib/signTone";
 import { useSettings } from "@/store/settings";
 import type { ColorToken, FontSizeToken, FontWeightToken } from "@/theme";
 
 type Props = {
   /** Integer paise, like everything else in the app. */
   value: number;
-  /** Sign or symbol printed in front, usually "+ " or "− ". Kept even while masked: a
-   * direction says nothing about a magnitude, and losing it makes a masked list
-   * unreadable. */
+  /** How the sign is written (see lib/format/money): `always` for rows and changes, `none`
+   *  where the label names the direction. Kept while masked: a direction says nothing about
+   *  a magnitude, and losing it makes a masked list unreadable. */
+  sign?: Sign;
+  /** Printed in front, also while masked. Prefer `sign`; this is for the screens that still
+   *  build their own. */
   prefix?: string;
   weight?: FontWeightToken;
   size?: FontSizeToken;
@@ -28,16 +32,17 @@ type Props = {
 //
 // Pressable only WHILE masked, so it doesn't steal the row it sits in: once revealed, taps
 // pass through to the row and open the detail sheet as usual.
-const Money = ({ value, prefix = "", weight, size, color, numberOfLines, align = "left" }: Props) => {
+const Money = ({ value, sign, prefix = "", weight, size, color, numberOfLines, align = "left" }: Props) => {
   const masked = usePrivacyMask();
   const peek = useSettings((s) => s.peek);
 
   // Not `formatMoney`: this component subscribes to the mask itself, and reading the store
   // twice could disagree mid-render.
-  const label = masked ? `${prefix}${MASKED_MONEY}` : `${prefix}${formatMoneyExact(value)}`;
+  const label = `${prefix}${masked ? maskedMoney(value, sign) : formatMoneyExact(value, { sign })}`;
 
   const text = (
-    <AppText weight={weight} size={size} color={color} numberOfLines={numberOfLines}>
+    // A shown ₹0.00 is never red or green; masked, the colour stays as the caller set it.
+    <AppText weight={weight} size={size} color={masked ? color : zeroNeutral(value, color)} numberOfLines={numberOfLines}>
       {label}
     </AppText>
   );

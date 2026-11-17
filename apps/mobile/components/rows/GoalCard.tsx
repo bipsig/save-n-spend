@@ -10,7 +10,8 @@ import { AppText } from "../ui/AppText";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import Icon from "../ui/Icon";
 import type { IconName } from "@/lib/icons";
-import { appZone } from "@/lib/zone";
+import { formatInstant } from "@/lib/format/date";
+import { formatPct } from "@/lib/format/pct";
 import { goalPace } from "@/lib/goals";
 
 type Props = {
@@ -21,31 +22,19 @@ type Props = {
   onDelete?: () => void
 };
 
-// Deadline → "Dec 2026" pace label (client-derived; absent → "No deadline").
-//
-// Read in the user's zone, like every other date the app prints: a deadline stored as
-// the start of 1 September in India is 31 August in UTC, and formatting it without a
-// zone would label the goal "Aug" on a phone that had crossed a border.
-const deadlineLabel = (iso?: string): string =>
-  iso
-    ? new Date(iso).toLocaleDateString("en-US", {
-        month: "short",
-        year: "numeric",
-        timeZone: appZone(),
-      })
-    : "No deadline";
+// Deadline → "Dec 2026" (absent → "No deadline"). Read in the account zone: a deadline stored
+// as the start of 1 September in India is 31 August in UTC.
+const deadlineLabel = (iso?: string): string => (iso ? formatInstant(iso, "month") : "No deadline");
 
 // Spec GoalCard: gradient icon chip (goal color, glowing) · name 15/700 ·
 // "saved / target" sub · % colored per goal · pace line · tinted gradient bar.
 const GoalCard = ({ goal, onPress, onEdit, onDelete }: Props) => {
   usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
   const color = (goal.color ?? "accent") as ColorToken;
-  const percent = Math.min(Math.round((goal.saved / goal.target) * 100), 100);
+  const percent = Math.min((goal.saved / goal.target) * 100, 100);
   const achieved = goal.saved >= goal.target;
   const pace = achieved ? null : goalPace(goal);
-  const paceLabel = pace?.projectedDate
-    ? new Date(pace.projectedDate).toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: appZone() })
-    : null;
+  const paceLabel = pace?.projectedDate ? formatInstant(pace.projectedDate, "monthLong") : null;
 
   return (
     <PressableScale onPress={onPress} disabled={!onPress} scaleTo={0.98}>
@@ -68,7 +57,7 @@ const GoalCard = ({ goal, onPress, onEdit, onDelete }: Props) => {
           </View>
           <View style={styles.right}>
             <AppText size="md" weight="black" color={achieved ? "success" : color}>
-              {`${percent}%`}
+              {formatPct(percent)}
             </AppText>
             {achieved ? (
               <AppText size="xs" weight="bold" color="success">

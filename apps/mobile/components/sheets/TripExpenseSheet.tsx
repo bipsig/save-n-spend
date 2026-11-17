@@ -7,6 +7,7 @@ import AccountPickerSheet from "./AccountPickerSheet";
 import CategoryPickerSheet from "./CategoryPickerSheet";
 import ConfirmSheet from "./ConfirmSheet";
 import { AppText } from "@/components/ui/AppText";
+import Caps from "@/components/ui/Caps";
 import AmountHeroInput from "@/components/ui/AmountHeroInput";
 import Button from "@/components/ui/Button";
 import Chip from "@/components/ui/Chip";
@@ -24,6 +25,7 @@ import { toast } from "@/store/toast";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { colors, spacing } from "@/theme";
+import { useOnlineGate } from "@/lib/onlineGate";
 
 type Props = {
   tripId: string;
@@ -32,7 +34,8 @@ type Props = {
   expense: ITripExpense | null;
   /** Where a new expense's date starts — inside the trip. */
   defaultDate: Date;
-  onSaved: () => void;
+  /** Optional: the write already refreshes the trip. */
+  onSaved?: () => void;
 };
 
 /** "me" or a member's account id — the key each person is tracked by in this form. */
@@ -47,6 +50,8 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
   usePrivacyMask();
   const innerRef = useRef<BottomSheetModal>(null);
   useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
+  // Needs the server: offline the button says so before the tap.
+  const gate = useOnlineGate("");
   const categoryRef = useRef<BottomSheetModal>(null);
   const accountRef = useRef<BottomSheetModal>(null);
   const deleteRef = useRef<BottomSheetModal>(null);
@@ -157,7 +162,7 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
       else await addTripExpense(tripId, draft, { idempotencyKey: idem.keyFor("POST", `/trips/${tripId}/expenses`, draft) });
       idem.reset();
       innerRef.current?.dismiss();
-      onSaved();
+      onSaved?.();
       toast.success(expense ? `${draft.title} updated` : `${draft.title} added · your share ${formatMoney(myShare)}`);
     }
     catch (err) {
@@ -178,7 +183,7 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
         scrollable
         snapPoints={["92%"]}
         onDismiss={resetForm}
-        footer={<Button label={expense ? "Save changes" : "Add expense"} loading={busy} onPress={save} />}
+        footer={<Button label={gate.label || (expense ? "Save changes" : "Add expense")} icon={gate.icon} loading={busy} disabled={!gate.allowed} onPress={save} />}
       >
         <AppText size="md" weight="black">{expense ? "Edit expense" : "Add expense"}</AppText>
 
@@ -186,19 +191,19 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
         <Input placeholder="What was it? e.g. Dinner at the beach" value={title} onChangeText={setTitle} InputComponent={BottomSheetTextInput} />
 
         <View style={styles.pair}>
-          <View style={styles.grow}><DateField label="WHEN" value={date} onChange={setDate} maximumDate={new Date()} /></View>
+          <View style={styles.grow}><DateField label="When" value={date} onChange={setDate} maximumDate={new Date()} /></View>
         </View>
 
-        <PressableScale style={styles.selRow} onPress={() => categoryRef.current?.present()} scaleTo={0.98}>
+        <PressableScale style={styles.selRow} onPress={() => categoryRef.current?.present()} scaleTo={0.98} accessibilityLabel={`Category, ${categoryDoc?.name ?? "none yet"}`} accessibilityHint="Picks the category">
           <Icon name={(categoryDoc?.icon ?? "category") as IconName} size={16} containerSize={32} containerRadius={10} container="square" gradient={(categoryDoc?.color ?? "accent") as ColorToken} />
           <View style={styles.grow}>
-            <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>CATEGORY</AppText>
+            <Caps>Category</Caps>
             <AppText size="sm" weight="semibold" color={categoryDoc ? "ink" : "inkDim"}>{categoryDoc?.name ?? "Choose a category"}</AppText>
           </View>
           <Icon name="chevronRight" size={20} color="inkDim" />
         </PressableScale>
 
-        <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>WHO PAID</AppText>
+        <Caps>Who paid</Caps>
         <View style={styles.avatars}>
           {everyone.map((w) => {
             const on = payer === w;
@@ -213,10 +218,10 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
           })}
         </View>
         {payer === ME && (
-          <PressableScale style={styles.selRow} onPress={() => accountRef.current?.present()} scaleTo={0.98}>
+          <PressableScale style={styles.selRow} onPress={() => accountRef.current?.present()} scaleTo={0.98} accessibilityLabel={`Paid from, ${fromAccount?.name ?? "no account yet"}`} accessibilityHint="Picks the account">
             <Icon name="wallet" size={18} color="inkDim" />
             <View style={styles.grow}>
-              <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>PAID FROM</AppText>
+              <Caps>Paid from</Caps>
               <AppText size="sm" weight="semibold">{fromAccount?.name ?? "Choose an account"}</AppText>
             </View>
             <Icon name="chevronRight" size={20} color="inkDim" />
@@ -224,7 +229,7 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
         )}
 
         <View style={styles.splitHead}>
-          <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>SPLIT BETWEEN</AppText>
+          <Caps>Split between</Caps>
           <View style={styles.modes}>
             <Chip label="Equally" selected={mode === "equal"} onPress={() => setMode("equal")} />
             <Chip label="Custom" selected={mode === "custom"} onPress={() => {
@@ -242,13 +247,13 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
             const share = shares.find((s) => s.who === w)?.amount ?? 0;
             return (
               <View key={w} style={styles.shareRow}>
-                <Pressable onPress={() => toggleIn(w)} style={styles.shareLeft} accessibilityRole="checkbox" accessibilityState={{ checked: on }}>
+                <Pressable onPress={() => toggleIn(w)} style={styles.shareLeft} accessibilityRole="checkbox" accessibilityState={{ checked: on }} accessibilityLabel={`Split with ${nameOf(w)}`}>
                   <View style={[styles.check, on && styles.checkOn]}>{on && <AppText size="xs" weight="black">✓</AppText>}</View>
                   <AppText size="sm" weight={on ? "bold" : "semibold"} color={on ? "ink" : "inkDim"}>{nameOf(w)}</AppText>
                 </Pressable>
                 {on && mode === "custom" ? (
                   <View style={styles.customBox}>
-                    <Input value={custom[w] ?? ""} onChangeText={(v) => setCustom((c) => ({ ...c, [w]: v }))} placeholder="0" keyboardType="decimal-pad" InputComponent={BottomSheetTextInput} />
+                    <Input accessibilityLabel={`${nameOf(w)}'s share`} value={custom[w] ?? ""} onChangeText={(v) => setCustom((c) => ({ ...c, [w]: v }))} placeholder="0" keyboardType="decimal-pad" InputComponent={BottomSheetTextInput} />
                   </View>
                 ) : (
                   <AppText size="sm" weight={w === ME ? "black" : "semibold"} color={on ? (w === ME ? "ink" : "inkDim") : "inkDim"}>
@@ -267,7 +272,7 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
         {effect && <AppText size="xs" color="inkDim" style={styles.center}>{effect}</AppText>}
 
         {error && <AppText size="sm" color="danger">{error}</AppText>}
-        {expense && <Button label="Delete expense" variant="dangerGhost" icon="delete" onPress={() => deleteRef.current?.present()} />}
+        {expense && <Button label={gate.label || "Delete expense"} variant="dangerGhost" icon={gate.icon ?? "delete"} disabled={!gate.allowed} onPress={() => deleteRef.current?.present()} />}
       </AppSheet>
 
       <CategoryPickerSheet ref={categoryRef} kind="expense" onPick={setCategory} />
@@ -278,11 +283,12 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
         title={`Delete ${expense?.title ?? "this expense"}?`}
         body="It comes off the trip, and every balance and account it touched goes back to how it was."
         confirmLabel="Delete"
+        needsConnection
         onConfirm={async () => {
           if (!expense) return;
           await deleteTripExpense(tripId, expense._id);
           innerRef.current?.dismiss();
-          onSaved();
+          onSaved?.();
           toast.info(`${expense.title} deleted`);
         }}
       />
@@ -295,7 +301,6 @@ TripExpenseSheet.displayName = "TripExpenseSheet";
 const styles = StyleSheet.create({
   pair: { flexDirection: "row", gap: spacing.sm },
   grow: { flex: 1 },
-  label: { letterSpacing: 1.3 },
   selRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.13)" },
   avatars: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
   avatarCol: { alignItems: "center", gap: 4, width: 58 },

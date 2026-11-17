@@ -1,6 +1,5 @@
 import { StyleSheet, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import BackButton from "@/components/shell/BackButton";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import Card from "@/components/data/Card";
 import EmptyState from "@/components/states/EmptyState";
@@ -20,18 +19,11 @@ const VersionScreen = () => {
   const release = releaseFor(version);
   const previous = release ? previousRelease(release.version) : undefined;
 
-  const header = (
-    <View style={styles.head}>
-      <BackButton />
-      <AppText size="xl" weight="black" numberOfLines={1} style={styles.headTitle}>
-        {release?.version ?? "What's new"}
-      </AppText>
-    </View>
-  );
+  const header = { title: release?.version ?? "What's new", back: true } as const;
 
   if (!release) {
     return (
-      <ScreenScaffold header={header}>
+      <ScreenScaffold {...header}>
         <EmptyState icon="sparkles" title="No notes for this version" subtitle="Every version's notes are in What's new." />
       </ScreenScaffold>
     );
@@ -41,7 +33,7 @@ const VersionScreen = () => {
   const short = previous ? shortVersion(previous.version) : "";
 
   return (
-    <ScreenScaffold header={header}>
+    <ScreenScaffold {...header}>
       <VersionBand release={release} current={compareVersions(release.version, APP_VERSION) === 0} />
 
       {sections.map((section, i) => (
@@ -78,14 +70,6 @@ const VersionScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  head: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  headTitle: {
-    flex: 1,
-  },
   previous: {
     marginTop: spacing.xs,
   },

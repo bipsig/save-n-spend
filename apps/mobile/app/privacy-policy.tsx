@@ -1,6 +1,5 @@
 import { StyleSheet, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
-import BackButton from "@/components/shell/BackButton";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import Card from "@/components/data/Card";
 import { AppText } from "@/components/ui/AppText";
@@ -70,16 +69,7 @@ const SECTIONS: Section[] = [
 ];
 
 const PrivacyPolicyScreen = () => (
-  <ScreenScaffold
-    header={
-      <View style={styles.head}>
-        <BackButton />
-        <AppText size="xl" weight="black">
-          Privacy policy
-        </AppText>
-      </View>
-    }
-  >
+  <ScreenScaffold title="Privacy policy" back>
     <AppText size="sm" color="inkDim" style={styles.intro}>
       Save n Spend holds the numbers people are least likely to want loose. This is
       the whole of what it does with them.
@@ -100,7 +90,7 @@ const PrivacyPolicyScreen = () => (
               container="square"
               gradient={section.tint}
             />
-            <AppText size="sm" weight="bold">
+            <AppText size="sm" weight="bold" accessibilityRole="header">
               {section.title}
             </AppText>
           </View>
@@ -120,11 +110,6 @@ const PrivacyPolicyScreen = () => (
 );
 
 const styles = StyleSheet.create({
-  head: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
   intro: {
     lineHeight: 21,
     paddingHorizontal: 2,

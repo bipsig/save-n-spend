@@ -2,8 +2,12 @@ import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import Svg, { Path, Circle, Line } from "react-native-svg";
 import { AppText } from "@/components/ui/AppText";
+import ChartTooltip from "@/components/ui/ChartTooltip";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { chartA11y } from "@/lib/chartSummary";
+import { areaSummary } from "@/lib/chartSummaries";
 import { useScrubTick } from "@/lib/useScrubTick";
+import { chartScrubLine } from "@/theme";
 
 type Props = {
   data: number[];
@@ -13,9 +17,9 @@ type Props = {
   onScrub?: (i: number | null) => void;
   color?: string;
   height?: number;
+  /** What VoiceOver calls the chart before its figures ("Spending this month"). */
+  summaryTitle?: string;
 };
-
-const TIP_W = 108;
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
@@ -30,8 +34,8 @@ const sampleTicks = (labels: string[]): string[] => {
 // Single-series area (spec spending trend). Tap or drag across it to inspect the
 // exact amount on a given day — a scrubber line, dot, and tooltip. Width is
 // measured (onLayout) so coordinates are real px and the endpoint stays round.
-const AreaChart = ({ data, labels, tipLabels, activeIndex, onScrub, color = "#8E7DE3", height = 96 }: Props) => {
-  usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
+const AreaChart = ({ data, labels, tipLabels, activeIndex, onScrub, color = "#8E7DE3", height = 96, summaryTitle = "Spending" }: Props) => {
+  const masked = usePrivacyMask(); // also subscribes: a peek has to re-render the amounts below
   const [w, setW] = useState(0);
   const active = activeIndex ?? null;
   const padB = 6;
@@ -54,7 +58,7 @@ const AreaChart = ({ data, labels, tipLabels, activeIndex, onScrub, color = "#8E
   };
 
   return (
-    <View>
+    <View {...chartA11y(areaSummary(summaryTitle, data, tipLabels ?? labels ?? [], masked))}>
       <View
         onLayout={(e) => setW(e.nativeEvent.layout.width)}
         style={{ height }}
@@ -73,7 +77,7 @@ const AreaChart = ({ data, labels, tipLabels, activeIndex, onScrub, color = "#8E
               <Path d={line} stroke={color} strokeWidth={2} fill="none" strokeLinejoin="round" strokeLinecap="round" />
             )}
             {active !== null && (
-              <Line x1={x(active)} y1={0} x2={x(active)} y2={chartH} stroke="rgba(255,255,255,0.28)" strokeWidth={1} />
+              <Line x1={x(active)} y1={0} x2={x(active)} y2={chartH} stroke={chartScrubLine} strokeWidth={1} />
             )}
             {n > 0 && (
               <Circle cx={x(n - 1)} cy={y(data[n - 1])} r={4.5} fill={color} stroke="#211e33" strokeWidth={2} />
@@ -84,14 +88,12 @@ const AreaChart = ({ data, labels, tipLabels, activeIndex, onScrub, color = "#8E
           </Svg>
         )}
         {active !== null && (
-          <View style={[styles.tip, { left: clamp(x(active) - TIP_W / 2, 0, Math.max(0, w - TIP_W)) }]}>
-            <AppText size="xs" color="inkDim">
-              {(tipLabels ?? labels)?.[active] ?? ""}
-            </AppText>
-            <AppText size="sm" weight="bold">
-              {formatMoney(data[active])}
-            </AppText>
-          </View>
+          <ChartTooltip
+            x={x(active)}
+            chartWidth={w}
+            title={(tipLabels ?? labels)?.[active] ?? ""}
+            lines={[{ value: formatMoney(data[active]) }]}
+          />
         )}
       </View>
       {labels && labels.length > 0 && (
@@ -112,17 +114,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     marginTop: 4,
-  },
-  tip: {
-    position: "absolute",
-    top: 0,
-    width: TIP_W,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-    backgroundColor: "#241E42",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
   },
 });
 

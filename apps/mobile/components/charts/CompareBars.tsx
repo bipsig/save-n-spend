@@ -1,6 +1,7 @@
 import { StyleSheet, View, type DimensionValue } from "react-native";
 import { AppText } from "@/components/ui/AppText";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { formatPct } from "@/lib/format/pct";
 import type { CompareRow } from "@/lib/insights";
 import { colors } from "@/theme";
 import { signTone } from "@/lib/signTone";
@@ -27,12 +28,10 @@ const Change = ({ row }: { row: CompareRow }) => {
     );
   }
 
-  const pct = Math.round(row.deltaPct ?? 0);
-  // Spending less is the good direction, so down is green. A rounded 0 keeps its real sign
-  // off the bar rather than claiming no change.
+  // Spending less is the good direction, so down is green.
   return (
     <AppText size="xs" weight="semibold" color={signTone(row.delta, { goodWhen: "down" })}>
-      {`${row.delta > 0 ? "+" : row.delta < 0 ? "−" : ""}${Math.abs(pct)}%`}
+      {formatPct(row.deltaPct ?? 0, { kind: "change" })}
     </AppText>
   );
 };

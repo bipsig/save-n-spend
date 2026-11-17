@@ -7,8 +7,8 @@ import { z } from "zod/v4";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
-import BackButton from "@/components/shell/BackButton";
 import { AppText } from "@/components/ui/AppText";
+import Caps from "@/components/ui/Caps";
 import Icon from "@/components/ui/Icon";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
@@ -17,14 +17,18 @@ import IconPicker from "@/components/ui/IconPicker";
 import ColorPicker from "@/components/ui/ColorPicker";
 import DateField from "@/components/ui/DateField";
 import ErrorState from "@/components/states/ErrorState";
+import NotFoundState from "@/components/states/NotFoundState";
 import SkeletonState from "@/components/states/SkeletonState";
 import formatMoney, { parseMoney, usePrivacyMask } from "@/lib/money";
-import { formatFullDate, startOfToday, toZonedDayISO } from "@/lib/date";
+import { startOfToday, toZonedDayISO } from "@/lib/date";
+import { formatCalendar, localCalendar } from "@/lib/format/date";
+import { count } from "@/lib/format/count";
 import { haptics } from "@/lib/haptics";
 import { fetchGoal, updateGoal } from "@/lib/goals";
 import { post } from "@/lib/api";
 import { splitIssues } from "@/lib/apiError";
 import { useIdempotencyKey } from "@/lib/useIdempotencyKey";
+import { useOnlineGate } from "@/lib/onlineGate";
 import { toast } from "@/store/toast";
 import { NAME_MAX, NAME_MIN } from "@save-n-spend/types";
 import type { IconName } from "@/lib/icons";
@@ -93,6 +97,8 @@ const AddGoal = () => {
   // Only ever true while editing; a new goal has nothing to wait for.
   const [loading, setLoading] = useState(editing);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -117,12 +123,14 @@ const AddGoal = () => {
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
     (async () => {
       try {
         const goal = await fetchGoal(id);
         if (cancelled) return;
         if (!goal) {
-          setLoadError("That goal no longer exists.");
+          setNotFound(true);
           return;
         }
         reset({
@@ -142,7 +150,7 @@ const AddGoal = () => {
       }
     })();
     return () => { cancelled = true; };
-  }, [id, reset]);
+  }, [id, reset, attempt]);
 
   const amountRaw = watch("amount");
   const name = watch("name");
@@ -183,7 +191,7 @@ const AddGoal = () => {
     target > 0 && deadline
       ? remaining === 0
         ? "Already there — the target is covered."
-        : `${formatMoney(perMonth)} a month for ${months} ${months === 1 ? "month" : "months"}`
+        : `${formatMoney(perMonth)} a month for ${count(months, "month")}`
       : target > 0
         ? "Set a target date to see what it costs per month"
         : null;
@@ -234,23 +242,23 @@ const AddGoal = () => {
     }
   };
 
-  // Spec .shead — ✕ on the left, centered title, balancing spacer on the right.
-  const header = (
-    <View style={styles.header}>
-      {/* The shared ✕ — same glyph, same squeeze, same tick as every other modal
-          route, instead of this screen's own hand-rolled copy of it. */}
-      <BackButton variant="close" />
-      <AppText weight="black" size="lg">
-        {editing ? "Edit Goal" : "New Goal"}
-      </AppText>
-      <View style={styles.headerSpacer} />
-    </View>
-  );
+  const saveGate = useOnlineGate("");
+
+  // A modal: the ✕ instead of a back chevron, the same header in every state.
+  const header = { title: editing ? "Edit goal" : "New goal", back: "close" as const };
+
+  if (notFound) {
+    return (
+      <ScreenScaffold {...header}>
+        <NotFoundState thing="goal" />
+      </ScreenScaffold>
+    );
+  }
 
   if (loadError) {
     return (
-      <ScreenScaffold header={header}>
-        <ErrorState message={loadError} onRetry={goBackOrHome} />
+      <ScreenScaffold {...header}>
+        <ErrorState message={loadError} onRetry={() => setAttempt((n) => n + 1)} />
       </ScreenScaffold>
     );
   }
@@ -259,7 +267,7 @@ const AddGoal = () => {
   // afterwards would overwrite anything typed in between.
   if (loading) {
     return (
-      <ScreenScaffold header={header}>
+      <ScreenScaffold {...header}>
         <SkeletonState height={96} borderRadius={radius.lg} />
         <SkeletonState height={56} borderRadius={radius.lg} />
         <SkeletonState height={120} borderRadius={radius.lg} />
@@ -269,7 +277,7 @@ const AddGoal = () => {
   }
 
   return (
-    <ScreenScaffold header={header} scroll={false}>
+    <ScreenScaffold {...header} scroll={false}>
       <View style={styles.body}>
         {/* Fixed top — the target and the numpad that fills it stay paired on
             screen; only the secondary fields between them scroll. */}
@@ -288,9 +296,7 @@ const AddGoal = () => {
         </View>
 
         <View style={styles.heroAmt}>
-          <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>
-            TARGET
-          </AppText>
+          <Caps>Target</Caps>
           <View style={styles.heroRow}>
             <AppText size="lg" weight="bold" color="inkDim" style={styles.heroCur}>
               ₹
@@ -350,9 +356,7 @@ const AddGoal = () => {
             name="icon"
             render={({ field: { value, onChange } }) => (
               <View style={styles.field}>
-                <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>
-                  ICON
-                </AppText>
+                <Caps>Icon</Caps>
                 <IconPicker value={value as IconName} onChange={onChange} />
               </View>
             )}
@@ -363,9 +367,7 @@ const AddGoal = () => {
             name="color"
             render={({ field: { value, onChange } }) => (
               <View style={styles.field}>
-                <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>
-                  COLOUR
-                </AppText>
+                <Caps>Colour</Caps>
                 <ColorPicker value={value as ColorToken} onChange={onChange} />
               </View>
             )}
@@ -375,12 +377,11 @@ const AddGoal = () => {
               has no pace to hold you to. */}
           <View style={styles.field}>
             <View style={styles.deadlineHead}>
-              <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>
-                TARGET DATE
-              </AppText>
+              <Caps>Target date</Caps>
               {/* The shared Toggle, which carries the app-wide switch haptic — the raw
                   RN Switch this replaced had neither that nor the role tokens. */}
               <Toggle
+                label="Target date"
                 value={deadline !== null}
                 onValueChange={(on) => setDeadline(on ? defaultDeadline() : null)}
               />
@@ -392,7 +393,7 @@ const AddGoal = () => {
                 {/* No floor while editing: a goal's deadline may already have passed,
                     and a picker that refuses to show it can't be moved. */}
                 <DateField
-                  label="DEADLINE"
+                  label="Deadline"
                   value={deadline}
                   onChange={setDeadline}
                   minimumDate={editing ? undefined : startOfToday()}
@@ -425,7 +426,8 @@ const AddGoal = () => {
               key={key}
               onPress={() => pressKey(key)}
               style={({ pressed }) => [styles.key, pressed && styles.keyPressed]}
-              accessibilityLabel={key === "back" ? "Delete digit" : key}
+              accessibilityRole="button"
+              accessibilityLabel={key === "back" ? "Delete digit" : key === "." ? "Decimal point" : key}
             >
               {key === "back" ? (
                 <Icon name="backspace" size={20} color="inkDim" />
@@ -440,14 +442,18 @@ const AddGoal = () => {
 
         <Button
           label={
-            target === 0
-              ? editing ? "Save Goal" : "Create Goal"
+            !saveGate.allowed ? saveGate.label
+            // `!(target > 0)` also catches NaN, which parseMoney returns for an empty field.
+            : !(target > 0)
+              ? editing ? "Save goal" : "Create goal"
               : `${editing ? "Save" : "Create"} · ${formatMoney(target)}`
-                + (deadline ? ` by ${formatFullDate(deadline.toISOString())}` : "")
+                // The picker's own day, not an instant: the wheels mean the device's calendar.
+                + (deadline ? ` by ${formatCalendar(localCalendar(deadline), "dayYear")}` : "")
           }
+          icon={saveGate.icon}
           onPress={handleSubmit(onSubmit)}
           loading={submitting}
-          disabled={!isValid}
+          disabled={!isValid || !saveGate.allowed}
         />
       </View>
     </ScreenScaffold>
@@ -455,14 +461,6 @@ const AddGoal = () => {
 };
 
 const styles = StyleSheet.create({
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  headerSpacer: {
-    width: 32, // balances the ✕ so the title sits centered
-  },
   // Fixed top / scrollable middle / fixed bottom — keeps the target hero and the
   // numpad on screen together, whatever the middle fields do.
   body: {
@@ -483,9 +481,6 @@ const styles = StyleSheet.create({
   },
   field: {
     gap: spacing.sm,
-  },
-  fieldLabel: {
-    letterSpacing: 1.3, // spec .flabel
   },
   heroAmt: {
     alignItems: "center",

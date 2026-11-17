@@ -2,9 +2,12 @@ import type { GrowthPoint, HoldingTrend, InvestmentReport, LedgerEntry, MonthPoi
 import { get } from "@/lib/api";
 import { deliver, dayStamp, type ExportFormat, type ExportResult } from "@/lib/export";
 import { htmlEscape, kpiCard, kpiRow, pdfDocument } from "@/lib/pdfShell";
-import { compactMoney } from "@/lib/investments";
+import { formatCompactExact } from "@/lib/format/compact";
+import { formatPct } from "@/lib/format/pct";
+import { formatCalendar, formatInstant } from "@/lib/format/date";
+import { count } from "@/lib/format/count";
 import {
-  bestWorst, ledgerCsv, ledgerInPeriod, monthLabel, periodBounds, periodLabel, slicePeriod,
+  bestWorst, ledgerCsv, ledgerInPeriod, periodBounds, periodLabel, slicePeriod,
   type Period, type SectionKey,
 } from "@/lib/investmentsReportMath";
 import { formatMoneyExact as formatMoney } from "@/lib/money";
@@ -32,10 +35,13 @@ const TEAL = "#2DD4BF";
 const UP = "#0f9d63";
 const DOWN = "#d64550";
 
-const signed = (n: number) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${formatMoney(Math.abs(n))}`;
+const signed = (n: number) => formatMoney(n, { sign: "always" });
 const tone = (n: number): "pos" | "neg" | "" => (n > 0 ? "pos" : n < 0 ? "neg" : "");
 const money = (n: number) => htmlEscape(formatMoney(n));
 const sgn = (n: number) => htmlEscape(signed(n));
+const ret = (pct: number) => formatPct(pct, { kind: "return" });
+// The same day shape the screens print, always with the year: a statement outlives the year.
+const day = (iso: string) => formatInstant(iso, "dayYear");
 
 // Charts, as vector SVG.
 
@@ -59,7 +65,7 @@ const valueSvg = (points: MonthPoint[]): string => {
   const x = xs(points.length);
   const grid = [0, 1, 2, 3].map((i) => {
     const v = lo + ((hi - lo) * i) / 3;
-    return `<line x1="0" x2="${W - PAD_R + 4}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="${GRID}"/><text x="${W - PAD_R + 8}" y="${(y(v) + 3).toFixed(1)}" font-size="8" fill="${AXIS}">${htmlEscape(compactMoney(v))}</text>`;
+    return `<line x1="0" x2="${W - PAD_R + 4}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="${GRID}"/><text x="${W - PAD_R + 8}" y="${(y(v) + 3).toFixed(1)}" font-size="8" fill="${AXIS}">${htmlEscape(formatCompactExact(v))}</text>`;
   }).join("");
   const line = (key: "value" | "invested", color: string, w: number) =>
     `<polyline fill="none" stroke="${color}" stroke-width="${w}" stroke-linejoin="round" points="${points.map((p, k) => `${x(k).toFixed(1)},${y(p[key]).toFixed(1)}`).join(" ")}"/>`;
@@ -89,7 +95,7 @@ const profitSvg = (points: MonthPoint[], growth: GrowthPoint[]): string => {
   return `<svg width="${W}" height="${h}" viewBox="0 0 ${W} ${h}">
     <line x1="0" x2="${W - PAD_R + 4}" y1="${z.toFixed(1)}" y2="${z.toFixed(1)}" stroke="#cfcce0"/>
     <polyline fill="none" stroke="${last >= 0 ? UP : DOWN}" stroke-width="2.4" stroke-linejoin="round" points="${profit.map((v, k) => `${x(k).toFixed(1)},${y(v).toFixed(1)}`).join(" ")}"/>
-    <text x="${W - PAD_R + 8}" y="${(y(last) + 3).toFixed(1)}" font-size="8" font-weight="700" fill="${last >= 0 ? UP : DOWN}">${htmlEscape(compactMoney(last, true))}</text>
+    <text x="${W - PAD_R + 8}" y="${(y(last) + 3).toFixed(1)}" font-size="8" font-weight="700" fill="${last >= 0 ? UP : DOWN}">${htmlEscape(formatCompactExact(last, { sign: "always" }))}</text>
     <text x="${PAD_L}" y="${topH + gap - 4}" font-size="7" fill="${AXIS}" letter-spacing="1">MONTHLY CHANGE</text>
     <line x1="0" x2="${W - PAD_R + 4}" y1="${bz.toFixed(1)}" y2="${bz.toFixed(1)}" stroke="#cfcce0"/>${bars}${axisLabels(points.map((p) => p.label), h, x)}</svg>`;
 };
@@ -106,11 +112,11 @@ const summaryCards = (report: InvestmentReport, holdingId: string | null, s: Ser
   const yearly = holding
     ? (holding.annualReturnStatus === "ok" ? holding.annualReturn : null)
     : (report.totals.annualReturnStatus === "ok" ? report.totals.annualReturn : null);
-  const per = endsToday && yearly !== null ? `${yearly >= 0 ? "+" : "−"}${Math.abs(yearly * 100).toFixed(1)}%` : "—";
+  const per = endsToday && yearly !== null ? ret(yearly * 100) : "—";
   return kpiRow([
     kpiCard("Value", money(last.value)),
     kpiCard("Invested", money(last.invested)),
-    kpiCard("Profit", sgn(profit), tone(profit), pct === null ? "" : `${pct >= 0 ? "+" : "−"}${Math.abs(pct).toFixed(1)}% over what was put in`),
+    kpiCard("Profit", sgn(profit), tone(profit), pct === null ? "" : `${ret(pct)} over what was put in`),
     kpiCard("Per year", per, yearly !== null && endsToday ? tone(yearly) : "", endsToday ? "" : "today only"),
   ]);
 };
@@ -133,14 +139,14 @@ const allocationHtml = (report: InvestmentReport, point: PortfolioPoint): string
   if (rows.length === 0 || total <= 0) return "";
   const colour = (i: number) => (i < chartPalette.length ? chartPalette[i] : chartOthers);
   const stack = rows.map(([, v], i) => `<span style="flex:${Math.max((v / total) * 100, 0.5)};background:${colour(i)}"></span>`).join("");
-  const legend = rows.map(([k, v], i) => `<span class="ld"><i class="dot" style="background:${colour(i)}"></i>${htmlEscape(k)} · ${Math.round((v / total) * 100)}%</span>`).join("");
+  const legend = rows.map(([k, v], i) => `<span class="ld"><i class="dot" style="background:${colour(i)}"></i>${htmlEscape(k)} · ${formatPct((v / total) * 100)}</span>`).join("");
   return `<h2>Where it's invested</h2><div class="stack">${stack}</div><div class="legend">${legend}</div>`;
 };
 
 const holdingsTable = (report: InvestmentReport): string => {
   const started = new Map(report.trend.holdings.map((t) => [t.id, t.points[0]?.label ?? ""]));
   const rows = report.holdings.map((h) => {
-    const per = h.annualReturnStatus === "ok" && h.annualReturn !== null ? `${h.annualReturn >= 0 ? "+" : "−"}${Math.abs(h.annualReturn * 100).toFixed(1)}%` : "—";
+    const per = h.annualReturnStatus === "ok" && h.annualReturn !== null ? ret(h.annualReturn * 100) : "—";
     return `<tr><td><div class="desc">${htmlEscape(h.name)}</div><div class="subl">${htmlEscape(h.kind)} · since ${htmlEscape(started.get(h.accountId) ?? "")}</div></td>
       <td class="amt">${money(h.invested)}</td><td class="amt">${money(h.current)}</td>
       <td class="amt ${tone(h.gain)}">${sgn(h.gain)}</td><td class="amt ${h.annualReturn !== null && h.annualReturn < 0 ? "neg" : "pos"}">${per}</td></tr>`;
@@ -168,7 +174,7 @@ const updateLog = (t: HoldingTrend, months: { from: string; to: string }): strin
     return m >= months.from && m <= months.to;
   });
   if (rows.length === 0) return "";
-  return `<h2>Value updates</h2><table><tbody>${rows.map((u) => `<tr><td>${dayKey(new Date(u.at), appZone())}</td><td class="amt ${tone(u.change)}">${sgn(u.change)}</td><td class="amt">Value after ${money(u.value)}</td></tr>`).join("")}</tbody></table>`;
+  return `<h2>Value updates</h2><table><tbody>${rows.map((u) => `<tr><td class="nw">${day(u.at)}</td><td class="amt ${tone(u.change)}">${sgn(u.change)}</td><td class="amt">Value after ${money(u.value)}</td></tr>`).join("")}</tbody></table>`;
 };
 
 const holdingPage = (t: HoldingTrend, period: Period, withCharts: { value: boolean; profit: boolean }): string => {
@@ -186,7 +192,7 @@ const holdingPage = (t: HoldingTrend, period: Period, withCharts: { value: boole
 const KIND_LABEL: Record<LedgerEntry["kind"], string> = { added: "Added", in: "Money in", out: "Money out", update: "Value update" };
 
 const ledgerHtml = (entries: LedgerEntry[], showHolding: boolean): string => {
-  const rows = entries.map((e) => `<tr><td class="nw">${dayKey(new Date(e.at), appZone())}</td>${showHolding ? `<td>${htmlEscape(e.holdingName)}</td>` : ""}
+  const rows = entries.map((e) => `<tr><td class="nw">${day(e.at)}</td>${showHolding ? `<td>${htmlEscape(e.holdingName)}</td>` : ""}
     <td>${KIND_LABEL[e.kind]}</td><td class="amt ${e.kind === "added" ? "" : tone(e.amount)}">${e.kind === "added" ? "—" : sgn(e.amount)}</td><td class="amt">${money(e.valueAfter)}</td></tr>`).join("");
   return `<div class="pb"><h2>Ledger</h2><table><thead><tr><th>Date</th>${showHolding ? "<th>Holding</th>" : ""}<th>Entry</th><th class="amt">Amount</th><th class="amt">Value after</th></tr></thead><tbody>${rows}</tbody></table>
     <div class="note">Oldest first. "Value after" is the holding's value once the entry was applied.</div></div>`;
@@ -257,8 +263,8 @@ export const exportInvestments = async (report: InvestmentReport, opts: Investme
   if (!body.trim()) return { shared: false, count: 0 };
   const html = pdfDocument({
     section: "Investments",
-    rangeLabel: `${holding ? `${holding.name} · ` : ""}${periodLabel(opts.period, bounds)} · ${monthLabel(bounds.from)} – ${monthLabel(bounds.to)}`,
-    meta: `As of ${stamp} · ${holding ? "1 holding" : `${report.holdings.length} holdings`}`,
+    rangeLabel: `${holding ? `${holding.name} · ` : ""}${periodLabel(opts.period, bounds)} · ${formatCalendar(bounds.from, "month")} – ${formatCalendar(bounds.to, "month")}`,
+    meta: `As of ${formatInstant(new Date(), "dayYear")} · ${count(holding ? 1 : report.holdings.length, "holding")}`,
     body,
     css: CSS,
   });

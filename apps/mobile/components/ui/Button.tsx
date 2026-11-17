@@ -134,6 +134,9 @@ const Button = ({
           scale.value = withSpring(1, SPRING);
         }}
         disabled={isDisabled}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityState={{ disabled: !!isDisabled, busy: loading }}
         style={[
           shape,
           {

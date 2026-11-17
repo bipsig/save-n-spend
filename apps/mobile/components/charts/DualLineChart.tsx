@@ -2,8 +2,13 @@ import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import Svg, { Circle, Line, Path } from "react-native-svg";
 import { AppText } from "@/components/ui/AppText";
+import ChartLegend from "@/components/ui/ChartLegend";
+import ChartTooltip from "@/components/ui/ChartTooltip";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { chartA11y } from "@/lib/chartSummary";
+import { dualLineSummary } from "@/lib/chartSummaries";
 import { useScrubTick } from "@/lib/useScrubTick";
+import { chartScrubLine } from "@/theme";
 
 type Props = {
   /** The series in focus, drawn solid. Its length sets the x-axis. */
@@ -25,8 +30,6 @@ type Props = {
   previousColor?: string;
   height?: number;
 };
-
-const TIP_W = 132;
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
@@ -59,7 +62,7 @@ const DualLineChart = ({
   previousColor = "rgba(255,255,255,0.42)",
   height = 108,
 }: Props) => {
-  usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
+  const masked = usePrivacyMask(); // also subscribes: a peek has to re-render the amounts below
   const [w, setW] = useState(0);
   const active = activeIndex ?? null;
   const padB = 6;
@@ -100,40 +103,16 @@ const DualLineChart = ({
   const showProjected = projectedEnd !== undefined && curEnd >= 0 && curEnd < span - 1;
 
   return (
-    <View>
-      <View style={styles.legend}>
-        <View style={styles.legendItem}>
-          <View style={[styles.swatch, { backgroundColor: color }]} />
-          <AppText size="xs" color="inkDim">
-            {currentLabel}
-          </AppText>
-        </View>
-        <View style={styles.legendItem}>
-          {/* Two short strokes rather than a bar: the line it stands for is dashed, and the
-              legend has to be readable as the same thing. */}
-          <View style={styles.dashSwatch}>
-            <View style={[styles.dash, { backgroundColor: previousColor }]} />
-            <View style={[styles.dash, { backgroundColor: previousColor }]} />
-          </View>
-          <AppText size="xs" color="inkDim">
-            {previousLabel}
-          </AppText>
-        </View>
-        {projectedEnd !== undefined && (
-          <View style={styles.legendItem}>
-            {/* Same two-stroke shape as the previous swatch, in `color` instead of
-                `previousColor` — dashed like "previous", but distinguishable by hue since
-                both are on screen at once. */}
-            <View style={styles.dashSwatch}>
-              <View style={[styles.dash, { backgroundColor: color }]} />
-              <View style={[styles.dash, { backgroundColor: color }]} />
-            </View>
-            <AppText size="xs" color="inkDim">
-              Projected
-            </AppText>
-          </View>
-        )}
-      </View>
+    <View {...chartA11y(dualLineSummary({ current, previous, currentLabel, previousLabel, projectedEnd }, masked))}>
+      {/* The projected and previous series are both dashed; hue tells them apart. */}
+      <ChartLegend
+        style={styles.legend}
+        items={[
+          { label: currentLabel, color, mark: "line" },
+          { label: previousLabel, color: previousColor, mark: "dashed" },
+          ...(projectedEnd !== undefined ? [{ label: "Projected", color, mark: "dashed" as const }] : []),
+        ]}
+      />
 
       <View
         onLayout={(e) => setW(e.nativeEvent.layout.width)}
@@ -200,7 +179,7 @@ const DualLineChart = ({
               />
             )}
             {active !== null && (
-              <Line x1={x(active)} y1={0} x2={x(active)} y2={chartH} stroke="rgba(255,255,255,0.28)" strokeWidth={1} />
+              <Line x1={x(active)} y1={0} x2={x(active)} y2={chartH} stroke={chartScrubLine} strokeWidth={1} />
             )}
             {/* Where the projected line actually lands, so the number the KPI tile states is
                 also a point you can see on the chart. */}
@@ -218,39 +197,17 @@ const DualLineChart = ({
           </Svg>
         )}
         {active !== null && (
-          <View style={[styles.tip, { left: clamp(x(active) - TIP_W / 2, 0, Math.max(0, w - TIP_W)) }]}>
-            <AppText size="xs" color="inkDim">
-              {labels?.[active] ?? ""}
-            </AppText>
-            {/* Labelled now that there can be three rows — with only two, the colour and the
-                legend above were enough; a third made it possible to mistake "last month"
-                for "projected" at a glance (they're both dashed lines). */}
-            <View style={styles.tipRow}>
-              <View style={[styles.tipDot, { backgroundColor: color }]} />
-              <AppText size="xs" color="inkDim">This</AppText>
-              <AppText size="sm" weight="semibold" style={styles.tipValue}>
-                {active < current.length ? formatMoney(current[active]) : "—"}
-              </AppText>
-            </View>
-            <View style={styles.tipRow}>
-              <View style={[styles.tipDot, { backgroundColor: previousColor }]} />
-              <AppText size="xs" color="inkDim">Last</AppText>
-              <AppText size="sm" weight="semibold" color="inkDim" style={styles.tipValue}>
-                {active < previous.length ? formatMoney(previous[active]) : "—"}
-              </AppText>
-            </View>
-            {showProjected && (
-              <View style={styles.tipRow}>
-                {/* Hollow rather than filled — the same distinction the chart itself draws
-                    between the real end-point dot and the projected one. */}
-                <View style={[styles.tipDot, styles.tipDotHollow, { borderColor: color }]} />
-                <AppText size="xs" color="inkDim">Proj</AppText>
-                <AppText size="sm" weight="semibold" style={styles.tipValue}>
-                  {formatMoney(Math.round(projectedAt(active)))}
-                </AppText>
-              </View>
-            )}
-          </View>
+          // Labelled rows: "Last" and "Proj" are both dashed lines, easy to mistake at a glance.
+          <ChartTooltip
+            x={x(active)}
+            chartWidth={w}
+            title={labels?.[active] ?? ""}
+            lines={[
+              { label: "This", value: active < current.length ? formatMoney(current[active]) : "—", dot: color },
+              { label: "Last", value: active < previous.length ? formatMoney(previous[active]) : "—", dot: previousColor, tone: "inkDim" },
+              ...(showProjected ? [{ label: "Proj", value: formatMoney(Math.round(projectedAt(active))), dot: color, hollow: true }] : []),
+            ]}
+          />
         )}
       </View>
 
@@ -269,64 +226,12 @@ const DualLineChart = ({
 
 const styles = StyleSheet.create({
   legend: {
-    flexDirection: "row",
-    gap: 18,
     marginBottom: 6,
-  },
-  legendItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  swatch: {
-    width: 14,
-    height: 3,
-    borderRadius: 2,
-  },
-  dashSwatch: {
-    flexDirection: "row",
-    gap: 3,
-    width: 14,
-  },
-  dash: {
-    width: 5,
-    height: 3,
-    borderRadius: 2,
   },
   axis: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginTop: 4,
-  },
-  tip: {
-    position: "absolute",
-    top: 0,
-    width: TIP_W,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-    backgroundColor: "#241E42",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    gap: 3,
-  },
-  tipRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  tipDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 2,
-  },
-  tipDotHollow: {
-    backgroundColor: "transparent",
-    borderWidth: 1.5,
-  },
-  tipValue: {
-    flex: 1,
-    textAlign: "right",
   },
 });
 

@@ -11,6 +11,7 @@ For tokens and components, see [Design system](design-system.md).
 - [Navigation structure](#navigation-structure)
 - [Fetch data with a domain hook](#fetch-data-with-a-domain-hook)
 - [Offline behaviour](#offline-behaviour)
+- [Server waking up](#server-waking-up)
 - [Add a screen](#add-a-screen)
 - [Add a full-screen form](#add-a-full-screen-form)
 - [Add a bottom sheet](#add-a-bottom-sheet)
@@ -81,49 +82,80 @@ hosts no sheets, such as `add-goal`, must not add one.
 
 ## Fetch data with a domain hook
 
-There is no data-fetching library in use. `app/_layout.tsx` still mounts a
-TanStack `QueryClientProvider` (`lib/queryClient.ts`), but no screen calls
-`useQuery`; every domain owns a file in `apps/mobile/lib/` that exports a hook
-plus the pure helpers that derive from its data. `lib/budgets.ts` is the
-reference implementation.
-
-The list-shaped hook contract is:
+Every read goes through TanStack Query, behind one wrapper in
+`lib/query/useApiQuery.ts` (D17 A). Each domain owns a file in `apps/mobile/lib/` that
+exports a hook built on it, plus the pure helpers that derive from its data.
+`lib/budgets.ts` is the reference implementation:
 
 ```ts
-const { items, loading, error, refetch } = useBudgets(month);
+export const useBudgets = (month?: string) => {
+  const { data, ...rest } = useApiQuery<BudgetSummary[]>(`/budgets${month ? `?month=${month}` : ""}`);
+  return { items: data ?? [], ...rest };
+};
 ```
 
-A hook that fetches one document returns `data` instead of `items`:
-`useInsights`, `useInvestments`, `useInvestmentTrend`, `useTrips`, `useTrip`. The
-rest of the contract (`loading`, `error`, `refetch`) is identical. `lib/trips.ts`
-has a small private `useFetch<T>(path)` that is the shortest example of it.
+`useApiQuery(path)` returns one shape:
+
+| Field | Meaning |
+|---|---|
+| `data` | The answer, or `null` before the first one |
+| `loading` | The first load: nothing to show yet |
+| `refreshing` | A later load while `data` is on screen |
+| `error` | The latest failure's message; cleared when a load succeeds |
+| `refetch()` | Asks again (see the focus rule below) |
+| `fetchedAt` | When the data on screen was fetched, in ms. For a saved copy served offline or while the server wakes, when that copy was saved |
+
+`useApiPages(page => path)` is the paginated form (`useTransactionFeed`,
+`useHighlightHistory`): the same fields plus `items`, `total`, `hasMore`, `loadingMore` and
+`loadMore()`. A later page with no signal and nothing saved ends the list instead of
+blanking it, and `refetch()` goes back to page one.
+
+List hooks still return `items` instead of `data`, `useHighlights` its own fields, and
+`useTripMatches` the bare value, so screens did not change in 2.8.3 phase 1; phase 2 moves
+screens onto the shape.
+
+The rules (`lib/query/core.ts`, tested in `lib/fetchLayer.test.ts`):
+
+- **Keys hold every param.** The key is `["api", userId, path]`, so each period, month and
+  filter is its own entry, and a slow answer for one can never show under another's label.
+  Stepping to a window seen before shows its saved figures at once. The user id keeps one
+  account's data from the next; the cache is emptied when the account changes or signs out.
+- **Once on open, again on focus only when stale.** Data younger than 30 s (`STALE_MS`) is
+  reused. On refocus, `useApiQuery` refetches only what is older, or what a write made stale.
+  A fetch already running is joined, never repeated.
+- **`refetch()` from a screen's own `useFocusEffect`** (called within a second of focus)
+  follows the same focus rule; any other call (pull to refresh, Try again, after a change)
+  fetches. shortcut: the focus pass is told apart by time until phase 2 removes the screens'
+  `useFocusEffect` refetches.
+- **A write refreshes what it changed.** `lib/api.ts` calls `afterWrite` after every successful
+  write (`lib/query/invalidate.ts`): mounted screens refetch now, the rest when next shown. Most
+  writes change every read; auth, notifications, a name or push token, an import preview and
+  dismissing a recurring suggestion are the exceptions. The outbox sends with
+  `invalidate: false` and refreshes once after a pass that synced something.
+- **When the server wakes** (D19, `onServerAwake`), every query on a mounted screen refetches
+  once.
+- Retries are off and queries always run: `lib/api.ts` already answers offline from the saved
+  copy and retries a waking server itself.
 
 **To add a domain hook**
 
-1. Create `apps/mobile/lib/<domain>.ts`.
-2. Hold `items` (or `data`), `loading`, and `error` in `useState`.
-3. Wrap the fetch in a `useCallback` named `refetch`, keyed on the parameters
-   that should trigger a refetch.
-4. Guard on the session before fetching, so a signed-out render does not fire a
-   request that will only 401:
-
-   ```ts
-   if (useSession.getState().status !== "authed") return;
-   ```
-
-5. Run it from a `useEffect` keyed on `[status, refetch]`.
-6. Export derived helpers as pure functions in the same file — `budgetTotals`,
+1. In `apps/mobile/lib/<domain>.ts`, export `useX = () => useApiQuery<X>("/x")`. Pass `null` as
+   the path to wait (no id yet) and `{ enabled }` to skip the fetch.
+2. Put every parameter in the path. Pass `keepPreviousWithin` only when the previous answer may
+   stay on screen while a refinement loads (Activity keeps its rows across a search, not
+   across a date range).
+3. Export derived helpers as pure functions in the same file — `budgetTotals`,
    `monthTitle`, `isMonthClosed`. Keep the arithmetic out of the component so a
    screen only arranges values it is handed.
 
 Talk to the API through `lib/api.ts` (`get`, `post`, `put`, `patch`, `del`), which
-attaches the token and returns the unwrapped `data`. It also stamps every call with
+attaches the token and returns the unwrapped `data` (`getFetched` also returns `fetchedAt`). It also stamps every call with
 an `X-Request-Id` and `X-App-Version`; a failure throws `ApiError` whose message
 ends `· Ref <id>`, the same reference the server logs and Diagnostics lists. Status
 `0` means no answer at all, which is not the same as a rejection.
 
-Some data is held in a zustand store rather than a hook because many screens read
-it: `store/accounts`, `store/categories`, `store/notifications`,
+Some data is held in a zustand store rather than a query because many screens read
+it synchronously through selectors: `store/accounts`, `store/categories`, `store/notifications`,
 `store/titleSuggestions`, `store/tripNames`. They are loaded when the session
 becomes `authed` and reset on `guest` (see `app/_layout.tsx`). After a mutation
 that moves a balance, reload the account store
@@ -138,7 +170,7 @@ transaction entered without it. Four pieces cooperate.
 |---|---|---|
 | Read cache | `lib/offlineCache.ts`, used by `lib/api.ts` | Every successful `GET` is written to a JSON file under `documentDirectory/offline-cache/`, keyed by a hash of the path. When a `GET` gets no answer at all, `api.ts` returns the cached copy as if the request had succeeded, so no hook needs offline handling of its own. A write with no answer throws `Couldn't reach the server, so check your connection and try again` (status 0). Cleared on sign-out. |
 | Connectivity | `store/connectivity.ts` | `offline` flips from `lib/api.ts` itself: any answer, even a rejection, reports online; no answer reports offline. While offline it pings `/health` every 30 s and on returning to the foreground. |
-| `OfflineBanner` | `components/shell/OfflineBanner.tsx` | "Offline — showing data from 3:42 pm". Mounted once inside `ScreenScaffold`, so every scaffold screen has it. |
+| `OfflineBanner` | `components/shell/OfflineBanner.tsx` | "Offline · showing what was saved today at 10:52 am" / "yesterday at 9:15 pm" / "on 12 Nov": the age of **this screen's** data, from the `fetchedAt` the screen passes in `ScreenScaffold`'s `states` (D18 A). A screen that passes none keeps the 2.8.2 line, "Offline — showing data from 3:42 pm" (the last time the app was online). Drawn by `ScreenStrip` under every scaffold header. |
 | Outbox | `store/outbox.ts`, `lib/outbox.ts`, `lib/outboxDrain.ts`, `lib/outboxPolicy.ts` | A new transaction captured offline is queued with its `clientId` and `Idempotency-Key` (the same value) and replayed FIFO on reconnect and on launch, sending the same key every time. What happens next is decided by the error's `code` (table below). An item queued by 2.6.0 has no key; it is given one, saved to the file, before its first send. The outbox file deliberately survives sign-out. |
 
 | Answer | Outbox does |
@@ -167,11 +199,40 @@ A 502/503/504 or HTML page reads "The server is starting up, so try again in a m
 empty or unreadable body "Something went wrong, so try again in a moment". A 2xx that isn't JSON
 (a Wi-Fi sign-in page) counts as no answer, never as saved.
 
+### Server waking up
+
+Render's free tier sleeps, and while it boots it answers 502/503/504 or an HTML gateway page
+(D19 A). For a **read**, `lib/api.ts` treats that like no answer: it returns the saved copy,
+sets `useServerWaking` to `waking: true`, and starts one retry loop that asks `/health` after
+2, 4, 8, 15 and then every 30 s (`WAKE_RETRY_MS`). The first real answer clears the flag.
+
+- `ServerWakingNotice` (`components/ui/ServerWakingStrip.tsx`) shows "The server is starting
+  up · showing saved data" under the header on every `ScreenScaffold` screen while the flag is
+  set, unless the offline banner has the strip slot. It has no button, because the app is already retrying, and it goes by itself.
+- `ServerWakingAnnouncer`, mounted once in `app/_layout.tsx`, announces it to VoiceOver.
+- `onServerAwake(listener)` fires when the flag clears. `lib/query/useApiQuery.ts` subscribes:
+  every query on a mounted screen refetches once, so the saved copy is replaced without a tap.
+- A read with no saved copy shows `ErrorState` with the waking message.
+- **Writes and exports are unchanged.** They are never answered from the cache, so an export
+  during a wake-up shows "The server is starting up, so try again in a minute · Ref …" in the
+  sheet.
+
 Two rules follow.
 
 **A file the user asks for is not served from the cache.** Export sheets disable their
 CTA while `offline` and say why ("Needs a connection"): a stale statement reads as
 authoritative in a way a stale screen does not.
+
+**A write that doesn't queue says so before the tap.** Only adding a transaction queues
+offline (`store/outbox.ts` posts only to `/transactions`). Every other write's main button
+uses `useOnlineGate` (`lib/onlineGate.ts`): while offline it is disabled and reads "Needs a
+connection" with the `cloudOff` icon, and it comes back by itself when the app is online.
+What the user typed stays in the sheet.
+
+```tsx
+const gate = useOnlineGate(`Add ${formatMoney(amount)}`);
+<Button label={gate.label} icon={gate.icon ?? "plus"} disabled={!gate.allowed || !valid} onPress={save} />
+```
 
 **Deletes are undoable, and survive the app closing.** `store/pendingDeletes.ts` defers a
 destructive call for five seconds. The row disappears at once (screens filter their
@@ -201,15 +262,20 @@ Not every delete is deferred: deleting an investment goes through
 ## Add a screen
 
 Wrap the screen in `ScreenScaffold`. It supplies the gradient ground, the glow,
-safe-area insets, the title row, the `OfflineBanner`, and a scroll view with the
-standard rhythm.
+safe-area insets, the header (`ScreenHeader`), one strip under the header (`ScreenStrip`:
+offline, the D19 server notice, or "Couldn't refresh"), pull-to-refresh, and a scroll view
+with the standard rhythm.
 
 ```tsx
 const BudgetScreen = () => {
   const { items, loading, error, refetch } = useBudgets(month);
 
   return (
-    <ScreenScaffold title="Budget" headerRight={headerRight}>
+    <ScreenScaffold
+      title={screenTitles.budget}
+      back
+      actions={[{ kind: "new", label: "New budget", onPress: openCreate }]}
+    >
       {/* content */}
     </ScreenScaffold>
   );
@@ -218,45 +284,33 @@ const BudgetScreen = () => {
 
 | Prop | Use for |
 |---|---|
-| `title`, `subtitle` | The standard title block. `PeekButton` is added to it for you. |
-| `headerRight` | A trailing header action, usually a `pill` `Button`. |
-| `header` | A completely custom header, replacing the title block. |
+| `title`, `subtitle` | The header title (one line; shrinks to 24 pt, then "…"). Take screen names from `screenTitles` in `data/menu.ts`, so the menu and the title match (D3 A). |
+| `back` | `true` for the back chevron, `"close"` for a modal's ✕. Every non-tab screen has one. |
+| `onBack` | Override leaving, e.g. to confirm discarding a form first. |
+| `actions` | Header actions as data (`HeaderAction[]`), drawn as icon circles in a fixed order. See [ScreenHeader](design-system.md#screenheader). |
+| `peek` | `false` hides the eye on a screen that shows no amounts. |
+| `headerRight` | Controls not yet moved onto `actions`, drawn after them. |
+| `header` | A completely custom header, replacing `ScreenHeader`. Only Home uses it. |
 | `scroll` | Set `false` when the screen owns its own `FlatList`. |
 | `scrollEnabled` | Turn off while a row is being dragged. |
-| `onRefresh`, `refreshing` | Pull-to-refresh on the scaffold's own scroll view. |
+| `states` | The screen's fetch state (`{ loading, refreshing, error, hasData, refetch, fetchedAt }`). Picks the strip under the header and turns `refetch` into pull-to-refresh. See [Handle loading, empty, and error states](#handle-loading-empty-and-error-states). |
+| `onRefresh` | Pull-to-refresh, defaulting to `states.refetch`. The spinner runs until its promise settles. Home passes its own, which reloads every card. |
+| `refreshing` | Only for a 2.8.2 screen that still holds its own pull state. |
 | `floating` | Pinned above the content, such as a `Fab`. |
 
 ### Which header
 
-Both shapes are in use, and which one a screen takes follows a rule:
+One header for every screen. Pass `title`, `back` and `actions` to the scaffold and render
+the same scaffold in every state (loading, error, loaded), so the header never jumps and an
+action that needs the record (Edit, Export) is passed `disabled` until it has loaded. Don't
+hand-build a header row: the old `<View style={styles.head}><BackButton/>…` copies are gone.
 
-- **`title` (and `headerRight`)** for the tab screens and for the hub screens
-  opened from More that have no back chevron of their own: Home, Activity,
-  Insights, More, Budget, Bills, Goals. The eye (`PeekButton`) comes with it.
-- **A hand-built `header`** for every screen that needs a way back or a custom
-  action row: Investments, Investment detail, Trips, Trip detail, Cash flow,
-  Settings, Review, Manage accounts and categories, and so on. The shape is one
-  row: `<BackButton />` (or `<BackButton variant="close" />` on a modal), the
-  title as `<AppText size="xl" weight="black" numberOfLines={1}>` with `flex: 1`,
-  then the actions, each a `PressableScale` with `hitSlop` and an
-  `accessibilityLabel`.
-
-```tsx
-const header = (
-  <View style={styles.head}>
-    <BackButton />
-    <AppText size="xl" weight="black" numberOfLines={1} style={styles.headTitle}>Investments</AppText>
-    {/* trailing icon buttons */}
-  </View>
-);
-return <ScreenScaffold header={header}>{/* … */}</ScreenScaffold>;
-```
-
-**Warning**
-A custom `header` replaces the title row, and the title row is where the scaffold
-puts `PeekButton`. A screen that shows amounts and passes its own `header` must
-render `<PeekButton />` itself; of the hand-built headers, only `assistant`,
-`category-insights`, `health` and `manage-accounts` do so today.
+- Tabs (Home, Activity, Insights, More) have no back button. Home keeps its greeting row
+  through `header`, and that row renders `<PeekButton />` itself.
+- A screen titled with a name the user typed (a trip, a holding) also shows the full name in
+  its top card, because the header may cut it.
+- Label every action with the thing it acts on ("New bill", "Edit trip", "Export
+  investments"), since the circle carries no text.
 
 ## Add a full-screen form
 
@@ -460,9 +514,9 @@ hides the sections: a ledger is always the contents.
 Two screens, `investments` (the hub) and `investment-detail` (one holding), share the same
 two-tab body.
 
-- **`OverviewTrendsTabs`** (`components/investments/OverviewTrendsTabs.tsx`) is a two-segment
-  control, `Overview | Trends`, with `InvestTab = "overview" | "trends"`. It is only shown
-  once the trend payload has at least one point. The screen owns the `tab` state.
+- **The Overview | Trends switch** is a `SegmentedControl size="sm"` with
+  `InvestTab = "overview" | "trends"`. It is only shown once the trend payload has at least one
+  point. The screen owns the `tab` state.
 - **Overview** is the screen's own content: totals, allocation donut, this-month card,
   strongest holding, holdings grouped by kind, SIPs, and the **Update values** and
   **Invest** buttons. On a holding's page it is the value, the cost basis and that holding's
@@ -474,10 +528,10 @@ two-tab body.
 
 | Part | Behaviour |
 |---|---|
-| Scope pills | A horizontal strip: **All**, then one pill per holding. Picking one re-scopes the charts in place. |
+| Scope chips | A horizontal `Chip` strip: **All**, then one chip per holding. Picking one re-scopes the charts in place. |
 | Locked mode | Passed by `investment-detail` as `initialScope={id} locked`. The strip stays visible but only that holding is live (the rest are dimmed and disabled), so the screen's title and the figures under it cannot disagree. |
-| Range pills | `6M`, `1Y`, `All time`. Default `1Y`. They cut the series with `lastN`. |
-| Stat tiles | Profit so far, Best month, Worst month. Best and worst consider only months that had a value update. |
+| Range | `6M`, `1Y`, `All time` in a `SegmentedControl size="sm"` (D5 A). Default `1Y`. It cuts the series with `lastN`. |
+| Stat tiles | A `StatRow` of Profit so far, Best month, Worst month, exact to the paisa. Best and worst consider only months that had a value update. The row goes two across once a figure reaches ₹10,00,000.00. |
 | Charts | `ValueHistoryChart` (value over money invested) and `ProfitChart` (profit line over monthly change bars). |
 
 The hub screen header carries **Export** (shown once there is a holding) and **New**; the
@@ -537,9 +591,11 @@ month with no value update is not flagged: its gain is carried forward and it lo
 any other month, and the profit chart simply draws no change bar for it. There are no
 "not updated" warnings on a chart.
 
-For colours, tooltip styling and axis tags, see [Chart conventions](design-system.md#chart-conventions).
-Charts that print amounts honour privacy mode: they call `usePrivacyMask()` and, in the
-Investments charts, print `••` for axis ticks, tags and tooltip figures while masked.
+For colours, the tooltip, the legend and axis tags, see [Chart conventions](design-system.md#chart-conventions).
+Every chart draws its bubble with `ChartTooltip` and its key with `ChartLegend`, and carries a
+one-sentence VoiceOver summary (`chartSummary`). Charts that print amounts honour privacy mode:
+they call `usePrivacyMask()` and print `₹ ••••` for axis ticks, tags and tooltip figures while
+masked; the summary says "Amounts hidden".
 
 ## Add a period selector
 
@@ -567,8 +623,8 @@ offset is never positive and why the math is in UTC.
 
 **Note**
 Distinguish a live period from a closed one in the copy, not just the data. The
-Budget screen relabels **Remaining** as **Unspent** and swaps **Days Left** and
-**Daily Limit** for **Days** and **Avg/Day** once the month has ended, because a
+Budget screen writes the remainder as "unspent" instead of "left" and swaps **Days left**
+and **Daily limit** for **Days** and **A day** once the month has ended, because a
 pace target is meaningless for a month that is already over.
 
 ## Show an amount
@@ -581,14 +637,17 @@ Which helper to reach for depends on whether the amount can be tapped.
 | `<Money value={paise} />` | Default. An amount rendered on a screen. |
 | `formatMoney(paise)` (default export of `lib/money.ts`) | The amount is going somewhere that can't be a component — a `sub` string, a toast, a sheet body. Masks. |
 | `formatMoneyExact(paise)` | Never on screen. Files the user explicitly asked us to generate — see `lib/export.ts`. |
+| `formatBalance(balance, type)`, `formatRemaining(remaining)` | A balance or a budget's remainder in words instead of a negative (D11 A): "₹12,000.00 owed", "₹3,000.00 overdrawn", "₹500.00 over". Masks. |
+| `formatPct`, `formatPoints`, `formatCompact`, `formatInstant`, `formatCalendar`, `count` (`lib/format/`) | Every other figure and date. See [Formatting rules](design-system.md#formatting-rules). |
 | `usePrivacyMask()` | A screen that composes amounts with `formatMoney` must call this once, to subscribe: without it a peek won't re-render the strings it computed. |
-| `MASKED_MONEY` (`lib/money.ts`) | The fixed-width mask, `₹ ••••`. Fixed so the mask cannot leak the magnitude. Charts print a shorter `••` for tick labels and tags. |
+| `MASKED_MONEY` (`lib/money.ts`) | The fixed-width mask, `₹ ••••`, used for every masked amount, compact chart ticks included. Fixed so the mask cannot leak the magnitude. |
 
-`Money` takes `value` (integer paise), `prefix` (a sign such as `"+ "`, kept while masked
-because a direction says nothing about a magnitude), `weight`, `size`, `color`,
-`numberOfLines` and `align`. A peek, started by tapping any masked figure or the eye in
-the header, un-masks everything for `PEEK_MS` (ten seconds, `store/settings.ts`) and
-`PeekBar` shows a draining line and a way to hide again.
+`Money` takes `value` (integer paise), `sign` (`auto` writes "−" only for a negative,
+`always` also writes "+", `none` writes neither; the sign is kept while masked because a
+direction says nothing about a magnitude), `weight`, `size`, `color`, `numberOfLines` and
+`align`. `prefix` still exists for screens that haven't moved to `sign`. A peek, started by
+tapping any masked figure or the eye in the header, un-masks everything for `PEEK_MS` (ten
+seconds, `store/settings.ts`) and `PeekBar` shows a draining line and a way to hide again.
 
 **Prefer `Money` to `formatMoney`.** With privacy mode off it is exactly
 `<AppText>{formatMoney(v)}</AppText>`. With it on, the masked figure becomes its own
@@ -607,12 +666,11 @@ worked, but meant its figures could never become tappable. It takes `amount: num
 now and renders `Money` itself. If you are about to give a component a formatted
 string, take the paise instead.
 
-**The eye lives in the scaffold.** `components/shell/PeekButton.tsx` renders nothing at
-all while privacy mode is off, which is what lets `ScreenScaffold` include it in the
-default title row unconditionally. A screen that hides figures without offering the way
-to reveal them is a dead end — that was the bug: the eye existed only on the dashboard,
-so switching privacy mode on and opening Budget left the user with masked figures and no
-control. **A screen passing a custom `header` has to include `<PeekButton />` itself.**
+**The eye lives in the header.** `components/shell/PeekButton.tsx` renders nothing at
+all while privacy mode is off, which is what lets `ScreenHeader` include it on every screen
+unconditionally. A screen that hides figures without offering the way to reveal them is a
+dead end. **Home's custom `header` includes `<PeekButton />` itself; any other custom header
+would have to as well.**
 
 ## Days and months: zone helpers
 
@@ -665,26 +723,68 @@ fire-and-forget and swallow failure. `PressableScale` ticks for you on press; pa
 
 ## Handle loading, empty, and error states
 
-Every list screen renders four states from `components/states/`.
+From 2.8.3 a data screen hands its fetch state to two pieces and draws nothing else for
+loading or failure (U5, mockup 05, D15 A):
 
-| State | Component | Condition |
+- `ScreenScaffold states={...}` draws the strip under the header and owns pull-to-refresh.
+- `<ScreenStates state={...}>` draws the body: skeleton, full error, not found, or your content.
+
+```tsx
+const budgets = useBudgets(month); // { data, loading, refreshing, error, refetch, fetchedAt }
+const state = { ...budgets, hasData: !!budgets.data };
+
+return (
+  <ScreenScaffold title={screenTitles.budget} back actions={actions} states={state}>
+    <ScreenStates state={state} skeleton={<ListSkeleton rows={3} height={96} />}>
+      {() => (budgets.data!.length ? <BudgetList items={budgets.data!} /> : <EmptyState ... />)}
+    </ScreenStates>
+    {/* Sheets beside ScreenStates, never inside: a state change must not unmount an open sheet. */}
+    <BudgetLimitSheet ref={limitRef} onSaved={budgets.refetch} />
+  </ScreenScaffold>
+);
+```
+
+What the screen shows (`lib/screenStates.ts`, tested in `lib/screenStates.test.ts`):
+
+| State | Body (`screenView`) | Strip (`stripFor`) |
 |---|---|---|
-| Error | `ErrorState` | `error` is set. Always pass `onRetry={refetch}`. |
-| Loading | `SkeletonState` | `loading && items.length === 0`. Repeat one per expected row. |
-| Empty | `EmptyState` | Loaded, no items. Give it an `actionLabel` and `onAction`. |
-| Content | your rows | Otherwise. |
+| No answer yet | Skeleton | none (or offline / waking) |
+| Failed, nothing saved | `ErrorState` with the message and Try again | none: the error screen says it |
+| Data on screen, refresh failed | The data, unchanged | "Couldn't refresh · Try again", until the next success |
+| Data on screen, refreshing | The data; never the skeleton again | none |
+| `notFound` (a 404, or no id) | `NotFoundState`: "This trip isn't here any more" + Go back | as above |
 
-Check `loading && items.length === 0`, not `loading` alone: a refetch should
-leave the existing rows on screen rather than flashing a skeleton over data the
-user is already reading.
+- **One strip at a time:** offline, then "The server is starting up", then "Couldn't
+  refresh", because each one explains the next. A screen that passes no `states` gets only
+  the first two, as in 2.8.2.
+- **`hasData` means an answer is on hand,** live or saved, even an empty list. Empty is your
+  content's job (`EmptyState`), so Accounts says "No accounts yet" only once the answer is in.
+- **Several fetches on one screen:** `mergeScreenStates(a, b)` has data when every part has,
+  the first error, the oldest `fetchedAt`, and a `refetch` that runs them all.
+- **`thing`** names the record for the not-found copy: `thing="trip"`, `thing="goal"`.
+- **Activity's own list:** pass `refreshControl={useScreenRefresh(refetch)}` to the
+  `FlatList` and `scroll={false}` plus `states` to the scaffold. Same spinner, same tint.
 
-An empty state should reflect the situation. On a closed month, the Budget
-screen says *"Nothing budgeted in July 2026"* and offers to record what the
-limit should have been, rather than *"No budgets yet"*.
+**Home cards (D16 A).** Wrap each card in `HomeCard`. While loading it draws nothing, as
+before. Loaded, it draws the card (or nothing when `empty`). Failed before it ever loaded, it
+keeps its place: the card's caption, "Couldn't load this · Try again" inside, at the height it
+last had in this app run, else `skeletonHeight`. If the month summary itself fails, Home shows
+the full `ErrorState`.
+
+```tsx
+<HomeCard title="Budgets at a glance" state={{ ...budgets, hasData: !!budgets.data }} empty={!budgets.data?.length} skeletonHeight={120}>
+  <BudgetsAtAGlanceCard items={budgets.data ?? []} />
+</HomeCard>
+```
 
 Give `EmptyState` a CTA only when the user can act on it. Activity shows
 *"Add transaction"* when nothing has ever been recorded, and drops it when a
 **search** came back empty — the fix there is a different query, not a new entry.
+An empty state should reflect the situation: on a closed month, Budget says
+*"Nothing budgeted in July 2026"* rather than *"No budgets yet"*.
+
+The 2.8.2 screens not yet moved onto these still use the older rule: `ErrorState` when
+`error` is set, `SkeletonState` rows while `loading && items.length === 0`, then content.
 
 ### Clear the data when the period changes
 
@@ -769,9 +869,9 @@ Two details in there are worth not re-learning:
   does not exist.
 - **The card must not flash for an established user.** Every list hook starts at
   `loading: true` with an empty array, which for one frame is indistinguishable
-  from a brand-new account. Latch a `listsReady` state once they have all settled;
-  do not gate on `loading` directly, because `useFocusEffect` re-enters loading on
-  every focus and the card would blink off and back on each visit.
+  from a brand-new account. Latch a `listsReady` state once they have all settled.
+  Since 2.8.3 `loading` is true only on the first load (a later one sets `refreshing`), so a
+  refocus no longer turns it back on.
 
 Dismissal is the one piece of stored onboarding state, in
 `store/settings`'s `getStartedDismissed` — a list of user ids rather than a
@@ -780,24 +880,10 @@ the person who would lose theirs is the new user who needs it.
 
 ## Refetch on focus
 
-Returning from a modal route should pick up what changed there. Refetch on
-focus, not on mount:
-
-```tsx
-// Refresh on focus only. Stepping months already refetches inside `useBudgets`,
-// so depending on `refetch` here would fire a second request for every step.
-const refetchRef = useRef(refetch);
-refetchRef.current = refetch;
-useFocusEffect(useCallback(() => {
-  refetchRef.current();
-}, []));
-```
-
-**Important**
-The ref indirection is load-bearing. When a hook is parameterized — as
-`useBudgets(month)` is — `refetch` gets a new identity every time the parameter
-changes. A `useFocusEffect` that depends on `refetch` directly then fires a
-second request on top of the one the hook already made.
+`useApiQuery` refetches stale data when its screen regains focus, so returning from a modal
+route picks up what changed there; a write there has already marked it stale. Screens still
+have their own `useFocusEffect(() => refetch())` from before 2.8.3; those calls follow the
+same 30 s rule and send nothing extra. Don't add new ones.
 
 ## Tests
 
@@ -811,12 +897,16 @@ modules that do not pull in React Native, Expo or the `@/` alias. That is why lo
 | `lib/accountOrder.test.ts` | `mergeSectionOrder`: a dragged section's order lands in place, hidden rows are still sent. |
 | `lib/safeToSpend.test.ts` | `billsAgainstBudgets`: which bills count against which budgets, SIPs excluded, zone-correct months. |
 | `lib/investmentsReportMath.test.ts` | Financial years, periods, sections and presets, the ledger CSV and best/worst month. |
+| `lib/fetchLayer.test.ts` | The fetch layer: a late answer for an old period never shows under a new one, one request on open, refocus refetches only after 30 s, a pull joins a running load, a long list refreshes page one only, which writes refresh which reads, refetch once on server wake, the cache emptied when the account changes. |
 | `lib/apiError.test.ts` | Error parsing: the envelope, older bodies without a code, gateway pages, empty bodies, Retry-After, success bodies, `splitIssues`. |
 | `lib/outboxPolicy.test.ts` | The outbox's decision for every error code. |
 | `lib/outboxDrain.test.ts` | Draining: 2.6.0 items get one stored key, keys survive retries and restarts, refusals don't block the queue. |
 | `lib/idempotency.test.ts` | Key reuse across retries, replacement on a changed value or `reset()`. |
 | `lib/formKeys.test.ts` | Every create and money-moving write in `app/` and `components/` passes a key. |
 | `lib/pendingDeleteReplay.test.ts` | Deletes left on disk: key → route, replay with the delete's own key, 404 as done, kept when unreachable, refusals reported, follow-ups only after the DELETE. |
+| `lib/screenStates.test.ts` | Which body and which one strip a screen shows for every fetch state; Home card states; merged states. |
+| `lib/offlineBanner.test.ts` | The offline banner's age: today, yesterday, older, another year, across midnight in two zones, and the 2.8.2 fallback. |
+| `lib/onlineGate.test.ts` | "Needs a connection" while offline; the button's own label online. |
 
 Add a test beside the module as `lib/<name>.test.ts` using `node:test` and `node:assert/strict`.
 

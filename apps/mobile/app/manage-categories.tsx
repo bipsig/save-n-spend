@@ -1,37 +1,33 @@
-import { useCallback, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { useFocusEffect } from "expo-router";
 import { GestureDetector, type PanGesture } from "react-native-gesture-handler";
 import Animated, { LinearTransition } from "react-native-reanimated";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { ICategory } from "@save-n-spend/types";
-import BackButton from "@/components/shell/BackButton";
-import ReorderToggle from "@/components/shell/ReorderToggle";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import Card from "@/components/data/Card";
 import ManageRow from "@/components/rows/ManageRow";
 import ConfirmSheet from "@/components/sheets/ConfirmSheet";
 import EditCategorySheet from "@/components/sheets/EditCategorySheet";
 import { AppText } from "@/components/ui/AppText";
-import Button from "@/components/ui/Button";
+import Caps from "@/components/ui/Caps";
 import DragList from "@/components/ui/DragList";
 import EmptyState from "@/components/states/EmptyState";
+import ScreenStates from "@/components/states/ScreenStates";
 import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
 import { archiveCategory, reorderCategories, useCategoryTree, type CategoryGroup } from "@/lib/categories";
 import { countTransactionsIn } from "@/lib/transactions";
+import { useOnlineGate } from "@/lib/onlineGate";
+import { useStoreLoad } from "@/lib/useStoreLoad";
 import { useCategoryStore } from "@/store/categories";
 import { toast } from "@/store/toast";
 import { pendingDeletes } from "@/store/pendingDeletes";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
+import { count } from "@/lib/format/count";
+import { screenTitles } from "@/data/menu";
 import { spacing } from "@/theme";
-
-const GroupLabel = ({ children }: { children: string }) => (
-  <AppText size="xs" weight="bold" color="inkDim" style={styles.groupLabel}>
-    {children}
-  </AppText>
-);
 
 const ManageCategoriesScreen = () => {
   const expenses = useCategoryTree("expense");
@@ -61,13 +57,11 @@ const ManageCategoriesScreen = () => {
     income.length > 1 ||
     expenses.concat(income).some((g) => g.children.length > 1);
 
-  // Other screens write to this store too (Add Transaction can create one), so refresh on
-  // focus like every other data screen.
-  useFocusEffect(
-    useCallback(() => {
-      void useCategoryStore.getState().load();
-    }, [])
-  );
+  // The list lives in a store, not a query, so no write or focus rule refreshes it; other
+  // screens write to it too (Add Transaction can create one).
+  const state = useStoreLoad(useCategoryStore((s) => s.loaded), useCategoryStore.getState().load);
+  const reorderGate = useOnlineGate("Reorder categories");
+  const canDrag = reordering && reorderGate.allowed;
 
   const openNew = () => {
     setEditing(null);
@@ -134,7 +128,7 @@ const ManageCategoriesScreen = () => {
               sub={
                 children.length === 0
                   ? undefined
-                  : `${children.length} sub-categor${children.length === 1 ? "y" : "ies"} · rolls up here`
+                  : `${count(children.length, "sub-category", "sub-categories")} · rolls up here`
               }
               onEdit={() => openEdit(parent)}
               onDelete={() => openDelete(parent)}
@@ -147,7 +141,7 @@ const ManageCategoriesScreen = () => {
         <DragList
           items={children}
           keyOf={(child) => child._id}
-          enabled={reordering && children.length > 1}
+          enabled={canDrag && children.length > 1}
           onReorder={commitOrder}
           onDragChange={setDragging}
           render={(child, _i, { dragging: childHeld, gesture: childGesture }) => (
@@ -175,7 +169,7 @@ const ManageCategoriesScreen = () => {
 
             Hidden while reordering: nothing in that mode creates anything. */}
         {!reordering && (
-          <PressableScale style={styles.addChild} onPress={() => openNewChild(parent)} scaleTo={0.98}>
+          <PressableScale style={styles.addChild} onPress={() => openNewChild(parent)} scaleTo={0.98} accessibilityLabel={`New under ${parent.name}`}>
             <Icon name="add" size={15} color="primary" />
             {/* Same words as the picker's equivalent row, and it names the heading in both.
                 Redundant here, where the parent is the first row of this very card — but a
@@ -200,69 +194,75 @@ const ManageCategoriesScreen = () => {
       : 0;
     const kids = childCount === 0
       ? ""
-      : ` Its ${childCount} sub-categor${childCount === 1 ? "y goes" : "ies go"} with it.`;
+      : ` Its ${count(childCount, "sub-category", "sub-categories")} ${childCount === 1 ? "goes" : "go"} with it.`;
 
     if (usageCount === null) return `Checking how many transactions use it…${kids}`;
     if (usageCount === 0) return `Nothing is filed under it, so it just disappears from your pickers.${kids}`;
-    return `It disappears from your pickers, and the ${usageCount} transaction${usageCount === 1 ? "" : "s"} already filed under it keep their history.${kids}`;
+    return `It disappears from your pickers, and the ${count(usageCount, "transaction")} already filed under it keep their history.${kids}`;
   })();
 
   return (
     <ScreenScaffold
       scrollEnabled={!dragging}
-      header={
-        <View style={styles.head}>
-          <BackButton />
-          <AppText size="xl" weight="black" style={styles.headTitle}>
-            Categories
-          </AppText>
-          <ReorderToggle active={reordering} onPress={() => setReordering((on) => !on)} disabled={!canReorder} />
-          {/* Gone while reordering: the mode has one job, and the header has no room for
-              a second action beside the tick that leaves it. */}
-          {!reordering && <Button label="New" icon="add" pill onPress={openNew} />}
-        </View>
-      }
+      title={screenTitles.categories}
+      back
+      // New is gone while reordering: the mode has one job, and the tick is what leaves it.
+      actions={[
+        ...(canReorder
+          ? [{
+            kind: "reorder" as const,
+            label: reordering ? "Finish reordering" : reorderGate.allowed ? "Reorder categories" : "Reorder categories, needs a connection",
+            selected: reordering,
+            disabled: !reordering && !reorderGate.allowed,
+            onPress: () => setReordering((on) => !on),
+          }]
+          : []),
+        ...(reordering ? [] : [{ kind: "new" as const, label: "New category", onPress: openNew }]),
+      ]}
+      states={state}
     >
-      {expenses.length === 0 && income.length === 0 ? (
-        <EmptyState
-          icon="category"
-          title="No categories yet"
-          subtitle="Categories are how spending gets grouped — add the first one to start sorting your transactions."
-          actionLabel="New category"
-          onAction={openNew}
-        />
-      ) : (
-        <>
-          {expenses.length > 0 && (
-            <>
-              <GroupLabel>EXPENSE</GroupLabel>
-              <DragList
-                items={expenses}
-                keyOf={(group) => group.parent._id}
-                enabled={reordering && expenses.length > 1}
-                onReorder={commitOrder}
-                onDragChange={setDragging}
-                gap={spacing.xl}
-                render={(group, _i, state) => renderGroup(group, state)}
-              />
-            </>
-          )}
-          {income.length > 0 && (
-            <>
-              <GroupLabel>INCOME</GroupLabel>
-              <DragList
-                items={income}
-                keyOf={(group) => group.parent._id}
-                enabled={reordering && income.length > 1}
-                onReorder={commitOrder}
-                onDragChange={setDragging}
-                gap={spacing.xl}
-                render={(group, _i, state) => renderGroup(group, state)}
-              />
-            </>
-          )}
-        </>
-      )}
+      <ScreenStates state={state}>
+        {expenses.length === 0 && income.length === 0 ? (
+          <EmptyState
+            icon="category"
+            title="No categories yet"
+            subtitle="Categories are how spending gets grouped — add the first one to start sorting your transactions."
+            actionLabel="New category"
+            onAction={openNew}
+          />
+        ) : (
+          <>
+            {expenses.length > 0 && (
+              <>
+                <Caps header style={styles.groupLabel}>Expense</Caps>
+                <DragList
+                  items={expenses}
+                  keyOf={(group) => group.parent._id}
+                  enabled={canDrag && expenses.length > 1}
+                  onReorder={commitOrder}
+                  onDragChange={setDragging}
+                  gap={spacing.xl}
+                  render={(group, _i, state) => renderGroup(group, state)}
+                />
+              </>
+            )}
+            {income.length > 0 && (
+              <>
+                <Caps header style={styles.groupLabel}>Income</Caps>
+                <DragList
+                  items={income}
+                  keyOf={(group) => group.parent._id}
+                  enabled={canDrag && income.length > 1}
+                  onReorder={commitOrder}
+                  onDragChange={setDragging}
+                  gap={spacing.xl}
+                  render={(group, _i, state) => renderGroup(group, state)}
+                />
+              </>
+            )}
+          </>
+        )}
+      </ScreenStates>
 
       <EditCategorySheet ref={editRef} category={editing} parent={newParent} />
 
@@ -272,6 +272,7 @@ const ManageCategoriesScreen = () => {
         title={`Delete ${pendingDelete?.name ?? "category"}?`}
         body={deleteBody}
         confirmLabel="Delete category"
+        needsConnection
         onConfirm={() => {
           if (!pendingDelete) return;
           const key = `category:${pendingDelete._id}`;
@@ -289,7 +290,7 @@ const ManageCategoriesScreen = () => {
             "info",
             childCount === 0
               ? `${name} archived`
-              : `${name} and ${childCount} sub-categor${childCount === 1 ? "y" : "ies"} archived`,
+              : `${name} and ${count(childCount, "sub-category", "sub-categories")} archived`,
             { label: "Undo", onPress: () => pendingDeletes.cancel(key) }
           );
         }}
@@ -299,16 +300,7 @@ const ManageCategoriesScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  head: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  headTitle: {
-    flex: 1,
-  },
   groupLabel: {
-    letterSpacing: 1.5, // spec .flabel tracking
     paddingHorizontal: 2,
     marginTop: spacing.xs,
   },

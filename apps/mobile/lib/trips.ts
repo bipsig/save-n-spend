@@ -1,43 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
 import type { TripDetailPayload, TripsPayload } from "@save-n-spend/types";
 import { del, get, patch, post, put, type RequestOptions } from "@/lib/api";
 import { useAccountStore } from "@/store/accounts";
-import { useSession } from "@/store/session";
+import { useApiQuery } from "@/lib/query/useApiQuery";
 import { useTripNameStore } from "@/store/tripNames";
 import { appZone, calendarToday } from "@/lib/zone";
 
 /** The Insights breakdown's slice for all trip spending — mirrors the API's TRIPS_SLICE_ID. */
 export const TRIPS_SLICE_ID = "trips";
 
-const useFetch = <T,>(path: string | null) => {
-  const status = useSession((s) => s.status);
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const refetch = useCallback(async () => {
-    if (!path || useSession.getState().status !== "authed") return;
-    setError(null);
-    try {
-      setData(await get<T>(path));
-    }
-    catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load");
-    }
-    finally {
-      setLoading(false);
-    }
-  }, [path]);
-
-  useEffect(() => {
-    if (status === "authed") void refetch();
-  }, [status, refetch]);
-
-  return { data, loading, error, refetch };
-};
-
-export const useTrips = () => useFetch<TripsPayload>("/trips");
-export const useTrip = (id: string | undefined) => useFetch<TripDetailPayload>(id ? `/trips/${id}` : null);
+export const useTrips = () => useApiQuery<TripsPayload>("/trips");
+export const useTrip = (id: string | undefined) => useApiQuery<TripDetailPayload>(id ? `/trips/${id}` : null);
 
 export type TripDraft = {
   name: string;
@@ -129,18 +101,6 @@ export const splitEvenly = (cost: number, count: number): number[] => {
   const base = Math.floor(cost / count);
   const extra = cost - base * count;
   return Array.from({ length: count }, (_, i) => base + (i < extra ? 1 : 0));
-};
-
-/** "7 Dec – 5 Jan" (with the year when it isn't this one). Calendar dates, read in UTC. */
-export const tripDates = (startIso: string, endIso: string): string => {
-  const start = new Date(startIso);
-  const end = new Date(endIso);
-  const thisYear = new Date().getUTCFullYear();
-  const fmt = (d: Date, withYear: boolean) =>
-    d.toLocaleDateString("en-IN", { day: "numeric", month: "short", ...(withYear ? { year: "numeric" } : {}), timeZone: "UTC" });
-  const sameYear = start.getUTCFullYear() === end.getUTCFullYear();
-  const showYear = end.getUTCFullYear() !== thisYear;
-  return `${fmt(start, !sameYear && showYear)} – ${fmt(end, showYear)}`;
 };
 
 /** Whole days, inclusive: a 7–9 Dec trip is 3 days. */

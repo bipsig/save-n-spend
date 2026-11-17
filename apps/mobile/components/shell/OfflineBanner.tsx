@@ -1,18 +1,19 @@
-import { StyleSheet, View } from "react-native";
+import { StyleSheet } from "react-native";
 import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
 import Card from "@/components/data/Card";
 import { useConnectivity } from "@/store/connectivity";
 import { useAppZone } from "@/lib/zone";
+import { offlineBannerText } from "@/lib/offlineBanner";
 import { spacing } from "@/theme";
 
-const timeLabel = (instant: number, zone: string): string =>
-  new Intl.DateTimeFormat("en-IN", { timeZone: zone, hour: "numeric", minute: "2-digit" }).format(instant);
+type Props = {
+  /** When this screen's data was fetched (D18 A). Without it the banner says when the app was last online. */
+  fetchedAt?: number | null;
+};
 
-// The one place every screen says the same honest thing: what's on screen right now is
-// last-known, not live. Mounted once in ScreenScaffold rather than per-screen, the same
-// way Toast is mounted once at the root — so no screen can forget to show it.
-const OfflineBanner = () => {
+// Drawn by ScreenStrip under every ScreenScaffold header, so no screen can forget it.
+const OfflineBanner = ({ fetchedAt }: Props) => {
   const offline = useConnectivity((s) => s.offline);
   const lastOnlineAt = useConnectivity((s) => s.lastOnlineAt);
   const zone = useAppZone();
@@ -23,13 +24,13 @@ const OfflineBanner = () => {
     <Card padded={false} style={styles.card}>
       <Icon name="cloudOff" size={14} color="inkDim" />
       <AppText size="xs" color="inkDim" weight="semibold" style={styles.text}>
-        {lastOnlineAt ? `Offline — showing data from ${timeLabel(lastOnlineAt, zone)}` : "Offline — showing saved data"}
+        {offlineBannerText(fetchedAt, lastOnlineAt, zone)}
       </AppText>
     </Card>
   );
 };
 
-const styles = StyleSheet.create({
+export const stripStyles = StyleSheet.create({
   card: {
     flexDirection: "row",
     alignItems: "center",
@@ -41,5 +42,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
+const styles = stripStyles;
 
 export default OfflineBanner;

@@ -16,6 +16,7 @@ import { haptics } from "@/lib/haptics";
 import { changePassword } from "@/lib/profile";
 import { toast } from "@/store/toast";
 import { spacing } from "@/theme";
+import { useOnlineGate } from "@/lib/onlineGate";
 
 const schema = z
   .object({
@@ -44,6 +45,8 @@ const EMPTY: Form = { currentPassword: "", newPassword: "", confirmPassword: "" 
 const ChangePasswordSheet = forwardRef<BottomSheetModal, { onChanged?: () => void }>(({ onChanged }, ref) => {
   const innerRef = useRef<BottomSheetModal>(null);
   useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
+  // Needs the server: offline the button says so before the tap.
+  const gate = useOnlineGate("");
   const dismiss = () => innerRef.current?.dismiss();
 
   const [reveal, setReveal] = useState(false);
@@ -98,7 +101,7 @@ const ChangePasswordSheet = forwardRef<BottomSheetModal, { onChanged?: () => voi
       ref={innerRef}
       onDismiss={clear}
       scrollable
-      footer={<Button label="Change password" loading={isSubmitting} onPress={submit} />}
+      footer={<Button label={gate.label || "Change password"} icon={gate.icon} loading={isSubmitting} disabled={!gate.allowed} onPress={submit} />}
     >
       <View style={styles.identity}>
         <Icon name="lock" size={24} containerSize={52} container="square" gradient="violet" />

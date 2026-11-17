@@ -2,11 +2,15 @@ import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { AppText } from "@/components/ui/AppText";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { formatPct } from "@/lib/format/pct";
+import { chartA11y, chartSummary } from "@/lib/chartSummary";
 import { useScrubTick } from "@/lib/useScrubTick";
 
 type Datum = { id: string; name: string; total: number; pct: number; color: string };
 
 type Props = {
+  /** Names the bar for VoiceOver ("Where it left from"). */
+  title: string;
   data: Datum[];
   activeIndex?: number | null; // controlled tooltip index (screen owns it)
   onScrub?: (i: number | null) => void;
@@ -18,8 +22,8 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 // tall, so the responder lives on a taller transparent hit strip around it
 // (otherwise the tap keeps missing the bar and bubbles to the screen's clear-tip
 // Pressable). Tapping a segment shows its exact amount in a callout below.
-const ShareBar = ({ data, activeIndex, onScrub }: Props) => {
-  usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
+const ShareBar = ({ title, data, activeIndex, onScrub }: Props) => {
+  const masked = usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
   const [w, setW] = useState(0);
   const active = activeIndex ?? null;
   const sum = data.reduce((a, d) => a + d.pct, 0) || 100;
@@ -41,9 +45,20 @@ const ShareBar = ({ data, activeIndex, onScrub }: Props) => {
 
   const d = active !== null ? data[active] : null;
 
+  // Largest share first, as the bar is drawn; three is enough to say where most of it went.
+  const summary = chartSummary({
+    title,
+    masked,
+    parts: [...data]
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 3)
+      .map((seg) => `${seg.name} ${formatMoney(seg.total)} (${formatPct(seg.pct)})`),
+  });
+
   return (
     <View style={styles.wrap}>
       <View
+        {...chartA11y(summary)}
         style={styles.hit}
         onLayout={(e) => setW(e.nativeEvent.layout.width)}
         onStartShouldSetResponder={() => true}
@@ -76,7 +91,7 @@ const ShareBar = ({ data, activeIndex, onScrub }: Props) => {
             {formatMoney(d.total)}
           </AppText>
           <AppText size="xs" color="inkDim">
-            {`${Math.round(d.pct)}%`}
+            {formatPct(d.pct)}
           </AppText>
         </View>
       )}

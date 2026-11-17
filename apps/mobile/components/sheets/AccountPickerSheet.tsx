@@ -6,14 +6,16 @@ import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
 import Button from "@/components/ui/Button";
-import { ACCOUNT_GROUPS, createAccount, owedLine, useAccounts } from "@/lib/accounts";
+import { ACCOUNT_GROUPS, createAccount, useAccounts } from "@/lib/accounts";
 import { useConnectivity } from "@/store/connectivity";
+import { useOnlineGate } from "@/lib/onlineGate";
 import { toast } from "@/store/toast";
 import { haptics } from "@/lib/haptics";
 import { holderFor } from "@/lib/idempotency";
 import { recoverCreated, sameName } from "@/lib/replayed";
 import { useAccountStore } from "@/store/accounts";
-import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { formatBalance, usePrivacyMask } from "@/lib/money";
+import Caps from "@/components/ui/Caps";
 import type { IconName } from "@/lib/icons";
 import type { AccountType, IAccount } from "@save-n-spend/types";
 import type { ColorToken } from "@/theme";
@@ -64,6 +66,7 @@ const AccountPickerSheet = forwardRef<BottomSheetModal, Props>((
   const allAccounts = useAccounts();
   usePrivacyMask(); // subscribe: a peek has to re-render the balances listed below
   const offline = useConnectivity((s) => s.offline);
+  const addGate = useOnlineGate("Add");
 
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
@@ -152,6 +155,8 @@ const AccountPickerSheet = forwardRef<BottomSheetModal, Props>((
           onPick(account._id);
           dismiss();
         }}
+        accessibilityLabel={`${account.name}, ${formatBalance(account.balance, account.type)}`}
+        accessibilityState={{ selected }}
       >
         <Icon
           name={(account.icon ?? "wallet") as IconName}
@@ -165,7 +170,7 @@ const AccountPickerSheet = forwardRef<BottomSheetModal, Props>((
             {account.name}
           </AppText>
           <AppText size="xs" color="inkDim">
-            {account.type === "person" ? owedLine(account.balance) : `${formatMoney(account.balance)} available`}
+            {formatBalance(account.balance, account.type)}
           </AppText>
         </View>
         {selected && <Icon name="budgetOk" size={20} color="success" />}
@@ -202,7 +207,7 @@ const AccountPickerSheet = forwardRef<BottomSheetModal, Props>((
             <AppText size="xs" color="danger">{createError}</AppText>
           )}
           <View style={styles.createActions}>
-            <Button label="Add" onPress={onCreate} loading={creatingBusy} size="sm" />
+            <Button label={addGate.label} icon={addGate.icon} disabled={!addGate.allowed} onPress={onCreate} loading={creatingBusy} size="sm" />
             <Button label="Cancel" variant="ghost" size="sm" onPress={() => setCreating(false)} />
           </View>
         </View>
@@ -257,9 +262,9 @@ const AccountPickerSheet = forwardRef<BottomSheetModal, Props>((
         {groups.map((group) => (
           <View key={group.label} style={styles.group}>
             {showHeadings && (
-              <AppText size="xs" weight="bold" color="inkDim" style={styles.groupLabel}>
-                {group.label.toUpperCase()}
-              </AppText>
+              <Caps header style={styles.groupLabel}>
+                {group.label}
+              </Caps>
             )}
             {group.rows.map((account, i) => (
               <View key={account._id}>
@@ -326,7 +331,6 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   groupLabel: {
-    letterSpacing: 1.3,
     marginTop: spacing.xs,
   },
   settledLabel: {

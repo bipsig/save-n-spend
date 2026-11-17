@@ -6,6 +6,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { BottomSheetModal, BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import type { IBill } from "@save-n-spend/types";
 import AppSheet from "./AppSheet";
+import Caps from "@/components/ui/Caps";
+import { count } from "@/lib/format/count";
 import CategoryPickerSheet from "./CategoryPickerSheet";
 import AccountPickerSheet from "./AccountPickerSheet";
 import BackButton from "@/components/shell/BackButton";
@@ -33,6 +35,7 @@ import { NAME_MAX, NAME_MIN } from "@save-n-spend/types";
 import type { IconName } from "@/lib/icons";
 import { colors, spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
+import { useOnlineGate } from "@/lib/onlineGate";
 
 /** The lead time the "remind me" switch stands for. 0 is how the server says "don't". */
 const REMIND_DAYS = 3;
@@ -56,9 +59,10 @@ type Props = {
   bill: IBill | null;
   /** Prefill for a new bill (ignored when editing). */
   draft?: BillDraft | null;
-  onChanged: () => void;
+  /** Optional: the write already refreshes every screen that shows it. */
+  onChanged?: () => void;
   /** The bill as saved — for a caller that has a follow-up step (moving past payments). */
-  /** Null when the reply had no record (see lib/replayed.ts); `onChanged` still refetches. */
+  /** Null when the reply had no record (see lib/replayed.ts); the write still refreshes the lists. */
   onSaved?: (bill: IBill | null) => void;
 };
 
@@ -123,6 +127,8 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, draft, onChan
   // on top of itself (see CategoryPickerSheet).
   const innerRef = useRef<BottomSheetModal>(null);
   useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
+  // Needs the server: offline the button says so before the tap.
+  const gate = useOnlineGate("");
   const dismiss = () => innerRef.current?.dismiss();
 
   const pickerRef = useRef<BottomSheetModal>(null);
@@ -189,7 +195,7 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, draft, onChan
         : await post<IBill | null>("/bills", body, { idempotencyKey: idem.keyFor("POST", "/bills", body) });
       if (!bill) idem.reset();
       dismiss();
-      onChanged();
+      onChanged?.();
       onSaved?.(saved ?? null);
       // Named, not just "Bill added": the sheet closes onto a list the row may have
       // scrolled out of, and the name is what makes it findable.
@@ -226,9 +232,7 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, draft, onChan
       </View>
 
       <View style={styles.field}>
-        <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
-          NAME
-        </AppText>
+        <Caps>Name</Caps>
         <Controller
           control={control}
           name="name"
@@ -248,9 +252,7 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, draft, onChan
       </View>
 
       <View style={styles.field}>
-        <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
-          AMOUNT
-        </AppText>
+        <Caps>Amount</Caps>
         <Controller
           control={control}
           name="amount"
@@ -267,7 +269,7 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, draft, onChan
         name="dueDate"
         render={({ field: { value, onChange } }) => (
           <DateField
-            label={editing ? "NEXT DUE" : "FIRST DUE"}
+            label={editing ? "Next due" : "First due"}
             value={value}
             onChange={onChange}
             minimumDate={editing ? undefined : startOfToday()}
@@ -276,9 +278,7 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, draft, onChan
       />
 
       <View style={styles.field}>
-        <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
-          REPEATS
-        </AppText>
+        <Caps>Repeats</Caps>
         <Controller
           control={control}
           name="frequency"
@@ -304,6 +304,7 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, draft, onChan
           </AppText>
         </View>
         <Toggle
+          label="Funds an investment"
           value={fundsInvestment}
           onValueChange={(on) => {
             setValue("fundsInvestment", on, { shouldValidate: true });
@@ -324,9 +325,7 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, draft, onChan
             gradient={chipTintFor(investment?.color)}
           />
           <View style={styles.selText}>
-            <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
-              INVEST IN
-            </AppText>
+            <Caps>Invest in</Caps>
             <AppText size="sm" weight="semibold" color={investment ? "ink" : "inkDim"}>
               {investment?.name ?? "Choose an investment"}
             </AppText>
@@ -344,9 +343,7 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, draft, onChan
             gradient={(category?.color ?? "accent") as ColorToken}
           />
           <View style={styles.selText}>
-            <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>
-              CATEGORY
-            </AppText>
+            <Caps>Category</Caps>
             <AppText size="sm" weight="semibold" color={category ? "ink" : "inkDim"}>
               {category?.name ?? "Choose a category"}
             </AppText>
@@ -365,10 +362,10 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, draft, onChan
                 Remind me before due
               </AppText>
               <AppText size="xs" color="inkDim">
-                {`${REMIND_DAYS} days before · notification only, money never moves`}
+                {`${count(REMIND_DAYS, "day")} before · notification only, money never moves`}
               </AppText>
             </View>
-            <Toggle value={value} onValueChange={onChange} />
+            <Toggle label="Remind me before due" value={value} onValueChange={onChange} />
           </View>
         )}
       />
@@ -380,10 +377,11 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, draft, onChan
       )}
 
       <Button
-        label={editing ? "Save Changes" : "Add Bill"}
+        label={!gate.allowed ? gate.label : editing ? "Save Changes" : "Add Bill"}
+        icon={gate.icon}
         onPress={handleSubmit(onSubmit)}
         loading={submitting}
-        disabled={!isValid}
+        disabled={!isValid || !gate.allowed}
       />
     </AppSheet>
 
@@ -414,9 +412,6 @@ const styles = StyleSheet.create({
   },
   field: {
     gap: spacing.sm,
-  },
-  label: {
-    letterSpacing: 1.3,
   },
   input: {
     paddingHorizontal: 14,

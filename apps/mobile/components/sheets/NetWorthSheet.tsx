@@ -4,13 +4,17 @@ import { router } from "expo-router";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { AccountType, IAccount } from "@save-n-spend/types";
 import AppSheet from "./AppSheet";
+import Caps from "@/components/ui/Caps";
 import { AppText } from "@/components/ui/AppText";
 import Button from "@/components/ui/Button";
 import Icon from "@/components/ui/Icon";
 import Money from "@/components/ui/Money";
 import Sparkline from "@/components/charts/Sparkline";
 import { useAccounts } from "@/lib/accounts";
-import formatMoney, { usePrivacyMask } from "@/lib/money";
+import formatMoney, { formatMoneyExact, usePrivacyMask } from "@/lib/money";
+import { chartSummary } from "@/lib/chartSummary";
+import { count } from "@/lib/format/count";
+import { screenTitles } from "@/data/menu";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { spacing } from "@/theme";
@@ -46,7 +50,7 @@ const NetWorthSheet = forwardRef<BottomSheetModal, Props>(({ netWorth, trend }, 
   const dismiss = () => innerRef.current?.dismiss();
 
   const accounts = useAccounts();
-  usePrivacyMask(); // subscribe: a peek has to re-render the balances listed below
+  const masked = usePrivacyMask(); // also subscribes: a peek has to re-render the balances listed below
 
   const owed = accounts.some((a) => a.balance < 0);
   const hasTrend = !!trend && trend.length >= 2;
@@ -55,13 +59,18 @@ const NetWorthSheet = forwardRef<BottomSheetModal, Props>(({ netWorth, trend }, 
   return (
     <AppSheet ref={innerRef} scrollable>
       <View style={styles.head}>
-        <AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>
-          NET WORTH
-        </AppText>
+        <Caps>Net worth</Caps>
         <Money value={netWorth} size="2xl" weight="black" />
         {hasTrend ? (
           <>
-            <Sparkline values={trend!.map((point) => point.total)} />
+            <Sparkline
+              values={trend!.map((point) => point.total)}
+              summary={chartSummary({
+                title: "Net worth",
+                masked,
+                parts: [`${formatMoneyExact(netWorth)} now`, `${trendUp ? "up" : "down"} from ${formatMoneyExact(trend![0].total)} ${trend![0].label}`],
+              })}
+            />
             <AppText size="xs" color="inkDim">
               {trendUp ? "Up" : "Down"} from {formatMoney(trend![0].total)} {trend![0].label}.
             </AppText>
@@ -70,7 +79,7 @@ const NetWorthSheet = forwardRef<BottomSheetModal, Props>(({ netWorth, trend }, 
           <AppText size="xs" color="inkDim">
             {accounts.length === 1
               ? "Across your one account, as it stands now."
-              : `Across your ${accounts.length} accounts, as it stands now.`}
+              : `Across your ${count(accounts.length, "account")}, as it stands now.`}
           </AppText>
         )}
       </View>
@@ -121,7 +130,7 @@ const NetWorthSheet = forwardRef<BottomSheetModal, Props>(({ netWorth, trend }, 
       )}
 
       <Button
-        label="Manage accounts"
+        label={`Go to ${screenTitles.accounts}`}
         variant="ghost"
         onPress={() => {
           dismiss();
@@ -137,9 +146,6 @@ NetWorthSheet.displayName = "NetWorthSheet";
 const styles = StyleSheet.create({
   head: {
     gap: 4,
-  },
-  caps: {
-    letterSpacing: 1.3,
   },
   list: {
     gap: spacing.sm,

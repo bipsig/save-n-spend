@@ -3,6 +3,7 @@ import type { HealthScore } from "@save-n-spend/types"
 import ProgressBar from "./ProgressBar"
 import Card from "./Card"
 import { AppText } from "../ui/AppText"
+import Caps from "../ui/Caps"
 import Icon from "../ui/Icon"
 import PressableScale from "../ui/PressableScale"
 import { BAND_COLOR, pillarColor } from "@/lib/health"
@@ -32,9 +33,7 @@ const HealthScoreCard = ({ health, onPress }: Props) => {
         <View style={styles.topContainer}>
           <Icon name="healthPulse" size={24} containerSize={47} container="square" gradient="violet" />
           <View style={styles.titleCol}>
-            <AppText size="xs" weight="semibold" color="inkDim" style={styles.label}>
-              FINANCE HEALTH SCORE
-            </AppText>
+            <Caps>Finance health score</Caps>
             <AppText size="md" weight="black" color="inkSecondary">Not enough data</AppText>
           </View>
         </View>
@@ -67,9 +66,7 @@ const HealthScoreCard = ({ health, onPress }: Props) => {
             gradient={tone === "success" ? "green" : tone === "warning" ? "amber" : "red"}
           />
           <View style={styles.titleCol}>
-            <AppText size="xs" weight="semibold" color="inkDim" style={styles.label}>
-              FINANCE HEALTH SCORE
-            </AppText>
+            <Caps>Finance health score</Caps>
             <AppText size="lg" weight="black">{health.rating}</AppText>
           </View>
           <View style={styles.score}>
@@ -122,9 +119,6 @@ const styles = StyleSheet.create({
   titleCol: {
     flex: 1,
     gap: 3,
-  },
-  label: {
-    letterSpacing: 1,
   },
   score: {
     alignItems: "flex-end",

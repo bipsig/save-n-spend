@@ -11,6 +11,7 @@ import { haptics } from "@/lib/haptics";
 import type { IconName } from "@/lib/icons";
 import { toast } from "@/store/toast";
 import type { ColorToken } from "@/theme";
+import { useOnlineGate } from "@/lib/onlineGate";
 
 type Props = {
   /** The category being edited, or `null` to create a new one. */
@@ -33,6 +34,8 @@ type Props = {
 const EditCategorySheet = forwardRef<BottomSheetModal, Props>(({ category, parent = null, onSaved }, ref) => {
   const innerRef = useRef<BottomSheetModal>(null);
   useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
+  // Needs the server: offline the button says so before the tap.
+  const gate = useOnlineGate("");
   const dismiss = () => innerRef.current?.dismiss();
 
   const editing = category !== null;
@@ -123,8 +126,10 @@ const EditCategorySheet = forwardRef<BottomSheetModal, Props>(({ category, paren
       onDismiss={resetForm}
       footer={
         <Button
-          label={categoryCtaLabel(editing, editing ? null : parent?._id ?? null)}
+          label={gate.allowed ? categoryCtaLabel(editing, editing ? null : parent?._id ?? null) : gate.label}
+          icon={gate.icon}
           loading={busy}
+          disabled={!gate.allowed}
           onPress={save}
         />
       }

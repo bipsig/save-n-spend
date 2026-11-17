@@ -1,10 +1,12 @@
 import { StyleSheet, View } from "react-native";
 import Card from "./Card";
 import { AppText } from "../ui/AppText";
+import Caps from "../ui/Caps";
 import Icon from "../ui/Icon";
 import PressableScale from "../ui/PressableScale";
 import { recurringBillsTotal, urgentBills } from "@/lib/bills";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { count } from "@/lib/format/count";
 import type { IBill } from "@save-n-spend/types";
 import { spacing } from "@/theme";
 
@@ -12,6 +14,11 @@ type Props = {
   items: IBill[];
   onPress: () => void;
 };
+
+/** Nothing recurring and nothing urgent: genuinely nothing to say (not "0 bills due", which is
+ *  filler). Bills' own empty state already owns "add your first bill". */
+export const billsGlanceEmpty = (items: IBill[]): boolean =>
+  items.length === 0 || (recurringBillsTotal(items).total === 0 && urgentBills(items).count === 0);
 
 // Replaces the raw "next 3 upcoming bills" list — Bills already shows the complete list,
 // so this states the two facts that list doesn't: how much is committed every period
@@ -22,9 +29,7 @@ const BillsGlanceCard = ({ items, onPress }: Props) => {
   const recurring = recurringBillsTotal(items);
   const urgent = urgentBills(items);
 
-  // Nothing recurring and nothing urgent — genuinely nothing to say (not "0 bills due",
-  // which is filler). Bills' own empty state already owns "add your first bill".
-  if (items.length === 0 || (recurring.total === 0 && urgent.count === 0)) return null;
+  if (billsGlanceEmpty(items)) return null;
 
   const label = [
     recurring.total > 0 ? `${formatMoney(recurring.total)} a month committed to bills` : null,
@@ -37,13 +42,11 @@ const BillsGlanceCard = ({ items, onPress }: Props) => {
         <View style={styles.topRow}>
           <Icon name="bills" size={20} containerSize={40} containerRadius={13} container="square" gradient="blue" />
           <View style={styles.col}>
-            <AppText size="xs" weight="semibold" color="inkDim" style={styles.label}>
-              BILLS
-            </AppText>
+            <Caps>Bills</Caps>
             {recurring.total > 0 && (
               <AppText size="sm" weight="bold" numberOfLines={1}>
                 {formatMoney(recurring.total)}
-                <AppText size="xs" weight="semibold" color="inkDim"> /month</AppText>
+                <AppText size="xs" weight="semibold" color="inkDim"> a month</AppText>
                 {" committed"}
               </AppText>
             )}
@@ -59,7 +62,7 @@ const BillsGlanceCard = ({ items, onPress }: Props) => {
           <View style={styles.nudge}>
             <Icon name="alarm" size={15} color="danger" />
             <AppText size="xs" weight="bold" color="danger" numberOfLines={1} style={styles.nudgeText}>
-              {urgent.count} bill{urgent.count === 1 ? "" : "s"} due soon · {formatMoney(urgent.total)}
+              {count(urgent.count, "bill")} due soon · {formatMoney(urgent.total)}
             </AppText>
           </View>
         )}
@@ -80,9 +83,6 @@ const styles = StyleSheet.create({
   col: {
     flex: 1,
     gap: 2,
-  },
-  label: {
-    letterSpacing: 1,
   },
   nudge: {
     flexDirection: "row",

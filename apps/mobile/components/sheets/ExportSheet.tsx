@@ -4,13 +4,15 @@ import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import AppSheet from "@/components/sheets/AppSheet";
 import FormatCards from "@/components/sheets/FormatCards";
 import Button from "@/components/ui/Button";
-import Chip from "@/components/ui/Chip";
+import Caps from "@/components/ui/Caps";
+import SegmentedControl from "@/components/ui/SegmentedControl";
 import Icon from "@/components/ui/Icon";
 import { AppText } from "@/components/ui/AppText";
 import { RANGES, rangeNavLabel, type RangeKey } from "@/lib/dateRange";
+import { relativePeriod } from "@/lib/format/period";
+import { count } from "@/lib/format/count";
 import { exportTransactions, type ExportFormat } from "@/lib/export";
 import { exportInsightsWindow } from "@/lib/insightsExport";
-import { windowLabel } from "@/lib/insights";
 import type { InsightsSummary } from "@save-n-spend/types";
 import { haptics } from "@/lib/haptics";
 import { toast } from "@/store/toast";
@@ -29,11 +31,9 @@ type Props = {
   insightsData?: InsightsSummary | null;
 };
 
-const Caps = ({ children }: { children: React.ReactNode }) => (
-  <AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>
-    {children}
-  </AppText>
-);
+// The span inside a sentence: "this week" in lower case, but "September 2026" as written.
+const periodPhrase = (range: RangeKey, offset: number): string =>
+  relativePeriod(range, offset)?.toLowerCase() ?? rangeNavLabel(range, offset);
 
 // Export the transactions of a chosen time span as CSV or PDF, then open the
 // native share sheet. One decision per row, a live CTA, per the spec T1 sheet.
@@ -92,7 +92,7 @@ const ExportSheet = forwardRef<BottomSheetModal, Props>(({ kind = "transactions"
         // Stays in the sheet, because the fix is the range chips right above it.
         haptics.warning();
         setMessage({
-          text: `No transactions in ${rangeNavLabel(range, offset).toLowerCase()} to export.`,
+          text: `No transactions in ${periodPhrase(range, offset)} to export.`,
           tone: "warning",
         });
         return;
@@ -104,8 +104,8 @@ const ExportSheet = forwardRef<BottomSheetModal, Props>(({ kind = "transactions"
       // "<what> exported as <FORMAT>", whichever report it was.
       toast.success(
         `${insights
-          ? `Insights for ${windowLabel(range as "day" | "week" | "month" | "year", offset)}`
-          : `${res.count} transaction${res.count === 1 ? "" : "s"}`} exported as ${format.toUpperCase()}`
+          ? `Insights for ${periodPhrase(range, offset)}`
+          : count(res.count, "transaction")} exported as ${format.toUpperCase()}`
       );
     } catch (err) {
       haptics.error();
@@ -148,18 +148,9 @@ const ExportSheet = forwardRef<BottomSheetModal, Props>(({ kind = "transactions"
 
       <View style={styles.section}>
         <Caps>Time span</Caps>
-        <View style={styles.chips}>
-          {spans.map((r) => (
-            <Chip
-              key={r.key}
-              label={r.label}
-              selected={range === r.key}
-              onPress={() => pickRange(r.key)}
-            />
-          ))}
-        </View>
+        <SegmentedControl segments={spans} value={range} onChange={pickRange} accessibilityLabel="Time span" />
         <AppText size="xs" color="inkDim">
-          {`Exporting ${rangeNavLabel(range, offset)}`}
+          {`Exporting ${periodPhrase(range, offset)}`}
         </AppText>
       </View>
 
@@ -190,15 +181,6 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   section: {
-    gap: spacing.sm,
-  },
-  caps: {
-    letterSpacing: 1.3,
-    textTransform: "uppercase",
-  },
-  chips: {
-    flexDirection: "row",
-    flexWrap: "wrap",
     gap: spacing.sm,
   },
   message: {

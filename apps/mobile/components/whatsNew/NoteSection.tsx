@@ -2,6 +2,7 @@ import { Fragment, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import Card from "@/components/data/Card";
 import { AppText } from "@/components/ui/AppText";
+import Caps from "@/components/ui/Caps";
 import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
 import type { NoteKind, ReleaseNote } from "@/data/releaseNotes";
@@ -19,9 +20,7 @@ const NoteSection = ({ kind, notes, first }: { kind: NoteKind; notes: ReleaseNot
 
   return (
     <>
-      <AppText size="xs" weight="bold" color="inkDim" style={[styles.caps, first && styles.capsFirst]}>
-        {look.label.toUpperCase()}
-      </AppText>
+      <Caps header style={[styles.caps, first && styles.capsFirst]}>{look.label}</Caps>
       <Card padded={false} style={styles.card}>
         {shown.map((note, i) => (
           <Fragment key={`${i}-${note.title}`}>
@@ -56,7 +55,6 @@ const NoteSection = ({ kind, notes, first }: { kind: NoteKind; notes: ReleaseNot
 
 const styles = StyleSheet.create({
   caps: {
-    letterSpacing: 1.5,
     paddingHorizontal: 2,
     marginTop: spacing.xs,
   },

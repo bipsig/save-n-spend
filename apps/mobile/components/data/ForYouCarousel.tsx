@@ -35,7 +35,7 @@ const ForYouCarousel = ({ slides }: Props) => {
 
   return (
     <View style={styles.section}>
-      <SectionHeader label="FOR YOU" />
+      <SectionHeader label="For you" />
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}

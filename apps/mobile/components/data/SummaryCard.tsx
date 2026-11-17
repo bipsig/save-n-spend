@@ -8,6 +8,7 @@ import Money from "../ui/Money"
 import PressableScale from "../ui/PressableScale"
 import Sparkline from "../charts/Sparkline"
 import formatMoney, { usePrivacyMask } from "@/lib/money"
+import { chartSummary } from "@/lib/chartSummary"
 
 type Props = {
   icon: IconName
@@ -57,11 +58,12 @@ const SummaryCard = ({
   trend,
   trendGoodDirection = "up"
 }: Props) => {
-  usePrivacyMask(); // subscribe: the accessibility label below reads formatMoney() directly
+  const masked = usePrivacyMask(); // subscribe: the accessibility labels below read formatMoney() directly
 
-  const trendNote = trend && trend.length >= 2
-    ? `, ${trend[trend.length - 1] >= trend[0] ? "up" : "down"} from ${formatMoney(trend[0])}`
-    : "";
+  const trendPhrase = trend && trend.length >= 2
+    ? `${trend[trend.length - 1] >= trend[0] ? "up" : "down"} from ${formatMoney(trend[0])}`
+    : null;
+  const trendNote = trendPhrase ? `, ${trendPhrase}` : "";
   const accessibilityLabel = `${label}: ${formatMoney(amount)}${caption ? `, ${caption}` : ""}${trendNote}`
     + (onPress && destination ? `. Opens ${destination}.` : "");
 
@@ -92,7 +94,13 @@ const SummaryCard = ({
           width of its own content, so a long figure would push its tile wider than the one
           beside it — which is how two tiles in a row stopped being the same size. */}
       <Money value={amount} weight="black" size="lg" color={amountColor} numberOfLines={1} />
-      {trend && <Sparkline values={trend} goodDirection={trendGoodDirection} />}
+      {trend && (
+        <Sparkline
+          values={trend}
+          goodDirection={trendGoodDirection}
+          summary={chartSummary({ title: label, masked, parts: [trendPhrase] })}
+        />
+      )}
       {/* Exactly one line high whether or not there is a caption, hence the fixed height
           and not a minimum: an empty Text has no line box, so a reserved minimum still came
           out shorter than a captioned tile beside it. */}

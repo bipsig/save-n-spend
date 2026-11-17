@@ -25,5 +25,13 @@ export const fontSize = {
   '2xl': 33,
 } as const;
 
+// The small uppercase caption (`Caps`). One tracking per size, so no screen picks its own.
+// `sm` is for tight slots such as three stat tiles across.
+export const caps = {
+  md: { fontSize: fontSize.xs, letterSpacing: 1.3 },
+  sm: { fontSize: 11.5, letterSpacing: 1 },
+} as const;
+
 export type FontWeightToken = keyof typeof fontWeight;
+export type CapsSize = keyof typeof caps;
 export type FontSizeToken = keyof typeof fontSize;

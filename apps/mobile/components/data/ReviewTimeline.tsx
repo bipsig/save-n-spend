@@ -1,6 +1,7 @@
 import { StyleSheet, View } from "react-native";
 import { AppText } from "../ui/AppText";
-import { appZone } from "@/lib/zone";
+import Caps from "../ui/Caps";
+import { formatInstant } from "@/lib/format/date";
 import { colors } from "@/theme";
 import type { ColorToken } from "@/theme";
 import type { ReviewMoment } from "@save-n-spend/types";
@@ -10,9 +11,6 @@ const DOT_COLOR: Record<ReviewMoment["kind"], ColorToken> = {
   warn: "warning",
   neutral: "primary",
 };
-
-const dateLabel = (iso: string): string =>
-  new Date(iso).toLocaleDateString("en-IN", { month: "short", day: "numeric", timeZone: appZone() });
 
 // A vertical dot-and-line read of the period, chronological rather than grouped by topic
 // — the counterpart to the thematic sections below it on the review screen. Short is
@@ -25,9 +23,7 @@ const ReviewTimeline = ({ moments }: { moments: ReviewMoment[] }) => (
         <View style={styles.line} pointerEvents="none" />
         <View style={[styles.dot, { backgroundColor: colors[DOT_COLOR[moment.kind]] }]} />
         <View style={styles.content}>
-          <AppText size="xs" weight="bold" color="inkDim" style={styles.date}>
-            {dateLabel(moment.date)}
-          </AppText>
+          <Caps>{formatInstant(moment.date, "day")}</Caps>
           <AppText size="sm" weight="semibold" color="inkSecondary" style={styles.text}>
             {moment.text}
           </AppText>
@@ -66,10 +62,6 @@ const styles = StyleSheet.create({
   },
   content: {
     gap: 2,
-  },
-  date: {
-    letterSpacing: 0.4,
-    textTransform: "uppercase",
   },
   text: {
     lineHeight: 19,

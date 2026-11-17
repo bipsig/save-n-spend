@@ -4,7 +4,7 @@ import Card from "../data/Card";
 import { AppText } from "../ui/AppText";
 import Icon from "../ui/Icon";
 import { ArchivedChip } from "../ui/ArchivedMark";
-import Badge from "../ui/Badge";
+import Badge, { type BadgeTone } from "../ui/Badge";
 import PressableScale from "../ui/PressableScale";
 import RowActions from "./RowActions";
 import { useCategoryById } from "@/lib/categories";
@@ -16,6 +16,8 @@ import { holdingLook } from "@/lib/investments";
 import { formatDueLabel } from "@/lib/date";
 import { isActionable } from "@/lib/bills";
 import Money from "../ui/Money";
+
+const STATUS_TONE: Record<IBill["status"], BadgeTone> = { paid: "success", pending: "warning", overdue: "danger" };
 
 type Props = {
   bill: IBill
@@ -63,13 +65,13 @@ const BillRow = ({ bill, onPress, onEdit, onDelete }: Props) => {
         />
       </ArchivedChip>
 
-      {/* Capped to a line each: the trailing actions take width off this column, and a
-          long bill name wrapping would grow the row past its neighbours'. */}
+      {/* The name is capped to a line: the trailing actions take width off this column.
+          The status may take two, so "Overdue by 12 days · monthly" is never cut. */}
       <View style={styles.info}>
         <AppText size="md" weight="bold" numberOfLines={1}>
           {bill.name}
         </AppText>
-        <AppText size="sm" weight="semibold" color={dueColor} numberOfLines={1}>
+        <AppText size="sm" weight="semibold" color={dueColor} numberOfLines={2}>
           {meta}
         </AppText>
       </View>
@@ -79,15 +81,15 @@ const BillRow = ({ bill, onPress, onEdit, onDelete }: Props) => {
         {bill.status === "overdue" ? (
           // Keeps its own tick: a nested pressable becomes the touch responder, so the
           // row's would never fire when the pill is what got hit.
-          <PressableScale onPress={onPress} scaleTo={0.92} hitSlop={6} style={styles.markPaid}>
+          <PressableScale onPress={onPress} scaleTo={0.92} hitSlop={6} style={styles.markPaid} accessibilityLabel={`Mark ${bill.name} paid`}>
             <AppText size="xs" weight="black" color="primary">
               Mark paid
             </AppText>
           </PressableScale>
         ) : scheduled ? (
-          <Badge label="Scheduled" status="onTrack" size="sm" />
+          <Badge label="Scheduled" tone="info" size="sm" />
         ) : (
-          <Badge label={bill.status} status={bill.status} size="sm" />
+          <Badge label={bill.status} tone={STATUS_TONE[bill.status]} size="sm" />
         )}
       </View>
 
@@ -111,6 +113,7 @@ const styles = StyleSheet.create({
   },
   info: {
     flex: 1,
+    minWidth: 0,
     gap: spacing.xs,
   },
   right: {

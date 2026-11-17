@@ -2,6 +2,7 @@ import { StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import Card from "./Card";
 import { AppText } from "../ui/AppText";
+import Caps from "../ui/Caps";
 import PressableScale from "../ui/PressableScale";
 import { FOR_YOU_SLIDE_HEIGHT } from "./ForYouCarousel";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
@@ -21,7 +22,7 @@ const NoSpendDaysSlide = ({ noSpendDays, daysElapsed, avgDailySpendCurrent, avgD
   usePrivacyMask(); // subscribe: the comparison line below reads formatMoney() directly
 
   const comparison = avgDailySpendCurrent !== undefined && avgDailySpendPrevious !== undefined && avgDailySpendPrevious > 0
-    ? `Avg ${formatMoney(avgDailySpendCurrent)}/day this month, ${avgDailySpendCurrent <= avgDailySpendPrevious ? "down" : "up"} from ${formatMoney(avgDailySpendPrevious)}/day last month.`
+    ? `${formatMoney(avgDailySpendCurrent)} a day this month, ${avgDailySpendCurrent <= avgDailySpendPrevious ? "down" : "up"} from ${formatMoney(avgDailySpendPrevious)} a day last month.`
     : null;
 
   const label = `No-spend days: ${noSpendDays} of ${daysElapsed} so far this month.`
@@ -35,9 +36,7 @@ const NoSpendDaysSlide = ({ noSpendDays, daysElapsed, avgDailySpendCurrent, avgD
       accessibilityLabel={label}
     >
       <Card style={styles.card}>
-        <AppText size="xs" weight="semibold" color="inkDim" style={styles.label}>
-          NO-SPEND DAYS
-        </AppText>
+        <Caps>No-spend days</Caps>
         <View style={styles.row}>
           <AppText size="2xl" weight="black">
             {noSpendDays}
@@ -58,9 +57,6 @@ const styles = StyleSheet.create({
   card: {
     gap: 10,
     minHeight: FOR_YOU_SLIDE_HEIGHT,
-  },
-  label: {
-    letterSpacing: 1,
   },
   row: {
     flexDirection: "row",

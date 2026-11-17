@@ -1,53 +1,30 @@
+import type { AccountType } from "@save-n-spend/types";
 import { useSettings } from "@/store/settings";
+import {
+  MASKED_MONEY,
+  balanceWord,
+  formatMoneyExact,
+  remainingWord,
+  signFor,
+  type MoneyOptions,
+  type Sign,
+} from "@/lib/format/money";
 
-// Format integer paise into an Indian-grouped rupee string.
-// Decimals are shown only when there are non-zero paise, so whole amounts stay clean.
-//   5240000 -> "₹52,400"   125050 -> "₹1,250.50"   -45000 -> "-₹450"
-//
-// This is the unmasked formatter. Screens should use the default export, which
-// honours privacy mode; reach for this one only where masking would be wrong —
-// namely a file the user explicitly asked us to generate (see lib/export.ts).
-export const formatMoneyExact = (paise: number): string => {
-  const isNegative = paise < 0;
-  const absPaise = Math.abs(Math.round(paise));
-  const rupees = Math.floor(absPaise / 100);
-  const paiseRemainder = absPaise % 100;
-
-  // Indian digit grouping on the rupee part: last 3 digits, then groups of 2.
-  const digits = rupees.toString();
-  let result = "";
-  let slots = 3;
-  for (let i = digits.length - 1; i>= 0; i--) {
-    if (slots > 0) {
-      result = digits [i] + result;
-      slots--;
-    }
-    else {
-      result = "," + result;
-      i++;
-      slots = 2;
-    }
-  }
-
-  result = "₹" + result;
-  if (paiseRemainder > 0) {
-    result = result + "." + paiseRemainder.toString().padStart(2, "0");
-  }
-  if (isNegative) {
-    result = "-" + result;
-  }
-
-  return result;
-}
-
-// What an amount reads as with privacy mode on — a fixed width regardless of the
-// figure, so the mask itself can't leak the magnitude.
-export const MASKED_MONEY = "₹ ••••";
+// The screen-facing money formatters: the pure ones in lib/format/money.ts behind the privacy
+// mask. Files the user asked for use `formatMoneyExact`, which is never masked.
+export { MASKED_MONEY, MINUS, formatMoneyExact, groupIndian, signFor } from "@/lib/format/money";
+export type { MoneyOptions, Sign } from "@/lib/format/money";
 
 // Whether amounts should currently be hidden. Privacy mode masks; an open peek
 // un-masks it for a few seconds. Both live in the settings store, so this single
 // expression is the only place the two are combined.
 const isMasked = (privacyMode: boolean, peeking: boolean) => privacyMode && !peeking;
+
+/** The mask, read now. For formatters outside this file (compact chart figures). */
+export const amountsMasked = (): boolean => {
+  const { privacyMode, peeking } = useSettings.getState();
+  return isMasked(privacyMode, peeking);
+};
 
 /**
  * Subscribe a component to the mask.
@@ -63,13 +40,34 @@ const isMasked = (privacyMode: boolean, peeking: boolean) => privacyMode && !pee
 export const usePrivacyMask = (): boolean =>
   useSettings((s) => isMasked(s.privacyMode, s.peeking));
 
+/** The masked form. A sign the caller asked for is kept, as `Money`'s prefix always was: a
+ *  direction says nothing about a magnitude. Without one, every amount reads the same. */
+export const maskedMoney = (paise: number, sign?: Sign): string =>
+  sign ? `${signFor(Math.round(paise), sign)}${MASKED_MONEY}` : MASKED_MONEY;
+
 // The formatter every screen uses. Read imperatively with `getState()` so the
 // existing call sites stay plain function calls inside template strings; the
 // `usePrivacyMask()` hook above is what makes them reactive.
-const formatMoney = (paise: number): string => {
-  const { privacyMode, peeking } = useSettings.getState();
-  return isMasked(privacyMode, peeking) ? MASKED_MONEY : formatMoneyExact(paise);
+const formatMoney = (paise: number, opts: MoneyOptions = {}): string =>
+  amountsMasked() ? maskedMoney(paise, opts.sign) : formatMoneyExact(paise, opts);
+
+/** An account balance in words where the type names the direction (D11 A):
+ *  "₹12,000.00 owed", "₹3,000.00 overdrawn", "₹45,000.00 available", "Owes you ₹500.00"; a holding is its plain value. */
+export const formatBalance = (balance: number, type: AccountType): string => {
+  // A holding's balance is what it's worth; "available" would read oddly beside it.
+  if (type === "investment") return formatMoney(balance);
+  const amount = formatMoney(Math.abs(balance));
+  if (type === "person") {
+    const rounded = Math.round(balance);
+    if (rounded === 0) return "Settled up";
+    return rounded > 0 ? `Owes you ${amount}` : `You owe ${amount}`;
+  }
+  return `${amount} ${balanceWord(balance, type)}`;
 };
+
+/** A budget's remaining money: "₹2,000.00 left", "₹500.00 over". */
+export const formatRemaining = (remaining: number): string =>
+  `${formatMoney(Math.abs(remaining))} ${remainingWord(remaining)}`;
 
 export const parseMoney = (value: string): number => {
   value = value.replace(/[^0-9.]/g, "");
@@ -85,10 +83,5 @@ export const parseMoney = (value: string): number => {
 export const paiseToInput = (paise: number): string => {
   return paise % 100 === 0 ? String(paise/100) : String((paise/100).toFixed(2));
 }
-
-/** To the nearest rupee — for derived figures (averages, per-day, totals of totals) where
- *  paise are noise. Balances someone will settle keep theirs. */
-export const roundToRupee = (paise: number): number => Math.round(paise / 100) * 100;
-
 
 export default formatMoney;

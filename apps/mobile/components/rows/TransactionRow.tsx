@@ -167,8 +167,8 @@ const TransactionRow = ({ transaction, onPress, pending = false, failed = false 
             target — one tap reveals every amount in the app, and from then on taps here
             open the detail sheet like anywhere else on the row. */}
         <Money
-          value={transaction.amount}
-          prefix={isTransfer ? "" : isIncome ? "+" : "-"}
+          value={isTransfer || isIncome ? transaction.amount : -transaction.amount}
+          sign={isTransfer ? "none" : "always"}
           size="md"
           weight="black"
           color={isTransfer ? "inkDim" : isIncome ? "success" : "danger"}

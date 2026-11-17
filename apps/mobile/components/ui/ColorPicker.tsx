@@ -37,6 +37,9 @@ const ColorPicker = ({ value, onChange, colors = PICKER_COLORS }: Props) => (
           haptic={false}
           hitSlop={4}
           style={[styles.ring, selected && styles.ringOn]}
+          accessibilityRole="radio"
+          accessibilityState={{ selected }}
+          accessibilityLabel={`Colour ${chipTintFor(token)}`}
         >
           <LinearGradient
             colors={[...chipGradients[chipTintFor(token)]]}

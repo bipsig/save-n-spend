@@ -1,6 +1,8 @@
 // Turns log rows into what the Diagnostics screen shows: plain-words labels ("Couldn't save a
 // bill"), the today summary, filters, and time groups. Pure, so the screen stays layout-only.
 
+import { formatInstant } from "@/lib/format/date";
+
 export type LogKind = "ok" | "rejected" | "failed" | "noReply" | "appError" | "notification";
 
 export type DiagRow = {
@@ -168,7 +170,7 @@ export const groupByTime = (rows: DiagRow[]): { label: string; rows: DiagRow[] }
     if (mins < 60) return `${Math.floor(mins / 5) * 5 || mins} min ago`;
     if (t >= today) return "Earlier today";
     if (t >= today - 86_400_000) return "Yesterday";
-    return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+    return formatInstant(iso, "day");
   };
   const groups: { label: string; rows: DiagRow[] }[] = [];
   for (const row of rows) {

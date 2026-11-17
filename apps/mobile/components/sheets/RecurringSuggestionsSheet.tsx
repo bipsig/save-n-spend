@@ -11,7 +11,9 @@ import { useCategoryById } from "@/lib/categories";
 import { usePrivacyMask } from "@/lib/money";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
+import { count } from "@/lib/format/count";
 import { spacing } from "@/theme";
+import { useOnlineGate } from "@/lib/onlineGate";
 
 type Props = {
   suggestions: RecurringPattern[];
@@ -28,6 +30,7 @@ const SuggestionRow = ({ pattern, busy, onAdd, onDismiss }: {
   onDismiss: () => void;
 }) => {
   const category = useCategoryById(pattern.category);
+  const dismissGate = useOnlineGate("Not recurring");
   return (
     <View style={styles.row}>
       <View style={styles.top}>
@@ -42,7 +45,7 @@ const SuggestionRow = ({ pattern, busy, onAdd, onDismiss }: {
         <View style={styles.text}>
           <AppText size="sm" weight="bold" numberOfLines={1}>{pattern.title}</AppText>
           <AppText size="xs" color="inkDim" numberOfLines={1}>
-            {pattern.looksLikeSip ? "Looks like a SIP · " : ""}Every month · seen {pattern.occurrences} months
+            {pattern.looksLikeSip ? "Looks like a SIP · " : ""}Every month · seen {count(pattern.occurrences, "month")}
           </AppText>
         </View>
         <Money value={pattern.amount} size="sm" weight="black" align="right" />
@@ -57,7 +60,7 @@ const SuggestionRow = ({ pattern, busy, onAdd, onDismiss }: {
           />
         </View>
         <View style={styles.action}>
-          <Button label="Not recurring" size="sm" variant="ghost" onPress={onDismiss} loading={busy} disabled={busy} />
+          <Button label={dismissGate.label} size="sm" variant="ghost" onPress={onDismiss} loading={busy} disabled={busy || !dismissGate.allowed} />
         </View>
       </View>
     </View>

@@ -5,6 +5,7 @@
 //
 // Kept free of any `api` import, like `store/session` and `store/settings`, so
 // nothing here can join an import cycle.
+import { AccessibilityInfo } from 'react-native';
 import { create } from 'zustand';
 import { haptics } from '@/lib/haptics';
 
@@ -41,6 +42,10 @@ interface ToastState {
 let nextId = 1;
 let timer: ReturnType<typeof setTimeout> | null = null;
 
+/** What VoiceOver says for a toast: the message, then its action's name. */
+export const toastAnnouncement = (message: string, action?: ToastAction): string =>
+  action ? `${message.replace(/[.!?…]+$/, '')}. ${action.label}` : message;
+
 // The haptic that belongs to each tone. Bound here rather than at the call site so
 // a toast and its buzz can never disagree — you cannot ship a red banner that
 // feels like a success.
@@ -63,6 +68,8 @@ export const useToast = create<ToastState>((set) => ({
     if (timer) clearTimeout(timer);
     FEEL[tone]();
     set({ current: { id: nextId++, tone, message, action } });
+    // The banner never takes VoiceOver focus, so it is spoken instead: "Deleted. Undo".
+    AccessibilityInfo.announceForAccessibility(toastAnnouncement(message, action));
     timer = setTimeout(() => set({ current: null }), action ? ACTION_DURATION_MS : PLAIN_DURATION_MS);
   },
 

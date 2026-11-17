@@ -19,3 +19,11 @@ export const signTone = (
 /** The soft background that goes with a tone, for a pill. */
 export const toneSoft = (tone: string): "successSoft" | "dangerSoft" | "surface2" =>
   tone === "success" ? "successSoft" : tone === "danger" ? "dangerSoft" : "surface2";
+
+/**
+ * A colour chosen for what a figure IS (spent is red, earned is green) still goes neutral at
+ * zero: "₹0.00" in red reads as a warning. Gets the figure in paise; `undefined` means "use the
+ * default colour".
+ */
+export const zeroNeutral = <T extends string>(paise: number, tone: T | undefined): T | undefined =>
+  Math.round(paise) === 0 && (tone === "success" || tone === "danger" || tone === "warning") ? undefined : tone;

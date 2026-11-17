@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { TRIPS_SLICE_ID } from "@/lib/trips";
 import { Pressable, StyleSheet, View } from "react-native";
-import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { InsightsPeriod } from "@save-n-spend/types";
 import ExportSheet from "@/components/sheets/ExportSheet";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
+import { screenTitles } from "@/data/menu";
+import { relativePeriod } from "@/lib/format/period";
 import GradientCard from "@/components/shell/GradientCard";
 import Card from "@/components/data/Card";
 import ShareBar from "@/components/data/ShareBar";
@@ -19,14 +21,18 @@ import CompareBars from "@/components/charts/CompareBars";
 import HighlightCard from "@/components/data/HighlightCard";
 import SegmentedControl from "@/components/ui/SegmentedControl";
 import PeriodNav from "@/components/ui/PeriodNav";
-import Button from "@/components/ui/Button";
+import Caps from "@/components/ui/Caps";
+import ChartLegend from "@/components/ui/ChartLegend";
+import StatTile from "@/components/ui/StatTile";
 import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
 import { AppText } from "@/components/ui/AppText";
 import EmptyState from "@/components/states/EmptyState";
-import ErrorState from "@/components/states/ErrorState";
+import ScreenStates from "@/components/states/ScreenStates";
 import SkeletonState from "@/components/states/SkeletonState";
-import formatMoney, { usePrivacyMask } from "@/lib/money";
+import formatMoney, { groupIndian, usePrivacyMask } from "@/lib/money";
+import { count } from "@/lib/format/count";
+import { formatPct, formatPoints } from "@/lib/format/pct";
 import {
   useInsights,
   foldCategories,
@@ -46,7 +52,7 @@ import {
 } from "@/lib/insights";
 import { useHighlights } from "@/lib/highlights";
 import { useAppZone } from "@/lib/zone";
-import { colors, radius, spacing, incomeColor, expenseColor } from "@/theme";
+import { colors, radius, spacing, incomeColor, expenseColor, chartValueColor } from "@/theme";
 import { signTone, toneSoft } from "@/lib/signTone";
 
 const SEGMENTS: { key: InsightsPeriod; label: string }[] = [
@@ -57,51 +63,23 @@ const SEGMENTS: { key: InsightsPeriod; label: string }[] = [
 ];
 
 const unitsWord = (period: InsightsPeriod) =>
-  period === "year" ? "YEARS" : period === "week" ? "WEEKS" : period === "day" ? "DAYS" : "MONTHS";
+  period === "year" ? "years" : period === "week" ? "weeks" : period === "day" ? "days" : "months";
 
 type Chart = "trend" | "cumulative" | "donut" | "income" | "account";
 
-const Caps = ({ children }: { children: React.ReactNode }) => (
-  <AppText size="xs" weight="bold" color="inkDim" style={styles.caps}>
-    {children}
-  </AppText>
-);
+// A change written as it is shown (one decimal, D9 C) and coloured by that same rounded figure,
+// so "0.0%" is never coloured. `points` is for a change between two rates.
+const delta = (value: number, goodWhen: "down" | "up", vs: string, points = false) => {
+  const shown = Math.round(value * 10) / 10;
+  return {
+    text: `${points ? formatPoints(value) : formatPct(value, { kind: "change" })} vs ${vs}`,
+    tone: signTone(shown, { goodWhen }),
+  };
+};
 
-const LegendDot = ({ color, label }: { color: string; label: string }) => (
-  <View style={styles.legendItem}>
-    <View style={[styles.dot, { backgroundColor: color }]} />
-    <AppText size="xs" color="inkDim">
-      {label}
-    </AppText>
-  </View>
-);
-
-// Coloured delta — green when the change is in the good direction. `pill` gives
-// the spec .dchip badge (the spending hero); plain text for the KPI tiles.
-const Delta = ({
-  value,
-  goodWhen,
-  vs = "prev",
-  pill = false,
-}: {
-  value: number;
-  goodWhen: "down" | "up";
-  vs?: string;
-  pill?: boolean;
-}) => {
-  const rounded = Math.round(value);
-  const tone = signTone(rounded, { goodWhen });
-  const sign = rounded > 0 ? "+" : rounded < 0 ? "−" : "";
-  const text = `${sign}${Math.abs(rounded)}% vs ${vs}`;
-
-  if (!pill) {
-    return (
-      <AppText size="xs" weight="semibold" color={tone}>
-        {text}
-      </AppText>
-    );
-  }
-
+// The spending hero's change, as the spec .dchip badge.
+const DeltaPill = ({ value, goodWhen, vs }: { value: number; goodWhen: "down" | "up"; vs: string }) => {
+  const { text, tone } = delta(value, goodWhen, vs);
   return (
     <View style={[styles.pill, { backgroundColor: colors[toneSoft(tone)] }]}>
       <AppText size="xs" weight="bold" color={tone}>
@@ -110,18 +88,6 @@ const Delta = ({
     </View>
   );
 };
-
-const Kpi = ({ label, value, children }: { label: string; value: string; children?: React.ReactNode }) => (
-  <Card style={styles.kpi}>
-    <AppText size="xs" color="inkDim" style={styles.caps}>
-      {label}
-    </AppText>
-    <AppText size="lg" weight="black" numberOfLines={1}>
-      {value}
-    </AppText>
-    {children}
-  </Card>
-);
 
 const InsightsScreen = () => {
   usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
@@ -137,7 +103,9 @@ const InsightsScreen = () => {
   const [heatDay, setHeatDay] = useState<string | null>(null);
   const [heatHour, setHeatHour] = useState<number | null>(null);
   const exportRef = useRef<BottomSheetModal>(null);
-  const { data, loading, error, refetch } = useInsights(period, offset);
+  const insightsQuery = useInsights(period, offset);
+  const { data, loading } = insightsQuery;
+  const state = { ...insightsQuery, hasData: insightsQuery.fetchedAt !== null };
   // Always about THIS month, independent of whatever period/offset is selected below —
   // see docs/insights-engine.md. Its own fetch, not threaded through useInsights.
   // `warmingUp` doubles as this screen's own "too new to say anything real" signal —
@@ -169,10 +137,6 @@ const InsightsScreen = () => {
   };
 
 
-  useFocusEffect(useCallback(() => {
-    refetch();
-  }, [refetch]));
-
   // A What's new link opens the export once the period has loaded; the param is cleared so
   // coming back to this tab doesn't open it again.
   const { export: exportParam } = useLocalSearchParams<{ export?: string }>();
@@ -183,18 +147,6 @@ const InsightsScreen = () => {
   }, [exportParam, loading, data, router]);
 
   const renderBody = () => {
-    if (error) return <ErrorState message={error} onRetry={refetch} />;
-
-    if (loading && !data) {
-      return (
-        <View style={styles.skeletonCol}>
-          {Array.from({ length: 4 }).map((_, i) => (
-            <SkeletonState key={i} height={140} borderRadius={radius.lg} />
-          ))}
-        </View>
-      );
-    }
-
     // `data.txnCount === 0` only says THIS window is empty — a quiet Tuesday on an
     // account with two years of history looks identical to a brand-new one from that
     // number alone. `warmingUp` is the account-wide signal that tells the two apart, so
@@ -231,7 +183,10 @@ const InsightsScreen = () => {
       return (
         <EmptyState
           icon="insights"
-          title={`No activity in ${windowLabel(period, offset)}`}
+          // A day takes no "in": "No activity yesterday", "No activity on 14 Nov".
+          title={period === "day"
+            ? `No activity ${relativePeriod(period, offset)?.toLowerCase() ?? `on ${windowLabel(period, offset)}`}`
+            : `No activity in ${relativePeriod(period, offset)?.toLowerCase() ?? windowLabel(period, offset)}`}
           subtitle="Nothing was recorded in this window."
         />
       );
@@ -272,18 +227,18 @@ const InsightsScreen = () => {
       <>
         {/* Spending trend */}
         <GradientCard gradient="brand" style={styles.stack}>
-          <Caps>SPENDING</Caps>
+          <Caps>Spending</Caps>
           <View style={styles.heroRow}>
             <AppText size="xl" weight="black">
               {formatMoney(stats.currentExpense)}
             </AppText>
-            <Delta value={stats.spendDeltaPct} goodWhen="down" vs={vsLabel} pill />
+            <DeltaPill value={stats.spendDeltaPct} goodWhen="down" vs={vsLabel} />
           </View>
           <AreaChart
             data={trend.values}
             labels={trend.axis}
             tipLabels={trend.tipLabels}
-            color="#B0A2FF"
+            color={chartValueColor}
             activeIndex={tip?.chart === "trend" ? tip.i : null}
             onScrub={(i) => setTip(i === null ? null : { chart: "trend", i })}
           />
@@ -291,13 +246,13 @@ const InsightsScreen = () => {
 
         {/* Pace — running total against the same point last period */}
         <Card style={styles.stack}>
-          <Caps>{`PACE VS ${windowLabel(period, offset - 1).toUpperCase()}`}</Caps>
+          <Caps>{`Pace vs ${windowLabel(period, offset - 1)}`}</Caps>
           <View style={styles.heroRow}>
             <AppText size="lg" weight="black">
               {formatMoney(pace.atCurrentEnd.current)}
             </AppText>
             <AppText size="sm" weight="semibold" color={signTone(paceDelta, { goodWhen: "down" })}>
-              {`${paceDelta > 0 ? "+" : paceDelta < 0 ? "−" : ""}${formatMoney(Math.abs(paceDelta))}`}
+              {formatMoney(paceDelta, { sign: "always" })}
             </AppText>
           </View>
           {/* Says what the figure above is measured against, because "so far" is the whole
@@ -324,11 +279,13 @@ const InsightsScreen = () => {
 
         {/* Income vs expense */}
         <Card style={styles.stack}>
-          <Caps>{`INCOME VS EXPENSE · 6 ${unitsWord(period)}`}</Caps>
-          <View style={styles.legend}>
-            <LegendDot color={incomeColor} label="Income" />
-            <LegendDot color={expenseColor} label="Expense" />
-          </View>
+          <Caps>{`Income vs expense · 6 ${unitsWord(period)}`}</Caps>
+          <ChartLegend
+            items={[
+              { label: "Income", color: incomeColor },
+              { label: "Expense", color: expenseColor },
+            ]}
+          />
           <PairedColumns
             data={pairs}
             labels={labels}
@@ -339,7 +296,7 @@ const InsightsScreen = () => {
 
         {/* Where it went — the ring, and the tapped slice's own breakdown */}
         <Card style={styles.stack}>
-          <Caps>WHERE IT WENT</Caps>
+          <Caps>Where it went</Caps>
           <DonutChart
             data={donutSlices}
             centerLabel="TOTAL SPENT"
@@ -349,7 +306,7 @@ const InsightsScreen = () => {
           />
           {openSlice?.children?.length ? (
             <View style={styles.subList}>
-              <Caps>{`INSIDE ${openSlice.name.toUpperCase()}`}</Caps>
+              <Caps>{`Inside ${openSlice.name}`}</Caps>
               {openSlice.children.map((child) => (
                 <View key={child.categoryId} style={styles.subRow}>
                   <AppText size="sm" numberOfLines={1} style={styles.catName}>
@@ -370,7 +327,7 @@ const InsightsScreen = () => {
 
         {/* By category */}
         <Card style={styles.stack}>
-          <Caps>BY CATEGORY</Caps>
+          <Caps>By category</Caps>
           <View style={styles.catList}>
             {cats.map((c) => {
               // "Others" is a fold of several categories, so there is no one category to open.
@@ -395,7 +352,7 @@ const InsightsScreen = () => {
                         {formatMoney(c.total)}
                       </AppText>
                       <AppText size="xs" color="inkDim" style={styles.catPct}>
-                        {`${Math.round(c.pct)}%`}
+                        {formatPct(c.pct)}
                       </AppText>
                       {openable && <Icon name="chevronRight" size={16} color="inkDim" />}
                     </View>
@@ -412,6 +369,7 @@ const InsightsScreen = () => {
                 <PressableScale
                   key={c.id}
                   style={styles.catRow}
+                  accessibilityLabel={`${c.name}, ${formatMoney(c.total)}, ${formatPct(c.pct)}`}
                   onPress={() =>
                     // Trips isn't a category — its slice opens the Trips screen, where each
                     // trip's own breakdown lives.
@@ -435,13 +393,13 @@ const InsightsScreen = () => {
         {/* Daily rhythm — or, on the Day tab, the hour-of-day equivalent */}
         {heatmap && (
           <Card style={styles.stack}>
-            <Caps>DAILY RHYTHM</Caps>
+            <Caps>Daily rhythm</Caps>
             <SpendHeatmap heatmap={heatmap} active={heatDay} onSelect={setHeatDay} />
           </Card>
         )}
         {hourlyPattern && (
           <Card style={styles.stack}>
-            <Caps>HOURLY RHYTHM</Caps>
+            <Caps>Hourly rhythm</Caps>
             <HourlyRhythm rhythm={hourlyPattern} active={heatHour} onSelect={setHeatHour} />
           </Card>
         )}
@@ -449,24 +407,21 @@ const InsightsScreen = () => {
         {/* Biggest movers */}
         {movers.length > 0 && (
           <Card style={styles.stack}>
-            <Caps>{`BIGGEST CHANGES VS ${windowLabel(period, offset - 1).toUpperCase()}`}</Caps>
+            <Caps>{`Biggest changes vs ${windowLabel(period, offset - 1)}`}</Caps>
             <CompareBars rows={movers} previousLabel={vsLabel} />
           </Card>
         )}
 
         {/* Where it left from */}
         <Card style={styles.stack}>
-          <Caps>WHERE IT LEFT FROM</Caps>
+          <Caps>Where it left from</Caps>
           <ShareBar
+            title="Where it left from"
             data={accts}
             activeIndex={tip?.chart === "account" ? tip.i : null}
             onScrub={(i) => setTip(i === null ? null : { chart: "account", i })}
           />
-          <View style={styles.acctLegend}>
-            {accts.map((a) => (
-              <LegendDot key={a.id} color={a.color} label={`${a.name} ${Math.round(a.pct)}%`} />
-            ))}
-          </View>
+          <ChartLegend items={accts.map((a) => ({ label: `${a.name} ${formatPct(a.pct)}`, color: a.color }))} />
         </Card>
 
         {/* KPI grid */}
@@ -474,49 +429,71 @@ const InsightsScreen = () => {
           {/* The server's own day-average degenerates to just "today's total" for a window
               this short (see getAverageSpend) — an hourly rate, computed client-side from the
               trend already in hand, is the meaningful figure for the Day tab instead. */}
+          {/* Not a StatRow: a category name is a figure here, and a long one would reflow the
+              whole grid to one column. Each tile shrinks on its own instead. */}
           {period === "day" ? (
-            <Kpi label="AVG HOURLY SPEND" value={formatMoney(dayProjection?.avgPerHour ?? 0)}>
-              <AppText size="xs" color="inkDim">
-                so far today
-              </AppText>
-            </Kpi>
+            <StatTile
+              size="lg"
+              style={styles.kpi}
+              label="Avg hourly spend"
+              amount={dayProjection?.avgPerHour ?? 0}
+              change={{ text: "so far today" }}
+            />
           ) : (
-            <Kpi label="AVG DAILY SPEND" value={formatMoney(data.avgDailySpendCurrent)}>
-              <Delta value={pctChange(data.avgDailySpendCurrent, data.avgDailySpendPrevious)} goodWhen="down" vs={vsLabel} />
-            </Kpi>
+            <StatTile
+              size="lg"
+              style={styles.kpi}
+              label="Avg daily spend"
+              amount={data.avgDailySpendCurrent}
+              change={delta(pctChange(data.avgDailySpendCurrent, data.avgDailySpendPrevious), "down", vsLabel)}
+            />
           )}
-          <Kpi label="TOP CATEGORY" value={data.topCategory ?? "—"}>
-            {top && (
-              <AppText size="xs" color="inkDim">
-                {`${formatMoney(top.total)} · ${Math.round(top.pct)}%`}
-              </AppText>
-            )}
-          </Kpi>
-          <Kpi label="TRANSACTIONS" value={`${data.txnCount}`}>
-            <AppText size="xs" color="inkDim">
-              this period
-            </AppText>
-          </Kpi>
-          <Kpi label="SAVINGS RATE" value={`${Math.round(stats.savingsRate)}%`}>
-            <Delta value={stats.savingsRateDelta} goodWhen="up" vs={vsLabel} />
-          </Kpi>
+          <StatTile
+            size="lg"
+            style={styles.kpi}
+            label="Top category"
+            text={data.topCategory ?? "—"}
+            change={top ? { text: `${formatMoney(top.total)} · ${formatPct(top.pct)}` } : null}
+          />
+          <StatTile
+            size="lg"
+            style={styles.kpi}
+            label="Transactions"
+            text={groupIndian(data.txnCount)}
+            change={{ text: "this period" }}
+          />
+          <StatTile
+            size="lg"
+            style={styles.kpi}
+            label="Savings rate"
+            text={formatPct(stats.savingsRate)}
+            change={delta(stats.savingsRateDelta, "up", vsLabel, true)}
+          />
           {/* Only while the window is still open — a finished period has nothing left to
               project, and this would just restate its own known total. */}
           {projection && (
-            <Kpi label={`PROJECTED ${windowLabel(period, 0).toUpperCase()}`} value={formatMoney(projection.total)}>
-              <Delta value={pctChange(projection.total, prevActualExpense)} goodWhen="down" vs={vsLabel} />
-              <AppText size="xs" color="inkDim">
-                {`${projection.daysRemaining} day${projection.daysRemaining === 1 ? "" : "s"} left`}
-              </AppText>
-            </Kpi>
+            <StatTile
+              size="lg"
+              style={styles.kpi}
+              label={`Projected ${windowLabel(period, 0)}`}
+              amount={projection.total}
+              change={(() => {
+                const d = delta(pctChange(projection.total, prevActualExpense), "down", vsLabel);
+                return { ...d, text: `${d.text} · ${count(projection.daysRemaining, "day")} left` };
+              })()}
+            />
           )}
           {dayProjection && (
-            <Kpi label="PROJECTED TODAY" value={formatMoney(dayProjection.total)}>
-              <Delta value={pctChange(dayProjection.total, prevActualExpense)} goodWhen="down" vs={vsLabel} />
-              <AppText size="xs" color="inkDim">
-                {`${dayProjection.hoursRemaining} hour${dayProjection.hoursRemaining === 1 ? "" : "s"} left`}
-              </AppText>
-            </Kpi>
+            <StatTile
+              size="lg"
+              style={styles.kpi}
+              label="Projected today"
+              amount={dayProjection.total}
+              change={(() => {
+                const d = delta(pctChange(dayProjection.total, prevActualExpense), "down", vsLabel);
+                return { ...d, text: `${d.text} · ${count(dayProjection.hoursRemaining, "hour")} left` };
+              })()}
+            />
           )}
         </View>
       </>
@@ -527,23 +504,16 @@ const InsightsScreen = () => {
 
   return (
     <ScreenScaffold
-      title="Insights"
-      headerRight={
-        <Button
-          label="Export"
-          icon="download"
-          pill
-          size="sm"
-          variant="secondary"
-          disabled={!hasData}
-          onPress={() => exportRef.current?.present()}
-        />
-      }
+      title={screenTitles.insights}
+      states={state}
+      actions={[{ kind: "export", label: "Export insights", disabled: !hasData, onPress: () => exportRef.current?.present() }]}
     >
       {/* Tapping anywhere that isn't a chart clears the open tooltip. Deliberately a
           plain Pressable, not PressableScale: this covers the whole page, so a squeeze
-          or a tick here would fire on every stray tap and dip the entire screen. */}
-      <Pressable style={styles.body} onPress={clearTips}>
+          or a tick here would fire on every stray tap and dip the entire screen.
+          `accessible={false}`: a Pressable is one VoiceOver element by default, which
+          would read the whole page as a single button. */}
+      <Pressable style={styles.body} onPress={clearTips} accessible={false}>
         {/* Always about THIS month, whatever period/offset the charts below are showing —
             see docs/insights-engine.md. Absent entirely when there's nothing to say, the
             same as the daily digest staying quiet on an empty day: no header, no "all
@@ -555,14 +525,25 @@ const InsightsScreen = () => {
             ))}
           </View>
         )}
-        <SegmentedControl segments={SEGMENTS} value={period} onChange={changePeriod} />
+        <SegmentedControl segments={SEGMENTS} value={period} onChange={changePeriod} accessibilityLabel="Period" />
         <PeriodNav
           label={windowLabel(period, offset)}
           canNext={offset < 0}
           onPrev={goPrev}
           onNext={goNext}
         />
-        {renderBody()}
+        <ScreenStates
+          state={state}
+          skeleton={
+            <View style={styles.skeletonCol}>
+              {Array.from({ length: 4 }).map((_, i) => (
+                <SkeletonState key={i} height={140} borderRadius={radius.lg} />
+              ))}
+            </View>
+          }
+        >
+          {renderBody}
+        </ScreenStates>
       </Pressable>
       <ExportSheet ref={exportRef} kind="insights" defaultRange={period} defaultOffset={offset} insightsData={data} />
     </ScreenScaffold>
@@ -579,9 +560,6 @@ const styles = StyleSheet.create({
   stack: {
     gap: 12,
   },
-  caps: {
-    letterSpacing: 1.2,
-  },
   heroRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -591,20 +569,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
-  },
-  legend: {
-    flexDirection: "row",
-    gap: spacing.lg,
-  },
-  legendItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  dot: {
-    width: 9,
-    height: 9,
-    borderRadius: 3,
   },
   catList: {
     gap: 18, // more air between rows so the card doesn't read congested
@@ -639,7 +603,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   catPct: {
-    minWidth: 34,
+    minWidth: 44,
     textAlign: "right",
   },
   catTrack: {
@@ -667,11 +631,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: spacing.md,
   },
-  acctLegend: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.md,
-  },
   kgrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -680,7 +639,6 @@ const styles = StyleSheet.create({
   kpi: {
     flexBasis: "47%",
     flexGrow: 1,
-    gap: 4,
   },
   skeletonCol: {
     gap: spacing.lg,

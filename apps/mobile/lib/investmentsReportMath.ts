@@ -77,8 +77,6 @@ export const estimatePages = (selected: SectionKey[], holdings: number, ledgerRo
 
 export type Period = { kind: "6m" } | { kind: "1y" } | { kind: "all" } | { kind: "fy"; start: number };
 
-const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
 /** Financial year `start` runs April of `start` to March of `start + 1`. */
 export const fyRange = (start: number): { from: string; to: string } => ({ from: `${start}-04`, to: `${start + 1}-03` });
 
@@ -127,8 +125,6 @@ export const ledgerInPeriod = (ledger: LedgerEntry[], months: { from: string; to
     const m = monthOf(e.at);
     return m >= months.from && m <= months.to;
   });
-
-export const monthLabel = (month: string): string => `${MONTH_NAMES[Number(month.slice(5, 7)) - 1]} ’${month.slice(2, 4)}`;
 
 export const periodLabel = (period: Period, bounds: { from: string; to: string } | null): string => {
   if (period.kind === "fy") return fyLabel(period.start);

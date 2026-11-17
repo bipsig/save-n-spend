@@ -67,6 +67,9 @@ const DayOfMonthSheet = forwardRef<BottomSheetModal, Props>(({ value, onPick }, 
               onPress={() => choose(day)}
               disabled={pending !== null && pending !== day}
               style={[styles.cell, selected && styles.cellSelected]}
+              accessibilityRole="radio"
+              accessibilityLabel={`Day ${day}`}
+              accessibilityState={{ selected, disabled: pending !== null && pending !== day }}
             >
               <AppText size="sm" weight="bold" color={selected ? "ink" : "inkSecondary"}>{day}</AppText>
             </Pressable>

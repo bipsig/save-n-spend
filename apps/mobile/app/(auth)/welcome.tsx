@@ -117,7 +117,7 @@ const WelcomeScreen = () => {
               Account created
             </AppText>
           </View>
-          <PressableScale onPress={finish} scaleTo={0.95}>
+          <PressableScale onPress={finish} scaleTo={0.95} hitSlop={8} accessibilityLabel="Skip the tour">
             <View style={styles.skip}>
               <AppText size="xs" weight="semibold" color="inkDim">
                 Skip
@@ -150,7 +150,7 @@ const WelcomeScreen = () => {
                 glow
               />
               <View style={styles.copy}>
-                <AppText size="xl" weight="black" style={styles.centered}>
+                <AppText size="xl" weight="black" style={styles.centered} accessibilityRole="header">
                   {slide.title}
                 </AppText>
                 <AppText size="sm" color="inkSecondary" style={styles.body}>
@@ -162,7 +162,7 @@ const WelcomeScreen = () => {
         </Animated.ScrollView>
 
         <View style={styles.footer}>
-          <View style={styles.dots}>
+          <View style={styles.dots} accessible accessibilityLabel={`Page ${index + 1} of ${SLIDES.length}`}>
             {SLIDES.map((slide, i) => (
               <View key={slide.key} style={[styles.dot, i === index && styles.dotActive]} />
             ))}

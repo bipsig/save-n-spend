@@ -41,6 +41,7 @@ const PressableScale = ({
   onPressIn,
   onPressOut,
   disabled,
+  accessibilityState,
   ...rest
 }: Props) => {
   const scale = useSharedValue(1);
@@ -71,6 +72,10 @@ const PressableScale = ({
       onPressIn={disabled ? undefined : handlePressIn}
       onPressOut={disabled ? undefined : handlePressOut}
       disabled={disabled}
+      // "Button" unless the caller says otherwise (a link, a tab). Something with no visible
+      // text, such as an icon or a swatch, must also pass an accessibilityLabel.
+      accessibilityRole="button"
+      accessibilityState={{ disabled: !!disabled, ...accessibilityState }}
       style={[style, animatedStyle]}
       {...rest}
     >

@@ -12,12 +12,14 @@ import { clearPlan, savePlan } from "@/lib/trips";
 import { holderFor } from "@/lib/idempotency";
 import { toast } from "@/store/toast";
 import { colors, spacing } from "@/theme";
+import { useOnlineGate } from "@/lib/onlineGate";
 
 type Props = {
   tripId: string;
   members: TripMemberBalance[];
   plan: TripPlan | null;
-  onSaved: () => void;
+  /** Optional: the write already refreshes the trip. */
+  onSaved?: () => void;
 };
 
 type Row = { text: string; owes: boolean };
@@ -35,6 +37,8 @@ const MatchSplitwiseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, membe
   usePrivacyMask();
   const innerRef = useRef<BottomSheetModal>(null);
   useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
+  // Needs the server: offline the button says so before the tap.
+  const gate = useOnlineGate("");
 
   const [rows, setRows] = useState<Record<string, Row>>(() => rowsFrom(members, plan));
   const [busy, setBusy] = useState(false);
@@ -71,7 +75,7 @@ const MatchSplitwiseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, membe
       idem.reset();
       haptics.success();
       innerRef.current?.dismiss();
-      onSaved();
+      onSaved?.();
       toast.success("Matched to Splitwise");
     }
     catch (err) {
@@ -88,7 +92,7 @@ const MatchSplitwiseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, membe
     try {
       await clearPlan(tripId);
       innerRef.current?.dismiss();
-      onSaved();
+      onSaved?.();
       toast.info("Back to the exact amounts");
     }
     catch (err) {
@@ -114,13 +118,13 @@ const MatchSplitwiseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, membe
         <View style={styles.footer}>
           <AppText size="xs" weight="bold" color={balanced ? "success" : "warning"} style={styles.center}>{status}</AppText>
           {error && <AppText size="sm" color="danger" style={styles.center}>{error}</AppText>}
-          <Button label="Save" loading={busy} disabled={!balanced} onPress={save} />
+          <Button label={gate.label || "Save"} icon={gate.icon} loading={busy} disabled={!balanced || !gate.allowed} onPress={save} />
         </View>
       }
     >
       <AppText size="md" weight="black">Match Splitwise</AppText>
       <AppText size="xs" color="inkDim" style={styles.lh}>
-        Splitwise may have simplified who pays whom. Open the group there and enter what each person pays you. Anyone it doesn't list stays ₹0.
+        Splitwise may have simplified who pays whom. Open the group there and enter what each person pays you. Anyone it doesn't list stays at {formatMoney(0)}.
       </AppText>
       {plan?.stale && (
         <AppText size="xs" weight="bold" color="warning" style={styles.lh}>
@@ -135,7 +139,7 @@ const MatchSplitwiseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, membe
             <View style={styles.who}>
               <AppText size="sm" weight="bold" numberOfLines={1}>{m.name}</AppText>
               <AppText size="xs" color="inkDim" numberOfLines={1}>
-                {m.exact === 0 ? "exact ₹0" : `exact ${m.exact > 0 ? "" : "−"}${formatMoney(Math.abs(m.exact))}`}
+                {`exact ${formatMoney(m.exact)}`}
               </AppText>
             </View>
             <View style={styles.amount}>
@@ -146,6 +150,7 @@ const MatchSplitwiseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, membe
                 placeholderTextColor={colors.gray400}
                 keyboardType="decimal-pad"
                 style={styles.input}
+                accessibilityLabel={`What ${m.name} ${r.owes ? "pays you" : "you pay"}`}
               />
             </View>
             <PressableScale
@@ -161,7 +166,7 @@ const MatchSplitwiseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, membe
         );
       })}
 
-      {plan && <Button label="Back to exact amounts" variant="ghost" icon="repeat" disabled={busy} onPress={backToExact} />}
+      {plan && <Button label={gate.label || "Back to exact amounts"} variant="ghost" icon={gate.icon ?? "repeat"} disabled={busy || !gate.allowed} onPress={backToExact} />}
     </AppSheet>
   );
 });

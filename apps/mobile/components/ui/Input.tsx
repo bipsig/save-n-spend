@@ -45,7 +45,7 @@ const Input = ({
   return (
     <View style={styles.wrapper}>
       {label && (
-        <AppText weight="bold" size="xs" color="inkDim" style={styles.label}>
+        <AppText weight="bold" size="xs" color="inkDim" style={styles.label} accessibilityLabel={label}>
           {label.toUpperCase()}
         </AppText>
       )}

@@ -7,7 +7,6 @@ import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AppText } from "@/components/ui/AppText";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
-import BackButton from "@/components/shell/BackButton";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 import Icon from "@/components/ui/Icon";
@@ -165,15 +164,8 @@ const RegisterForm = () => {
 };
 
 const Register = () => (
-  <ScreenScaffold
-    header={
-      <View style={styles.head}>
-        {/* The shared chevron — the last screen still carrying its own copy of it. */}
-        <BackButton />
-        <AppText size="xl" weight="black">Create account</AppText>
-      </View>
-    }
-  >
+  // Signed out: no amounts, so no eye.
+  <ScreenScaffold title="Create account" back peek={false}>
     <RegisterForm />
   </ScreenScaffold>
 );
@@ -181,11 +173,6 @@ const Register = () => (
 export default Register;
 
 const styles = StyleSheet.create({
-  head: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
   form: {
     gap: spacing.lg,
   },

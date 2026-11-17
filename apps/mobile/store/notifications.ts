@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { INotification, Paginated } from "@save-n-spend/types";
-import { get, patch, post } from "@/lib/api";
+import { get, getFetched, patch, post } from "@/lib/api";
 
 /** A page of the feed, plus the badge count over the whole collection. */
 type NotificationFeed = Paginated<INotification> & { unread: number };
@@ -18,6 +18,8 @@ interface NotificationState {
   loading: boolean;
   loadingMore: boolean;
   error: string | null;
+  /** When the first page on screen was fetched (ms epoch); from the cache entry when served offline. */
+  fetchedAt: number | null;
   load: () => Promise<void>;
   loadMore: () => Promise<void>;
   markRead: (id: string) => Promise<void>;
@@ -35,6 +37,7 @@ export const useNotifications = create<NotificationState>((set, getState) => ({
   loading: false,
   loadingMore: false,
   error: null,
+  fetchedAt: null,
 
   load: async () => {
     // No skeleton on a refresh that already has rows — the list is re-read on every
@@ -42,13 +45,14 @@ export const useNotifications = create<NotificationState>((set, getState) => ({
     // moment of slightly stale copy.
     set({ loading: getState().items.length === 0, error: null });
     try {
-      const feed = await get<NotificationFeed>(`/notifications?page=1&limit=${PAGE_SIZE}`);
+      const { data: feed, fetchedAt } = await getFetched<NotificationFeed>(`/notifications?page=1&limit=${PAGE_SIZE}`);
       set({
         items: feed.items,
         unread: feed.unread,
         page: feed.page,
         hasNextPage: feed.hasNextPage,
         loading: false,
+        fetchedAt,
       });
     }
     catch (err) {
@@ -142,5 +146,6 @@ export const useNotifications = create<NotificationState>((set, getState) => ({
     loading: false,
     loadingMore: false,
     error: null,
+    fetchedAt: null,
   }),
 }));

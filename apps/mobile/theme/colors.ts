@@ -26,6 +26,7 @@ export const colors = {
   glass: 'rgba(255,255,255,0.10)',      // card glass fill
   glassBorder: 'rgba(255,255,255,0.14)',
   darkBg: '#0C0A16',
+  onGradientDim: 'rgba(255,255,255,0.72)', // captions and subs on a gradient card
 
   // Brand — brightened for dark; Ink variants stay deep (used on vivid gradients)
   primary: '#9B8CFF',

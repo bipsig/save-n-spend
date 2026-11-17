@@ -14,6 +14,7 @@ import { initialsOf, updateProfile } from "@/lib/profile";
 import { useSession } from "@/store/session";
 import { toast } from "@/store/toast";
 import { spacing } from "@/theme";
+import { useOnlineGate } from "@/lib/onlineGate";
 
 const schema = z.object({
   name: z.string().trim().min(2, "Give us at least two characters").max(60),
@@ -27,6 +28,8 @@ type Form = z.infer<typeof schema>;
 const EditProfileSheet = forwardRef<BottomSheetModal, { onSaved?: () => void }>(({ onSaved }, ref) => {
   const innerRef = useRef<BottomSheetModal>(null);
   useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
+  // Needs the server: offline the button says so before the tap.
+  const gate = useOnlineGate("");
   const dismiss = () => innerRef.current?.dismiss();
 
   const user = useSession((s) => s.user);
@@ -72,7 +75,7 @@ const EditProfileSheet = forwardRef<BottomSheetModal, { onSaved?: () => void }>(
         setValue("name", user?.name ?? "");
         setError(null);
       }}
-      footer={<Button label="Save profile" loading={isSubmitting} onPress={submit} />}
+      footer={<Button label={gate.label || "Save profile"} icon={gate.icon} loading={isSubmitting} disabled={!gate.allowed} onPress={submit} />}
     >
       {/* Live identity preview — the initials update as the name is typed. */}
       <View style={styles.identity}>

@@ -8,47 +8,15 @@ import type {
   InsightsSeriesPoint,
   InsightsTrendPoint,
 } from "@save-n-spend/types";
-import { useCallback, useEffect, useState } from "react";
-import { get } from "./api";
+import { useApiQuery } from "@/lib/query/useApiQuery";
 import { appZone, calendarDate, calendarDaysBetween, calendarFromKey, calendarToday } from "@/lib/zone";
-import { useSession } from "@/store/session";
 import { chartPalette, chartOthers } from "@/theme/charts";
+import { rangeNavLabel } from "@/lib/dateRange";
 
-export const useInsights = (period: InsightsPeriod, offset: number) => {
-  const status = useSession((s) => s.status);
-  const [data, setData] = useState<InsightsSummary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const refetch = useCallback(async () => {
-    if (useSession.getState().status !== "authed") return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await get<InsightsSummary>(`/insights?period=${period}&offset=${offset}`);
-      setData(res);
-    }
-    catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load");
-    }
-    finally {
-      setLoading(false);
-    }
-  }, [period, offset]);
-
-  useEffect(() => {
-    if (status === "authed") refetch();
-  }, [status, refetch]);
-
-  // Clear on period/offset change so the skeleton shows (not the prior window's
-  // chart) while the new data loads — avoids a flash of mismatched data.
-  useEffect(() => {
-    setData(null);
-    setLoading(true);
-  }, [period, offset]);
-
-  return { data, loading, error, refetch };
-};
+// Each window is its own key, so stepping periods shows the skeleton (or that window's saved
+// figures), never the previous window's chart under the new label.
+export const useInsights = (period: InsightsPeriod, offset: number) =>
+  useApiQuery<InsightsSummary>(`/insights?period=${period}&offset=${offset}`);
 
 /**
  * One category over one window — the detail screen's own fetch.
@@ -57,41 +25,10 @@ export const useInsights = (period: InsightsPeriod, offset: number) => {
  * category's total and children but not its day-by-day trend, and a trend per category would
  * make the list endpoint's payload grow with the user's tree.
  */
-export const useCategoryInsights = (categoryId: string, period: InsightsPeriod, offset: number) => {
-  const status = useSession((s) => s.status);
-  const [data, setData] = useState<InsightsCategoryDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const refetch = useCallback(async () => {
-    if (useSession.getState().status !== "authed" || !categoryId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await get<InsightsCategoryDetail>(
-        `/insights/category/${encodeURIComponent(categoryId)}?period=${period}&offset=${offset}`,
-      );
-      setData(res);
-    }
-    catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load");
-    }
-    finally {
-      setLoading(false);
-    }
-  }, [categoryId, period, offset]);
-
-  useEffect(() => {
-    if (status === "authed") refetch();
-  }, [status, refetch]);
-
-  useEffect(() => {
-    setData(null);
-    setLoading(true);
-  }, [categoryId, period, offset]);
-
-  return { data, loading, error, refetch };
-};
+export const useCategoryInsights = (categoryId: string, period: InsightsPeriod, offset: number) =>
+  useApiQuery<InsightsCategoryDetail>(
+    categoryId ? `/insights/category/${encodeURIComponent(categoryId)}?period=${period}&offset=${offset}` : null,
+  );
 
 // Client-side derivations (values-in-hand).
 
@@ -159,9 +96,8 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 // calendar key — `calendarFromKey` can't parse the hour suffix, so this reads it directly
 // rather than routing through that parser.
 //
-// `useInsights` clears `data` in a SEPARATE effect from the one that fetches it, so
-// switching to the Day tab has one render where `period` has already flipped but `data`
-// still holds the previous period's day-keyed trend (10 characters, no "T"). Slicing past
+// A caller can still hand these the previous period's day-keyed trend (10 characters, no
+// "T") for a render, as `useInsights` once did on every switch to the Day tab. Slicing past
 // the end of a short string returns "", and `Number("")` is 0 — not NaN — so every stale
 // point would silently collapse onto hour 0 and collide. Filtering to real hour keys first
 // is what keeps that one frame from rendering a strip of duplicate cells.
@@ -465,55 +401,26 @@ export const projectDay = (trend: InsightsTrendPoint[]): DayProjection => {
 };
 
 // Window labels — shared by the screen and the PDF export, so the two can never disagree
-// about what "This Month" or "vs Aug" means.
-
-const MONTHS_FULL = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
+// about what "This month" or "vs Aug" means.
 
 // Anchored on today WHERE THE USER IS, then plain `Date.UTC` arithmetic on that calendar
 // date — anchoring on `new Date()` and reading `getUTC*` off it names the wrong window for
 // a third of every Indian day: past 5:30am IST the UTC date is still yesterday, so on the
-// 1st "This Month" would label the previous one.
+// 1st "This month" would label the previous one.
 const anchor = (): Date => calendarToday(appZone());
 
-// Monday-start of the week that is `offset` weeks from the current one.
-const weekStart = (offset: number): Date => {
-  const now = anchor();
-  const sinceMonday = (now.getUTCDay() + 6) % 7;
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - sinceMonday + offset * 7));
-};
+// The human label for the window the navigator points at: the period navigator's own words
+// ("This month", "Last week", "September 2026", "26 Oct – 1 Nov").
+export const windowLabel = (period: InsightsPeriod, offset: number): string => rangeNavLabel(period, offset);
 
-// The human label for the window the navigator points at. Current/previous read
-// friendly ("This Month" / "Last Month"); anything older is concrete.
-export const windowLabel = (period: InsightsPeriod, offset: number): string => {
-  if (offset === 0) return period === "day" ? "Today" : period === "week" ? "This Week" : period === "month" ? "This Month" : "This Year";
-  if (offset === -1) return period === "day" ? "Yesterday" : period === "week" ? "Last Week" : period === "month" ? "Last Month" : "Last Year";
-
-  const now = anchor();
-  if (period === "year") return `${now.getUTCFullYear() + offset}`;
-  if (period === "month") {
-    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, 1));
-    return `${MONTHS_FULL[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
-  }
-  if (period === "day") {
-    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + offset));
-    return `${d.getUTCDate()} ${MONTH_ABBR[d.getUTCMonth()]}`;
-  }
-  const start = weekStart(offset);
-  const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate() + 6));
-  return start.getUTCMonth() === end.getUTCMonth()
-    ? `${start.getUTCDate()}–${end.getUTCDate()} ${MONTH_ABBR[end.getUTCMonth()]}`
-    : `${start.getUTCDate()} ${MONTH_ABBR[start.getUTCMonth()]} – ${end.getUTCDate()} ${MONTH_ABBR[end.getUTCMonth()]}`;
-};
-
-// Short label for the unit just before the shown window (delta "vs …").
+// The unit just before the shown window, written to follow "vs" or a figure: "vs last week",
+// "₹500.00 last month". Older windows name it ("vs Aug", "vs 2025").
 export const prevLabel = (period: InsightsPeriod, offset: number): string => {
+  if (offset === 0) return period === "day" ? "yesterday" : `last ${period}`;
   const now = anchor();
   if (period === "year") return `${now.getUTCFullYear() + offset - 1}`;
-  if (period === "week") return "prev wk";
-  if (period === "day") return "yesterday";
+  if (period === "week") return "the week before";
+  if (period === "day") return "the day before";
   const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset - 1, 1));
   return MONTH_ABBR[d.getUTCMonth()];
 };

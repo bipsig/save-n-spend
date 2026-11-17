@@ -1,5 +1,6 @@
 import { StyleSheet, View } from "react-native";
 import Svg, { Polyline } from "react-native-svg";
+import { chartA11y } from "@/lib/chartSummary";
 import { colors } from "@/theme";
 
 const WIDTH = 100;
@@ -14,12 +15,15 @@ type Props = {
    *  expenses, where a rising line is the opposite of welcome and green would say the
    *  wrong thing. Defaults "up". */
   goodDirection?: "up" | "down";
+  /** Its VoiceOver sentence. Without one the line is decoration: the figure above it
+   *  already says what it shows, so VoiceOver skips it. */
+  summary?: string;
 };
 
 // No axis, no legend, no scrub — sized to sit under a SummaryCard's own amount, not to
 // stand alone. The one thing it exists to show is direction, which the tone (green when
 // it moved the good way, dim otherwise) carries without needing a label of its own.
-const Sparkline = ({ values, goodDirection = "up" }: Props) => {
+const Sparkline = ({ values, goodDirection = "up", summary }: Props) => {
   if (values.length < 2) return null;
 
   const max = Math.max(...values);
@@ -33,7 +37,10 @@ const Sparkline = ({ values, goodDirection = "up" }: Props) => {
   const good = goodDirection === "up" ? rising : !rising;
 
   return (
-    <View style={styles.wrap}>
+    <View
+      style={styles.wrap}
+      {...(summary ? chartA11y(summary) : { accessibilityElementsHidden: true, importantForAccessibility: "no-hide-descendants" as const })}
+    >
       <Svg width={WIDTH} height={HEIGHT} viewBox={`0 0 ${WIDTH} ${HEIGHT}`}>
         <Polyline
           points={points}

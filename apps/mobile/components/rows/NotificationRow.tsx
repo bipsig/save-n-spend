@@ -3,7 +3,8 @@ import type { INotification } from "@save-n-spend/types";
 import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
-import { LOOK, notificationTime } from "@/lib/notifications";
+import { LOOK } from "@/lib/notifications";
+import { capitalise, formatInstant } from "@/lib/format/date";
 import { colors, spacing } from "@/theme";
 
 type Props = {
@@ -17,11 +18,16 @@ type Props = {
 const NotificationRow = ({ notification, first = false, onPress }: Props) => {
   const look = LOOK[notification.type];
   const unread = !notification.readAt;
+  const time = capitalise(formatInstant(notification.createdAt, "relative"));
 
   return (
     // Same shallow ratio as the settings rows: a full-width row travels a long way at
     // the default, and the gap it opens at the card's edge reads as a glitch.
-    <PressableScale onPress={onPress} scaleTo={0.985}>
+    <PressableScale
+      onPress={onPress}
+      scaleTo={0.985}
+      accessibilityLabel={`${unread ? "Unread. " : ""}${notification.title}. ${notification.body}. ${time}`}
+    >
       <View style={[styles.row, !first && styles.divider]}>
         <Icon
           name={look.icon}
@@ -45,7 +51,7 @@ const NotificationRow = ({ notification, first = false, onPress }: Props) => {
 
         <View style={styles.meta}>
           <AppText size="xs" color="inkDim">
-            {notificationTime(notification.createdAt)}
+            {time}
           </AppText>
           {unread && <View style={styles.dot} />}
         </View>

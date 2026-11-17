@@ -2,6 +2,8 @@ import { StyleSheet, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Card from "@/components/data/Card";
 import { AppText } from "@/components/ui/AppText";
+import Badge from "@/components/ui/Badge";
+import Caps from "@/components/ui/Caps";
 import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
 import type { Release } from "@/data/releaseNotes";
@@ -9,7 +11,6 @@ import { firstSentence, formatReleaseDate, highlightsOf } from "@/lib/whatsNew";
 import { colors, radius, spacing } from "@/theme";
 import { chipGradients } from "@/theme/gradients";
 import { KIND_LOOK, QUIET_SENTENCE, countParts } from "./kinds";
-import Tag from "./Tag";
 
 // The timeline's rail sits in the list's 30pt left gutter, centred 15pt in (far enough in
 // that the top dot's halo isn't clipped by the scroll view's edge); each dot is placed
@@ -59,9 +60,7 @@ const Node = ({ dot, lineHeight }: { dot: Dot; lineHeight: number }) => {
 export const MonthLabel = ({ label }: { label: string }) => (
   <View style={styles.month}>
     <View style={styles.monthTick} />
-    <AppText size="xs" weight="bold" color="inkDim" style={styles.monthText}>
-      {label.toUpperCase()}
-    </AppText>
+    <Caps size="sm" header>{label}</Caps>
   </View>
 );
 
@@ -92,7 +91,7 @@ const TimelineEntry = ({ release, top, current, onPress }: Props) => {
           <Node dot={dotFor(release, true)} lineHeight={24} />
           <View style={styles.row}>
             <AppText size="md" weight="black" style={styles.topVersion}>{release.version}</AppText>
-            {current && <Tag label="YOU'RE ON THIS" />}
+            {current && <Badge size="sm" tone="info" label="You're on this" />}
             <View style={styles.grow} />
             <Icon name="chevronRight" size={18} color="inkDim" />
           </View>
@@ -207,10 +206,6 @@ const styles = StyleSheet.create({
     width: 10,
     height: 1,
     backgroundColor: colors.glassBorder,
-  },
-  monthText: {
-    fontSize: 11,
-    letterSpacing: 1.4,
   },
   topEntry: {
     gap: 6,

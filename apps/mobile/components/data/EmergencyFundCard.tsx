@@ -2,6 +2,7 @@ import { StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import Card from "./Card";
 import { AppText } from "../ui/AppText";
+import Caps from "../ui/Caps";
 import Icon from "../ui/Icon";
 import PressableScale from "../ui/PressableScale";
 
@@ -31,9 +32,7 @@ const EmergencyFundCard = ({ runwayMonths }: Props) => {
         <View style={styles.row}>
           <Icon name="shield" size={20} containerSize={40} containerRadius={13} container="square" gradient="blue" />
           <View style={styles.col}>
-            <AppText size="xs" weight="semibold" color="inkDim" style={styles.label}>
-              EMERGENCY BUFFER
-            </AppText>
+            <Caps>Emergency buffer</Caps>
             <AppText size="sm" weight="bold">
               {value} <AppText size="xs" weight="semibold" color="inkDim">of expenses covered</AppText>
             </AppText>
@@ -56,9 +55,6 @@ const styles = StyleSheet.create({
   col: {
     flex: 1,
     gap: 2,
-  },
-  label: {
-    letterSpacing: 1,
   },
 });
 

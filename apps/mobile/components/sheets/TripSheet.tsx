@@ -6,6 +6,7 @@ import type { ITrip } from "@save-n-spend/types";
 import AppSheet from "./AppSheet";
 import ConfirmSheet from "./ConfirmSheet";
 import { AppText } from "@/components/ui/AppText";
+import Caps from "@/components/ui/Caps";
 import AmountHeroInput from "@/components/ui/AmountHeroInput";
 import Button from "@/components/ui/Button";
 import DateField from "@/components/ui/DateField";
@@ -21,11 +22,13 @@ import { useAccountStore } from "@/store/accounts";
 import { useTripNameStore } from "@/store/tripNames";
 import { toast } from "@/store/toast";
 import { colors, spacing } from "@/theme";
+import { useOnlineGate } from "@/lib/onlineGate";
 
 type Props = {
   /** The trip being edited, or null for a new one. */
   trip: ITrip | null;
-  onSaved: (tripId: string) => void;
+  /** Optional: the write already refreshes every trip screen. */
+  onSaved?: (tripId: string) => void;
   /** After the trip is deleted — the trip's own screen has nothing left to show. */
   onDeleted?: () => void;
 };
@@ -35,6 +38,8 @@ type Props = {
 const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDeleted }, ref) => {
   const innerRef = useRef<BottomSheetModal>(null);
   useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
+  // Needs the server: offline the button says so before the tap.
+  const gate = useOnlineGate("");
   const deleteRef = useRef<BottomSheetModal>(null);
   const people = useAccounts().filter((a) => a.type === "person");
 
@@ -119,7 +124,7 @@ const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDelete
         id = reply?._id ?? recoverCreated(null, trips, (t) => sameName(t.name, draft.name))?._id ?? "";
       }
       innerRef.current?.dismiss();
-      onSaved(id);
+      onSaved?.(id);
       toast.success(trip ? `${draft.name} updated` : `${draft.name} started`);
     }
     catch (err) {
@@ -144,7 +149,7 @@ const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDelete
           // Above the button, since the body is long enough that the end of it is off-screen.
           <View style={styles.footer}>
             {error && <AppText size="sm" color="danger">{error}</AppText>}
-            <Button label={trip ? "Save changes" : "Start trip"} loading={busy} onPress={save} />
+            <Button label={gate.label || (trip ? "Save changes" : "Start trip")} icon={gate.icon} loading={busy} disabled={!gate.allowed} onPress={save} />
           </View>
         }
       >
@@ -155,33 +160,33 @@ const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDelete
         <Input label="Name" placeholder="e.g. Kerala" value={name} onChangeText={(v) => { setName(v); setError(null); }} autoCapitalize="words" InputComponent={BottomSheetTextInput} />
 
         <View style={styles.field}>
-          <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>LOOK</AppText>
+          <Caps>Look</Caps>
           <View style={styles.wrap}>
             {TRIP_EMOJIS.map((e) => (
-              <Pressable key={e} onPress={() => setEmoji(e)} style={[styles.emoji, emoji === e && styles.emojiOn]} accessibilityRole="button" accessibilityLabel={`Emoji ${e}`}>
+              <Pressable key={e} onPress={() => setEmoji(e)} style={[styles.emoji, emoji === e && styles.emojiOn]} accessibilityRole="radio" accessibilityState={{ selected: emoji === e }} accessibilityLabel={`Emoji ${e}`}>
                 <AppText size="lg">{e}</AppText>
               </Pressable>
             ))}
           </View>
           <View style={styles.wrap}>
             {Object.entries(TRIP_GRADIENTS).map(([key, g]) => (
-              <Pressable key={key} onPress={() => setColor(key)} accessibilityRole="button" accessibilityLabel={`Colour ${key}`}>
+              <Pressable key={key} onPress={() => setColor(key)} accessibilityRole="radio" accessibilityState={{ selected: color === key }} accessibilityLabel={`Colour ${key}`}>
                 <LinearGradient colors={g} style={[styles.swatch, color === key && styles.swatchOn]} />
               </Pressable>
             ))}
           </View>
         </View>
 
-        <DateField label="STARTS" value={start} onChange={(d) => { setStart(d); if (end < d) setEnd(d); }} />
-        <DateField label="ENDS" value={end} onChange={setEnd} minimumDate={start} />
+        <DateField label="Starts" value={start} onChange={(d) => { setStart(d); if (end < d) setEnd(d); }} />
+        <DateField label="Ends" value={end} onChange={setEnd} minimumDate={start} />
 
         <View style={styles.field}>
-          <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>WHO'S GOING (BESIDES YOU)</AppText>
+          <Caps>Who's going (besides you)</Caps>
           {people.length === 0 && <AppText size="xs" color="inkDim">Add the people on the trip below.</AppText>}
           {people.map((p) => {
             const on = members.includes(p._id);
             return (
-              <Pressable key={p._id} onPress={() => toggle(p._id)} style={styles.personRow} accessibilityRole="checkbox" accessibilityState={{ checked: on }}>
+              <Pressable key={p._id} onPress={() => toggle(p._id)} style={styles.personRow} accessibilityRole="checkbox" accessibilityState={{ checked: on }} accessibilityLabel={p.name}>
                 <View style={[styles.check, on && styles.checkOn]}>{on && <AppText size="xs" weight="black">✓</AppText>}</View>
                 <AppText size="sm" weight="bold" style={styles.grow}>{p.name}</AppText>
               </Pressable>
@@ -191,17 +196,17 @@ const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDelete
             <View style={styles.grow}>
               <Input placeholder="Add someone by name" value={newPerson} onChangeText={setNewPerson} autoCapitalize="words" InputComponent={BottomSheetTextInput} onSubmitEditing={addPerson} />
             </View>
-            <Button label="Add" size="sm" variant="secondary" onPress={addPerson} disabled={!newPerson.trim()} />
+            <Button label={gate.label || "Add"} size="sm" variant="secondary" icon={gate.icon} onPress={addPerson} disabled={!newPerson.trim() || !gate.allowed} />
           </View>
         </View>
 
         <View style={styles.field}>
-          <AppText size="xs" weight="bold" color="inkDim" style={styles.label}>BUDGET (OPTIONAL)</AppText>
+          <Caps>Budget (optional)</Caps>
           <AmountHeroInput value={budget} onChangeText={setBudget} />
           <AppText size="xs" color="inkDim">Your own share you'd like to stay under. Leave blank for none.</AppText>
         </View>
 
-        {trip && <Button label="Delete trip" variant="dangerGhost" icon="delete" onPress={() => deleteRef.current?.present()} />}
+        {trip && <Button label={gate.label || "Delete trip"} variant="dangerGhost" icon={gate.icon ?? "delete"} disabled={!gate.allowed} onPress={() => deleteRef.current?.present()} />}
       </AppSheet>
 
       <ConfirmSheet
@@ -211,6 +216,7 @@ const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDelete
         body="Every expense and settle-up on it comes off, and every balance and account it touched goes back to how it was. The people stay."
         confirmLabel="Delete trip"
         hold
+        needsConnection
         onConfirm={async () => {
           if (!trip) return;
           await deleteTrip(trip._id);
@@ -228,7 +234,6 @@ TripSheet.displayName = "TripSheet";
 const styles = StyleSheet.create({
   band: { borderRadius: 18, paddingVertical: 18, paddingHorizontal: 16 },
   field: { gap: spacing.sm },
-  label: { letterSpacing: 1.3 },
   wrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   emoji: { width: 42, height: 42, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.10)" },
   emojiOn: { borderColor: colors.primary, backgroundColor: colors.accentSoft },

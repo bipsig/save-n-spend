@@ -1,7 +1,7 @@
 import { StyleSheet, View } from "react-native"
 import { AppText } from "../ui/AppText"
-import Icon from "../ui/Icon"
 import Button from "../ui/Button"
+import StateDisc from "./StateDisc"
 import type { IconName } from "@/lib/icons"
 import { spacing } from "@/theme"
 
@@ -18,9 +18,7 @@ type Props = {
 const EmptyState = ({ icon = "search", title, subtitle, actionLabel, onAction }: Props) => {
   return (
     <View style={styles.container}>
-      <View style={styles.disc}>
-        <Icon name={icon} size={30} color="accentLight" />
-      </View>
+      <StateDisc icon={icon} />
       <AppText weight="black" size="md">
         {title}
       </AppText>
@@ -44,16 +42,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: spacing.sm,
     paddingVertical: spacing["3xl"]
-  },
-  disc: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(139,123,255,0.15)",
-    borderWidth: 1,
-    borderColor: "rgba(163,148,255,0.3)",
   },
   text: {
     textAlign: "center",

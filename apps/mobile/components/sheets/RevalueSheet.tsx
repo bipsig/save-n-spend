@@ -9,9 +9,11 @@ import { syncAccountBalance } from "@/lib/accounts";
 import { haptics } from "@/lib/haptics";
 import { holderFor } from "@/lib/idempotency";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { count } from "@/lib/format/count";
 import { toast } from "@/store/toast";
 import { spacing } from "@/theme";
 import { signTone } from "@/lib/signTone";
+import { useOnlineGate } from "@/lib/onlineGate";
 
 /** What each row needs to frame a revaluation as investment growth, not an account reset. */
 export type RevalueHolding = {
@@ -45,6 +47,8 @@ const toPaise = (rupees: string): number | null => {
 const RevalueSheet = forwardRef<BottomSheetModal, Props>(({ holdings, onSaved }, ref) => {
   const innerRef = useRef<BottomSheetModal>(null);
   useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
+  // Needs the server: offline the button says so before the tap.
+  const gate = useOnlineGate("");
   const dismiss = () => innerRef.current?.dismiss();
   usePrivacyMask(); // subscribe: the invested/now/growth labels read formatMoney()
 
@@ -92,7 +96,7 @@ const RevalueSheet = forwardRef<BottomSheetModal, Props>(({ holdings, onSaved },
       }
       onSaved?.();
       dismiss();
-      toast.success(`Updated ${changes.length} value${changes.length === 1 ? "" : "s"}`);
+      toast.success(`Updated ${count(changes.length, "value")}`);
     }
     catch (err) {
       haptics.error();
@@ -108,7 +112,7 @@ const RevalueSheet = forwardRef<BottomSheetModal, Props>(({ holdings, onSaved },
       ref={innerRef}
       scrollable
       onDismiss={reset}
-      footer={<Button label="Save values" loading={busy} onPress={save} />}
+      footer={<Button label={gate.label || "Save values"} icon={gate.icon} loading={busy} disabled={!gate.allowed} onPress={save} />}
     >
       <View style={styles.identity}>
         <Icon name="investments" size={24} containerSize={52} container="square" gradient="green" />
@@ -134,7 +138,7 @@ const RevalueSheet = forwardRef<BottomSheetModal, Props>(({ holdings, onSaved },
               </AppText>
               {growth !== null && (
                 <AppText size="xs" weight="bold" color={signTone(growth)}>
-                  {growth >= 0 ? "▲ " : "▼ "}{formatMoney(Math.abs(growth))} growth
+                  {formatMoney(growth, { sign: "always" })} growth
                 </AppText>
               )}
             </View>

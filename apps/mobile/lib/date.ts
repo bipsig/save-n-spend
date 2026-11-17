@@ -6,6 +6,7 @@ import {
   calendarToday,
   startOfCalendarDay,
 } from "@/lib/zone";
+import { formatInstant } from "@/lib/format/date";
 
 // Every label here names a DAY, and a day only exists inside a zone — so they all read the
 // account's zone, not the device's (see lib/zone), and "Today" means the day the server
@@ -14,27 +15,15 @@ import {
 // The zone is read imperatively rather than passed in: these are called from row renderers
 // and template strings everywhere, and a zone change re-renders the screen anyway.
 
-// An ISO `occurredAt` into a short display string for rows.
-export const formatTxnDate = (iso: string): string => {
-  const zone = appZone();
-  const instant = new Date(iso);
-  const time = instant.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", timeZone: zone });
+// An ISO `occurredAt` into a short display string for rows: "Today, 3:58 pm", "12 Nov",
+// "5 Mar 2025".
+export const formatTxnDate = (iso: string): string => formatInstant(iso, "dayTime");
 
-  // Calendar dates, not `toDateString()`: that reads the DEVICE's day, so a phone left on
-  // airport time would disagree with the totals above.
-  const day = calendarDate(instant, zone);
-  const today = calendarToday(zone);
-  const distance = calendarDaysBetween(day, today);
-
-  if (distance === 0) return `Today, ${time}`;
-  if (distance === 1) return `Yesterday, ${time}`;
-  return instant.toLocaleDateString("en-IN", { month: "short", day: "numeric", timeZone: zone }); // "Jan 25"
-};
-
-// "Paid Jan 23" / "Overdue by 2 days" / "Due today" / "Due in 3 days".
+// "Paid today" / "Paid 23 Jan" / "Overdue by 2 days" / "Due today" / "Due in 3 days".
+// A paid bill gets a date, never a time.
 export const formatDueLabel = (dueDate: string, status: BillStatus, paidAt?: string | null): string => {
   if (status === "paid") {
-    return `Paid ${formatTxnDate(paidAt ?? dueDate)}`;
+    return `Paid ${formatInstant(paidAt ?? dueDate, "relativeDay")}`;
   }
 
   const zone = appZone();
@@ -65,14 +54,8 @@ export const rollDueDate = (dueDate: string, frequency: BillFrequency): string =
   return startOfCalendarDay(rolled, zone).toISOString();
 };
 
-// "Aug 12, 2026" — full due-date display for sheets (spec: "next due rolls to …").
-export const formatFullDate = (iso: string): string =>
-  new Date(iso).toLocaleDateString("en-IN", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone: appZone(),
-  });
+// "12 Aug 2026" — full due-date display for sheets (spec: "next due rolls to …").
+export const formatFullDate = (iso: string): string => formatInstant(iso, "dayYear");
 
 /**
  * A day chosen in a picker → the instant that day starts in the user's zone. The picker
@@ -98,22 +81,11 @@ export const startOfToday = (): Date => {
 // weekday + date ("SAT, 8 AUG", with the year once it's a different one).
 export const dayGroupLabel = (iso: string): string => {
   const zone = appZone();
-  const instant = new Date(iso);
-  const distance = calendarDaysBetween(calendarDate(instant, zone), calendarToday(zone));
-
+  const distance = calendarDaysBetween(calendarDate(new Date(iso), zone), calendarToday(zone));
   if (distance === 0) return "TODAY";
   if (distance === 1) return "YESTERDAY";
-
-  const sameYear = calendarDate(instant, zone).getUTCFullYear() === calendarToday(zone).getUTCFullYear();
-  return instant
-    .toLocaleDateString("en-IN", sameYear
-      ? { weekday: "short", day: "numeric", month: "short", timeZone: zone }
-      : { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: zone })
-    .toUpperCase();
+  return formatInstant(iso, "weekday", zone).toUpperCase();
 };
 
 // Month-break header ("AUGUST 2026") for longer, multi-month Activity lists.
-export const monthGroupLabel = (iso: string): string =>
-  new Date(iso)
-    .toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: appZone() })
-    .toUpperCase();
+export const monthGroupLabel = (iso: string): string => formatInstant(iso, "monthLong").toUpperCase();

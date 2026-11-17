@@ -1,10 +1,9 @@
 import type { IBill, BillFrequency, ICategory } from "@save-n-spend/types";
 import type { BudgetSummary } from "@/lib/budgets";
 import { billsAgainstBudgets } from "@/lib/safeToSpend";
-import { useCallback, useEffect, useState } from "react";
-import { del, get, patch, type RequestOptions } from "@/lib/api";
+import { del, patch, type RequestOptions } from "@/lib/api";
 import { appZone, calendarDate, calendarDaysBetween, calendarToday, monthKeyOf } from "@/lib/zone";
-import { useSession } from "@/store/session";
+import { useApiQuery } from "@/lib/query/useApiQuery";
 
 // Mirrors the server's own period comparison exactly, in the same zone (see the
 // API's billController). It has to: this is what decides whether the row offers a
@@ -52,32 +51,9 @@ export const daysUntilDue = (dueDate: Date, now: Date, zone: string): number =>
   calendarDaysBetween(calendarDate(now, zone), calendarDate(dueDate, zone));
 
 export const useBills = () => {
-  const status = useSession((s) => s.status);
-  const [items, setItems] = useState<IBill[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const refetch = useCallback(async () => {
-    if (useSession.getState().status !== "authed") return;
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await get<IBill[]>("/bills");
-      setItems(data);
-    }
-    catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load bills");
-    }
-    finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (status === "authed") refetch();
-  }, [status, refetch]);
-
-  return { items, loading, error, refetch };
+  const { data, ...rest } = useApiQuery<IBill[]>("/bills", { errorMessage: "Failed to load bills" });
+  // `data` stays null until the first answer, so a screen can tell "loading" from "none".
+  return { items: data ?? [], data, ...rest };
 };
 
 /** The fields a bill's own sheet can change. `frequency` is absent for a one-off. */
