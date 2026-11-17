@@ -2,9 +2,9 @@ import { StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import type { IHighlight } from "@save-n-spend/types";
 import Card from "@/components/data/Card";
-import { AppText } from "@/components/ui/AppText";
 import Badge from "@/components/ui/Badge";
 import Icon from "@/components/ui/Icon";
+import MaskedText, { useMaskedLabel } from "@/components/ui/MaskedText";
 import PressableScale from "@/components/ui/PressableScale";
 import { SCREEN_LABEL, SCREEN_ROUTE, SEVERITY_COLOR, SEVERITY_ICON, SEVERITY_LABEL } from "@/lib/highlights";
 import { haptics } from "@/lib/haptics";
@@ -39,9 +39,10 @@ const HighlightCard = ({ highlight, onDismiss, minHeight }: Props) => {
     router.push((highlight.ruleId === "recurring_found" ? "/bills?suggestions=1" : SCREEN_ROUTE[highlight.screen]) as never);
   };
 
-  // Money already sits inside `body`/`title` as formatted, privacy-aware text (the rules
-  // engine renders its own copy) — nothing here needs its own formatMoney() call.
-  const label = `${SEVERITY_LABEL[highlight.severity]}: ${highlight.title}. ${highlight.body}`
+  // Money already sits inside `body`/`title` as text the rules engine wrote; MaskedText hides
+  // its figures in privacy mode, and the label reads "amount hidden" in their place.
+  const say = useMaskedLabel();
+  const label = `${SEVERITY_LABEL[highlight.severity]}: ${say(highlight.title)}. ${say(highlight.body)}`
     + (highlight.screen ? ` Opens ${SCREEN_LABEL[highlight.screen]}.` : "");
 
   return (
@@ -84,12 +85,12 @@ const HighlightCard = ({ highlight, onDismiss, minHeight }: Props) => {
           </PressableScale>
         </View>
 
-        <AppText size="sm" weight="bold" style={styles.title}>
+        <MaskedText size="sm" weight="bold" style={styles.title}>
           {highlight.title}
-        </AppText>
-        <AppText size="xs" color="inkDim" style={styles.body}>
+        </MaskedText>
+        <MaskedText size="xs" color="inkDim" style={styles.body}>
           {highlight.body}
-        </AppText>
+        </MaskedText>
       </Card>
     </PressableScale>
   );

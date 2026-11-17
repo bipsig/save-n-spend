@@ -4,6 +4,7 @@ import type { IHighlightLog } from "@save-n-spend/types";
 import Card from "./Card";
 import { AppText } from "../ui/AppText";
 import Icon from "../ui/Icon";
+import MaskedText, { useMaskedLabel } from "../ui/MaskedText";
 import PressableScale from "../ui/PressableScale";
 import { SCREEN_LABEL, SCREEN_ROUTE, SEVERITY_COLOR, SEVERITY_ICON, SEVERITY_LABEL } from "@/lib/highlights";
 import { formatFullDate } from "@/lib/date";
@@ -23,7 +24,8 @@ const HighlightHistoryRow = ({ entry }: Props) => {
     router.push(SCREEN_ROUTE[entry.screen] as never);
   };
 
-  const label = `${formatFullDate(entry.createdAt)}: ${SEVERITY_LABEL[entry.severity]}, ${entry.title}. ${entry.body}`
+  const say = useMaskedLabel();
+  const label = `${formatFullDate(entry.createdAt)}: ${SEVERITY_LABEL[entry.severity]}, ${say(entry.title)}. ${say(entry.body)}`
     + (entry.screen ? ` Opens ${SCREEN_LABEL[entry.screen]}.` : "");
 
   return (
@@ -53,12 +55,12 @@ const HighlightHistoryRow = ({ entry }: Props) => {
             {formatFullDate(entry.createdAt)}
           </AppText>
         </View>
-        <AppText size="sm" weight="bold" style={styles.title}>
+        <MaskedText size="sm" weight="bold" style={styles.title}>
           {entry.title}
-        </AppText>
-        <AppText size="xs" color="inkDim" style={styles.body}>
+        </MaskedText>
+        <MaskedText size="xs" color="inkDim" style={styles.body}>
           {entry.body}
-        </AppText>
+        </MaskedText>
       </Card>
     </PressableScale>
   );

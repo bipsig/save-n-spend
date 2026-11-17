@@ -10,6 +10,7 @@ import Money from "@/components/ui/Money";
 import Caps from "@/components/ui/Caps";
 import { StatRow } from "@/components/ui/StatTile";
 import { AppText } from "@/components/ui/AppText";
+import MaskedText from "@/components/ui/MaskedText";
 import Icon from "@/components/ui/Icon";
 import NotFoundState from "@/components/states/NotFoundState";
 import ScreenStates, { ListSkeleton } from "@/components/states/ScreenStates";
@@ -63,14 +64,14 @@ const ReviewScreen = () => {
                   <Icon name="summary" size={21} containerSize={46} containerRadius={15} container="square" gradient="violet" />
                   <View style={styles.heroText}>
                     <Caps>{rangeLabel(period, offset)}</Caps>
-                    <AppText size="lg" weight="black">
+                    <MaskedText size="lg" weight="black">
                       {review.verdict.headline}
-                    </AppText>
+                    </MaskedText>
                   </View>
                 </View>
-                <AppText size="sm" color="inkSecondary" style={styles.heroDetail}>
+                <MaskedText size="sm" color="inkSecondary" style={styles.heroDetail}>
                   {review.verdict.detail}
-                </AppText>
+                </MaskedText>
               </Card>
 
               {review.timeline.length > 0 && (

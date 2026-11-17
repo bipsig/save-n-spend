@@ -4,6 +4,7 @@ import Card from "@/components/data/Card";
 import ProgressBar from "@/components/data/ProgressBar";
 import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
+import MaskedText from "@/components/ui/MaskedText";
 import EmptyState from "@/components/states/EmptyState";
 import ScreenStates from "@/components/states/ScreenStates";
 import SkeletonState from "@/components/states/SkeletonState";
@@ -57,7 +58,7 @@ const PillarCard = ({ pillar }: { pillar: HealthPillar }) => {
       <View style={styles.pillarFoot}>
         <AppText size="xs" weight="semibold" color="inkSecondary">{pillar.value}</AppText>
         {pillar.hint && (
-          <AppText size="xs" color="inkDim" style={styles.hint}>{pillar.hint}</AppText>
+          <MaskedText size="xs" color="inkDim" style={styles.hint}>{pillar.hint}</MaskedText>
         )}
       </View>
     </Card>

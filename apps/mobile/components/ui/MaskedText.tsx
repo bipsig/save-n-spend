@@ -34,10 +34,20 @@ const MaskedText = ({ children, accessibilityLabel, ...rest }: Props) => {
   return (
     <AppText {...rest} accessibilityLabel={maskAmounts(children, AMOUNT_HIDDEN)}>
       {parts.map((p, i) => (p.amount
-        ? <Text key={i} onPress={onPeek} suppressHighlighting>{MASKED_MONEY}</Text>
+        ? <Text key={i} onPress={onPeek} suppressHighlighting>{UNBROKEN_MASK}</Text>
         : p.text))}
     </AppText>
   );
 };
 
+/** Inside a wrapping sentence the mask's space would let "₹" and "••••" land on two lines. */
+const UNBROKEN_MASK = MASKED_MONEY.replace(" ", "\u00A0");
+
 export default MaskedText;
+
+/** For an accessibility label built from server sentences: while masked, each figure reads
+ *  "amount hidden". Subscribes to the mask, so a peek re-labels too. */
+export const useMaskedLabel = (): ((sentence: string) => string) => {
+  const masked = usePrivacyMask();
+  return (sentence) => (masked ? maskAmounts(sentence, AMOUNT_HIDDEN) : sentence);
+};

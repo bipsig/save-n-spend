@@ -1,6 +1,6 @@
 import { StyleSheet, View } from "react-native";
-import { AppText } from "../ui/AppText";
 import Caps from "../ui/Caps";
+import MaskedText from "../ui/MaskedText";
 import { formatInstant } from "@/lib/format/date";
 import { colors } from "@/theme";
 import type { ColorToken } from "@/theme";
@@ -24,9 +24,9 @@ const ReviewTimeline = ({ moments }: { moments: ReviewMoment[] }) => (
         <View style={[styles.dot, { backgroundColor: colors[DOT_COLOR[moment.kind]] }]} />
         <View style={styles.content}>
           <Caps>{formatInstant(moment.date, "day")}</Caps>
-          <AppText size="sm" weight="semibold" color="inkSecondary" style={styles.text}>
+          <MaskedText size="sm" weight="semibold" color="inkSecondary" style={styles.text}>
             {moment.text}
-          </AppText>
+          </MaskedText>
         </View>
       </View>
     ))}

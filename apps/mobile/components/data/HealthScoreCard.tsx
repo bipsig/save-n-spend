@@ -5,6 +5,7 @@ import Card from "./Card"
 import { AppText } from "../ui/AppText"
 import Caps from "../ui/Caps"
 import Icon from "../ui/Icon"
+import MaskedText from "../ui/MaskedText"
 import PressableScale from "../ui/PressableScale"
 import { BAND_COLOR, pillarColor } from "@/lib/health"
 import { spacing } from "@/theme"
@@ -97,9 +98,9 @@ const HealthScoreCard = ({ health, onPress }: Props) => {
         {health.focus && (
           <View style={styles.focus}>
             <Icon name="info" size={14} color="inkDim" />
-            <AppText size="xs" color="inkSecondary" style={styles.focusText}>
+            <MaskedText size="xs" color="inkSecondary" style={styles.focusText}>
               {health.focus.hint}
-            </AppText>
+            </MaskedText>
           </View>
         )}
       </Card>

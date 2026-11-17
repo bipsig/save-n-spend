@@ -30,6 +30,23 @@ test("exact-paise, one-decimal server sentences (2.8.4)", () => {
   assert.equal(maskAmounts("₹4,200.50 of ₹5,000.00 spent"), `${M} of ${M} spent`);
 });
 
+test("the server's own sentences, as utils/money.ts formats them", () => {
+  assert.equal(maskAmounts("₹1,38,888.89 saved this period"), `${M} saved this period`);
+  assert.equal(maskAmounts("−₹1,38,888.89 saved this period"), `${M} saved this period`);
+  assert.equal(maskAmounts("The bill is ₹35,717.00; HDFC has ₹0.00."), `The bill is ${M}; HDFC has ${M}.`);
+  assert.equal(
+    maskAmounts("₹13,88,888.89 on hand covers 4.5 months. Three months of your own expenses — about ₹2,40,000.50 — is the usual floor."),
+    `${M} on hand covers 4.5 months. Three months of your own expenses — about ${M} — is the usual floor.`,
+  );
+  assert.equal(maskAmounts("Biggest expense of the period: Flat 2B, ₹35,717.00"), `Biggest expense of the period: Flat 2B, ${M}`);
+  assert.equal(maskAmounts("Your heaviest week this period — ₹12,34,567.10 spent"), `Your heaviest week this period — ${M} spent`);
+  assert.equal(
+    maskAmounts("Spent ₹79,640.20 plus ₹6,450.00 on trips, earned ₹1,20,000.00 — ₹33,909.80 put aside. 12 transactions."),
+    `Spent ${M} plus ${M} on trips, earned ${M} — ${M} put aside. 12 transactions.`,
+  );
+  assert.equal(maskAmounts("Index fund · invest in 2 days"), "Index fund · invest in 2 days");
+});
+
 test("Indian grouping, lakhs and crores", () => {
   assert.equal(maskAmounts("₹1,00,000.00 saved"), `${M} saved`);
   assert.equal(maskAmounts("₹12,34,56,789 net worth"), `${M} net worth`);

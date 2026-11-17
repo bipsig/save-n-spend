@@ -3,6 +3,7 @@ import type { INotification } from "@save-n-spend/types";
 import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
+import MaskedText, { useMaskedLabel } from "@/components/ui/MaskedText";
 import { LOOK } from "@/lib/notifications";
 import { capitalise, formatInstant } from "@/lib/format/date";
 import { colors, spacing } from "@/theme";
@@ -19,6 +20,7 @@ const NotificationRow = ({ notification, first = false, onPress }: Props) => {
   const look = LOOK[notification.type];
   const unread = !notification.readAt;
   const time = capitalise(formatInstant(notification.createdAt, "relative"));
+  const say = useMaskedLabel();
 
   return (
     // Same shallow ratio as the settings rows: a full-width row travels a long way at
@@ -26,7 +28,7 @@ const NotificationRow = ({ notification, first = false, onPress }: Props) => {
     <PressableScale
       onPress={onPress}
       scaleTo={0.985}
-      accessibilityLabel={`${unread ? "Unread. " : ""}${notification.title}. ${notification.body}. ${time}`}
+      accessibilityLabel={`${unread ? "Unread. " : ""}${say(notification.title)}. ${say(notification.body)}. ${time}`}
     >
       <View style={[styles.row, !first && styles.divider]}>
         <Icon
@@ -41,12 +43,12 @@ const NotificationRow = ({ notification, first = false, onPress }: Props) => {
         <View style={styles.text}>
           {/* Read rows dim their title rather than vanish: the feed is a log, and what
               has already been seen should recede without becoming unreadable. */}
-          <AppText size="sm" weight="bold" color={unread ? "ink" : "inkSecondary"}>
+          <MaskedText size="sm" weight="bold" color={unread ? "ink" : "inkSecondary"}>
             {notification.title}
-          </AppText>
-          <AppText size="xs" color="inkDim" numberOfLines={2}>
+          </MaskedText>
+          <MaskedText size="xs" color="inkDim" numberOfLines={2}>
             {notification.body}
-          </AppText>
+          </MaskedText>
         </View>
 
         <View style={styles.meta}>
