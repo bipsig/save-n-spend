@@ -19,13 +19,14 @@ import type { ReviewPayload } from "@save-n-spend/types";
 const FLOW_TYPES = ["income", "expense"];
 
 const flowTotals = async (oid: mongoose.Types.ObjectId, start: Date, end: Date) => {
-    const rows = await Transaction.aggregate<{ _id: string; total: number }>([
+    const rows = await Transaction.aggregate<{ _id: string; total: number; trips: number }>([
         { $match: { userId: oid, type: { $in: FLOW_TYPES }, occurredAt: { $gte: start, $lt: end } } },
-        { $group: { _id: "$type", total: { $sum: "$amount" } } },
+        { $group: { _id: "$type", total: { $sum: "$amount" }, trips: { $sum: { $cond: [{ $gt: ["$tripId", null] }, "$amount", 0] } } } },
     ]);
     const income = rows.find((r) => r._id === "income")?.total ?? 0;
     const expense = rows.find((r) => r._id === "expense")?.total ?? 0;
-    return { income, expense };
+    const tripExpense = rows.find((r) => r._id === "expense")?.trips ?? 0;
+    return { income, expense, tripExpense };
 };
 
 /** Consecutive zone-local days with at least one logged transaction, ending at the LAST
@@ -99,7 +100,7 @@ export const buildReview = async (
     const oid = new mongoose.Types.ObjectId(userId);
     const { currentStartDate: start, currentEndDate: end, previousStartDate, previousEndDate } = parsePeriod(period, offset, zone);
 
-    const [current, previous, categorySlices, biggestExpenseRows, firstTxn, accountsTotal, activeDays, streakAtEnd] = await Promise.all([
+    const [current, previous, breakdown, biggestExpenseRows, firstTxn, accountsTotal, activeDays, streakAtEnd] = await Promise.all([
         flowTotals(oid, start, end),
         flowTotals(oid, previousStartDate, previousEndDate),
         getCategoryBreakDown(start, end, req),
@@ -121,12 +122,15 @@ export const buildReview = async (
     const expenses = current.expense;
     const saved = income - expenses;
 
+    const categorySlices = breakdown.slices;
     const totalCategorySpend = categorySlices.reduce((sum, c) => sum + c.total, 0);
+    // `share` is computed over every slice, not just the five sent; it is absent on Trips.
     const categories = categorySlices.slice(0, 5).map((c) => ({
         categoryId: c.categoryId,
         name: c.name,
         total: c.total,
         pct: totalCategorySpend > 0 ? Math.round((c.total / totalCategorySpend) * 100) : 0,
+        ...(c.share !== undefined ? { share: c.share } : {}),
     }));
 
     const biggestExpense = biggestExpenseRows[0]
@@ -209,11 +213,14 @@ export const buildReview = async (
         verdict: composeVerdict(saved, previous.income - previous.expense, currency),
         income,
         expenses,
+        tripExpenses: current.tripExpense,
         saved,
         previousIncome: previous.income,
         previousExpenses: previous.expense,
+        previousTripExpenses: previous.tripExpense,
         previousSaved: previous.income - previous.expense,
         categories,
+        uncategorised: breakdown.uncategorised,
         biggestExpense,
         timeline,
         habits: { streakAtEnd, activeDays, totalDays, noSpendDays: noSpendDays(totalDays, activeDays) },

@@ -27,6 +27,7 @@ import {
 import { resolveZone } from "../utils/userZone";
 import { AppError } from "../utils/AppError";
 import { notFound } from "../utils/messages";
+import { oneDecimalShares } from "../services/shareMath";
 
 // GET /insights?period=week|month|year
 //
@@ -46,8 +47,8 @@ export const getInsights = async (req: Request, res: Response): Promise<void> =>
     // which is what makes a 28-day February line up against a 31-day January.
     const previousTrend = await getTrend(previousStartDate, previousEndDate, period, zone, req);
     const incomeVsExpense = await getIncomeVsExpense(currentStartDate, currentEndDate, period, zone, req);
-    const byCategory = await getCategoryBreakDown(currentStartDate, currentEndDate, req);
-    const previousByCategory = await getCategoryBreakDown(previousStartDate, previousEndDate, req);
+    const { slices: byCategory, uncategorised } = await getCategoryBreakDown(currentStartDate, currentEndDate, req);
+    const { slices: previousByCategory } = await getCategoryBreakDown(previousStartDate, previousEndDate, req);
     const categoryCompare = buildCategoryCompare(byCategory, previousByCategory);
     const byAccount = await getAccountBreakDown(currentStartDate, currentEndDate, req);
     const avgDailySpendCurrent = await getAverageSpend(currentStartDate, currentEndDate, zone, req);
@@ -59,7 +60,7 @@ export const getInsights = async (req: Request, res: Response): Promise<void> =>
         occurredAt: { $gte: currentStartDate, $lt: currentEndDate }
     })
 
-    reply.ok(res, { period, timeZone: zone, periodStart: currentStartDate, periodEnd: currentEndDate, trend, previousTrend, incomeVsExpense, byCategory, categoryCompare, byAccount, avgDailySpendCurrent, avgDailySpendPrevious, topCategory, txnCount }, "Insights fetched");
+    reply.ok(res, { period, timeZone: zone, periodStart: currentStartDate, periodEnd: currentEndDate, trend, previousTrend, incomeVsExpense, byCategory, uncategorised, categoryCompare, byAccount, avgDailySpendCurrent, avgDailySpendPrevious, topCategory, txnCount }, "Insights fetched");
 }
 
 /**
@@ -137,10 +138,11 @@ export const getCategoryInsights = async (req: Request, res: Response): Promise<
                 occurredAt: { $gte: currentStartDate, $lt: currentEndDate }
             }
         },
-        { $group: { _id: null, total: { $sum: "$amount" } } }
+        { $group: { _id: null, total: { $sum: "$amount" }, everyday: { $sum: { $cond: [{ $gt: ["$tripId", null] }, 0, "$amount"] } } } }
     ]);
 
     const windowSpend = allSpend[0]?.total ?? 0;
+    const everydaySpend = allSpend[0]?.everyday ?? 0;
     const trend = await getTrend(currentStartDate, currentEndDate, period, zone, req, scope);
 
     const parent = category.parent
@@ -158,6 +160,8 @@ export const getCategoryInsights = async (req: Request, res: Response): Promise<
         total,
         previousTotal,
         shareOfSpend: windowSpend > 0 ? (total / windowSpend) * 100 : 0,
+        // The category's rows are everyday rows, so this is the share the breakdown shows.
+        shareOfEverydaySpend: everydaySpend > 0 ? (total / everydaySpend) * 100 : 0,
         txnCount,
         trend,
         children: childSlices
@@ -227,7 +231,16 @@ type CategorySlice = {
     categoryId: string,
     name: string,
     total: number,
+    /** Share of everyday spending, one decimal. On everyday slices only, not on Trips. */
+    share?: number,
     children?: CategorySlice[]
+}
+
+export type CategoryBreakdown = {
+    slices: CategorySlice[],
+    /** Everyday spending filed under no category (bill payments, older rows): in no slice, but
+     *  part of the everyday spending the shares divide by. With it, the shares add up to 100.0. */
+    uncategorised: { total: number, share: number }
 }
 
 /**
@@ -241,7 +254,7 @@ type CategorySlice = {
  * Archived categories are included in the name lookup on purpose: spend filed under one before
  * it was archived still needs something to be called.
  */
-export const getCategoryBreakDown = async (startTime: Date, endTime: Date, req: Request): Promise<CategorySlice[]> => {
+export const getCategoryBreakDown = async (startTime: Date, endTime: Date, req: Request): Promise<CategoryBreakdown> => {
     const categories = await Category.find({
         userId: req.user?.userId
     })
@@ -298,6 +311,13 @@ export const getCategoryBreakDown = async (startTime: Date, endTime: Date, req: 
         result.push({ categoryId: id, name: nameOf(id), total, ...(children?.length ? { children } : {}) });
     }
 
+    result.sort((a, b) => b.total - a.total);
+    const everyday = categorySpend.reduce((sum, row) => sum + row.total, 0);
+    const uncategorisedTotal = categorySpend.find((row) => !row._id)?.total ?? 0;
+    const shares = oneDecimalShares([...result.map((s) => s.total), uncategorisedTotal], everyday);
+    result.forEach((s, i) => { s.share = shares[i]; });
+    const uncategorised = { total: uncategorisedTotal, share: shares[result.length] };
+
     // Every trip as one slice, each trip a child — so "how much do I spend on trips" is one
     // number, and trip food never inflates everyday Food. The id is not a category's; the app
     // routes a tap on it to Trips.
@@ -316,7 +336,7 @@ export const getCategoryBreakDown = async (startTime: Date, endTime: Date, req: 
 
     result.sort((a, b) => b.total - a.total);
 
-    return result;
+    return { slices: result, uncategorised };
 }
 
 /**
@@ -479,23 +499,25 @@ const getIncomeVsExpense = async (startTime: Date, endTime: Date, period: string
             $group: {
                 _id: { $dateTrunc: truncSpec },
                 income: { $sum: { $cond: [{ $eq: ["$type", "income"] }, "$amount", 0] } },
-                expense: { $sum: { $cond: [{ $eq: ["$type", "expense"] }, "$amount", 0] } }
+                expense: { $sum: { $cond: [{ $eq: ["$type", "expense"] }, "$amount", 0] } },
+                tripExpense: { $sum: { $cond: [{ $and: [{ $eq: ["$type", "expense"] }, { $gt: ["$tripId", null] }] }, "$amount", 0] } }
             }
         }
     ]);
 
     // Matched on the bucket's zone-local date, not its instant: only one side went through
     // BSON, so comparing day keys is immune to a millisecond of rounding.
-    const byStart = new Map<string, { income: number; expense: number }>();
+    const byStart = new Map<string, { income: number; expense: number; tripExpense: number }>();
     for (const row of rows) {
-        byStart.set(dayKeyInZone(new Date(row._id), zone), { income: row.income, expense: row.expense });
+        byStart.set(dayKeyInZone(new Date(row._id), zone), { income: row.income, expense: row.expense, tripExpense: row.tripExpense });
     }
 
-    // Zero-fill so the client always gets exactly 6 units in order.
+    // Zero-fill so the client always gets exactly 6 units in order. `tripExpense` is the part of
+    // `expense` that is trip shares; everyday spending is the difference.
     return buckets.map((start) => {
         const key = dayKeyInZone(start, zone);
         const hit = byStart.get(key);
-        return { periodStart: key, income: hit?.income ?? 0, expense: hit?.expense ?? 0 };
+        return { periodStart: key, income: hit?.income ?? 0, expense: hit?.expense ?? 0, tripExpense: hit?.tripExpense ?? 0 };
     });
 }
 

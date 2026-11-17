@@ -486,7 +486,11 @@ export interface NotificationFeed extends Paginated<INotification> {
 export interface DashboardSummary {
   month: string,
   income: number,
+  /** Every expense this month, trip shares included (the 2.8.1 meaning). */
   expenses: number,
+  /** The part of `expenses` that is your trip shares. Everyday spending is
+   *  `expenses - tripExpenses`. */
+  tripExpenses: number,
   savings: number,
   netWorth: number,
   /** Current total + up to 3 prior complete-month boundaries, oldest first, floored to
@@ -496,12 +500,14 @@ export interface DashboardSummary {
   /** Same window as `netWorthTrend`, but each month's own income/expense rather than a
    *  cumulative net-worth total — feeds the Income/Expenses/Savings tiles' own sparklines,
    *  the same way netWorthTrend feeds the Net Worth tile's. */
-  flowTrend: { label: string; income: number; expense: number }[],
+  flowTrend: { label: string; income: number; expense: number; tripExpense: number }[],
   currentStreak: number,
   /** The current zone-local Monday-start week, not the month above — a tighter
    *  feedback loop than a figure that barely moves day to day. */
   weekIncome: number,
   weekExpense: number,
+  /** The part of `weekExpense` that is your trip shares. */
+  weekTripExpense: number,
   /** The single expense that moved this month's total the most. Null on a month
    *  with no expenses at all. */
   biggestExpense: { title: string; amount: number; occurredAt: string } | null,
@@ -609,13 +615,18 @@ export interface InsightsTrendPoint {
 export interface InsightsSeriesPoint {
   periodStart: string   // 'YYYY-MM-DD' — the unit's first day
   income: number        // paise
-  expense: number       // paise
+  expense: number       // paise, trip shares included
+  tripExpense: number   // paise, the part of `expense` that is trip shares
 }
 
 export interface InsightsCategorySlice {
   categoryId: string    // parent id (children rolled in)
   name: string
   total: number         // paise, expenses
+  /** Share of everyday spending (trips left out, uncategorised spend counted), 0–100 to one
+   *  decimal. With `InsightsSummary.uncategorised.share` these add up to 100.0. Absent on the
+   *  Trips slice and on children. */
+  share?: number
   /**
    * The sub-categories behind `total`, biggest first, each with its OWN spend — they are
    * already counted in `total`, so summing both levels double-counts. Absent on a slice
@@ -661,6 +672,8 @@ export interface InsightsSummary {
   previousTrend: InsightsTrendPoint[]
   incomeVsExpense: InsightsSeriesPoint[]
   byCategory: InsightsCategorySlice[]
+  /** Everyday spending with no category: in no slice, but counted in the shares' total. */
+  uncategorised: UncategorisedSpend
   /** Every category with spend in EITHER window, ordered by the size of the change. */
   categoryCompare: InsightsCategoryCompare[]
   byAccount: InsightsAccountSlice[]
@@ -687,8 +700,10 @@ export interface InsightsCategoryDetail {
   periodEnd: string               // ISO, exclusive
   total: number                   // paise
   previousTotal: number           // paise, the window immediately before
-  /** Share of all expenses this window, 0–100. */
+  /** Share of all expenses this window, trips included, 0–100. */
   shareOfSpend: number
+  /** Share of everyday spending this window (trips left out), 0–100. */
+  shareOfEverydaySpend: number
   txnCount: number
   /** Dense and ordered, same bucketing and same early stop as `InsightsSummary.trend`. */
   trend: InsightsTrendPoint[]
@@ -751,7 +766,16 @@ export interface ReviewCategorySlice {
   categoryId: string
   name: string
   total: number        // paise
-  pct: number          // 0-100, share of this period's expense
+  pct: number          // 0-100 whole, share of the sum of every slice (Trips included)
+  /** Share of everyday spending, 0–100 to one decimal, over every slice (not just the five
+   *  sent) and uncategorised spend. Absent on the Trips slice. */
+  share?: number
+}
+
+/** Everyday spending filed under no category, and its one-decimal share of everyday spending. */
+export interface UncategorisedSpend {
+  total: number        // paise
+  share: number
 }
 
 /** Only goals with a real logged contribution this period — see GoalContributionLog. */
@@ -786,12 +810,16 @@ export interface ReviewPayload {
   periodEnd: string       // ISO, exclusive
   verdict: { headline: string; detail: string }
   income: number
+  /** Trip shares included; everyday spending is `expenses - tripExpenses`. */
   expenses: number
+  tripExpenses: number
   saved: number
   previousIncome: number
   previousExpenses: number
+  previousTripExpenses: number
   previousSaved: number
   categories: ReviewCategorySlice[]
+  uncategorised: UncategorisedSpend
   biggestExpense: { title: string; amount: number; occurredAt: string } | null
   /** Dated and sorted; short is expected — only what's real, never padded out. */
   timeline: ReviewMoment[]

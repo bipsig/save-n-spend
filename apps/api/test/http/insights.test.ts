@@ -1,11 +1,12 @@
 import { after, afterEach, before, test } from "node:test";
 import assert from "node:assert/strict";
 import { useTestApi, type TestUser } from "../harness";
-import { MISSING, failed, resetClock, setClock, txn } from "./readHelpers";
+import { MISSING, failed, resetClock, setClock, tripWithExpense, txn } from "./readHelpers";
 
 // GET /insights and GET /insights/category/:id with the clock frozen at Wednesday 15 April 2026,
 // noon in Kolkata. Trip spending is one Trips slice in the breakdown and is left out of a
-// category's own figures; every other figure includes it, as the code does in 2.8.1.
+// category's own figures; every other 2.8.1 figure includes it. The 2.8.4 fields (D21) split it
+// out: `tripExpense` per bucket, and shares of everyday spending.
 
 const api = useTestApi();
 afterEach(resetClock);
@@ -65,17 +66,20 @@ test("insights: this month's breakdown rolls children into their parent and trip
     assert.equal(r.json.message, "Insights fetched");
     const d = r.json.data;
     assert.deepEqual([d.period, d.timeZone, d.periodStart, d.periodEnd], ["month", "Asia/Kolkata", "2026-03-31T18:30:00.000Z", "2026-04-30T18:30:00.000Z"]);
+    // `share` divides by everyday spending, 712,000 (752,000 less the 40,000 trip share), so the
+    // everyday slices add up to 100.0; the Trips slice has none.
     assert.deepEqual(d.byCategory, [
-        { categoryId: cat.Others, name: "Others", total: 300_000 },
-        { categoryId: cat["Food & Dining"], name: "Food & Dining", total: 202_000, children: [
+        { categoryId: cat.Others, name: "Others", total: 300_000, share: 42.1 },
+        { categoryId: cat["Food & Dining"], name: "Food & Dining", total: 202_000, share: 28.4, children: [
             { categoryId: cat.Groceries, name: "Groceries", total: 120_000 },
             { categoryId: cat.Restaurants, name: "Restaurants", total: 32_000 },
         ] },
-        { categoryId: cat.Shopping, name: "Shopping", total: 200_000 },
+        { categoryId: cat.Shopping, name: "Shopping", total: 200_000, share: 28.1 },
         { categoryId: "trips", name: "Trips", total: 40_000, children: [{ categoryId: tripId, name: "Goa", total: 40_000 }] },
         // Archived since, and still named.
-        { categoryId: cat["Old Hobby"], name: "Old Hobby", total: 10_000 },
+        { categoryId: cat["Old Hobby"], name: "Old Hobby", total: 10_000, share: 1.4 },
     ]);
+    assert.deepEqual(d.uncategorised, { total: 0, share: 0 });
     assert.equal(d.topCategory, "Food & Dining", "Others is never the top category");
     // Ordered by how much each moved; Healthcare had spend only in March.
     assert.deepEqual(d.categoryCompare.map((c: { name: string; current: number; previous: number }) => [c.name, c.current, c.previous]), [
@@ -106,10 +110,11 @@ test("insights: trend, averages and counts include trips; transfers and adjustme
     assert.equal(d.avgDailySpendCurrent, Math.round(APRIL_SPEND / 15));
     assert.equal(d.avgDailySpendPrevious, Math.round(386_000 / 31));
     assert.equal(d.txnCount, 9);
+    // `expense` keeps the trip share; `tripExpense` says how much of it that is.
     assert.deepEqual(d.incomeVsExpense, [
-        { periodStart: "2025-11-01", income: 0, expense: 0 }, { periodStart: "2025-12-01", income: 0, expense: 0 },
-        { periodStart: "2026-01-01", income: 0, expense: 0 }, { periodStart: "2026-02-01", income: 0, expense: 0 },
-        { periodStart: "2026-03-01", income: 500_000, expense: 386_000 }, { periodStart: "2026-04-01", income: 1_000_000, expense: APRIL_SPEND },
+        { periodStart: "2025-11-01", income: 0, expense: 0, tripExpense: 0 }, { periodStart: "2025-12-01", income: 0, expense: 0, tripExpense: 0 },
+        { periodStart: "2026-01-01", income: 0, expense: 0, tripExpense: 0 }, { periodStart: "2026-02-01", income: 0, expense: 0, tripExpense: 0 },
+        { periodStart: "2026-03-01", income: 500_000, expense: 386_000, tripExpense: 0 }, { periodStart: "2026-04-01", income: 1_000_000, expense: APRIL_SPEND, tripExpense: 40_000 },
     ]);
 });
 
@@ -156,8 +161,9 @@ test("category: a parent's own spend plus its children, trips left out", async (
         categoryId: cat["Food & Dining"], name: "Food & Dining", period: "month", timeZone: "Asia/Kolkata",
         periodStart: "2026-03-31T18:30:00.000Z", periodEnd: "2026-04-30T18:30:00.000Z",
         total: 202_000, previousTotal: 61_000,
-        // Current behaviour: the denominator is all spend, trip share included.
+        // The 2.8.1 field divides by all spend, trip share included; the 2.8.4 one by everyday spend.
         shareOfSpend: (202_000 / APRIL_SPEND) * 100,
+        shareOfEverydaySpend: (202_000 / 712_000) * 100,
         txnCount: 4,
         children: [{ categoryId: cat.Groceries, name: "Groceries", total: 120_000 }, { categoryId: cat.Restaurants, name: "Restaurants", total: 32_000 }],
     });
@@ -174,7 +180,38 @@ test("category: a sub-category names its parent; an archived one still answers; 
     const old = (await me.send("GET", `/insights/category/${cat["Old Hobby"]}`)).json.data;
     assert.deepEqual([old.total, old.txnCount, "parentName" in old], [10_000, 1, false]);
     const quiet = (await me.send("GET", `/insights/category/${cat.Healthcare}?period=week`)).json.data;
-    assert.deepEqual([quiet.total, quiet.previousTotal, quiet.shareOfSpend, quiet.txnCount, quiet.children], [0, 0, 0, 0, []]);
+    assert.deepEqual([quiet.total, quiet.previousTotal, quiet.shareOfSpend, quiet.shareOfEverydaySpend, quiet.txnCount, quiet.children], [0, 0, 0, 0, 0, []]);
+});
+
+test("insights: uncategorised everyday spend is in the shares' total and has its own share; trips are not", async () => {
+    setClock(NOW);
+    const u = await api.user("insights-uncat");
+    const ids: Record<string, string> = {};
+    for (const c of (await u.send("GET", "/categories")).json.data as { _id: string; name: string }[]) ids[c.name] = c._id;
+    const b = await u.account("Bank", { startingBalance: 1_000_000 });
+    const ravi = await u.account("Ravi", { type: "person", startingBalance: 0 });
+    await txn(u, "expense", 13_000, b, "2026-04-02T06:30:00Z", { category: ids.Shopping });
+    await txn(u, "expense", 10_000, b, "2026-04-03T06:30:00Z", { category: ids.Groceries });
+    await txn(u, "expense", 5_000, b, "2026-04-04T06:30:00Z", { category: ids.Healthcare });
+    // A bill paid with no category: an everyday expense in no slice.
+    const bill = await u.send("POST", "/bills", { name: "Water", amount: 2_000, dueDate: "2026-04-05T06:30:00Z", recurring: false, account: b });
+    assert.equal((await u.send("POST", `/bills/${bill.json.data._id}/pay`, { account: b })).status, 200);
+    // Your 7,000 share of a 14,000 trip dinner.
+    await tripWithExpense(u, [ravi], b, 14_000, "2026-04-06T06:30:00Z");
+
+    const d = (await u.send("GET", "/insights")).json.data;
+    // Everyday spending 30,000 = 13,000 + 10,000 + 5,000 + 2,000; with trips 37,000.
+    assert.deepEqual(d.incomeVsExpense.at(-1), { periodStart: "2026-04-01", income: 0, expense: 37_000, tripExpense: 7_000 });
+    assert.deepEqual(d.byCategory.map((c: { name: string; total: number; share?: number }) => [c.name, c.total, c.share]), [
+        ["Shopping", 13_000, 43.3], ["Food & Dining", 10_000, 33.3], ["Trips", 7_000, undefined], ["Healthcare", 5_000, 16.7],
+    ]);
+    assert.deepEqual(d.uncategorised, { total: 2_000, share: 6.7 });
+    const shares = d.byCategory.reduce((s: number, c: { share?: number }) => s + (c.share ?? 0), 0) + d.uncategorised.share;
+    assert.equal(Math.round(shares * 10), 1000, "the shares and uncategorised add up to 100.0");
+
+    const shop = (await u.send("GET", `/insights/category/${ids.Shopping}`)).json.data;
+    assert.equal(shop.shareOfEverydaySpend, (13_000 / 30_000) * 100);
+    assert.equal(shop.shareOfSpend, (13_000 / 37_000) * 100);
 });
 
 test("insights: bad query 400, bad or foreign ids 404, signed out 401", async () => {

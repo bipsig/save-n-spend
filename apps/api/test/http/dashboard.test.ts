@@ -8,8 +8,9 @@ import { healthScore } from "../../src/services/healthService";
 
 // GET /dashboard/summary, /dashboard/health and /dashboard/insights, and the net-worth history
 // behind them, with the clock frozen (readHelpers.setClock) so every figure is exact. Users are
-// in Asia/Kolkata unless a test says otherwise. Trips are counted as the code does in 2.8.1:
-// the dashboard's totals include your trip share (docs/api-reference.md, Known issues 2).
+// in Asia/Kolkata unless a test says otherwise. The 2.8.1 totals include your trip share, and
+// the 2.8.4 `trip…` fields say how much of each is trips (D21). Net-worth history counts only
+// the accounts today's figure counts (D24).
 
 const api = useTestApi();
 afterEach(resetClock);
@@ -59,12 +60,14 @@ test("summary: this month's figures, cut at Kolkata midnight, trips and an archi
     assert.equal(r.json.message, "Dashboard summary fetched");
     const d = r.json.data;
     assert.deepEqual(
-        { month: d.month, income: d.income, expenses: d.expenses, savings: d.savings, netWorth: d.netWorth },
-        // April: the 00:00:00 snack 70,000 + the wallet's coffee 30,000 + the trip share 45,000.
-        { month: "2026-04", income: 1_000_000, expenses: 145_000, savings: 855_000, netWorth: NET_WORTH },
+        { month: d.month, income: d.income, expenses: d.expenses, tripExpenses: d.tripExpenses, savings: d.savings, netWorth: d.netWorth },
+        // April: the 00:00:00 snack 70,000 + the wallet's coffee 30,000 + the trip share 45,000,
+        // of which the trip share is trips: everyday spending is 100,000. Savings count the trip.
+        { month: "2026-04", income: 1_000_000, expenses: 145_000, tripExpenses: 45_000, savings: 855_000, netWorth: NET_WORTH },
     );
     // The week from Monday 13 April: the coffee and the bonus. Adjustments and transfers never count.
-    assert.deepEqual([d.weekIncome, d.weekExpense], [1_000_000, 30_000]);
+    // The trip dinner was on the 10th, last week.
+    assert.deepEqual([d.weekIncome, d.weekExpense, d.weekTripExpense], [1_000_000, 30_000, 0]);
     assert.deepEqual(d.biggestExpense, { title: "Midnight snack", amount: 70_000, occurredAt: "2026-03-31T18:30:00.000Z" });
     // 14 and 13 April logged, today not yet: 2.
     assert.equal(d.currentStreak, 2);
@@ -87,10 +90,10 @@ test("summary: net-worth history walks back from today over the accounts today's
     // Each point is the complete month before the boundary, then this month once, last. The flow
     // still counts every account's rows, the archived wallet's included, as `expenses` does.
     assert.deepEqual(d.flowTrend, [
-        { label: "Jan 2026", income: 3_000_000, expense: 0 },
-        { label: "Feb 2026", income: 0, expense: 400_000 },
-        { label: "Mar 2026", income: 0, expense: 250_000 },
-        { label: "2026-04", income: 1_000_000, expense: 145_000 },
+        { label: "Jan 2026", income: 3_000_000, expense: 0, tripExpense: 0 },
+        { label: "Feb 2026", income: 0, expense: 400_000, tripExpense: 0 },
+        { label: "Mar 2026", income: 0, expense: 250_000, tripExpense: 0 },
+        { label: "2026-04", income: 1_000_000, expense: 145_000, tripExpense: 45_000 },
     ]);
     assert.equal(d.flowTrend.length, d.netWorthTrend.length);
 });
@@ -110,10 +113,10 @@ test("summary: flowTrend across a year end, cut at Kolkata midnight; one complet
     const d = (await u.send("GET", "/dashboard/summary")).json.data;
     // September's row is a fourth month back: outside the three.
     assert.deepEqual(d.flowTrend, [
-        { label: "Oct 2025", income: 0, expense: 2_000 },
-        { label: "Nov 2025", income: 500_000, expense: 0 },
-        { label: "Dec 2025", income: 0, expense: 30_000 },
-        { label: "2026-01", income: 100_000, expense: 40_000 },
+        { label: "Oct 2025", income: 0, expense: 2_000, tripExpense: 0 },
+        { label: "Nov 2025", income: 500_000, expense: 0, tripExpense: 0 },
+        { label: "Dec 2025", income: 0, expense: 30_000, tripExpense: 0 },
+        { label: "2026-01", income: 100_000, expense: 40_000, tripExpense: 0 },
     ]);
     assert.deepEqual(d.netWorthTrend, [
         { label: "Nov 2025", total: 997_000 },
@@ -127,7 +130,7 @@ test("summary: flowTrend across a year end, cut at Kolkata midnight; one complet
     await txn(v, "expense", 5_000, vb, "2025-12-20T06:30:00Z");
     await txn(v, "expense", 7_000, vb, "2026-01-05T06:30:00Z");
     const y = (await v.send("GET", "/dashboard/summary")).json.data;
-    assert.deepEqual(y.flowTrend, [{ label: "Dec 2025", income: 0, expense: 5_000 }, { label: "2026-01", income: 0, expense: 7_000 }]);
+    assert.deepEqual(y.flowTrend, [{ label: "Dec 2025", income: 0, expense: 5_000, tripExpense: 0 }, { label: "2026-01", income: 0, expense: 7_000, tripExpense: 0 }]);
     assert.deepEqual(y.netWorthTrend, [{ label: "Jan 2026", total: 95_000 }, { label: "Jan 2026", total: 88_000 }]);
 });
 
@@ -141,7 +144,8 @@ test("summary: a past month and `since`; the history still ends today", async ()
     assert.deepEqual(d.biggestExpense, { title: "Shoes", amount: 150_000, occurredAt: "2026-03-12T06:30:00.000Z" });
     assert.deepEqual(d.sinceLastOpened, { transactions: 1, spent: 30_000 });
     assert.equal(d.netWorth, NET_WORTH);
-    assert.deepEqual(d.flowTrend.at(-1), { label: "2026-03", income: 0, expense: 250_000 });
+    assert.deepEqual(d.flowTrend.at(-1), { label: "2026-03", income: 0, expense: 250_000, tripExpense: 0 });
+    assert.equal(d.tripExpenses, 0);
     // The week is always this week.
     assert.deepEqual([d.weekIncome, d.weekExpense], [1_000_000, 30_000]);
 });
@@ -165,17 +169,32 @@ test("summary: a new account has one net-worth point and only this month's flow"
     const u = await api.user("dash-new");
     const empty = (await u.send("GET", "/dashboard/summary")).json.data;
     assert.deepEqual(empty, {
-        month: "2026-04", income: 0, expenses: 0, savings: 0, netWorth: 0,
+        month: "2026-04", income: 0, expenses: 0, tripExpenses: 0, savings: 0, netWorth: 0,
         netWorthTrend: [{ label: "2026-04", total: 0 }],
-        flowTrend: [{ label: "2026-04", income: 0, expense: 0 }],
-        currentStreak: 0, weekIncome: 0, weekExpense: 0, biggestExpense: null,
+        flowTrend: [{ label: "2026-04", income: 0, expense: 0, tripExpense: 0 }],
+        currentStreak: 0, weekIncome: 0, weekExpense: 0, weekTripExpense: 0, biggestExpense: null,
     });
     const b = await u.account("Bank", { startingBalance: 200_000 });
     await txn(u, "expense", 20_000, b, "2026-04-15T05:00:00Z");
     const young = (await u.send("GET", "/dashboard/summary")).json.data;
     assert.deepEqual(young.netWorthTrend, [{ label: "Apr 2026", total: 180_000 }]);
-    assert.deepEqual(young.flowTrend, [{ label: "2026-04", income: 0, expense: 20_000 }]);
+    assert.deepEqual(young.flowTrend, [{ label: "2026-04", income: 0, expense: 20_000, tripExpense: 0 }]);
     assert.equal(young.currentStreak, 1);
+});
+
+test("summary (D21): this week's and this month's trip shares, inside the 2.8.1 totals", async () => {
+    setClock(NOW);
+    const u = await api.user("dash-trip-week");
+    const b = await u.account("Bank", { startingBalance: 1_000_000 });
+    const ravi = await u.account("Ravi", { type: "person", startingBalance: 0 });
+    await txn(u, "expense", 12_345, b, "2026-04-14T06:30:00Z");
+    // 30,000 split with Ravi on Monday 13 April: your 15,000 share.
+    await tripWithExpense(u, [ravi], b, 30_000, "2026-04-13T06:30:00Z");
+    const d = (await u.send("GET", "/dashboard/summary")).json.data;
+    assert.deepEqual([d.expenses, d.tripExpenses, d.weekExpense, d.weekTripExpense], [27_345, 15_000, 27_345, 15_000]);
+    // Everyday spending is what is left: 12,345. Savings still count the trip.
+    assert.equal(d.savings, -27_345);
+    assert.deepEqual(d.flowTrend.at(-1), { label: "2026-04", income: 0, expense: 27_345, tripExpense: 15_000 });
 });
 
 test("summary: bad query is 400 invalid_input; unknown parameters are dropped; signed out is 401", async () => {

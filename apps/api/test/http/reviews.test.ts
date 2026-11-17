@@ -5,8 +5,9 @@ import { failed, resetClock, setClock, txn, tripWithExpense } from "./readHelper
 
 // GET /reviews (reviewService and its timeline) for March 2026 and two weeks around it, with
 // the clock frozen at Wednesday 15 April 2026, noon in Kolkata. Each figure is worked out from
-// the rows below. Trips are counted as the code does in 2.8.1: in the totals and the timeline's
-// biggest expense, not in the review's own biggest expense.
+// the rows below. Trips are in the 2.8.1 totals (`expenses`, `saved`), with `tripExpenses` saying
+// how much; the review's biggest expense and, from 2.8.4, the timeline's are everyday only (D21).
+// Sentences use exact paise and one-decimal percentages (Q3).
 
 const api = useTestApi();
 afterEach(resetClock);
@@ -77,15 +78,18 @@ test("month: March's figures, habits, net worth, goals, bills and investments", 
         period: "month", offset: -1, periodLabel: "March 2026",
         periodStart: "2026-02-28T18:30:00.000Z", periodEnd: "2026-03-31T18:30:00.000Z",
         // 1,200,000 in; out: groceries, shopping, tea, the trip share, the 23:59:59 dinner and the three bills.
+        // (865,500 − 600,000) / 600,000 = 44.25%.
         verdict: { headline: "₹8,655.00 saved this period", detail: "Up 44.3% from last time." },
-        income: 1_200_000, expenses: 334_500, saved: 865_500,
-        previousIncome: 1_000_000, previousExpenses: 400_000, previousSaved: 600_000,
-        // The bills have no category, so they are in no slice.
+        income: 1_200_000, expenses: 334_500, tripExpenses: 150_000, saved: 865_500,
+        previousIncome: 1_000_000, previousExpenses: 400_000, previousTripExpenses: 0, previousSaved: 600_000,
+        // The bills have no category, so they are in no slice. `pct` (2.8.1) divides by the slices'
+        // sum, 302,500; `share` by everyday spending, 184,500, which counts the bills' 32,000.
         categories: [
             { categoryId: "trips", name: "Trips", total: 150_000, pct: 50 },
-            { categoryId: cat["Food & Dining"], name: "Food & Dining", total: 102_500, pct: 34 },
-            { categoryId: cat.Shopping, name: "Shopping", total: 50_000, pct: 17 },
+            { categoryId: cat["Food & Dining"], name: "Food & Dining", total: 102_500, pct: 34, share: 55.6 },
+            { categoryId: cat.Shopping, name: "Shopping", total: 50_000, pct: 17, share: 27.1 },
         ],
+        uncategorised: { total: 32_000, share: 17.3 },
         biggestExpense: { title: "Groceries", amount: 100_000, occurredAt: "2026-03-03T06:30:00.000Z" },
         // Days with a row: 1, 3, 8, 9, 10, 13, 14, 15, 18, 20, 31. The 25th and 26th are adjustments only.
         habits: { streakAtEnd: 1, activeDays: 11, totalDays: 31, noSpendDays: 20 },
@@ -97,15 +101,15 @@ test("month: March's figures, habits, net worth, goals, bills and investments", 
     });
 });
 
-test("month: the timeline is dated and sorted; its biggest expense counts the trip", async () => {
+test("month: the timeline is dated and sorted; its biggest expense is the everyday one", async () => {
     setClock(NOW);
     const { timeline } = (await me.send("GET", "/reviews?period=month&offset=-1")).json.data;
     assert.deepEqual(timeline, [
+        // The groceries, as `biggestExpense` says; 2.8.1 named the bigger trip share (1,500) here.
+        { date: "2026-03-03T06:30:00.000Z", kind: "neutral", text: "Biggest expense of the period: Groceries, ₹1,000.00" },
         { date: "2026-03-08T06:30:00.000Z", kind: "warn", text: "Water was paid 3 days late" },
         { date: "2026-03-12T06:30:00.000Z", kind: "win", text: "₹500.00 added to Holiday" },
         { date: "2026-03-16T06:30:00.000Z", kind: "win", text: "3 days in a row logging transactions" },
-        // Current behaviour (Known issues 2): the trip share, while biggestExpense above is the groceries.
-        { date: "2026-03-20T06:30:00.000Z", kind: "neutral", text: "Biggest expense of the period: Trip dinner, ₹1,500.00" },
         // Weeks from the 1st: 100,000, 76,000, 157,500, then nothing from the 22nd to the 28th.
         { date: "2026-03-22T00:00:00.000Z", kind: "win", text: "Your lightest week this period — ₹0.00 spent" },
         { date: "2026-03-31T18:30:00.000Z", kind: "win", text: "Period closes: ₹8,655.00 saved" },
@@ -123,6 +127,7 @@ test("week: last week and the week across the month end; no net worth for a week
     assert.deepEqual(last.habits, { streakAtEnd: 0, activeDays: 0, totalDays: 7, noSpendDays: 7 });
     assert.deepEqual(last.investments, { contributed: 0, portfolioChange: 0, biggestGainer: null });
     assert.deepEqual(last.timeline, [{ date: "2026-04-12T18:30:00.000Z", kind: "win", text: "Period closes: ₹0.00 saved" }]);
+    assert.deepEqual([last.tripExpenses, last.uncategorised], [0, { total: 0, share: 0 }]);
 
     const across = (await me.send("GET", "/reviews?period=week&offset=-2")).json.data;
     assert.deepEqual([across.periodLabel, across.expenses, across.biggestExpense.amount], ["30 Mar – 5 Apr", 3_000, 2_000]);
@@ -130,6 +135,7 @@ test("week: last week and the week across the month end; no net worth for a week
     // A week has no standout-week line, and nothing in it is bigger than the restaurant bill.
     assert.deepEqual(across.timeline.map((m: { text: string }) => m.text), [
         "Biggest expense of the period: Restaurants, ₹20.00",
+        // The true minus, as the app prints it.
         "Period closes: −₹30.00 saved",
     ]);
     assert.equal(across.timeline[1].kind, "neutral");

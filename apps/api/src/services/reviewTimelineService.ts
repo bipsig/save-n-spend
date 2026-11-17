@@ -38,7 +38,9 @@ export const buildTimeline = async (
 
     const [biggestExpense, highlightRows, lateBills, contributions] = await Promise.all([
         Transaction.aggregate([
-            { $match: { userId: oid, type: "expense", occurredAt: { $gte: start, $lt: end } } },
+            // Everyday only, the same expense as the review's own `biggestExpense` (D21): trip
+            // spending is the review's Trips line.
+            { $match: { userId: oid, type: "expense", tripId: null, occurredAt: { $gte: start, $lt: end } } },
             { $sort: { amount: -1 } },
             { $limit: 1 },
             { $project: { title: 1, amount: 1, occurredAt: 1 } },

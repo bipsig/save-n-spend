@@ -26,9 +26,10 @@ const monthLabel = (instant: Date, zone: string): string =>
   new Intl.DateTimeFormat("en-IN", { timeZone: zone, month: "short", year: "numeric" }).format(instant);
 
 export type NetWorthPoint = { label: string; total: number };
-export type MonthlyFlowPoint = { label: string; income: number; expense: number };
+/** `tripExpense` is the part of `expense` that is your trip shares. */
+export type MonthlyFlowPoint = { label: string; income: number; expense: number; tripExpense: number };
 
-type MonthRow = { _id: string; income: number; expense: number; delta: number };
+type MonthRow = { _id: string; income: number; expense: number; tripExpense: number; delta: number };
 
 /** Per zone-local month from `since`: income and expense over every row (what the flow
  *  figures always meant), and the net-worth delta over the accounts today's figure counts. */
@@ -50,6 +51,7 @@ const monthRows = async (oid: mongoose.Types.ObjectId, zone: string, since: Date
         _id: { $dateToString: { date: "$occurredAt", format: "%Y-%m", timezone: zone } },
         income: { $sum: amountIf({ $eq: ["$type", "income"] }) },
         expense: { $sum: amountIf({ $eq: ["$type", "expense"] }) },
+        tripExpense: { $sum: amountIf({ $and: [{ $eq: ["$type", "expense"] }, { $gt: ["$tripId", null] }] }) },
         delta: {
           $sum: {
             $switch: {
@@ -116,7 +118,7 @@ export const netWorthTrend = async (
       points.push({ label: monthLabel(boundary, zone), total: totals[i] });
       const month = addMonthsInZone(boundary, zone, -1);
       const flow = flowByMonth.get(ymKey(month, zone));
-      monthlyFlow.push({ label: monthLabel(month, zone), income: flow?.income ?? 0, expense: flow?.expense ?? 0 });
+      monthlyFlow.push({ label: monthLabel(month, zone), income: flow?.income ?? 0, expense: flow?.expense ?? 0, tripExpense: flow?.tripExpense ?? 0 });
     });
   }
 

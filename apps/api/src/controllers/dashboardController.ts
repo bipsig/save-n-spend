@@ -32,6 +32,10 @@ export const getDashboardSummary = async (req: Request, res: Response): Promise<
   // Sourced directly rather than through GET /highlights: that endpoint only surfaces
   // the streak when it clears the materiality-ranked, max-4 cap, so a real streak could
   // go silently missing on a busy day — wrong for a badge meant to always be visible.
+  // `trips` is the part of each total that is trip shares, so the app can show everyday
+  // spending with a "Plus ₹X on trips" line while `total` keeps its 2.8.1 meaning.
+  const flowGroup = { _id: "$type", total: { $sum: "$amount" }, trips: { $sum: { $cond: [{ $gt: ["$tripId", null] }, "$amount", 0] } } };
+
   const [currentStreak, monthlySums, netWorth, weekSums, biggestExpense, sinceLastOpened, first] = await Promise.all([
     computeCurrentStreak(req.user!.userId, zone, now),
     Transaction.aggregate([
@@ -42,7 +46,7 @@ export const getDashboardSummary = async (req: Request, res: Response): Promise<
           occurredAt: { $gte: start, $lt: next }
         }
       },
-      { $group: { _id: "$type", total: { $sum: "$amount" } } }
+      { $group: flowGroup }
     ]),
     Account.aggregate([
       { $match: { userId, isArchived: false } },
@@ -58,7 +62,7 @@ export const getDashboardSummary = async (req: Request, res: Response): Promise<
           occurredAt: { $gte: weekStart, $lt: weekEnd }
         }
       },
-      { $group: { _id: "$type", total: { $sum: "$amount" } } }
+      { $group: flowGroup }
     ]),
     // Symmetric with `monthlySums` above — same match, sorted and capped at one instead
     // of grouped, so the single expense that moved the month's number most can be named.
@@ -79,8 +83,10 @@ export const getDashboardSummary = async (req: Request, res: Response): Promise<
 
   const income = monthlySums.find((res) => res._id === "income")?.total ?? 0;
   const expenses = monthlySums.find((res) => res._id === "expense")?.total ?? 0;
+  const tripExpenses = monthlySums.find((res) => res._id === "expense")?.trips ?? 0;
   const weekIncome = weekSums.find((res) => res._id === "income")?.total ?? 0;
   const weekExpense = weekSums.find((res) => res._id === "expense")?.total ?? 0;
+  const weekTripExpense = weekSums.find((res) => res._id === "expense")?.trips ?? 0;
   const currentNetWorth = netWorth[0]?.total ?? 0;
 
   // A brand-new account with no transactions yet has no history to reconstruct — a
@@ -91,12 +97,13 @@ export const getDashboardSummary = async (req: Request, res: Response): Promise<
 
   // This month's own totals close out the same series — the service only knows about
   // complete PRIOR months, and this controller already has this month's from monthlySums.
-  const flowTrend = [...monthlyFlow, { label, income, expense: expenses }];
+  const flowTrend = [...monthlyFlow, { label, income, expense: expenses, tripExpense: tripExpenses }];
 
   const response = {
     month: label,
     income,
     expenses,
+    tripExpenses,
     savings: income - expenses,
     netWorth: currentNetWorth,
     netWorthTrend: trend,
@@ -104,6 +111,7 @@ export const getDashboardSummary = async (req: Request, res: Response): Promise<
     currentStreak,
     weekIncome,
     weekExpense,
+    weekTripExpense,
     biggestExpense: biggestExpense[0]
       ? { title: biggestExpense[0].title as string, amount: biggestExpense[0].amount as number, occurredAt: biggestExpense[0].occurredAt as Date }
       : null,
