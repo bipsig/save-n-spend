@@ -302,10 +302,18 @@ const alreadyNotified = async (key: string): Promise<boolean> => {
   return !!map?.[key];
 };
 
-const markNotified = async (key: string): Promise<void> => {
-  const map = (await readJson<Record<string, true>>(NOTIFIED_KEY)) ?? {};
-  map[key] = true;
-  await writeJson(NOTIFIED_KEY, map);
+/** Writes queue behind each other: the schedulers run in parallel, and two read-modify-writes of
+ *  the one map at once would keep only the last, so the other banner repeats next time. */
+let marking: Promise<void> = Promise.resolve();
+
+const markNotified = (key: string): Promise<void> => {
+  const write = marking.then(async () => {
+    const map = (await readJson<Record<string, true>>(NOTIFIED_KEY)) ?? {};
+    map[key] = true;
+    await writeJson(NOTIFIED_KEY, map);
+  });
+  marking = write.catch(() => {});
+  return write;
 };
 
 /**
