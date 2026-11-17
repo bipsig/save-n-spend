@@ -34,6 +34,65 @@ export interface Release {
 /** Newest first. */
 export const RELEASES: Release[] = [
   {
+    version: "2.8.5",
+    build: 25,
+    date: "2026-11-18",
+    headline: "Every screen looks, loads and counts the same",
+    notes: [
+      {
+        kind: "improved",
+        title: "Spending leaves out trips everywhere, with one line for what went on trips.",
+        detail: "Home, Insights, Category insights, Month in review and the daily, weekly and monthly summaries now show everyday spending, the same figure Activity and your budgets use. A \"Plus ₹ •••• on trips\" line sits under each total and opens Trips. Savings and net worth still count trips, because that money really left. Category shares add up to 100% and include Uncategorised.",
+        highlight: true,
+        link: "/insights",
+      },
+      {
+        kind: "improved",
+        title: "Privacy mode hides amounts everywhere, notifications included.",
+        detail: "With privacy on, amounts are hidden in Notifications, highlights, Month in review, Health and the banners on your lock screen, and VoiceOver says \"amount hidden\". Peek shows them. Bill and SIP banners keep their date. Turning privacy on or off updates banners that are already scheduled.",
+        highlight: true,
+      },
+      {
+        kind: "improved",
+        title: "Every screen loads the same way and keeps what it showed when a refresh fails.",
+        detail: "With data on screen, a slim \"Couldn't refresh · Try again\" strip replaces the error page. Pull down to refresh on every screen. Offline, the strip says how old the saved data is, and buttons that need a connection say so before you tap. While the server is starting up, saved data shows instead of an error. Home opens from saved data even when you launch the app offline.",
+        highlight: true,
+      },
+      {
+        kind: "improved",
+        title: "One screen header everywhere, with the privacy eye on every screen that shows money.",
+        detail: "Actions are icon buttons with spoken labels. Budget, Bills and Goals have a back button, and screen names match the menu.",
+      },
+      {
+        kind: "improved",
+        title: "Amounts, percentages and dates follow one style.",
+        detail: "One minus sign, signs instead of arrows, percentages to one decimal, exact paise, and dates in your account's time zone. A card shows what's owed instead of a negative balance.",
+      },
+      {
+        kind: "improved",
+        title: "Charts and buttons work with VoiceOver and large text.",
+        detail: "Each chart reads a one-sentence summary, and buttons say what they do. At the largest text sizes, Try again and See trips move to their own line.",
+      },
+      {
+        kind: "fixed",
+        title: "Net worth history no longer counts archived accounts.",
+        detail: "Past points used to move when you archived an account.",
+      },
+      {
+        kind: "fixed",
+        title: "Switching periods quickly can't show one period's figures under another's name.",
+      },
+      {
+        kind: "fixed",
+        title: "Banners no longer repeat each time the app opens.",
+      },
+      {
+        kind: "fixed",
+        title: "Peeking on Month in review shows every figure.",
+      },
+    ],
+  },
+  {
     version: "2.8.1",
     build: 24,
     date: "2026-11-16",
