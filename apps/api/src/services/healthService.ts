@@ -6,7 +6,7 @@ import Goal, { type IGoal } from "../models/Goal";
 import Transaction from "../models/Transaction";
 import { daysUntilDue, isSettledForPeriod } from "./billService";
 import { budgetProgress } from "./budgetService";
-import { formatAmount } from "../utils/money";
+import { formatAmount, formatPercent } from "../utils/money";
 import { partsInZone, startOfDayInZone, startOfMonthInZone, addMonthsInZone, addDaysInZone } from "../utils/timezone";
 
 // The financial health score: a weighted sum of five pillars, each reporting its own
@@ -120,7 +120,7 @@ const wholeDaysBetween = (from: Date, to: Date, zone: string): number =>
 const monthYearLabel = (instant: Date, zone: string): string =>
     new Intl.DateTimeFormat("en-IN", { timeZone: zone, month: "short", year: "numeric" }).format(instant);
 
-const pct = (ratio: number): string => `${Math.round(ratio * 100)}%`;
+const pct = formatPercent;
 
 /** What share of income survived the window. 20% is the 50/30/20 target, so it earns 80
  *  rather than full marks; nothing above 30% scores more, or the pillar would reward

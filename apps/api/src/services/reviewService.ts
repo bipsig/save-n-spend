@@ -13,7 +13,7 @@ import { noSpendDays } from "./reviewMath";
 import { currentStreak, STREAK_LOOKBACK_DAYS } from "./streakMath";
 import { wholeDays } from "./highlightSnapshotMath";
 import { addDaysInZone, partsInZone } from "../utils/timezone";
-import { formatAmount } from "../utils/money";
+import { formatAmount, formatPercent } from "../utils/money";
 import type { ReviewPayload } from "@save-n-spend/types";
 
 const FLOW_TYPES = ["income", "expense"];
@@ -79,12 +79,12 @@ const composeVerdict = (saved: number, previousSaved: number, currency: string) 
     if (previousSaved === 0) {
         return { headline, detail: "No prior period with any saving to compare against yet." };
     }
-    const deltaPct = Math.round(((saved - previousSaved) / Math.abs(previousSaved)) * 100);
-    const detail = deltaPct === 0
+    const change = (saved - previousSaved) / Math.abs(previousSaved);
+    const detail = formatPercent(change) === "0.0%"
         ? "About the same as last time."
-        : deltaPct > 0
-            ? `Up ${deltaPct}% from last time.`
-            : `Down ${Math.abs(deltaPct)}% from last time.`;
+        : change > 0
+            ? `Up ${formatPercent(change)} from last time.`
+            : `Down ${formatPercent(-change)} from last time.`;
     return { headline, detail };
 };
 

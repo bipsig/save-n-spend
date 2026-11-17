@@ -232,7 +232,7 @@ test("health: scored on the 90 days before today; January's salary has left the 
     assert.deepEqual(r.json.data, {
         score: 90, band: "excellent", rating: "Excellent", windowDays: 90,
         pillars: [
-            { key: "savings", label: "Savings rate", score: 81, weight: 30, value: "21%", verdict: "On track" },
+            { key: "savings", label: "Savings rate", score: 81, weight: 30, value: "20.5%", verdict: "On track" },
             { key: "buffer", label: "Safety buffer", score: 100, weight: 25, value: "6+ months", verdict: "On track" },
         ],
         runwayMonths: 8_180_000 / 265_000,
@@ -281,19 +281,20 @@ test("health: every pillar failing, with its hint, and the focus on the heaviest
     const d = (await u.send("GET", "/dashboard/health")).json.data;
     const by = Object.fromEntries((d.pillars as { key: string }[]).map((p) => [p.key, p]));
     assert.deepEqual(d.pillars.map((p: { key: string }) => p.key), ["savings", "buffer", "bills", "budgets", "goals"]);
-    assert.deepEqual(by.savings, { key: "savings", label: "Savings rate", score: 0, weight: 30, value: "-35%", verdict: "Off track",
+    assert.deepEqual(by.savings, { key: "savings", label: "Savings rate", score: 0, weight: 30, value: "−35.0%", verdict: "Off track",
         hint: "You are spending more than you earn over the last 90 days. Everything else on this list depends on closing that gap first." });
     assert.deepEqual(by.buffer, { key: "buffer", label: "Safety buffer", score: 0, weight: 25, value: "0.0 months", verdict: "Off track",
-        hint: "₹12,000 on cards is eating most of your buffer. Clearing it lifts this faster than saving more does." });
+        hint: "₹12,000.00 on cards is eating most of your buffer. Clearing it lifts this faster than saving more does." });
     // Rent 10 days late, 1 of 2: 50 − 10.
     assert.deepEqual(by.bills, { key: "bills", label: "Bills", score: 40, weight: 20, value: "1 of 2 late", verdict: "Watch",
         hint: "Rent is 10 days overdue. This is the quickest thing on the list to fix." });
     // 150,000 against 20/30 of 100,000.
     assert.deepEqual(by.budgets, { key: "budgets", label: "Budgets", score: 0, weight: 15, value: "1 of 1 over", verdict: "Off track",
-        hint: `${foodName} is running at 225% of its pace for this point in the month. Either the limit is wrong or the spending is — both are worth knowing.` });
+        hint: `${foodName} is running at 225.0% of its pace for this point in the month. Either the limit is wrong or the spending is — both are worth knowing.` });
     // Phone done (100), Car at 0 of pace, weighted by target: 1,000,000 / 1,210,000.
-    assert.deepEqual(by.goals, { key: "goals", label: "Goals", score: 1, weight: 10, value: "1% of pace", verdict: "Off track",
-        hint: "Car needs about ₹1,967 a month to land by Dec 2026. You have been adding roughly ₹0." });
+    assert.deepEqual(by.goals, { key: "goals", label: "Goals", score: 1, weight: 10, value: "1.0% of pace", verdict: "Off track",
+        // 1,200,000 over 183 days (6.1 months) is 196,721.3 paise a month.
+        hint: "Car needs about ₹1,967.21 a month to land by Dec 2026. You have been adding roughly ₹0.00." });
     // (40 × 20 + 1 × 10) / 100 = 8.1.
     assert.deepEqual([d.score, d.band, d.rating, d.runwayMonths], [8, "risk", "At risk", 0]);
     assert.deepEqual(d.focus, { key: "savings", label: "Savings rate", hint: by.savings.hint });
@@ -331,8 +332,9 @@ test("health: a mid-range saver gets the target hint; a thin buffer without card
     // 5% kept, 150,000 on hand against 950,000 a month.
     const d = await healthScore(u.id, "Asia/Kolkata", new Date("2026-06-20T06:30:00Z"));
     assert.deepEqual(d.pillars.map((p) => [p.key, p.score, p.value, p.hint]), [
-        ["savings", 25, "5%", "Keeping 5% of what comes in. The usual target is 20% — about ₹2,000 a month at your income."],
-        ["buffer", 6, "0.2 months", "₹1,500 on hand covers 0.2 months. Three months of your own expenses — about ₹28,500 — is the usual floor."],
+        // The 20% target is a fixed rule of thumb, not a measured figure, so it keeps its whole number.
+        ["savings", 25, "5.0%", "Keeping 5.0% of what comes in. The usual target is 20% — about ₹2,000.00 a month at your income."],
+        ["buffer", 6, "0.2 months", "₹1,500.00 on hand covers 0.2 months. Three months of your own expenses — about ₹28,500.00 — is the usual floor."],
     ]);
 });
 

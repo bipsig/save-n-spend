@@ -77,7 +77,7 @@ test("month: March's figures, habits, net worth, goals, bills and investments", 
         period: "month", offset: -1, periodLabel: "March 2026",
         periodStart: "2026-02-28T18:30:00.000Z", periodEnd: "2026-03-31T18:30:00.000Z",
         // 1,200,000 in; out: groceries, shopping, tea, the trip share, the 23:59:59 dinner and the three bills.
-        verdict: { headline: "₹8,655 saved this period", detail: "Up 44% from last time." },
+        verdict: { headline: "₹8,655.00 saved this period", detail: "Up 44.3% from last time." },
         income: 1_200_000, expenses: 334_500, saved: 865_500,
         previousIncome: 1_000_000, previousExpenses: 400_000, previousSaved: 600_000,
         // The bills have no category, so they are in no slice.
@@ -102,13 +102,13 @@ test("month: the timeline is dated and sorted; its biggest expense counts the tr
     const { timeline } = (await me.send("GET", "/reviews?period=month&offset=-1")).json.data;
     assert.deepEqual(timeline, [
         { date: "2026-03-08T06:30:00.000Z", kind: "warn", text: "Water was paid 3 days late" },
-        { date: "2026-03-12T06:30:00.000Z", kind: "win", text: "₹500 added to Holiday" },
+        { date: "2026-03-12T06:30:00.000Z", kind: "win", text: "₹500.00 added to Holiday" },
         { date: "2026-03-16T06:30:00.000Z", kind: "win", text: "3 days in a row logging transactions" },
         // Current behaviour (Known issues 2): the trip share, while biggestExpense above is the groceries.
-        { date: "2026-03-20T06:30:00.000Z", kind: "neutral", text: "Biggest expense of the period: Trip dinner, ₹1,500" },
+        { date: "2026-03-20T06:30:00.000Z", kind: "neutral", text: "Biggest expense of the period: Trip dinner, ₹1,500.00" },
         // Weeks from the 1st: 100,000, 76,000, 157,500, then nothing from the 22nd to the 28th.
-        { date: "2026-03-22T00:00:00.000Z", kind: "win", text: "Your lightest week this period — ₹0 spent" },
-        { date: "2026-03-31T18:30:00.000Z", kind: "win", text: "Period closes: ₹8,655 saved" },
+        { date: "2026-03-22T00:00:00.000Z", kind: "win", text: "Your lightest week this period — ₹0.00 spent" },
+        { date: "2026-03-31T18:30:00.000Z", kind: "win", text: "Period closes: ₹8,655.00 saved" },
     ]);
 });
 
@@ -118,19 +118,19 @@ test("week: last week and the week across the month end; no net worth for a week
     // en-IN puts the day first (docs/api-reference.md shows "Aug 18 – 24").
     assert.deepEqual([last.periodLabel, last.periodStart, last.periodEnd], ["6 Apr – 12", "2026-04-05T18:30:00.000Z", "2026-04-12T18:30:00.000Z"]);
     assert.deepEqual([last.income, last.expenses, last.saved, last.previousExpenses, last.previousSaved], [0, 0, 0, 3_000, -3_000]);
-    assert.deepEqual(last.verdict, { headline: "₹0 saved this period", detail: "Up 100% from last time." });
+    assert.deepEqual(last.verdict, { headline: "₹0.00 saved this period", detail: "Up 100.0% from last time." });
     assert.deepEqual([last.netWorth, last.biggestExpense, last.categories, last.goals], [null, null, [], []]);
     assert.deepEqual(last.habits, { streakAtEnd: 0, activeDays: 0, totalDays: 7, noSpendDays: 7 });
     assert.deepEqual(last.investments, { contributed: 0, portfolioChange: 0, biggestGainer: null });
-    assert.deepEqual(last.timeline, [{ date: "2026-04-12T18:30:00.000Z", kind: "win", text: "Period closes: ₹0 saved" }]);
+    assert.deepEqual(last.timeline, [{ date: "2026-04-12T18:30:00.000Z", kind: "win", text: "Period closes: ₹0.00 saved" }]);
 
     const across = (await me.send("GET", "/reviews?period=week&offset=-2")).json.data;
     assert.deepEqual([across.periodLabel, across.expenses, across.biggestExpense.amount], ["30 Mar – 5 Apr", 3_000, 2_000]);
     assert.deepEqual(across.habits, { streakAtEnd: 0, activeDays: 2, totalDays: 7, noSpendDays: 5 });
     // A week has no standout-week line, and nothing in it is bigger than the restaurant bill.
     assert.deepEqual(across.timeline.map((m: { text: string }) => m.text), [
-        "Biggest expense of the period: Restaurants, ₹20",
-        "Period closes: -₹30 saved",
+        "Biggest expense of the period: Restaurants, ₹20.00",
+        "Period closes: −₹30.00 saved",
     ]);
     assert.equal(across.timeline[1].kind, "neutral");
 });
@@ -139,10 +139,10 @@ test("month: a new user's review has nothing to compare and no history", async (
     setClock(NOW);
     const u = await api.user("reviews-new");
     const empty = (await u.send("GET", "/reviews")).json.data;
-    assert.deepEqual(empty.verdict, { headline: "₹0 saved this period", detail: "No prior period with any saving to compare against yet." });
+    assert.deepEqual(empty.verdict, { headline: "₹0.00 saved this period", detail: "No prior period with any saving to compare against yet." });
     assert.deepEqual([empty.netWorth, empty.investments, empty.biggestExpense, empty.goals], [null, null, null, []]);
     assert.deepEqual(empty.bills, { paidCount: 0, dueCount: 0, late: [] });
-    assert.deepEqual(empty.timeline, [{ date: "2026-03-31T18:30:00.000Z", kind: "win", text: "Period closes: ₹0 saved" }]);
+    assert.deepEqual(empty.timeline, [{ date: "2026-03-31T18:30:00.000Z", kind: "win", text: "Period closes: ₹0.00 saved" }]);
     // An account that starts after the month it is asked about: no net worth for it.
     const b = await u.account("Bank", { startingBalance: 100_000 });
     await txn(u, "expense", 1_000, b, "2026-04-02T06:30:00Z");

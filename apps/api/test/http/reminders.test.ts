@@ -83,13 +83,13 @@ test("18:15: bills, goal deadlines, recurring and yesterday's digest; not yet th
         "31 May in review", "Car is due in 4 days", "Fest is due today", "Netflix looks like a monthly payment",
         "Phone is overdue", "Rent due in 2 days", "SIP · invest in 1 day", "Water is due today",
     ]);
-    assert.deepEqual([by["Phone is overdue"].type, by["Phone is overdue"].body, by["Phone is overdue"].dedupeKey], ["billOverdue", "₹200 was due 3 days ago.", `bill:${ids.Phone}:overdue:2026-05-29`]);
-    assert.deepEqual([by["Water is due today"].body, by["Water is due today"].dedupeKey], ["₹200 due today.", `bill:${ids.Water}:today:2026-06-01`]);
-    assert.deepEqual([by["Rent due in 2 days"].body, by["Rent due in 2 days"].dedupeKey], ["₹200 due on 3 Jun.", `bill:${ids.Rent}:due:2026-06-03`]);
-    assert.equal(by["SIP · invest in 1 day"].body, "₹200 to invest on 2 Jun.");
-    assert.deepEqual([by["Car is due in 4 days"].type, by["Car is due in 4 days"].body, by["Car is due in 4 days"].dedupeKey], ["goalDeadline", "₹4,000 still to go.", `goal:${ids.Car}:deadline:2026-06-05`]);
+    assert.deepEqual([by["Phone is overdue"].type, by["Phone is overdue"].body, by["Phone is overdue"].dedupeKey], ["billOverdue", "₹200.00 was due 3 days ago.", `bill:${ids.Phone}:overdue:2026-05-29`]);
+    assert.deepEqual([by["Water is due today"].body, by["Water is due today"].dedupeKey], ["₹200.00 due today.", `bill:${ids.Water}:today:2026-06-01`]);
+    assert.deepEqual([by["Rent due in 2 days"].body, by["Rent due in 2 days"].dedupeKey], ["₹200.00 due on 3 Jun.", `bill:${ids.Rent}:due:2026-06-03`]);
+    assert.equal(by["SIP · invest in 1 day"].body, "₹200.00 to invest on 2 Jun.");
+    assert.deepEqual([by["Car is due in 4 days"].type, by["Car is due in 4 days"].body, by["Car is due in 4 days"].dedupeKey], ["goalDeadline", "₹4,000.00 still to go.", `goal:${ids.Car}:deadline:2026-06-05`]);
     assert.equal(by["Netflix looks like a monthly payment"].body, "Turn it into a bill to get reminded before it's due.");
-    assert.deepEqual([by["31 May in review"].body, by["31 May in review"].dedupeKey], ["Spent ₹100, earned ₹50 — ₹50 more than you earned. 2 transactions.", "daily:2026-05-31"]);
+    assert.deepEqual([by["31 May in review"].body, by["31 May in review"].dedupeKey], ["Spent ₹100.00, earned ₹50.00 — ₹50.00 more than you earned. 2 transactions.", "daily:2026-05-31"]);
     assert.ok(rows.every((r) => r.pushedAt instanceof Date), "every one pushed");
     assert.deepEqual(sentPushes.filter((p) => p.to === token).slice(-rows.length).map((p) => p.title).sort(), rows.map((r) => r.title).sort());
 });
@@ -98,12 +98,12 @@ test("19:15 adds the weekly digest, 20:30 the monthly and the revalue nudge; a r
     const before = (await feed(me)).length;
     await runReminders(AT_1915);
     const weekly = (await feed(me)).slice(before);
-    assert.deepEqual(weekly.map((r) => [r.title, r.body, r.dedupeKey]), [["Your week in review", "Spent ₹300, earned ₹50 — ₹250 more than you earned.", "weekly:2026-06-01"]]);
+    assert.deepEqual(weekly.map((r) => [r.title, r.body, r.dedupeKey]), [["Your week in review", "Spent ₹300.00, earned ₹50.00 — ₹250.00 more than you earned.", "weekly:2026-06-01"]]);
 
     await runReminders(AT_2030);
     const late = (await feed(me)).slice(before + 1);
     assert.deepEqual(late.map((r) => [r.type, r.title, r.body, r.dedupeKey]), [
-        ["monthlySummary", "May in review", "Spent ₹1,949, earned ₹2,050 — ₹101 put aside. Most went to Shopping — ₹1,000.", "monthly:2026-05"],
+        ["monthlySummary", "May in review", "Spent ₹1,949.00, earned ₹2,050.00 — ₹101.00 put aside. Most went to Shopping — ₹1,000.00.", "monthly:2026-05"],
         ["revalueInvestments", "Time to update your investments", "Update what your 1 investment is worth today to keep your net worth and returns accurate.", "revalue:2026-06"],
     ]);
 

@@ -70,12 +70,12 @@ test("budget alerts: 80% then over, once each, pushed with the unread badge; a p
     let rows = await stored(me);
     assert.equal(rows.length, 1);
     assert.deepEqual({ type: rows[0].type, title: rows[0].title, body: rows[0].body, dedupeKey: rows[0].dedupeKey, link: rows[0].link }, {
-        type: "budgetWarning", title: "Food & Dining is at 85%", body: "₹150 left of your ₹1,000 limit. Includes Groceries.",
+        type: "budgetWarning", title: "Food & Dining is at 85.0%", body: "₹150.00 left of your ₹1,000.00 limit. Includes Groceries.",
         dedupeKey: `budget:${id}:2026-04:warn`, link: { screen: "budget", id },
     });
     assert.ok(rows[0].pushedAt instanceof Date, "pushedAt not set");
     assert.deepEqual(pushesTo(token), [{
-        to: token, title: "Food & Dining is at 85%", body: "₹150 left of your ₹1,000 limit. Includes Groceries.",
+        to: token, title: "Food & Dining is at 85.0%", body: "₹150.00 left of your ₹1,000.00 limit. Includes Groceries.",
         data: { link: { screen: "budget", id } }, badge: 1, sound: "default", priority: "high", channelId: "default",
     }]);
 
@@ -88,7 +88,7 @@ test("budget alerts: 80% then over, once each, pushed with the unread badge; a p
     await spend(me, 20_000, cat["Food & Dining"]);
     rows = await stored(me);
     const over = rows.find((r) => r.type === "budgetExceeded")!;
-    assert.deepEqual([over.title, over.body, over.dedupeKey], ["Food & Dining is over budget", "₹1,100 spent against a ₹1,000 limit.", `budget:${id}:2026-04:over`]);
+    assert.deepEqual([over.title, over.body, over.dedupeKey], ["Food & Dining is over budget", "₹1,100.00 spent against a ₹1,000.00 limit.", `budget:${id}:2026-04:over`]);
     assert.equal(pushesTo(token).at(-1)!.badge, 2);
 
     // Over again, an edit, a transfer, a month with no budget: nothing.
@@ -110,7 +110,7 @@ test("budget alerts: a sub-category's own limit; switched off, nothing; no token
     assert.equal(shopping.status, 201);
     await spend(u, 9_000, clothing, NOW, b);
     const [row] = await stored(u);
-    assert.deepEqual([row.title, row.body, row.pushedAt], ["Clothing is at 90%", "₹10 left of your ₹100 limit.", null]);
+    assert.deepEqual([row.title, row.body, row.pushedAt], ["Clothing is at 90.0%", "₹10.00 left of your ₹100.00 limit.", null]);
 
     const electronics = ((await u.send("GET", "/categories")).json.data as { _id: string; name: string }[]).find((c) => c.name === "Electronics")!._id;
     assert.equal((await u.send("POST", "/budgets", { category: electronics, month: "2026-04", limit: 10_000 })).status, 201);
@@ -122,7 +122,19 @@ test("budget alerts: a sub-category's own limit; switched off, nothing; no token
     assert.equal((await stored(u)).length, 1);
     assert.equal((await u.send("PATCH", "/users/me", { prefs: { notifications: { enabled: true } } })).status, 200);
     await spend(u, 1_000, electronics, NOW, b);
-    assert.deepEqual((await stored(u)).map((r) => r.title), ["Clothing is at 90%", "Electronics is over budget"]);
+    assert.deepEqual((await stored(u)).map((r) => r.title), ["Clothing is at 90.0%", "Electronics is over budget"]);
+});
+
+test("budget alerts: the warning's percentage is floored to a tenth, so it never reads 100.0% short of the limit", async () => {
+    setClock(NOW);
+    const u = await api.user("notify-floor");
+    const b = await u.account("Bank", { startingBalance: 1_000_000 });
+    const clothing = ((await u.send("GET", "/categories")).json.data as { _id: string; name: string }[]).find((c) => c.name === "Clothing")!._id;
+    assert.equal((await u.send("POST", "/budgets", { category: clothing, month: "2026-04", limit: 100_000 })).status, 201);
+    // 99,995 of 100,000 is 99.995%: rounded it would say 100.0%; 2.8.1 said 99%.
+    await spend(u, 99_995, clothing, NOW, b);
+    const [row] = await stored(u);
+    assert.deepEqual([row.title, row.body], ["Clothing is at 99.9%", "₹0.05 left of your ₹1,000.00 limit."]);
 });
 
 test("goal milestones: the highest one crossed, once", async () => {

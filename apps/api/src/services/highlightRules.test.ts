@@ -247,8 +247,8 @@ describe("savings_rate_move", () => {
         const hit = byRule(out, "savings_rate_move");
         assert.ok(hit);
         assert.equal(hit.severity, "win");
-        assert.ok(hit.title.includes("8%"));
-        assert.ok(hit.title.includes("19%"));
+        assert.equal(hit.title, "Your savings rate went from 8.0% to 19.0%");
+        assert.equal(hit.body, "You kept ₹9,500.00 of what came in last month.");
         assert.equal(hit.key, "savings_rate_move:2026-08");
     });
 
@@ -323,8 +323,9 @@ describe("catch_all_heavy", () => {
         }));
         const hit = byRule(out, "catch_all_heavy");
         assert.ok(hit);
-        assert.ok(hit.title.includes("38%"));
-        assert.ok(hit.title.includes("Others"));
+        // 3,000 of 8,000 is 37.5%: one decimal, not rounded to 38.
+        assert.equal(hit.title, "37.5% of this month's spending is in Others");
+        assert.equal(hit.body, "That's ₹3,000.00 the breakdown can't explain. Filing those under real categories makes every other number here sharper.");
     });
 
     it("ignores small months — 30% of nothing is nothing", () => {

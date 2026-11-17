@@ -3,7 +3,7 @@ import Category from "../models/Category";
 import User from "../models/User";
 import { budgetProgress } from "./budgetService";
 import { notify, wantsNotification, type NotifiableUser } from "./notificationService";
-import { formatAmount } from "../utils/money";
+import { formatAmount, formatPercent } from "../utils/money";
 import { monthLabelInZone, normalizeZone } from "../utils/timezone";
 
 // Event-driven, not scheduled: the moment worth telling someone about is the one where the
@@ -80,7 +80,8 @@ export const checkBudgetAlerts = async (
             type: exceeded ? "budgetExceeded" : "budgetWarning",
             title: exceeded
                 ? `${label} is over budget`
-                : `${label} is at ${Math.floor(ratio * 100)}%`,
+                // Floored to a tenth, so a warning never reads "100.0%".
+                : `${label} is at ${formatPercent(Math.floor(ratio * 1000 + 1e-9) / 1000)}`,
             body: exceeded
                 ? `${formatAmount(spent, user.currency)} spent against a ${limitText} limit.${rollUp}`
                 : `${formatAmount(budget.limit - spent, user.currency)} left of your ${limitText} limit.${rollUp}`,

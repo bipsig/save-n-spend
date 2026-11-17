@@ -1,4 +1,4 @@
-import { formatAmount } from "../utils/money";
+import { formatAmount, formatPercent } from "../utils/money";
 
 // The highlight rules — the deterministic half of the "assistant". See docs/insights-engine.md.
 //
@@ -194,7 +194,7 @@ const duePhrase = (daysUntilDue: number): string => {
     return `due in ${days(daysUntilDue)}`;
 };
 
-const pct = (ratio: number): string => `${Math.round(ratio * 100)}%`;
+const pct = formatPercent;
 
 /** A budget on pace to finish over. Allowed to fire before the 80% push would: the push says
  *  a threshold was crossed, this says where the month is heading. */
