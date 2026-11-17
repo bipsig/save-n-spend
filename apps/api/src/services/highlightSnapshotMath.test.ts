@@ -171,23 +171,23 @@ describe("rollUpFlows", () => {
     it("separates the month being lived in from the months behind it", () => {
         const flows = run(
             [
-                { month: "2026-09", type: "income", total: 500_00 },
-                { month: "2026-09", type: "expense", total: 200_00 },
-                { month: "2026-08", type: "income", total: 400_00 },
+                { month: "2026-09", type: "income", total: 500_00, trips: 0 },
+                { month: "2026-09", type: "expense", total: 200_00, trips: 0 },
+                { month: "2026-08", type: "income", total: 400_00, trips: 0 },
             ],
             [],
         );
 
-        assert.deepEqual(flows.current, { income: 500_00, expense: 200_00 });
+        assert.deepEqual(flows.current, { income: 500_00, expense: 200_00, tripExpense: 0 });
         assert.equal(flows.months.length, 3);
-        assert.deepEqual(flows.months.at(-1), { label: "2026-08", income: 400_00, expense: 0 });
+        assert.deepEqual(flows.months.at(-1), { label: "2026-08", income: 400_00, expense: 0, tripExpense: 0 });
     });
 
     it("puts a backdated transaction in the closed month it belongs to", () => {
         // Recorded today, dated July: it must move the July average and leave this month's
         // spend alone, or the pace rules announce a spike on a day nothing was spent.
         const flows = run(
-            [{ month: "2026-07", type: "expense", total: 900_00 }],
+            [{ month: "2026-07", type: "expense", total: 900_00, trips: 0 }],
             [{ month: "2026-07", categoryId: "groceries", total: 900_00 }],
         );
 
@@ -199,6 +199,7 @@ describe("rollUpFlows", () => {
             label: "2026-07",
             income: 0,
             expense: 900_00,
+            tripExpense: 0,
         });
     });
 
@@ -206,7 +207,7 @@ describe("rollUpFlows", () => {
         // The aggregation bounds `occurredAt`, so this should not arrive — but a row belongs
         // to the current month or a complete one behind it, never a third bucket.
         const flows = run(
-            [{ month: "2026-02", type: "expense", total: 999_00 }],
+            [{ month: "2026-02", type: "expense", total: 999_00, trips: 0 }],
             [{ month: "2026-02", categoryId: "groceries", total: 999_00 }],
         );
 
@@ -231,22 +232,22 @@ describe("rollUpFlows", () => {
         // A zero-income month is a real answer the savings-rate rule acts on, so "no idea"
         // has to look different from "you earned nothing".
         const flows = run(
-            [{ month: "2026-08", type: "income", total: 400_00 }],
+            [{ month: "2026-08", type: "income", total: 400_00, trips: 0 }],
             [],
             new Date("2026-08-05T06:00:00Z"),
         );
 
-        assert.deepEqual(flows.months, [{ label: "2026-08", income: 400_00, expense: 0 }]);
+        assert.deepEqual(flows.months, [{ label: "2026-08", income: 400_00, expense: 0, tripExpense: 0 }]);
     });
 
     it("reports a genuinely empty month inside the history as zero", () => {
         // The account existed and nothing was recorded. That IS zero, unlike the case above.
-        const flows = run([{ month: "2026-08", type: "income", total: 400_00 }], []);
+        const flows = run([{ month: "2026-08", type: "income", total: 400_00, trips: 0 }], []);
 
         assert.deepEqual(flows.months, [
-            { label: "2026-06", income: 0, expense: 0 },
-            { label: "2026-07", income: 0, expense: 0 },
-            { label: "2026-08", income: 400_00, expense: 0 },
+            { label: "2026-06", income: 0, expense: 0, tripExpense: 0 },
+            { label: "2026-07", income: 0, expense: 0, tripExpense: 0 },
+            { label: "2026-08", income: 400_00, expense: 0, tripExpense: 0 },
         ]);
     });
 
@@ -294,10 +295,23 @@ describe("rollUpFlows", () => {
         assert.equal(Number.isInteger(average), true);
     });
 
+    it("carries each month's trip part of its expense beside it", () => {
+        const flows = run(
+            [
+                { month: "2026-09", type: "expense", total: 300_00, trips: 120_00 },
+                { month: "2026-08", type: "expense", total: 500_00, trips: 50_00 },
+                { month: "2026-08", type: "income", total: 900_00, trips: 0 },
+            ],
+            [],
+        );
+        assert.deepEqual(flows.current, { income: 0, expense: 300_00, tripExpense: 120_00 });
+        assert.deepEqual(flows.months.at(-1), { label: "2026-08", income: 900_00, expense: 500_00, tripExpense: 50_00 });
+    });
+
     it("says nothing at all about a month with no rows", () => {
         const flows = run([], []);
 
-        assert.deepEqual(flows.current, { income: 0, expense: 0 });
+        assert.deepEqual(flows.current, { income: 0, expense: 0, tripExpense: 0 });
         assert.deepEqual(flows.thisMonthByCategory, []);
         assert.deepEqual(flows.categoryAverages, []);
     });

@@ -24,7 +24,7 @@ const BASE: Snapshot = {
     bills: [],
     goals: [],
     healthFocus: null,
-    thisMonth: { income: 0, expense: 0, byCategory: [] },
+    thisMonth: { income: 0, expense: 0, tripExpense: 0, byCategory: [] },
     months: [],
     categoryAverages: [],
     currentStreak: 0,
@@ -58,6 +58,7 @@ describe("the runner", () => {
             thisMonth: {
                 income: 0,
                 expense: 800_000,
+                tripExpense: 0,
                 byCategory: [{ categoryId: "others", name: "Others", total: 300_000 }],
             },
         }));
@@ -191,7 +192,7 @@ describe("bill_cluster", () => {
 
     it("treats two bills worth a quarter of usual income as a cluster too", () => {
         const out = runHighlightRules(snap({
-            months: [{ label: "2026-08", income: 5_000_000, expense: 3_000_000 }],
+            months: [{ label: "2026-08", income: 5_000_000, expense: 3_000_000, tripExpense: 0 }],
             bills: [
                 { name: "Rent", amount: 1_200_000, daysUntilDue: 3, accountId: null },
                 { name: "School", amount: 400_000, daysUntilDue: 5, accountId: null },
@@ -208,7 +209,7 @@ describe("category_spike and category_drop", () => {
         const out = runHighlightRules(snap({
             categoryAverages,
             // ₹2,800 at day 15 → projects ₹5,600 against a usual ₹4,000.
-            thisMonth: { income: 0, expense: 280_000, byCategory: [{ categoryId: "transport", name: "Transportation", total: 280_000 }] },
+            thisMonth: { income: 0, expense: 280_000, tripExpense: 0, byCategory: [{ categoryId: "transport", name: "Transportation", total: 280_000 }] },
         }));
         const hit = byRule(out, "category_spike");
         assert.ok(hit);
@@ -220,7 +221,7 @@ describe("category_spike and category_drop", () => {
         const out = runHighlightRules(snap({
             categoryAverages,
             // ₹1,000 at day 15 → projects ₹2,000 against a usual ₹4,000.
-            thisMonth: { income: 0, expense: 100_000, byCategory: [{ categoryId: "transport", name: "Transportation", total: 100_000 }] },
+            thisMonth: { income: 0, expense: 100_000, tripExpense: 0, byCategory: [{ categoryId: "transport", name: "Transportation", total: 100_000 }] },
         }));
         const hit = byRule(out, "category_drop");
         assert.ok(hit);
@@ -230,7 +231,7 @@ describe("category_spike and category_drop", () => {
     it("never fires on a category whose usual month is small — ₹60 to ₹180 is not news", () => {
         const out = runHighlightRules(snap({
             categoryAverages: [{ categoryId: "tiny", name: "Tiny", total: 6_000 }],
-            thisMonth: { income: 0, expense: 18_000, byCategory: [{ categoryId: "tiny", name: "Tiny", total: 18_000 }] },
+            thisMonth: { income: 0, expense: 18_000, tripExpense: 0, byCategory: [{ categoryId: "tiny", name: "Tiny", total: 18_000 }] },
         }));
         assert.equal(byRule(out, "category_spike"), undefined);
     });
@@ -240,8 +241,8 @@ describe("savings_rate_move", () => {
     it("compares the last two complete months and celebrates a rise", () => {
         const out = runHighlightRules(snap({
             months: [
-                { label: "2026-07", income: 5_000_000, expense: 4_600_000 }, // 8%
-                { label: "2026-08", income: 5_000_000, expense: 4_050_000 }, // 19%
+                { label: "2026-07", income: 5_000_000, expense: 4_600_000, tripExpense: 0 }, // 8%
+                { label: "2026-08", income: 5_000_000, expense: 4_050_000, tripExpense: 0 }, // 19%
             ],
         }));
         const hit = byRule(out, "savings_rate_move");
@@ -255,20 +256,41 @@ describe("savings_rate_move", () => {
     it("stays quiet under five percentage points, and on months with no income", () => {
         const small = runHighlightRules(snap({
             months: [
-                { label: "2026-07", income: 5_000_000, expense: 4_000_000 },
-                { label: "2026-08", income: 5_000_000, expense: 3_900_000 },
+                { label: "2026-07", income: 5_000_000, expense: 4_000_000, tripExpense: 0 },
+                { label: "2026-08", income: 5_000_000, expense: 3_900_000, tripExpense: 0 },
             ],
         }));
         assert.equal(byRule(small, "savings_rate_move"), undefined);
 
         const noIncome = runHighlightRules(snap({
             months: [
-                { label: "2026-07", income: 0, expense: 4_000_000 },
-                { label: "2026-08", income: 5_000_000, expense: 3_000_000 },
+                { label: "2026-07", income: 0, expense: 4_000_000, tripExpense: 0 },
+                { label: "2026-08", income: 5_000_000, expense: 3_000_000, tripExpense: 0 },
             ],
         }));
         // Zero income is the divide-by-zero month — silence, not NaN%.
         assert.equal(byRule(noIncome, "savings_rate_move"), undefined);
+    });
+
+    it("a body that counts trip spending says so; the title's rates count it without a note", () => {
+        const months = (tripExpense: number) => [
+            { label: "2026-07", income: 5_000_000, expense: 4_600_000, tripExpense: 0 },
+            { label: "2026-08", income: 5_000_000, expense: 4_050_000, tripExpense },
+        ];
+        const up = byRule(runHighlightRules(snap({ months: months(300_000) })), "savings_rate_move");
+        assert.equal(up?.title, "Your savings rate went from 8.0% to 19.0%");
+        assert.equal(up?.body, "You kept ₹9,500.00 of what came in last month, including trips.");
+
+        const down = byRule(runHighlightRules(snap({ months: [
+            { label: "2026-07", income: 5_000_000, expense: 4_050_000, tripExpense: 0 },
+            { label: "2026-08", income: 5_000_000, expense: 4_600_000, tripExpense: 300_000 },
+        ] })), "savings_rate_move");
+        assert.equal(down?.body, "Spending, including trips, grew faster than income last month — worth a look at where.");
+        const downNoTrips = byRule(runHighlightRules(snap({ months: [
+            { label: "2026-07", income: 5_000_000, expense: 4_050_000, tripExpense: 0 },
+            { label: "2026-08", income: 5_000_000, expense: 4_600_000, tripExpense: 0 },
+        ] })), "savings_rate_move");
+        assert.equal(downNoTrips?.body, "Spending grew faster than income last month — worth a look at where.");
     });
 });
 
@@ -315,6 +337,7 @@ describe("catch_all_heavy", () => {
             thisMonth: {
                 income: 0,
                 expense: 800_000,
+                tripExpense: 0,
                 byCategory: [
                     { categoryId: "others", name: "Others", total: 300_000 },
                     { categoryId: "food", name: "Food & Dining", total: 500_000 },
@@ -333,8 +356,33 @@ describe("catch_all_heavy", () => {
             thisMonth: {
                 income: 0,
                 expense: 100_000,
+                tripExpense: 0,
                 byCategory: [{ categoryId: "others", name: "Others", total: 90_000 }],
             },
+        }));
+        assert.equal(byRule(out, "catch_all_heavy"), undefined);
+    });
+
+    it("divides by everyday spending: trip shares are in no category, so they aren't in the share's base", () => {
+        // 3,000 of 6,000 everyday spending: 50.0%. Over all 8,000 it would read 37.5%.
+        const out = runHighlightRules(snap({
+            thisMonth: {
+                income: 0,
+                expense: 800_000,
+                tripExpense: 200_000,
+                byCategory: [
+                    { categoryId: "others", name: "Others", total: 300_000 },
+                    { categoryId: "food", name: "Food & Dining", total: 300_000 },
+                ],
+            },
+        }));
+        assert.equal(byRule(out, "catch_all_heavy")?.title, "50.0% of this month's spending is in Others");
+    });
+
+    it("a trip doesn't lift a small everyday month over the floor", () => {
+        // 1,000 everyday + a 5,000 trip share: over ₹2,000 in all, under it every day.
+        const out = runHighlightRules(snap({
+            thisMonth: { income: 0, expense: 600_000, tripExpense: 500_000, byCategory: [{ categoryId: "others", name: "Others", total: 90_000 }] },
         }));
         assert.equal(byRule(out, "catch_all_heavy"), undefined);
     });

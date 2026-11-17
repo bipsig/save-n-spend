@@ -110,8 +110,8 @@ export const snapshotWindow = (zone: string, now: Date, firstTxnAt: Date): Snaps
 /** A category as the rollup needs it — ids already stringified by the caller. */
 export type CategoryShape = { _id: string; name: string; parent?: string | null };
 
-/** One `$group` row of month totals by type. */
-export type FlowRow = { month: string; type: "income" | "expense"; total: number };
+/** One `$group` row of month totals by type; `trips` is the trip part of `total`. */
+export type FlowRow = { month: string; type: "income" | "expense"; total: number; trips: number };
 
 /** One `$group` row of expense by month and category. `categoryId` is null for
  *  spend recorded without a category at all. */
@@ -142,7 +142,7 @@ export const categoryRoller = (categories: CategoryShape[]) => {
 
 export type SnapshotFlows = {
     months: MonthTotals[];
-    current: { income: number; expense: number };
+    current: { income: number; expense: number; tripExpense: number };
     thisMonthByCategory: CategoryTotal[];
     categoryAverages: CategoryTotal[];
 };
@@ -160,10 +160,12 @@ export const rollUpFlows = (
 ): SnapshotFlows => {
     const { label, completeLabels, monthsAveraged } = window;
 
-    const totalsByMonth = new Map<string, { income: number; expense: number }>();
+    const empty = () => ({ income: 0, expense: 0, tripExpense: 0 });
+    const totalsByMonth = new Map<string, { income: number; expense: number; tripExpense: number }>();
     for (const row of flows.totals) {
-        const entry = totalsByMonth.get(row.month) ?? { income: 0, expense: 0 };
+        const entry = totalsByMonth.get(row.month) ?? empty();
         entry[row.type] += row.total;
+        if (row.type === "expense") entry.tripExpense += row.trips;
         totalsByMonth.set(row.month, entry);
     }
 
@@ -171,8 +173,8 @@ export const rollUpFlows = (
         // Months before the account existed are absent, not zero — a zero month hands the
         // savings-rate rule a fake collapse. Oldest-first, so trim from the front.
         .slice(AVERAGE_MONTHS - monthsAveraged)
-        .map((monthLabel) => ({ label: monthLabel, ...(totalsByMonth.get(monthLabel) ?? { income: 0, expense: 0 }) }));
-    const current = totalsByMonth.get(label) ?? { income: 0, expense: 0 };
+        .map((monthLabel) => ({ label: monthLabel, ...(totalsByMonth.get(monthLabel) ?? empty()) }));
+    const current = totalsByMonth.get(label) ?? empty();
 
     const currentByCategory = new Map<string, number>();
     const pastByCategory = new Map<string, number>();

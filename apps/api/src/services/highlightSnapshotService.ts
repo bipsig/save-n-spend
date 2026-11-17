@@ -38,7 +38,7 @@ import type {
 // highlightSnapshotMath, where fixtures cover them.
 
 type SpendGroup = { _id: { month: string; category: mongoose.Types.ObjectId | null }; total: number };
-type TotalsGroup = { _id: { month: string; type: "income" | "expense" }; total: number };
+type TotalsGroup = { _id: { month: string; type: "income" | "expense" }; total: number; trips: number };
 
 /**
  * Consecutive zone-local days with at least one logged transaction — its own function,
@@ -113,7 +113,7 @@ export const buildSnapshot = async (
             {
                 $facet: {
                     totals: [
-                        { $group: { _id: { month: monthKey, type: "$type" }, total: { $sum: "$amount" } } },
+                        { $group: { _id: { month: monthKey, type: "$type" }, total: { $sum: "$amount" }, trips: { $sum: { $cond: [{ $gt: ["$tripId", null] }, "$amount", 0] } } } },
                     ],
                     // Per-category spend for the pace/spike rules leaves trips out, the same way
                     // budgets do — a holiday isn't a Food "spike". Totals above keep them.
@@ -134,7 +134,7 @@ export const buildSnapshot = async (
         parent: c.parent ? String(c.parent) : null,
     })));
     const flows = rollUpFlows(window, roll, {
-        totals: groups.totals.map((r) => ({ month: r._id.month, type: r._id.type, total: r.total })),
+        totals: groups.totals.map((r) => ({ month: r._id.month, type: r._id.type, total: r.total, trips: r.trips })),
         spend: groups.spend.map((r) => ({
             month: r._id.month,
             categoryId: r._id.category ? String(r._id.category) : null,
@@ -229,6 +229,7 @@ export const buildSnapshot = async (
         thisMonth: {
             income: flows.current.income,
             expense: flows.current.expense,
+            tripExpense: flows.current.tripExpense,
             byCategory: flows.thisMonthByCategory,
         },
         months: flows.months,

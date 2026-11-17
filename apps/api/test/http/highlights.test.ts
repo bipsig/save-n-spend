@@ -84,12 +84,12 @@ test("snapshot: one user's month as the rules see it, cut in their zone", async 
     ]);
     assert.deepEqual(snap.goals, [{ name: "Holiday", target: 500_000, saved: 100_000, monthsSinceCreated: 0, monthsUntilDeadline: 6 }]);
     assert.deepEqual(snap.healthFocus, health.focus ? { label: health.focus.label, hint: health.focus.hint } : null);
-    // Totals keep the 40,000 trip share; the per-category spend leaves it out.
+    // Totals keep the 40,000 trip share and say how much of them it is; the per-category spend leaves it out.
     const { byCategory, ...flows } = snap.thisMonth;
-    assert.deepEqual(flows, { income: 1_000_000, expense: 363_000 });
+    assert.deepEqual(flows, { income: 1_000_000, expense: 363_000, tripExpense: 40_000 });
     assert.deepEqual([...byCategory].sort((a, b) => b.total - a.total),
         [{ categoryId: cat["Food & Dining"], name: "Food & Dining", total: 303_000 }, { categoryId: cat.Shopping, name: "Shopping", total: 20_000 }]);
-    assert.deepEqual(snap.months, ["2026-01", "2026-02", "2026-03"].map((label) => ({ label, income: 1_000_000, expense: 164_900 })));
+    assert.deepEqual(snap.months, ["2026-01", "2026-02", "2026-03"].map((label) => ({ label, income: 1_000_000, expense: 164_900, tripExpense: 0 })));
     // Unordered: the rules look averages up by category.
     assert.deepEqual([...snap.categoryAverages].sort((a, b) => b.total - a.total), [
         { categoryId: cat["Food & Dining"], name: "Food & Dining", total: 100_000 },

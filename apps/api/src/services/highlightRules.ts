@@ -78,7 +78,10 @@ export type CategoryTotal = {
 export type MonthTotals = {
     label: string; // "YYYY-MM"
     income: number;
+    /** Trip shares included, as savings count them. */
     expense: number;
+    /** The trip part of `expense`. */
+    tripExpense: number;
 };
 
 export type Snapshot = {
@@ -96,7 +99,8 @@ export type Snapshot = {
     /** healthScore()'s own pick of the weakest pillar, verbatim — re-deriving it would give
      *  the app two answers to one question. */
     healthFocus: { label: string; hint: string } | null;
-    thisMonth: { income: number; expense: number; byCategory: CategoryTotal[] };
+    /** `expense` includes trips, `tripExpense` is the trip part; `byCategory` is everyday only. */
+    thisMonth: { income: number; expense: number; tripExpense: number; byCategory: CategoryTotal[] };
     /** Complete previous months (up to 3), oldest first. Never partial: comparing a finished
      *  month to a running one flatters whichever is shorter. */
     months: MonthTotals[];
@@ -408,14 +412,16 @@ const savingsRateMove: Rule = {
         if (Math.abs(move) < RATE_MOVE) return null;
 
         const up = move > 0;
+        // Savings count trips; a sentence that does says so (D21), when there were any.
+        const trips = last.tripExpense > 0;
         return {
             ruleId: "savings_rate_move",
             key: `savings_rate_move:${last.label}`,
             severity: up ? "win" : "notice",
             title: `Your savings rate went from ${pct(prevRate)} to ${pct(lastRate)}`,
             body: up
-                ? `You kept ${formatAmount(last.income - last.expense, snap.currency)} of what came in last month.`
-                : `Spending grew faster than income last month — worth a look at where.`,
+                ? `You kept ${formatAmount(last.income - last.expense, snap.currency)} of what came in last month${trips ? ", including trips" : ""}.`
+                : `Spending${trips ? ", including trips," : ""} grew faster than income last month — worth a look at where.`,
             materiality: Math.round(Math.abs(move) * last.income),
             screen: "activity",
         };
@@ -480,7 +486,9 @@ const healthFocus: Rule = {
 const catchAllHeavy: Rule = {
     id: "catch_all_heavy",
     run: (snap) => {
-        const { expense, byCategory } = snap.thisMonth;
+        // Everyday spending, the same base as the categories it is a share of (D21).
+        const { byCategory } = snap.thisMonth;
+        const expense = snap.thisMonth.expense - snap.thisMonth.tripExpense;
         if (expense < CATCH_ALL_MIN_EXPENSE) return null;
 
         const catchAll = byCategory.find((c) => CATCH_ALL_NAMES.has(c.name.trim().toLowerCase()));
