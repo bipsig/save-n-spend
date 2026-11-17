@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { randomBytes } from "crypto";
 import { ObjectId } from "mongodb";
 import { useTestApi, sentPushes, type TestUser } from "../harness";
-import { resetClock, setClock, txn } from "./readHelpers";
-import { runReminders } from "../../src/jobs/reminderJob";
+import { resetClock, setClock, tripWithExpense, txn } from "./readHelpers";
+import { flowLine, runReminders } from "../../src/jobs/reminderJob";
 
 // The hourly reminder job's logic, run directly with `runReminders(now)` (no cron, no timers)
 // over this file's own users. Monday 1 June 2026 in Kolkata: a bill day, a Monday and the 1st.
@@ -138,4 +138,40 @@ test("switched off, closed, or still morning where they are: nothing", async () 
     assert.deepEqual([await titles(off), await titles(closed), await titles(ny)], [[], [], []]);
     // Bill reminders have no switch of their own.
     assert.deepEqual(await titles(digestsOff), ["Overdue is overdue"]);
+});
+
+test("the flow line: everyday spending, trips in their own clause, put aside counting both", () => {
+    assert.equal(
+        flowLine({ income: 1_20_000_00, expense: 86_090_20, tripExpense: 6_450_00, count: 3 }),
+        "Spent ₹79,640.20 plus ₹6,450.00 on trips, earned ₹1,20,000.00 — ₹33,909.80 put aside.",
+    );
+    assert.equal(
+        flowLine({ income: 0, expense: 6_450_00, tripExpense: 6_450_00, count: 1 }),
+        "Spent ₹0.00 plus ₹6,450.00 on trips, earned ₹0.00 — ₹6,450.00 more than you earned.",
+    );
+    assert.equal(flowLine({ income: 1_20_000_00, expense: 86_090_20, tripExpense: 0, count: 2 }), "Spent ₹86,090.20, earned ₹1,20,000.00 — ₹33,909.80 put aside.");
+});
+
+test("digests read trip shares as trips, and a day spent only on a trip still gets one", async () => {
+    setClock("2026-06-01T06:00:00Z");
+    const make = async (tag: string) => {
+        const u = await api.user(tag);
+        assert.equal((await u.send("PATCH", "/users/me", { prefs: { notifications: { dailySummary: true } } })).status, 200);
+        const bank = await u.account("Bank", { startingBalance: 1_00_00_000_00 });
+        const ravi = await u.account("Ravi", { type: "person", startingBalance: 0 });
+        return { u, bank, ravi };
+    };
+    const mixed = await make("rem-trips");
+    await txn(mixed.u, "income", 1_20_000_00, mixed.bank, "2026-05-31T05:30:00Z", { title: "Salary" });
+    await txn(mixed.u, "expense", 79_640_20, mixed.bank, "2026-05-31T06:30:00Z", { title: "Rent" });
+    // Your ₹6,450.00 share of a ₹12,900.00 dinner; Ravi's half is a transfer, not spending.
+    await tripWithExpense(mixed.u, [mixed.ravi], mixed.bank, 12_900_00, "2026-05-31T07:30:00Z");
+    const tripOnly = await make("rem-trip-only");
+    await tripWithExpense(tripOnly.u, [tripOnly.ravi], tripOnly.bank, 12_900_00, "2026-05-31T07:30:00Z");
+    resetClock();
+
+    await runReminders(AT_1815);
+    const digest = async (u: TestUser) => (await feed(u)).find((r) => r.type === "dailySummary")?.body;
+    assert.equal(await digest(mixed.u), "Spent ₹79,640.20 plus ₹6,450.00 on trips, earned ₹1,20,000.00 — ₹33,909.80 put aside. 3 transactions.");
+    assert.equal(await digest(tripOnly.u), "Spent ₹0.00 plus ₹6,450.00 on trips, earned ₹0.00 — ₹6,450.00 more than you earned. 1 transaction.");
 });

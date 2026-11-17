@@ -8,6 +8,7 @@ import User from "../models/User";
 import { daysUntilDue, isSettledForPeriod } from "../services/billService";
 import { getRecurringSuggestions, keysSignature } from "../services/recurringService";
 import { notify, wantsNotification, type NotifiableUser } from "../services/notificationService";
+import { summaryTotals, type SummaryGroup } from "../services/transactionFilter";
 import { formatAmount } from "../utils/money";
 import { log } from "../utils/logger";
 import {
@@ -83,15 +84,16 @@ type ReminderUser = {
 };
 
 /** The money that moved in a closed period, and how many times. Transfers and adjustments
- *  are excluded exactly as insights excludes them. */
-type PeriodFlows = { income: number; expense: number; count: number };
+ *  are excluded exactly as insights excludes them. `expense` counts trips; `tripExpense` is the
+ *  part of it on trips, by the same rule as /transactions/summary's `tripExpenses`. */
+type PeriodFlows = { income: number; expense: number; tripExpense: number; count: number };
 
-const flowsBetween = async (
+export const flowsBetween = async (
     userId: mongoose.Types.ObjectId,
     start: Date,
     end: Date,
 ): Promise<PeriodFlows> => {
-    const rows = await Transaction.aggregate<{ _id: "income" | "expense"; total: number; count: number }>([
+    const rows = await Transaction.aggregate<SummaryGroup & { count: number }>([
         {
             $match: {
                 userId,
@@ -99,20 +101,26 @@ const flowsBetween = async (
                 occurredAt: { $gte: start, $lt: end },
             },
         },
-        { $group: { _id: "$type", total: { $sum: "$amount" }, count: { $sum: 1 } } },
+        { $group: { _id: { type: "$type", trip: { $gt: ["$tripId", null] } }, total: { $sum: "$amount" }, count: { $sum: 1 } } },
     ]);
+    const totals = summaryTotals(rows, undefined);
 
     return {
-        income: rows.find((row) => row._id === "income")?.total ?? 0,
-        expense: rows.find((row) => row._id === "expense")?.total ?? 0,
+        income: totals.income,
+        expense: totals.expenses,
+        tripExpense: totals.tripExpenses,
         count: rows.reduce((sum, row) => sum + row.count, 0),
     };
 };
 
-/** The one sentence all three digests end with, so they read consistently. */
-const flowLine = (flows: PeriodFlows, currency?: string): string => {
+/** The one sentence all three digests end with, so they read consistently. "Spent" is everyday
+ *  spending and trips get their own clause; what was put aside still counts them (D21 A+, Q1). */
+export const flowLine = (flows: PeriodFlows, currency?: string): string => {
     const net = flows.income - flows.expense;
-    return `Spent ${formatAmount(flows.expense, currency)}, earned ${formatAmount(flows.income, currency)}`
+    const spent = flows.tripExpense > 0
+        ? `${formatAmount(flows.expense - flows.tripExpense, currency)} plus ${formatAmount(flows.tripExpense, currency)} on trips`
+        : formatAmount(flows.expense, currency);
+    return `Spent ${spent}, earned ${formatAmount(flows.income, currency)}`
         + (net >= 0
             ? ` — ${formatAmount(net, currency)} put aside.`
             : ` — ${formatAmount(-net, currency)} more than you earned.`);
