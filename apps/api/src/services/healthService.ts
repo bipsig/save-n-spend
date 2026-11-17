@@ -125,12 +125,14 @@ const pct = formatPercent;
 /** What share of income survived the window. 20% is the 50/30/20 target, so it earns 80
  *  rather than full marks; nothing above 30% scores more, or the pillar would reward
  *  austerity. A negative rate is 0 flat. */
-const savingsPillar = (income: number, expenses: number): Pillar | null => {
+const savingsPillar = (income: number, expenses: number, tripExpenses: number): Pillar | null => {
     // No income means no denominator, not a 0% rate — someone living off savings between
     // jobs would otherwise be failing at a thing they aren't doing.
     if (income <= 0) return null;
 
     const rate = (income - expenses) / income;
+    // Savings always count trips; a sentence that does says so (D21), when there were any.
+    const withTrips = tripExpenses > 0 ? ", including trips" : "";
     const score = points(curve(rate, [[0, 0], [0.05, 25], [0.2, 80], [0.3, 100]]));
 
     const monthlyIncome = income / (WINDOW_DAYS / 30);
@@ -146,14 +148,15 @@ const savingsPillar = (income: number, expenses: number): Pillar | null => {
         hint: score >= PAR
             ? undefined
             : rate <= 0
-                ? `You are spending more than you earn over the last ${WINDOW_DAYS} days. Everything else on this list depends on closing that gap first.`
-                : `Keeping ${pct(rate)} of what comes in. The usual target is 20% — about ${formatAmount(target)} a month at your income.`,
+                ? `You are spending more than you earn over the last ${WINDOW_DAYS} days${withTrips}. Everything else on this list depends on closing that gap first.`
+                : `Keeping ${pct(rate)} of what comes in${withTrips}. The usual target is 20% — about ${formatAmount(target)} a month at your income.`,
     };
 };
 
 /**
  * How many months of your own spending you could cover from what you hold. Measured against
- * the user's own expense rate: ₹2 lakh is a year of runway for one person and six weeks for
+ * the user's own everyday expense rate (trips left out: a holiday is a one-off, not the rate
+ * to plan a buffer on). ₹2 lakh is a year of runway for one person and six weeks for
  * another. 3 months is the usual emergency-fund floor, 6 the target, and nothing above 6
  * scores more — this is resilience, not wealth. Card debt is subtracted, since ₹50k in the
  * bank against ₹45k owed is not runway.
@@ -395,7 +398,7 @@ export const healthScore = async (
         // `transfer` and the adjustments are excluded: moving money between your own
         // accounts is not income or spending, and a correction is bookkeeping. Both still
         // move `Account.balance`, so they reach the buffer pillar.
-        Transaction.aggregate<{ _id: string; total: number }>([
+        Transaction.aggregate<{ _id: string; total: number; trips: number }>([
             {
                 $match: {
                     userId: oid,
@@ -403,7 +406,7 @@ export const healthScore = async (
                     occurredAt: { $gte: windowStart, $lte: now },
                 },
             },
-            { $group: { _id: "$type", total: { $sum: "$amount" } } },
+            { $group: { _id: "$type", total: { $sum: "$amount" }, trips: { $sum: { $cond: [{ $gt: ["$tripId", null] }, "$amount", 0] } } } },
         ]),
         Account.aggregate<{ _id: string; total: number }>([
             { $match: { userId: oid, isArchived: false } },
@@ -418,6 +421,7 @@ export const healthScore = async (
 
     const income = flows.find((row) => row._id === "income")?.total ?? 0;
     const expenses = flows.find((row) => row._id === "expense")?.total ?? 0;
+    const tripExpenses = flows.find((row) => row._id === "expense")?.trips ?? 0;
 
     const balanceOf = (type: string): number => balances.find((row) => row._id === type)?.total ?? 0;
     const liquid = balanceOf("bank") + balanceOf("cash") + balanceOf("wallet");
@@ -429,12 +433,12 @@ export const healthScore = async (
         categories.map((row) => [String(row._id), row.name]),
     );
 
-    const buffer = bufferPillar(liquid, cardDebt, expenses);
+    const buffer = bufferPillar(liquid, cardDebt, expenses - tripExpenses);
 
     // Heaviest first, so a pillar never changes position. The dashboard shows the first
     // three that apply; the full list is on the detail screen.
     const pillars = [
-        savingsPillar(income, expenses),
+        savingsPillar(income, expenses, tripExpenses),
         buffer.pillar,
         billsPillar(bills, now, zone),
         budgetsPillar(budgets.items, categoryNames, now, zone),

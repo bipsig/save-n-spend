@@ -282,14 +282,15 @@ test("health: scored on the 90 days before today; January's salary has left the 
     const r = await me.send("GET", "/dashboard/health");
     assert.equal(r.status, 200, r.text);
     assert.equal(r.json.message, "Health score fetched");
-    // Income 1,000,000 against 795,000 spent: 20.5% saved. 8,180,000 liquid over 265,000 a month.
+    // Income 1,000,000 against 795,000 spent: 20.5% saved. The buffer is measured on everyday
+    // spending, 750,000 without the 45,000 trip share: 8,180,000 liquid over 250,000 a month.
     assert.deepEqual(r.json.data, {
         score: 90, band: "excellent", rating: "Excellent", windowDays: 90,
         pillars: [
             { key: "savings", label: "Savings rate", score: 81, weight: 30, value: "20.5%", verdict: "On track" },
             { key: "buffer", label: "Safety buffer", score: 100, weight: 25, value: "6+ months", verdict: "On track" },
         ],
-        runwayMonths: 8_180_000 / 265_000,
+        runwayMonths: 8_180_000 / 250_000,
     });
 });
 
@@ -390,6 +391,30 @@ test("health: a mid-range saver gets the target hint; a thin buffer without card
         ["savings", 25, "5.0%", "Keeping 5.0% of what comes in. The usual target is 20% — about ₹2,000.00 a month at your income."],
         ["buffer", 6, "0.2 months", "₹1,500.00 on hand covers 0.2 months. Three months of your own expenses — about ₹28,500.00 — is the usual floor."],
     ]);
+});
+
+test("health (D21): the buffer is measured on everyday spending; a savings hint that counts trips says so", async () => {
+    setClock("2026-06-20T06:30:00Z");
+    const u = await api.user("health-trips");
+    const b = await u.account("Bank", { startingBalance: 150_000 });
+    const ravi = await u.account("Ravi", { type: "person", startingBalance: 0 });
+    await txn(u, "income", 3_000_000, b, "2026-04-01T06:30:00Z");
+    await txn(u, "expense", 2_700_000, b, "2026-04-02T06:30:00Z");
+    // 300,000 split with Ravi: your 150,000 share, and 150,000 he owes you.
+    await tripWithExpense(u, [ravi], b, 300_000, "2026-04-03T06:30:00Z");
+    const d = await healthScore(u.id, "Asia/Kolkata", new Date("2026-06-20T06:30:00Z"));
+    // Savings count the trip: (3,000,000 − 2,850,000) / 3,000,000 = 5.0%. The buffer's rate is
+    // the 2,700,000 everyday spending, 900,000 a month; with trips it would be 950,000.
+    assert.deepEqual(d.pillars.map((p) => [p.key, p.score, p.value, p.hint]), [
+        ["savings", 25, "5.0%", "Keeping 5.0% of what comes in, including trips. The usual target is 20% — about ₹2,000.00 a month at your income."],
+        ["buffer", 7, "0.2 months", "₹1,500.00 on hand covers 0.2 months. Three months of your own expenses — about ₹27,000.00 — is the usual floor."],
+    ]);
+    assert.equal(d.runwayMonths, 150_000 / 900_000);
+
+    // Spending more than you earn, trips included.
+    await txn(u, "expense", 200_000, b, "2026-04-04T06:30:00Z");
+    const over = await healthScore(u.id, "Asia/Kolkata", new Date("2026-06-20T06:30:00Z"));
+    assert.equal(over.pillars[0].hint, "You are spending more than you earn over the last 90 days, including trips. Everything else on this list depends on closing that gap first.");
 });
 
 // ---- For You and pace ---------------------------------------------------------------------------
