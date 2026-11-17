@@ -1088,7 +1088,7 @@ sub-category on its own. Transfers, income and adjustments never count.
 **Important**
 Trip spending is excluded from `spent` on purpose: a holiday should not blow the
 Food budget. It still counts in the dashboard totals and the savings rate. See
-[Findings for the maintainer](#findings-for-the-maintainer) for where the
+[Known issues: planning, insights and operations](#planning-insights-and-operations) for where the
 endpoints disagree about this.
 
 **Note**
@@ -1500,7 +1500,8 @@ the client fan out across resources. `data` is `DashboardSummary`.
 | `weekIncome`, `weekExpense` | integer | Paise for the current Monday-start zone-local week, regardless of `month`. `weekExpense` includes trips. |
 | `weekTripExpense` | integer | 2.8.4. Paise. The trip part of `weekExpense`. |
 | `biggestExpense` | object \| null | `{ title, amount, occurredAt }` — the single largest expense in the month, trips included. `null` when the month has no expenses. |
-| `sinceLastOpened` | object? | `{ transactions, spent }` — count and paise of **expense** transactions at or after `since`. Absent (not zero) when `since` was not sent. |
+| `biggestEverydayExpense` | object \| null | 2.8.4. The same, everyday spending only (no `tripId`), so it never names a trip share. `null` when the month has no everyday expenses. |
+| `sinceLastOpened` | object? | `{ transactions, spent, tripSpent }` — count and paise of **expense** transactions at or after `since`; `spent` includes trips, `tripSpent` (2.8.4) is the trip part of it. Absent (not zero) when `since` was not sent. |
 
 Only `income` and `expense` rows reach the totals. Transfers and the two
 adjustment types are excluded, so a balance correction never reads as income or
@@ -1571,6 +1572,15 @@ Each pillar:
 | `verdict` | string | `On track` (80+) \| `Okay` (60+) \| `Watch` (40+) \| `Off track`. |
 | `hint` | string? | What to do about it. Present only below 65. Written like every [server sentence](#server-written-sentences). |
 
+From 2.8.4 (D21) the buffer pillar (and `runwayMonths`) measures runway against
+**everyday** spending in the window: trip shares are left out of the monthly
+expense rate, since a holiday is a one-off, not the rate to plan a buffer on.
+This moves the buffer's score, value and hint, and through them the total, for
+anyone with trip spending in the last 90 days. The savings pillar still counts
+trips, as savings always do, and its hint says so ("Keeping 5.0% of what comes
+in, including trips.", "You are spending more than you earn over the last 90
+days, including trips.") when the window had any trip spending.
+
 Pillars are returned heaviest first, and a pillar that does not apply is
 omitted from the array when its builder returns nothing: savings needs income in
 the window, buffer needs spending, bills needs at least one bill, budgets needs
@@ -1614,7 +1624,11 @@ series-shaped, not scalars. `data` is `DashboardInsights`.
 | `average` | `{ date, amount }[]` | The per-day-of-month average over the last `monthsAveraged` complete months (up to 3). May run longer than `current`. Dated like `current` where they overlap and `day-N` past the end of a shorter current month. |
 | `monthsAveraged` | integer | 1–3, floored to actual history. |
 
-All expense figures here count every `expense` transaction, trips included.
+| `everyday` | object | 2.8.4. `{ noSpendDays, weekdayHeatmap, pace }`, the same three with trip spending left out: a day with only a trip share is a no-spend day, and the heatmap and both pace series count everyday spending. Same shapes and the same `null` rules as above. |
+
+`forYou.noSpendDays`, `forYou.weekdayHeatmap` and `pace` count every `expense`
+transaction, trips included, as in 2.8.1; `everyday` is what "spending" means in
+the 2.8.4 app (D21).
 
 ## Insights
 
@@ -1644,8 +1658,8 @@ A positive `offset` is rejected with a 400. See
 | `period` | enum | Echo. |
 | `timeZone` | string | The zone every bucket below was cut in. |
 | `periodStart`, `periodEnd` | string | ISO instants; end exclusive. |
-| `trend` | `{ date, amount }[]` | Expense per bucket, dense and ordered, zeros included. Buckets are hours (`YYYY-MM-DDTHH`) for `day`, days (`YYYY-MM-DD`) for `week` and `month`, months (`YYYY-MM`) for `year`. A running window stops at the current bucket. |
-| `previousTrend` | `{ date, amount }[]` | The same buckets for the previous window, not stopped early. Compared with `trend` by index, not by date. |
+| `trend` | `{ date, amount, tripAmount }[]` | Expense per bucket, dense and ordered, zeros included. `amount` includes trips; `tripAmount` (2.8.4) is the trip part, so the everyday line is `amount - tripAmount`. Buckets are hours (`YYYY-MM-DDTHH`) for `day`, days (`YYYY-MM-DD`) for `week` and `month`, months (`YYYY-MM`) for `year`. A running window stops at the current bucket. |
+| `previousTrend` | `{ date, amount, tripAmount }[]` | The same buckets for the previous window, not stopped early. Compared with `trend` by index, not by date. |
 | `incomeVsExpense` | `{ periodStart, income, expense, tripExpense }[]` | Always 6 entries, oldest to newest, zero-filled; the last is the current window, the one before it the previous. `periodStart` is a zone-local `YYYY-MM-DD`. `expense` includes trips; `tripExpense` (2.8.4) is the trip part, so everyday spending is `expense - tripExpense`. |
 | `byCategory` | `InsightsCategorySlice[]` | Expense per top-level category, children rolled in, biggest first. `children` carries the sub-category split (already counted in `total`, so never sum both levels). Includes archived categories' names. From 2.8.4 every slice except Trips carries `share`: its share of everyday spending, 0–100 to one decimal (see below). |
 | `uncategorised` | `{ total, share }` | 2.8.4. Everyday spending filed under no category (bill payments, older rows): in no slice, but part of the everyday spending the shares divide by. `{ total: 0, share: 0 }` when there is none. |
@@ -1653,6 +1667,7 @@ A positive `offset` is rejected with a 400. See
 | `byAccount` | `{ accountId, name, total }[]` | Expense per account, biggest first. Spend charged to a `person` account (a trip share a friend paid) is merged into one slice `{ accountId: "friends", name: "Paid by friends" }`. |
 | `avgDailySpendCurrent` | integer | Paise per day. A running window divides by days elapsed including today; a finished one by its full length. |
 | `avgDailySpendPrevious` | integer | Paise per day over the previous window. |
+| `avgDailyEverydaySpendCurrent`, `avgDailyEverydaySpendPrevious` | integer | 2.8.4. The same averages without trip spending, for the projection. Rounded separately, so not exactly `avgDailySpend* - trips ÷ days`. |
 | `topCategory` | string \| null | Name of the biggest `byCategory` slice, skipping a category named `Others`. |
 | `txnCount` | integer | Count of `income` and `expense` transactions in the window. |
 
@@ -1663,7 +1678,11 @@ with each trip as a child. `"trips"` is not a category ID. The app routes a tap 
 it to Trips, and `GET /insights/category/trips` does not resolve (a malformed id
 in the path is a `404` `not_found`, `That category doesn't exist any more`). Other
 figures in the same response, listed in
-[Findings for the maintainer](#findings-for-the-maintainer), still include trips.
+[Known issues: planning, insights and operations](#planning-insights-and-operations), still include trips;
+from 2.8.4 each of them that the app shows as spending carries its trip part or an everyday twin
+beside it (`incomeVsExpense[].tripExpense`, `trend[].tripAmount`, `avgDailyEverydaySpend*`).
+`byAccount` keeps trips with no split: it answers "how much left this account", and a trip
+share did leave it.
 
 **Shares (2.8.4).** `share` divides by everyday spending in the window: every
 `expense` row without a `tripId`, uncategorised ones included, which is
@@ -1806,7 +1825,8 @@ titles first seen in the period (from `HighlightLog`), each one-off bill paid
 late, the largest goal contribution, for a month the heaviest or lightest week,
 and a closing "Period closes" entry. From 2.8.4 the biggest expense is the
 everyday one, the same row as `biggestExpense` (before, it could be a trip
-share). The heaviest or lightest week still counts trip spending. Every moment's
+share). The heaviest or lightest week ("₹X spent") counts everyday spending only
+from 2.8.4 too, so a trip week no longer reads as the heaviest. Every moment's
 text is a [server sentence](#server-written-sentences); a highlight's title is
 copied as it was stored when first seen, so one stored before 2.8.4 keeps whole
 rupees.
@@ -2971,10 +2991,12 @@ the ones the app shows as "spent" (`tripExpenses`, `weekTripExpense`,
 `tripExpenses` and `previousTripExpenses`), plus shares of everyday spending
 (`share`, `uncategorised`, `shareOfEverydaySpend`). The review timeline's
 biggest expense now leaves trips out, so it and `biggestExpense` name the same
-row. Still including trips with no split beside them: the dashboard's
-`biggestExpense` and `sinceLastOpened`, the dashboard insights (`noSpendDays`,
-heatmap, pace), the insights `trend`, `byAccount` and `avgDailySpend*`, and the
-review's heaviest or lightest week.
+row. The second 2.8.4 pass covers the rest: `biggestEverydayExpense`,
+`sinceLastOpened.tripSpent`, the dashboard insights' `everyday` block,
+`trend[].tripAmount`, `avgDailyEverydaySpend*`; the review's heaviest or
+lightest week, the Health buffer and the `catch_all_heavy` highlight now use
+everyday spending outright (server-composed text and scores). `byAccount` keeps
+trips on purpose: a trip share is money that left that account.
 
 **3. Adjustment rows.** `positiveAdjustment` and `negativeAdjustment` are
 excluded from every income, expense and spend figure here (they match

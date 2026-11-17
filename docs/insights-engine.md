@@ -222,10 +222,10 @@ pairs a **ratio** with an **absolute floor**, for reasons in
 | `bill_cluster` | ≥ 3 bills, or ≥ 25% of monthly income in bills, due in the same 7 days | "₹18,400 of bills land between the 12th and the 18th" |
 | `category_spike` | A parent category is ≥ 40% above its 3-month average, delta ≥ ₹500 | "Transportation is ₹1,600 above its usual ₹4,000" |
 | `category_drop` | Same, downward — a win, not a warning | "Food & Dining is ₹3,400 below your average" |
-| `savings_rate_move` | Savings rate moved ≥ 5 percentage points versus last month | "Your savings rate went from 8% to 19%" |
+| `savings_rate_move` | Savings rate moved ≥ 5 percentage points versus last month | "Your savings rate went from 8.0% to 19.0%" |
 | `goal_pace` | At the trailing 3-month contribution rate, a goal misses its target date | "The laptop fund lands in March, two months after your June target" |
 | `health_focus` | `healthScore().focus` is present | Surfaces that pillar's existing `hint` verbatim |
-| `catch_all_heavy` | ≥ 30% of the month's expense, and ≥ ₹2,000 of it, sits in one catch-all category (Others, Misc, Uncategorised…) | "38% of your spending is in Others, so the breakdown can't tell you much" |
+| `catch_all_heavy` | ≥ 30% of the month's expense, and ≥ ₹2,000 of it, sits in one catch-all category (Others, Misc, Uncategorised…) | "37.5% of this month's spending is in Others" (of everyday spending, from 2.8.4) |
 | `logging_streak` | Logged something on ≥ 3 days in a row; keyed by milestone (3, 7, 14, 30, 60, 90, 180, 365) so a dismissal holds across the days inside one bucket | "12 days in a row logging transactions" |
 | `investment_stale` | Holdings exist, a value update is on record, and the newest is ≥ 35 days old; keyed per month | "Your investment values are about 6 weeks old" |
 | `investment_milestone` | Portfolio value is at or past a round number (₹5k up to ₹10L); fires once per bucket | "Your investments crossed ₹1,00,000" |
@@ -238,10 +238,12 @@ nudge are not money at risk, so they rank below anything with rupees on the line
 and surface only on a quiet day.
 
 Trip spending is split in the snapshot: the month's income, expense and
-savings-rate totals include trip rows, but the per-category figures behind
-`budget_pace`, `category_spike`, `category_drop` and `catch_all_heavy` leave them
-out, because a holiday's food is not an everyday Food spike. Budgets come from
-`budgetProgress`, which also excludes them.
+savings-rate totals include trip rows (with the trip part beside them, `tripExpense`,
+from 2.8.4), but the per-category figures behind `budget_pace`, `category_spike`,
+`category_drop` and `catch_all_heavy` leave them out, because a holiday's food is not an
+everyday Food spike. `catch_all_heavy` also divides by everyday spending (`expense −
+tripExpense`) from 2.8.4, so its share and its ₹2,000 floor use the same base as the
+categories. Budgets come from `budgetProgress`, which also excludes them.
 
 `bill_vs_balance` compares against *individual* account balances, not their sum,
 because money in a savings account is not going to pay a card bill on Thursday. It
@@ -456,6 +458,12 @@ From 2.8.4 the server's `formatAmount` and `formatPercent` (`apps/api/src/utils/
 follow the app's rules: exact paise, one decimal on a measured percentage, and the
 true minus (`₹9,500.00`, `37.5%`, `−5.1%`). See
 [Server-written sentences](api-reference.md#server-written-sentences).
+
+"Spending" in the copy means everyday spending, without trips (D21, 2.8.4): the category
+rules always used everyday spend, and `catch_all_heavy` now divides by it too. A sentence
+that counts trips says so: `savings_rate_move`'s body reads "You kept ₹X of what came in last
+month, including trips." (or "Spending, including trips, grew faster…") when that month had
+trip spending. The savings rate in its title counts trips without a note, as savings always do.
 
 ## Out of scope
 
