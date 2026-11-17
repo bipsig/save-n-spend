@@ -52,7 +52,7 @@ import {
   prevLabel,
 } from "@/lib/insights";
 import { useHighlights } from "@/lib/highlights";
-import { categoryShares, dailyAverages, everydayTrend, insightsSpend, OTHERS_ID, UNCATEGORISED_ID } from "@/lib/everydaySpend";
+import { categoryShares, dailyAverages, everydayTrend, insightsSpend, noEverydayLine, OTHERS_ID, UNCATEGORISED_ID } from "@/lib/everydaySpend";
 import { useAppZone } from "@/lib/zone";
 import { colors, radius, spacing, incomeColor, expenseColor, chartValueColor } from "@/theme";
 import { signTone, toneSoft } from "@/lib/signTone";
@@ -208,6 +208,7 @@ const InsightsScreen = () => {
     const pairs = spend.columns;
     const labels = data.incomeVsExpense.map((p) => seriesLabel(p.periodStart, period));
     const top = shares ? cats.find((c) => c.id !== OTHERS_ID && c.id !== UNCATEGORISED_ID) : cats[0];
+    const noEveryday = noEverydayLine(shares?.list, spend.trips);
 
     const vsLabel = prevLabel(period, offset);
     const pace = cumulativePair(dayTrend, everydayTrend(data.previousTrend), period);
@@ -341,6 +342,7 @@ const InsightsScreen = () => {
         <Card style={styles.stack}>
           <Caps>{shares ? "By category · share of everyday spending" : "By category"}</Caps>
           <View style={styles.catList}>
+            {noEveryday && <AppText size="sm" color="inkDim">{noEveryday}</AppText>}
             {cats.map((c) => {
               // "Others" is a fold of several categories and "Uncategorised" is none, so neither
               // has one category to open.

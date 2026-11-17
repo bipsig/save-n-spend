@@ -122,6 +122,11 @@ export const categoryShares = (
   return { list, ring };
 };
 
+/** "By category" when the window's only spending is trips: one line instead of an empty card.
+ *  Null when there is a row to list, on an older API (no `list`), or with no trips line. */
+export const noEverydayLine = (list: readonly ShareSlice[] | undefined, trips: number | null): string | null =>
+  list && list.length === 0 && trips !== null ? "No everyday spending in this period" : null;
+
 export type ReviewInput = {
   expenses: number;
   tripExpenses?: number;

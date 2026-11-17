@@ -107,6 +107,19 @@ test("By category on a 2.8.1 response: null, so the screen keeps foldCategories"
   assert.equal(e.categoryShares([slice("rent", 2800000), slice("trips", 645000)], undefined), null);
 });
 
+test("By category on a trips-only window: one line, not an empty card", () => {
+  const out = e.categoryShares([slice("trips", 321050)], { total: 0, share: 0 })!;
+  assert.deepEqual(out.list, []);
+  assert.equal(out.ring.length, 1);
+  assert.equal(e.noEverydayLine(out.list, 321050), "No everyday spending in this period");
+  // Only uncategorised everyday spending: its row is listed, so no line.
+  const uncat = e.categoryShares([slice("trips", 321050)], { total: 100000, share: 100 })!;
+  assert.equal(e.noEverydayLine(uncat.list, 321050), null);
+  // No trips line, or an older API (no list): the card is as before.
+  assert.equal(e.noEverydayLine([], null), null);
+  assert.equal(e.noEverydayLine(undefined, 321050), null);
+});
+
 test("Review: everyday tile and change, trips line, shares with Trips by amount and Uncategorised", () => {
   const r = e.reviewSpend({
     expenses: 9503270, tripExpenses: 1107176, previousExpenses: 7318437, previousTripExpenses: 0,
