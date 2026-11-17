@@ -98,11 +98,11 @@ export const buildTimeline = async (
         }
     }
 
-    // A month's own daily buckets, reused rather than re-queried — the same aggregate
-    // /insights already runs for the month's trend chart. Not run for a week: there's
-    // nothing to sub-divide a single week into.
+    // A month's own daily buckets, from the same aggregate /insights runs for its trend chart,
+    // everyday spending only: "₹X spent" means spending without trips (D21). Not run for a
+    // week: there's nothing to sub-divide a single week into.
     if (period === "month") {
-        const daily = await getTrend(start, end, "month", zone, req);
+        const daily = await getTrend(start, end, "month", zone, req, { everyday: true });
         const standout = bestWorstWeek(daily);
         if (standout) {
             moments.push({

@@ -105,13 +105,15 @@ test("month: the timeline is dated and sorted; its biggest expense is the everyd
     setClock(NOW);
     const { timeline } = (await me.send("GET", "/reviews?period=month&offset=-1")).json.data;
     assert.deepEqual(timeline, [
+        // Everyday weeks from the 1st: 100,000, 76,000, 7,500 (the trip's 150,000 left out), then
+        // nothing: the first is heaviest at 100,000 against a 45,875 average. With the trip, as
+        // up to 2.8.3, the standout was the empty fourth week ("lightest … ₹0 spent").
+        { date: "2026-03-01T00:00:00.000Z", kind: "warn", text: "Your heaviest week this period — ₹1,000.00 spent" },
         // The groceries, as `biggestExpense` says; 2.8.1 named the bigger trip share (1,500) here.
         { date: "2026-03-03T06:30:00.000Z", kind: "neutral", text: "Biggest expense of the period: Groceries, ₹1,000.00" },
         { date: "2026-03-08T06:30:00.000Z", kind: "warn", text: "Water was paid 3 days late" },
         { date: "2026-03-12T06:30:00.000Z", kind: "win", text: "₹500.00 added to Holiday" },
         { date: "2026-03-16T06:30:00.000Z", kind: "win", text: "3 days in a row logging transactions" },
-        // Weeks from the 1st: 100,000, 76,000, 157,500, then nothing from the 22nd to the 28th.
-        { date: "2026-03-22T00:00:00.000Z", kind: "win", text: "Your lightest week this period — ₹0.00 spent" },
         { date: "2026-03-31T18:30:00.000Z", kind: "win", text: "Period closes: ₹8,655.00 saved" },
     ]);
 });
