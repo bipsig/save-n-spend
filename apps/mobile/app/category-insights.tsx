@@ -23,6 +23,7 @@ import { formatPct } from "@/lib/format/pct";
 import { count } from "@/lib/format/count";
 import { useCategoryInsights, buildTrend, pctChange } from "@/lib/insights";
 import { useTransactionFeed } from "@/lib/transactions";
+import { categoryShare } from "@/lib/everydaySpend";
 import { usePendingDeletes } from "@/store/pendingDeletes";
 import { rangeBounds, rangeNavLabel } from "@/lib/dateRange";
 import { relativePeriod } from "@/lib/format/period";
@@ -120,6 +121,7 @@ const CategoryInsightsScreen = () => {
     const trend = buildTrend(data.trend, period);
     const delta = pctChange(data.total, data.previousTotal);
     const childMax = Math.max(...data.children.map((c) => c.total), 1);
+    const share = categoryShare(data);
 
     return (
       <>
@@ -137,8 +139,8 @@ const CategoryInsightsScreen = () => {
           </View>
           <AppText size="xs" color="inkDim">
             {data.previousTotal > 0
-              ? `${formatMoney(data.previousTotal)} the period before · ${formatPct(data.shareOfSpend)} of all spending`
-              : `${formatPct(data.shareOfSpend)} of all spending this period`}
+              ? `${formatMoney(data.previousTotal)} the period before · ${formatPct(share.pct)} of ${share.of}`
+              : `${formatPct(share.pct)} of ${share.of} this period`}
           </AppText>
           {data.total > 0 ? (
             <AreaChart

@@ -2,6 +2,7 @@ import { StyleSheet, View } from "react-native";
 import AppHeader from "@/components/shell/AppHeader";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import SummaryCard from "@/components/data/SummaryCard";
+import TripLine from "@/components/data/TripLine";
 import HealthScoreCard from "@/components/data/HealthScoreCard";
 import SafeToSpendCard from "@/components/data/SafeToSpendCard";
 import GetStartedCard from "@/components/data/GetStartedCard";
@@ -15,7 +16,8 @@ import SectionHeader from "@/components/ui/SectionHeader";
 import Fab from "@/components/ui/Fab";
 import TransactionRow from "@/components/rows/TransactionRow";
 import NetWorthSheet from "@/components/sheets/NetWorthSheet";
-import { usePrivacyMask } from "@/lib/money";
+import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { biggestEveryday, dailyAverages, dashboardEveryday, homeSpend, sinceSpend } from "@/lib/everydaySpend";
 import { formatPct, percentOf } from "@/lib/format/pct";
 import { signTone } from "@/lib/signTone";
 import { radius, spacing } from "@/theme";
@@ -268,6 +270,15 @@ const HomeScreen = () => {
     .sort((a, b) => new Date(b.occurredAt as string).getTime() - new Date(a.occurredAt as string).getTime())
     .slice(0, 3);
 
+  // Expenses, its sparkline and the week's "Spent" are everyday spending; trips get their own
+  // line (D21 A+). Savings and its sparkline still count trips (Q1).
+  const spend = dashboardSummary ? homeSpend(dashboardSummary) : null;
+  const since = dashboardSummary?.sinceLastOpened ? sinceSpend(dashboardSummary.sinceLastOpened) : null;
+  const biggest = dashboardSummary ? biggestEveryday(dashboardSummary) : null;
+  // No-spend days, the weekday pattern and the pace card on everyday spending too.
+  const daily = dashboardInsights ? dashboardEveryday(dashboardInsights) : null;
+  const averages = insights ? dailyAverages(insights) : null;
+
   // Savings rate is the only delta stated from values in hand; the rest need last month.
   const savingsCaption = dashboardSummary && dashboardSummary.income > 0
     ? `${formatPct(percentOf(dashboardSummary.savings, dashboardSummary.income))} saved`
@@ -294,16 +305,16 @@ const HomeScreen = () => {
     dashboardInsights?.forYou.goalWatch && (
       <GoalWatchSlide slice={dashboardInsights.forYou.goalWatch} />
     ),
-    dashboardInsights?.forYou.noSpendDays !== null && dashboardInsights?.forYou.noSpendDays !== undefined && (
+    daily?.noSpendDays !== null && daily?.noSpendDays !== undefined && (
       <NoSpendDaysSlide
-        noSpendDays={dashboardInsights.forYou.noSpendDays}
+        noSpendDays={daily.noSpendDays}
         daysElapsed={calendarToday(appZone()).getUTCDate()}
-        avgDailySpendCurrent={insights?.avgDailySpendCurrent}
-        avgDailySpendPrevious={insights?.avgDailySpendPrevious}
+        avgDailySpendCurrent={averages?.current}
+        avgDailySpendPrevious={averages?.previous}
       />
     ),
-    dashboardInsights?.forYou.weekdayHeatmap && (
-      <WeekdayHeatmapSlide cells={dashboardInsights.forYou.weekdayHeatmap} />
+    daily?.weekdayHeatmap && (
+      <WeekdayHeatmapSlide cells={daily.weekdayHeatmap} />
     ),
   ];
 
@@ -335,7 +346,7 @@ const HomeScreen = () => {
           </View>
         }
       >
-      {() => dashboardSummary && (
+      {() => dashboardSummary && spend && (
       <>
       {/* First on the screen, above the score and the tiles. For an account with nothing
           in it yet, this is the only thing here that can be acted on — everything below
@@ -353,11 +364,12 @@ const HomeScreen = () => {
           ever launch (nothing to compare against yet) and whenever the server hasn't
           echoed the digest back (an older cached response, or the request still
           in flight with the previous, unpersonalised query). */}
-      {previousOpenedAt && dashboardSummary.sinceLastOpened && (
+      {previousOpenedAt && dashboardSummary.sinceLastOpened && since && (
         <SinceLastOpenedCard
           previousOpenedAt={previousOpenedAt}
           transactions={dashboardSummary.sinceLastOpened.transactions}
-          spent={dashboardSummary.sinceLastOpened.spent}
+          spent={since.spent}
+          tripSpent={since.trips}
         />
       )}
 
@@ -398,10 +410,12 @@ const HomeScreen = () => {
             iconColor="danger"
             iconBg="dangerSoft"
             label="Expenses"
-            amount={dashboardSummary.expenses}
+            amount={spend.expenses}
+            note={spend.trips !== null && <TripLine amount={spend.trips} />}
+            noteLabel={spend.trips !== null ? `plus ${formatMoney(spend.trips)} on trips` : undefined}
             onPress={() => openActivity("expense")}
             destination="Activity"
-            trend={dashboardSummary.flowTrend.map((point) => point.expense)}
+            trend={spend.trend}
             trendGoodDirection="down"
           />
         </View>
@@ -487,13 +501,14 @@ const HomeScreen = () => {
         {insights && (
         <SpendingSnapshotCard
           byCategory={insights.byCategory}
+          uncategorised={insights.uncategorised}
           biggestExpense={
-            dashboardSummary.biggestExpense
+            biggest
               ? {
-                title: dashboardSummary.biggestExpense.title,
-                amount: dashboardSummary.biggestExpense.amount,
+                title: biggest.title,
+                amount: biggest.amount,
                 daysAgo: calendarDaysBetween(
-                  calendarDate(new Date(dashboardSummary.biggestExpense.occurredAt), appZone()),
+                  calendarDate(new Date(biggest.occurredAt), appZone()),
                   calendarToday(appZone()),
                 ),
               }
@@ -533,15 +548,15 @@ const HomeScreen = () => {
       <HomeCard
         title="This month vs your average"
         state={dashboardInsightsState}
-        empty={!dashboardInsights?.pace}
+        empty={!daily?.pace}
         skeletonHeight={130}
       >
-        {dashboardInsights?.pace && <PaceCard pace={dashboardInsights.pace} />}
+        {daily?.pace && <PaceCard pace={daily.pace} />}
       </HomeCard>
 
       <WeekPulseRow
         income={dashboardSummary.weekIncome}
-        expense={dashboardSummary.weekExpense}
+        expense={spend.weekExpense}
         savingsPace={savingsPace}
       />
 

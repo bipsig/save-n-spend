@@ -3,13 +3,16 @@ import Card from "./Card";
 import { AppText } from "../ui/AppText";
 import Caps from "../ui/Caps";
 import PressableScale from "../ui/PressableScale";
-import { foldCategories, type Slice } from "@/lib/insights";
+import { foldCategories } from "@/lib/insights";
+import { categoryShares } from "@/lib/everydaySpend";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { count } from "@/lib/format/count";
 import { formatPct } from "@/lib/format/pct";
-import type { InsightsCategorySlice } from "@save-n-spend/types";
+import type { InsightsCategorySlice, UncategorisedSpend } from "@save-n-spend/types";
 
-const Bar = ({ slice }: { slice: Slice }) => (
+type BarSlice = { id: string; name: string; pct: number; color: string };
+
+const Bar = ({ slice }: { slice: BarSlice }) => (
   <View style={styles.barRow}>
     <AppText size="sm" weight="bold" color="inkSecondary" numberOfLines={1} style={styles.barName}>
       {slice.name}
@@ -27,19 +30,27 @@ type BiggestExpense = { title: string; amount: number; daysAgo: number };
 
 type Props = {
   byCategory: InsightsCategorySlice[];
+  /** Absent before the 2.8.4 API: the bars then keep the 2.8.3 shares. */
+  uncategorised?: UncategorisedSpend;
   biggestExpense?: BiggestExpense | null;
   onPress: () => void;
 };
 
 // "Where it went" — a glance answer, not a screen to open first: the top-3 categories
 // by share this month, plus (once wired) the single expense that moved the number most.
-const SpendingSnapshotCard = ({ byCategory, biggestExpense, onPress }: Props) => {
+const SpendingSnapshotCard = ({ byCategory, uncategorised, biggestExpense, onPress }: Props) => {
   usePrivacyMask(); // subscribe: the biggest-expense line below reads formatMoney() directly
 
   // Zero expenses this month — three empty bars would be filler, not information.
   if (byCategory.length === 0) return null;
 
-  const top = foldCategories(byCategory, 3);
+  // The server's shares of everyday spending, the same as Insights' "By category".
+  const shares = categoryShares(byCategory, uncategorised, 3);
+  const top: BarSlice[] = shares
+    ? shares.list.map((s) => ({ ...s, pct: s.pct ?? 0 }))
+    : foldCategories(byCategory, 3);
+  // A month whose only spending is trips: no everyday share to draw.
+  if (top.length === 0) return null;
   const label = `Where it went: ${top.map((s) => `${s.name} ${formatPct(s.pct)}`).join(", ")}. Opens Insights.`;
 
   return (

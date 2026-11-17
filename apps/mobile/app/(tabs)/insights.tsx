@@ -11,6 +11,7 @@ import { relativePeriod } from "@/lib/format/period";
 import GradientCard from "@/components/shell/GradientCard";
 import Card from "@/components/data/Card";
 import ShareBar from "@/components/data/ShareBar";
+import TripLine from "@/components/data/TripLine";
 import AreaChart from "@/components/charts/AreaChart";
 import PairedColumns from "@/components/charts/PairedColumns";
 import DualLineChart from "@/components/charts/DualLineChart";
@@ -51,6 +52,7 @@ import {
   prevLabel,
 } from "@/lib/insights";
 import { useHighlights } from "@/lib/highlights";
+import { categoryShares, dailyAverages, everydayTrend, insightsSpend, OTHERS_ID, UNCATEGORISED_ID } from "@/lib/everydaySpend";
 import { useAppZone } from "@/lib/zone";
 import { colors, radius, spacing, incomeColor, expenseColor, chartValueColor } from "@/theme";
 import { signTone, toneSoft } from "@/lib/signTone";
@@ -192,16 +194,23 @@ const InsightsScreen = () => {
       );
     }
 
+    // Savings rate counts trips (Q1); the spending figures are everyday (D21 A+).
     const stats = seriesStats(data.incomeVsExpense);
-    const trend = buildTrend(data.trend, period);
-    const cats = foldCategories(data.byCategory);
+    const spend = insightsSpend(data.incomeVsExpense);
+    // The trend, pace, rhythm and projections are everyday spending too; `byAccount` keeps trips.
+    const dayTrend = everydayTrend(data.trend);
+    const averages = dailyAverages(data);
+    const trend = buildTrend(dayTrend, period);
+    // The server's shares of everyday spending; null on an older API, which keeps the 2.8.3 fold.
+    const shares = categoryShares(data.byCategory, data.uncategorised);
+    const cats = shares ? shares.list.map((c) => ({ ...c, pct: c.pct ?? 0 })) : foldCategories(data.byCategory);
     const accts = accountShares(data.byAccount);
-    const pairs = data.incomeVsExpense.map((p) => ({ income: p.income, expense: p.expense }));
+    const pairs = spend.columns;
     const labels = data.incomeVsExpense.map((p) => seriesLabel(p.periodStart, period));
-    const top = cats[0];
+    const top = shares ? cats.find((c) => c.id !== OTHERS_ID && c.id !== UNCATEGORISED_ID) : cats[0];
 
     const vsLabel = prevLabel(period, offset);
-    const pace = cumulativePair(data.trend, data.previousTrend, period);
+    const pace = cumulativePair(dayTrend, everydayTrend(data.previousTrend), period);
     const paceDelta = pace.atCurrentEnd.current - pace.atCurrentEnd.previous;
     const movers = compareRows(data.categoryCompare);
     // Only the window in progress has anything left to project — a finished period's
@@ -209,16 +218,17 @@ const InsightsScreen = () => {
     // degenerates for the Day period (see getAverageSpend), so it gets its own client-side
     // hourly projection instead of this one.
     const projection = offset === 0 && period !== "day"
-      ? projectPeriod(data.avgDailySpendCurrent, data.periodStart, data.periodEnd, data.timeZone)
+      ? projectPeriod(averages.current, data.periodStart, data.periodEnd, data.timeZone)
       : null;
-    const dayProjection = offset === 0 && period === "day" ? projectDay(data.trend) : null;
-    const prevActualExpense = data.incomeVsExpense[data.incomeVsExpense.length - 2]?.expense ?? 0;
+    const dayProjection = offset === 0 && period === "day" ? projectDay(dayTrend) : null;
+    const prevActualExpense = spend.columns[spend.columns.length - 2]?.expense ?? 0;
     // A year's buckets are months, so a 12-cell "calendar" would just be the trend line
     // again — and a day's own hour-of-day pattern gets the strip below instead of this grid.
-    const heatmap = period === "year" || period === "day" ? null : buildHeatmap(data.trend);
-    const hourlyPattern = period === "day" ? buildHourlyPattern(data.trend) : null;
-    const donutSlices = cats.filter((c) => c.total > 0);
-    const spendTotal = cats.reduce((a, c) => a + c.total, 0);
+    const heatmap = period === "year" || period === "day" ? null : buildHeatmap(dayTrend);
+    const hourlyPattern = period === "day" ? buildHourlyPattern(dayTrend) : null;
+    const donutSlices = (shares ? shares.ring : cats).filter((c) => c.total > 0);
+    // In a trip window the ring has the Trips slice, so its centre is everything, and says so.
+    const spendTotal = shares ? (spend.withTrips ?? spend.current) : cats.reduce((a, c) => a + c.total, 0);
     // The tapped slice's own sub-categories, listed under the ring. "Others" is a fold of
     // several categories, so it has none.
     const openSlice = tip?.chart === "donut" ? donutSlices[tip.i] : undefined;
@@ -230,10 +240,11 @@ const InsightsScreen = () => {
           <Caps>Spending</Caps>
           <View style={styles.heroRow}>
             <AppText size="xl" weight="black">
-              {formatMoney(stats.currentExpense)}
+              {formatMoney(spend.current)}
             </AppText>
-            <DeltaPill value={stats.spendDeltaPct} goodWhen="down" vs={vsLabel} />
+            <DeltaPill value={spend.deltaPct} goodWhen="down" vs={vsLabel} />
           </View>
+          {spend.trips !== null && <TripLine amount={spend.trips} seeTrips />}
           <AreaChart
             data={trend.values}
             labels={trend.axis}
@@ -299,8 +310,9 @@ const InsightsScreen = () => {
           <Caps>Where it went</Caps>
           <DonutChart
             data={donutSlices}
-            centerLabel="TOTAL SPENT"
+            centerLabel={spend.withTrips !== null && shares ? "WITH TRIPS" : "TOTAL SPENT"}
             centerValue={spendTotal}
+            summaryTitle={spend.withTrips !== null && shares ? "Spending with trips" : undefined}
             activeIndex={tip?.chart === "donut" ? tip.i : null}
             onScrub={(i) => setTip(i === null ? null : { chart: "donut", i })}
           />
@@ -327,11 +339,12 @@ const InsightsScreen = () => {
 
         {/* By category */}
         <Card style={styles.stack}>
-          <Caps>By category</Caps>
+          <Caps>{shares ? "By category · share of everyday spending" : "By category"}</Caps>
           <View style={styles.catList}>
             {cats.map((c) => {
-              // "Others" is a fold of several categories, so there is no one category to open.
-              const openable = c.id !== "others";
+              // "Others" is a fold of several categories and "Uncategorised" is none, so neither
+              // has one category to open.
+              const openable = c.id !== OTHERS_ID && c.id !== UNCATEGORISED_ID;
               const body = (
                 <>
                   <View style={styles.catTop}>
@@ -444,15 +457,15 @@ const InsightsScreen = () => {
               size="lg"
               style={styles.kpi}
               label="Avg daily spend"
-              amount={data.avgDailySpendCurrent}
-              change={delta(pctChange(data.avgDailySpendCurrent, data.avgDailySpendPrevious), "down", vsLabel)}
+              amount={averages.current}
+              change={delta(pctChange(averages.current, averages.previous), "down", vsLabel)}
             />
           )}
           <StatTile
             size="lg"
             style={styles.kpi}
             label="Top category"
-            text={data.topCategory ?? "—"}
+            text={(shares ? top?.name : data.topCategory) ?? "—"}
             change={top ? { text: `${formatMoney(top.total)} · ${formatPct(top.pct)}` } : null}
           />
           <StatTile

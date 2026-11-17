@@ -4,6 +4,7 @@ import type { ReviewPeriod } from "@save-n-spend/types";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import Card from "@/components/data/Card";
 import ReviewTimeline from "@/components/data/ReviewTimeline";
+import TripLine from "@/components/data/TripLine";
 import Sparkline from "@/components/charts/Sparkline";
 import Money from "@/components/ui/Money";
 import Caps from "@/components/ui/Caps";
@@ -13,6 +14,7 @@ import Icon from "@/components/ui/Icon";
 import NotFoundState from "@/components/states/NotFoundState";
 import ScreenStates, { ListSkeleton } from "@/components/states/ScreenStates";
 import { useReview } from "@/lib/reviews";
+import { reviewSpend } from "@/lib/everydaySpend";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { count } from "@/lib/format/count";
 import { formatPct, percentOf } from "@/lib/format/pct";
@@ -43,6 +45,8 @@ const ReviewScreen = () => {
   const closed = Number.isInteger(offset) && offset <= -1;
   const q = useReview(period, offset, closed);
   const review = q.data;
+  // Expenses and "Where it went" are everyday spending (D21 A+); Saved counts trips (Q1).
+  const spend = review ? reviewSpend(review) : null;
   const state = { ...q, hasData: review != null };
   const against = period === "month" ? "last month" : "last week";
 
@@ -52,7 +56,7 @@ const ReviewScreen = () => {
         <NotFoundState thing="review" subtitle="A review is ready once its period has finished" />
       ) : (
         <ScreenStates state={state} skeleton={<ListSkeleton rows={4} height={80} />}>
-          {() => review && (
+          {() => review && spend && (
             <>
               <Card style={styles.card}>
                 <View style={styles.heroRow}>
@@ -82,7 +86,7 @@ const ReviewScreen = () => {
                 items={(
                   [
                     ["Income", review.income, review.previousIncome, "up"],
-                    ["Expenses", review.expenses, review.previousExpenses, "down"],
+                    ["Expenses", spend.expenses, spend.previousExpenses, "down"],
                     ["Saved", review.saved, review.previousSaved, "up"],
                   ] as const
                 ).map(([label, amount, previous, goodWhen]) => {
@@ -94,22 +98,35 @@ const ReviewScreen = () => {
                   };
                 })}
               />
+              {/* Full width: three tiles across leave no room for it inside Expenses. */}
+              {spend.trips !== null && (
+                <TripLine amount={spend.trips} note="counted in saved" seeTrips style={styles.tripLine} />
+              )}
 
-              {review.categories.length > 0 && (
+              {spend.rows.length > 0 && (
                 <>
                   <Caps header style={styles.groupLabel}>Where it went</Caps>
                   <Card style={styles.card}>
-                    {review.categories.map((cat, i) => (
-                      <View key={cat.categoryId} style={[styles.catRow, i === review.categories.length - 1 && styles.noBorder]}>
+                    {spend.rows.map((cat, i) => (
+                      <View key={cat.id} style={[styles.catRow, i === spend.rows.length - 1 && styles.noBorder]}>
                         <AppText size="sm" weight="semibold" color="inkSecondary" numberOfLines={1} style={styles.catName}>
                           {cat.name}
                         </AppText>
-                        <View style={styles.catBarTrack}>
-                          <View style={[styles.catBarFill, { width: `${cat.pct}%`, backgroundColor: barGradients.violet[1] }]} />
-                        </View>
-                        <AppText size="xs" weight="bold" color="inkDim">
-                          {formatPct(cat.pct)}
-                        </AppText>
+                        {/* Trips has no share of everyday spending, so its row states the amount. */}
+                        {cat.pct !== null ? (
+                          <>
+                            <View style={styles.catBarTrack}>
+                              <View style={[styles.catBarFill, { width: `${cat.pct}%`, backgroundColor: barGradients.violet[1] }]} />
+                            </View>
+                            <AppText size="xs" weight="bold" color="inkDim">
+                              {formatPct(cat.pct)}
+                            </AppText>
+                          </>
+                        ) : (
+                          <AppText size="xs" weight="bold" color="inkDim">
+                            {formatMoney(cat.total)}
+                          </AppText>
+                        )}
                       </View>
                     ))}
                     {review.biggestExpense && (
@@ -287,6 +304,10 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     borderTopWidth: 1,
     borderTopColor: colors.line,
+  },
+  tripLine: {
+    marginTop: -spacing.xs,
+    paddingHorizontal: 2,
   },
   netWorthDelta: {
     marginTop: 2,

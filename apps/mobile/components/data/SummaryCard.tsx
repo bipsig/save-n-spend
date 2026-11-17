@@ -1,6 +1,7 @@
 import { IconName } from "@/lib/icons"
 import { ColorToken, spacing } from "@/theme"
 import Card from "@/components/data/Card"
+import type { ReactNode } from "react"
 import { StyleSheet, View } from "react-native"
 import Icon from "../ui/Icon"
 import { AppText } from "../ui/AppText"
@@ -27,6 +28,10 @@ type Props = {
   amountColor?: ColorToken
   caption?: string
   captionColor?: ColorToken
+  /** A line under the figure that may wrap (Expenses' "Plus ₹X on trips"), with the words
+   *  VoiceOver reads for it in the tile's label. */
+  note?: ReactNode
+  noteLabel?: string
   /**
    * Opens whatever breaks the figure down. Optional, and left off deliberately when there
    * is nothing behind it — a tile that squeezes under the finger without leading anywhere
@@ -53,6 +58,8 @@ const SummaryCard = ({
   amountColor,
   caption,
   captionColor = "gray500",
+  note,
+  noteLabel,
   onPress,
   destination,
   trend,
@@ -64,7 +71,7 @@ const SummaryCard = ({
     ? `${trend[trend.length - 1] >= trend[0] ? "up" : "down"} from ${formatMoney(trend[0])}`
     : null;
   const trendNote = trendPhrase ? `, ${trendPhrase}` : "";
-  const accessibilityLabel = `${label}: ${formatMoney(amount)}${caption ? `, ${caption}` : ""}${trendNote}`
+  const accessibilityLabel = `${label}: ${formatMoney(amount)}${noteLabel ? `, ${noteLabel}` : ""}${caption ? `, ${caption}` : ""}${trendNote}`
     + (onPress && destination ? `. Opens ${destination}.` : "");
 
   // Spec .sum tile: 26px soft chip + 10.5 dim cap · 17/800 amount · 10 delta.
@@ -94,6 +101,7 @@ const SummaryCard = ({
           width of its own content, so a long figure would push its tile wider than the one
           beside it — which is how two tiles in a row stopped being the same size. */}
       <Money value={amount} weight="black" size="lg" color={amountColor} numberOfLines={1} />
+      {note}
       {trend && (
         <Sparkline
           values={trend}

@@ -4,6 +4,7 @@ import Card from "./Card";
 import { AppText } from "../ui/AppText";
 import Icon from "../ui/Icon";
 import PressableScale from "../ui/PressableScale";
+import TripLine from "./TripLine";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { count } from "@/lib/format/count";
 import { formatInstant } from "@/lib/format/date";
@@ -11,20 +12,23 @@ import { formatInstant } from "@/lib/format/date";
 type Props = {
   previousOpenedAt: string;
   transactions: number;
+  /** Everyday spending (trips left out). */
   spent: number;
+  /** The trip part, for its own line; null when there is none or the API didn't say. */
+  tripSpent?: number | null;
 };
 
 // A digest anchored to THIS phone's own last visit rather than the calendar — useful
 // specifically for someone who doesn't open the app daily, when "this week" would be
 // too coarse and "today" would be empty.
-const SinceLastOpenedCard = ({ previousOpenedAt, transactions, spent }: Props) => {
+const SinceLastOpenedCard = ({ previousOpenedAt, transactions, spent, tripSpent = null }: Props) => {
   usePrivacyMask(); // subscribe: the amount below reads formatMoney() directly
 
   const since = formatInstant(previousOpenedAt, "relativeDay");
   const body = transactions === 0
     ? `Nothing logged since ${since}`
     : `${count(transactions, "transaction")} · ${formatMoney(spent)} spent`;
-  const label = `Since ${since}: ${body}. Opens Activity.`;
+  const label = `Since ${since}: ${body}${tripSpent !== null ? `, plus ${formatMoney(tripSpent)} on trips` : ""}. Opens Activity.`;
 
   return (
     <PressableScale
@@ -43,6 +47,7 @@ const SinceLastOpenedCard = ({ previousOpenedAt, transactions, spent }: Props) =
         <AppText size="sm" weight="bold">
           {body}
         </AppText>
+        {tripSpent !== null && <TripLine amount={tripSpent} />}
       </Card>
     </PressableScale>
   );
