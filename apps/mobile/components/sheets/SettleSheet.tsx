@@ -110,7 +110,7 @@ const SettleSheet = forwardRef<BottomSheetModal, Props>(({ tripId, member, onSav
             )}
             <AppText size="xs" color="inkDim">Settling up isn't spending or income — it only moves money between you.</AppText>
             {error && <AppText size="sm" color="danger">{error}</AppText>}
-            <Button label={!gate.allowed ? gate.label : theyOwe ? "Record payment received" : "Record payment"} icon={gate.icon} loading={busy} disabled={!gate.allowed} onPress={save} />
+            <Button label={theyOwe ? "Record payment received" : "Record payment"} icon={gate.icon} hint={gate.hint} loading={busy} disabled={!gate.allowed} onPress={save} />
           </>
         )}
       </AppSheet>

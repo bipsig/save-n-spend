@@ -377,8 +377,9 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, draft, onChan
       )}
 
       <Button
-        label={!gate.allowed ? gate.label : editing ? "Save Changes" : "Add Bill"}
+        label={editing ? "Save Changes" : "Add Bill"}
         icon={gate.icon}
+        hint={gate.hint}
         onPress={handleSubmit(onSubmit)}
         loading={submitting}
         disabled={!isValid || !gate.allowed}

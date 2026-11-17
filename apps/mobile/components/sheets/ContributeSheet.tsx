@@ -216,12 +216,12 @@ const ContributeSheet = forwardRef<BottomSheetModal, Props>(({ goal, onChanged }
           {/* Spec: live CTA — the amount AND the resulting % */}
           <Button
             label={
-              !gate.allowed ? gate.label
-              : isValid && entered > 0
+              isValid && entered > 0
                 ? `Add ${formatMoney(entered)} · goal reaches ${formatPct(projectedPct)}`
                 : "Add money"
             }
             icon={gate.icon}
+            hint={gate.hint}
             onPress={handleSubmit(onSubmit)}
             loading={submitting}
             disabled={!isValid || !gate.allowed}

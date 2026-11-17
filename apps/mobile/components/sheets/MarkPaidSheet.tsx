@@ -173,8 +173,9 @@ const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
           )}
 
           <Button
-            label={!gate.allowed ? gate.label : isSip ? "Mark as invested" : "Mark as Paid"}
+            label={isSip ? "Mark as invested" : "Mark as Paid"}
             icon={gate.icon}
+            hint={gate.hint}
             variant="success"
             onPress={() => run("pay")}
             loading={busy === "pay"}

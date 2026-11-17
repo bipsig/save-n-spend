@@ -149,7 +149,7 @@ const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDelete
           // Above the button, since the body is long enough that the end of it is off-screen.
           <View style={styles.footer}>
             {error && <AppText size="sm" color="danger">{error}</AppText>}
-            <Button label={gate.label || (trip ? "Save changes" : "Start trip")} icon={gate.icon} loading={busy} disabled={!gate.allowed} onPress={save} />
+            <Button label={trip ? "Save changes" : "Start trip"} icon={gate.icon} hint={gate.hint} loading={busy} disabled={!gate.allowed} onPress={save} />
           </View>
         }
       >
@@ -196,7 +196,7 @@ const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDelete
             <View style={styles.grow}>
               <Input placeholder="Add someone by name" value={newPerson} onChangeText={setNewPerson} autoCapitalize="words" InputComponent={BottomSheetTextInput} onSubmitEditing={addPerson} />
             </View>
-            <Button label={gate.label || "Add"} size="sm" variant="secondary" icon={gate.icon} onPress={addPerson} disabled={!newPerson.trim() || !gate.allowed} />
+            <Button label="Add" size="sm" variant="secondary" icon={gate.icon} hint={gate.hint} onPress={addPerson} disabled={!newPerson.trim() || !gate.allowed} />
           </View>
         </View>
 
@@ -206,7 +206,7 @@ const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDelete
           <AppText size="xs" color="inkDim">Your own share you'd like to stay under. Leave blank for none.</AppText>
         </View>
 
-        {trip && <Button label={gate.label || "Delete trip"} variant="dangerGhost" icon={gate.icon ?? "delete"} disabled={!gate.allowed} onPress={() => deleteRef.current?.present()} />}
+        {trip && <Button label="Delete trip" variant="dangerGhost" icon={gate.icon ?? "delete"} hint={gate.hint} disabled={!gate.allowed} onPress={() => deleteRef.current?.present()} />}
       </AppSheet>
 
       <ConfirmSheet

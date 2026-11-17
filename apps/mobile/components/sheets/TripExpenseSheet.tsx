@@ -183,7 +183,7 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
         scrollable
         snapPoints={["92%"]}
         onDismiss={resetForm}
-        footer={<Button label={gate.label || (expense ? "Save changes" : "Add expense")} icon={gate.icon} loading={busy} disabled={!gate.allowed} onPress={save} />}
+        footer={<Button label={expense ? "Save changes" : "Add expense"} icon={gate.icon} hint={gate.hint} loading={busy} disabled={!gate.allowed} onPress={save} />}
       >
         <AppText size="md" weight="black">{expense ? "Edit expense" : "Add expense"}</AppText>
 
@@ -272,7 +272,7 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
         {effect && <AppText size="xs" color="inkDim" style={styles.center}>{effect}</AppText>}
 
         {error && <AppText size="sm" color="danger">{error}</AppText>}
-        {expense && <Button label={gate.label || "Delete expense"} variant="dangerGhost" icon={gate.icon ?? "delete"} disabled={!gate.allowed} onPress={() => deleteRef.current?.present()} />}
+        {expense && <Button label="Delete expense" variant="dangerGhost" icon={gate.icon ?? "delete"} hint={gate.hint} disabled={!gate.allowed} onPress={() => deleteRef.current?.present()} />}
       </AppSheet>
 
       <CategoryPickerSheet ref={categoryRef} kind="expense" onPick={setCategory} />

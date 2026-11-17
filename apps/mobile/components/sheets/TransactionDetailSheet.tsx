@@ -321,6 +321,7 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
                 label={convertGate.label}
                 variant="secondary"
                 icon={convertGate.icon ?? "investments"}
+                hint={convertGate.hint}
                 disabled={!convertGate.allowed}
                 onPress={openConvert}
               />
@@ -334,6 +335,7 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
                     label={editGate.label}
                     variant="secondary"
                     icon={editGate.icon ?? "edit"}
+                    hint={editGate.hint}
                     disabled={!editGate.allowed}
                     onPress={() => handleEdit()}
                   />
@@ -344,6 +346,7 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
                   label={deleteGate.label}
                   variant="dangerGhost"
                   icon={deleteGate.icon ?? "delete"}
+                  hint={deleteGate.hint}
                   disabled={!deleteGate.allowed}
                   onPress={() => setConfirmView(true)}
                 />
@@ -376,6 +379,7 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
               <Button
                 label={confirmDeleteGate.label}
                 icon={confirmDeleteGate.icon}
+                hint={confirmDeleteGate.hint}
                 variant="danger"
                 disabled={!confirmDeleteGate.allowed}
                 onPress={handleDelete}

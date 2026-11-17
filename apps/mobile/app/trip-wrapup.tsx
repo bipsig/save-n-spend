@@ -158,7 +158,7 @@ const TripWrapUpScreen = () => {
         </View>
       </LinearGradient>
 
-      <Button label={closeGate.label} icon={closeGate.icon} disabled={!closeGate.allowed} loading={busy} onPress={close} />
+      <Button label={closeGate.label} icon={closeGate.icon} hint={closeGate.hint} disabled={!closeGate.allowed} loading={busy} onPress={close} />
       <Button label="Not yet" variant="ghost" onPress={goBackOrHome} />
     </ScreenScaffold>
   );

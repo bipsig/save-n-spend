@@ -101,7 +101,7 @@ const ChangePasswordSheet = forwardRef<BottomSheetModal, { onChanged?: () => voi
       ref={innerRef}
       onDismiss={clear}
       scrollable
-      footer={<Button label={gate.label || "Change password"} icon={gate.icon} loading={isSubmitting} disabled={!gate.allowed} onPress={submit} />}
+      footer={<Button label="Change password" icon={gate.icon} hint={gate.hint} loading={isSubmitting} disabled={!gate.allowed} onPress={submit} />}
     >
       <View style={styles.identity}>
         <Icon name="lock" size={24} containerSize={52} container="square" gradient="violet" />

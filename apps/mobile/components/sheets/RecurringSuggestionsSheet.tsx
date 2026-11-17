@@ -60,7 +60,7 @@ const SuggestionRow = ({ pattern, busy, onAdd, onDismiss }: {
           />
         </View>
         <View style={styles.action}>
-          <Button label={dismissGate.label} size="sm" variant="ghost" onPress={onDismiss} loading={busy} disabled={busy || !dismissGate.allowed} />
+          <Button label={dismissGate.label} hint={dismissGate.hint} size="sm" variant="ghost" onPress={onDismiss} loading={busy} disabled={busy || !dismissGate.allowed} />
         </View>
       </View>
     </View>

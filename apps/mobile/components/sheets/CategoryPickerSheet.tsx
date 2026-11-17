@@ -240,6 +240,7 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
       <Button
         label={createGate.label}
         icon={createGate.icon}
+        hint={createGate.hint}
         onPress={onCreate}
         loading={saving}
         disabled={!createGate.allowed || draft.name.trim().length === 0}

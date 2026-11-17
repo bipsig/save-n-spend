@@ -126,8 +126,9 @@ const EditCategorySheet = forwardRef<BottomSheetModal, Props>(({ category, paren
       onDismiss={resetForm}
       footer={
         <Button
-          label={gate.allowed ? categoryCtaLabel(editing, editing ? null : parent?._id ?? null) : gate.label}
+          label={categoryCtaLabel(editing, editing ? null : parent?._id ?? null)}
           icon={gate.icon}
+          hint={gate.hint}
           loading={busy}
           disabled={!gate.allowed}
           onPress={save}

@@ -132,7 +132,7 @@ const DeleteInvestmentSheet = forwardRef<BottomSheetModal, Props>(({ summary, on
       {error && <AppText size="sm" color="danger">{error}</AppText>}
 
       <View style={styles.actions}>
-        <HoldButton label={gate.allowed ? "Hold to delete" : gate.label} accessibilityLabel={gate.allowed ? `Delete ${summary.name}` : gate.label} holdingLabel="Keep holding to delete…" icon="delete" loading={busy} disabled={!gate.allowed} onComplete={run} />
+        <HoldButton label="Hold to delete" accessibilityLabel={`Delete ${summary.name}`} hint={gate.hint} holdingLabel="Keep holding to delete…" icon="delete" loading={busy} disabled={!gate.allowed} onComplete={run} />
         <Button label="Cancel" variant="ghost" disabled={busy} onPress={() => innerRef.current?.dismiss()} />
       </View>
     </AppSheet>

@@ -263,9 +263,9 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
         </AppText>
       )}
 
-      <Button label={saveGate.label} icon={saveGate.icon} onPress={handleSubmit(onSave)} loading={saving} disabled={!saveGate.allowed || !isValid || needsCategory} />
+      <Button label={saveGate.label} icon={saveGate.icon} hint={saveGate.hint} onPress={handleSubmit(onSave)} loading={saving} disabled={!saveGate.allowed || !isValid || needsCategory} />
       {isEdit && (
-        <Button label={removeGate.label} icon={removeGate.icon} variant="dangerGhost" onPress={onRemove} loading={removing} disabled={!removeGate.allowed} />
+        <Button label={removeGate.label} icon={removeGate.icon} hint={removeGate.hint} variant="dangerGhost" onPress={onRemove} loading={removing} disabled={!removeGate.allowed} />
       )}
     </AppSheet>
   );

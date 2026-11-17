@@ -5,6 +5,7 @@ import { AppText } from "./AppText";
 import Icon from "./Icon";
 import type { IconName } from "@/lib/icons";
 import { haptics } from "@/lib/haptics";
+import { hintedLabel } from "@/lib/onlineGate";
 import { colors, gradients, radius, spacing } from "@/theme";
 
 type Props = {
@@ -18,6 +19,8 @@ type Props = {
   /** What the hold does, for VoiceOver ("Delete trip"); the visible label is about the
    *  gesture ("Hold to delete"). Also names the VoiceOver action that completes it. */
   accessibilityLabel?: string;
+  /** A second line under the label, read after it: an online gate's "Needs a connection". */
+  hint?: string;
   onComplete: () => void;
 };
 
@@ -36,6 +39,7 @@ const HoldButton = ({
   loading = false,
   disabled = false,
   accessibilityLabel,
+  hint,
   onComplete,
 }: Props) => {
   const progress = useRef(new Animated.Value(0)).current;
@@ -100,7 +104,7 @@ const HoldButton = ({
     outputRange: ["0%", "100%"],
   });
 
-  const name = accessibilityLabel ?? label;
+  const name = hintedLabel(accessibilityLabel ?? label, hint);
   // A VoiceOver user can't easily hold. The hold stays available (double-tap and hold), and a
   // named action in the actions rotor completes it: still a deliberate second step, never a
   // plain double-tap.
@@ -141,6 +145,11 @@ const HoldButton = ({
             {holding ? holdingLabel ?? "Keep holding…" : label}
           </AppText>
         </View>
+        {hint && !loading && (
+          <AppText size="xs" weight="semibold" color="danger" style={styles.hint}>
+            {hint}
+          </AppText>
+        )}
       </Pressable>
     </View>
   );
@@ -173,6 +182,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
+  },
+  hint: {
+    textAlign: "center",
+    marginTop: 2,
+    opacity: 0.8,
   },
 });
 

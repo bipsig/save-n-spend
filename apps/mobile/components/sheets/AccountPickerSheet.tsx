@@ -207,7 +207,7 @@ const AccountPickerSheet = forwardRef<BottomSheetModal, Props>((
             <AppText size="xs" color="danger">{createError}</AppText>
           )}
           <View style={styles.createActions}>
-            <Button label={addGate.label} icon={addGate.icon} disabled={!addGate.allowed} onPress={onCreate} loading={creatingBusy} size="sm" />
+            <Button label={addGate.label} icon={addGate.icon} hint={addGate.hint} disabled={!addGate.allowed} onPress={onCreate} loading={creatingBusy} size="sm" />
             <Button label="Cancel" variant="ghost" size="sm" onPress={() => setCreating(false)} />
           </View>
         </View>

@@ -118,7 +118,7 @@ const MatchSplitwiseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, membe
         <View style={styles.footer}>
           <AppText size="xs" weight="bold" color={balanced ? "success" : "warning"} style={styles.center}>{status}</AppText>
           {error && <AppText size="sm" color="danger" style={styles.center}>{error}</AppText>}
-          <Button label={gate.label || "Save"} icon={gate.icon} loading={busy} disabled={!balanced || !gate.allowed} onPress={save} />
+          <Button label="Save" icon={gate.icon} hint={gate.hint} loading={busy} disabled={!balanced || !gate.allowed} onPress={save} />
         </View>
       }
     >
@@ -166,7 +166,7 @@ const MatchSplitwiseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, membe
         );
       })}
 
-      {plan && <Button label={gate.label || "Back to exact amounts"} variant="ghost" icon={gate.icon ?? "repeat"} disabled={busy || !gate.allowed} onPress={backToExact} />}
+      {plan && <Button label="Back to exact amounts" variant="ghost" icon={gate.icon ?? "repeat"} hint={gate.hint} disabled={busy || !gate.allowed} onPress={backToExact} />}
     </AppSheet>
   );
 });

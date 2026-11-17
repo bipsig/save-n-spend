@@ -7,6 +7,7 @@ import { AppText } from "./AppText";
 import Icon from "./Icon";
 import type { IconName } from "@/lib/icons";
 import { haptics } from "@/lib/haptics";
+import { hintedLabel } from "@/lib/onlineGate";
 
 type Variant = "primary" | "success" | "secondary" | "ghost" | "danger" | "dangerGhost";
 type Size = "sm" | "md" | "lg";
@@ -19,6 +20,8 @@ type Props = PressableProps & {
   /** Spec `.pillbtn` — small glowing violet gradient pill (header actions). */
   pill?: boolean
   icon?: IconName
+  /** A second line under the label, read after it: an online gate's "Needs a connection". */
+  hint?: string
   onPress?: () => void
 }
 
@@ -87,6 +90,7 @@ const Button = ({
   loading = false,
   pill = false,
   icon,
+  hint,
   disabled,
   onPress,
   ...rest
@@ -135,7 +139,7 @@ const Button = ({
         }}
         disabled={isDisabled}
         accessibilityRole="button"
-        accessibilityLabel={label}
+        accessibilityLabel={hintedLabel(label, hint)}
         accessibilityState={{ disabled: !!isDisabled, busy: loading }}
         style={[
           shape,
@@ -170,6 +174,11 @@ const Button = ({
             </>
           )}
         </View>
+        {hint && !loading && (
+          <AppText size="xs" weight="semibold" color={v.text} style={styles.hint}>
+            {hint}
+          </AppText>
+        )}
       </Pressable>
     </Animated.View>
   )
@@ -209,6 +218,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 5,
+  },
+  hint: {
+    textAlign: 'center',
+    marginTop: 2,
+    opacity: 0.8,
   },
 })
 

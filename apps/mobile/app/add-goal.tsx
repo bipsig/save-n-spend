@@ -442,15 +442,15 @@ const AddGoal = () => {
 
         <Button
           label={
-            !saveGate.allowed ? saveGate.label
             // `!(target > 0)` also catches NaN, which parseMoney returns for an empty field.
-            : !(target > 0)
+            !(target > 0)
               ? editing ? "Save goal" : "Create goal"
               : `${editing ? "Save" : "Create"} · ${formatMoney(target)}`
                 // The picker's own day, not an instant: the wheels mean the device's calendar.
                 + (deadline ? ` by ${formatCalendar(localCalendar(deadline), "dayYear")}` : "")
           }
           icon={saveGate.icon}
+          hint={saveGate.hint}
           onPress={handleSubmit(onSubmit)}
           loading={submitting}
           disabled={!isValid || !saveGate.allowed}

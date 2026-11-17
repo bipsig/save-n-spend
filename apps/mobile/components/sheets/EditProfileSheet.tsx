@@ -75,7 +75,7 @@ const EditProfileSheet = forwardRef<BottomSheetModal, { onSaved?: () => void }>(
         setValue("name", user?.name ?? "");
         setError(null);
       }}
-      footer={<Button label={gate.label || "Save profile"} icon={gate.icon} loading={isSubmitting} disabled={!gate.allowed} onPress={submit} />}
+      footer={<Button label="Save profile" icon={gate.icon} hint={gate.hint} loading={isSubmitting} disabled={!gate.allowed} onPress={submit} />}
     >
       {/* Live identity preview — the initials update as the name is typed. */}
       <View style={styles.identity}>

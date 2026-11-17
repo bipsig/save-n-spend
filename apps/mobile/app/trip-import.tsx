@@ -199,7 +199,7 @@ const TripImportScreen = () => {
           <AppText size="sm" color="inkDim" style={styles.lh}>
             In Splitwise, open the group → settings → Export as spreadsheet, and save the CSV. Then choose it here. You'll review every row before anything is added — and importing the same file later only adds what's new.
           </AppText>
-          <Button label={chooseGate.label} icon={chooseGate.icon} disabled={!chooseGate.allowed} loading={busy} onPress={pick} />
+          <Button label={chooseGate.label} icon={chooseGate.icon} hint={chooseGate.hint} disabled={!chooseGate.allowed} loading={busy} onPress={pick} />
         </Card>
         {error && <AppText size="sm" color="danger">{error}</AppText>}
         <AppText size="xs" color="inkDim" style={styles.lh}>
@@ -241,7 +241,7 @@ const TripImportScreen = () => {
           })}
         </Card>
         {error && <AppText size="sm" color="danger">{error}</AppText>}
-        <Button label={reviewGate.label} icon={reviewGate.icon} disabled={!reviewGate.allowed} loading={busy} onPress={review} />
+        <Button label={reviewGate.label} icon={reviewGate.icon} hint={reviewGate.hint} disabled={!reviewGate.allowed} loading={busy} onPress={review} />
         <AccountPickerSheet ref={personRef} title="Who is this?" filterType="person" onPick={(acc) => { if (personFor) setMapping((m) => ({ ...m, [personFor]: acc })); }} />
       </ScreenScaffold>
     );
@@ -368,7 +368,7 @@ const TripImportScreen = () => {
       )}
 
       {error && <AppText size="sm" color="danger">{error}</AppText>}
-      <Button label={approveGate.label} icon={approveGate.icon} loading={busy} disabled={!approveGate.allowed || approving === 0} onPress={approve} />
+      <Button label={approveGate.label} icon={approveGate.icon} hint={approveGate.hint} loading={busy} disabled={!approveGate.allowed || approving === 0} onPress={approve} />
       {/* Rows are saved one by one (each moves balances the next one reads), so a long file
           takes a while — say so rather than leave a bare spinner. */}
       {busy && (

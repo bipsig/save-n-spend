@@ -112,7 +112,7 @@ const RevalueSheet = forwardRef<BottomSheetModal, Props>(({ holdings, onSaved },
       ref={innerRef}
       scrollable
       onDismiss={reset}
-      footer={<Button label={gate.label || "Save values"} icon={gate.icon} loading={busy} disabled={!gate.allowed} onPress={save} />}
+      footer={<Button label="Save values" icon={gate.icon} hint={gate.hint} loading={busy} disabled={!gate.allowed} onPress={save} />}
     >
       <View style={styles.identity}>
         <Icon name="investments" size={24} containerSize={52} container="square" gradient="green" />

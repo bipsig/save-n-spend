@@ -273,8 +273,9 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
       onDismiss={resetForm}
       footer={
         <Button
-          label={!gate.allowed ? gate.label : editing ? "Save changes" : "Create account"}
+          label={editing ? "Save changes" : "Create account"}
           icon={gate.icon}
+          hint={gate.hint}
           loading={busy}
           disabled={!gate.allowed}
           onPress={save}

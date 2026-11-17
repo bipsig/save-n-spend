@@ -30,7 +30,7 @@ import { formatSpan } from "@/lib/format/period";
 import { chartA11y, chartSummary, peakPhrase } from "@/lib/chartSummary";
 import { appZone, calendarToday, dayKey, instantInZone } from "@/lib/zone";
 import { toast } from "@/store/toast";
-import { useOnlineGate } from "@/lib/onlineGate";
+import { hintedLabel, useOnlineGate } from "@/lib/onlineGate";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { chartPalette, colors, radius, spacing } from "@/theme";
@@ -219,8 +219,10 @@ const TripDetailScreen = () => {
             style={!reopenGate.allowed && styles.gated}
             scaleTo={0.95}
             accessibilityRole="button"
+            accessibilityLabel={hintedLabel(reopenGate.label, reopenGate.hint)}
           >
             <AppText size="xs" weight="black" color="primary">{reopenGate.label}</AppText>
+            {reopenGate.hint && <AppText size="xs" color="inkDim">{reopenGate.hint}</AppText>}
           </PressableScale>
         </Card>
       )}

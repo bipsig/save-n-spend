@@ -114,10 +114,10 @@ const ConfirmSheet = forwardRef<BottomSheetModal, Props>((
             icon="delete"
             loading={busy}
             onComplete={run}
-            accessibilityLabel={gate.label}
+            hint={gate.hint}
           />
         ) : (
-          <Button label={gate.label} icon={gate.icon} variant={tone} loading={busy} disabled={!gate.allowed} onPress={run} />
+          <Button label={gate.label} icon={gate.icon} hint={gate.hint} variant={tone} loading={busy} disabled={!gate.allowed} onPress={run} />
         )}
         <Button label={cancelLabel} variant="ghost" disabled={busy} onPress={dismiss} />
       </View>
