@@ -59,7 +59,7 @@ const ManageCategoriesScreen = () => {
 
   // The list lives in a store, not a query, so no write or focus rule refreshes it; other
   // screens write to it too (Add Transaction can create one).
-  const state = useStoreLoad(useCategoryStore((s) => s.loaded), useCategoryStore.getState().load);
+  const state = useStoreLoad(useCategoryStore((s) => s.loaded), useCategoryStore.getState().load, useCategoryStore((s) => s.fetchedAt));
   const reorderGate = useOnlineGate("Reorder categories");
   const canDrag = reordering && reorderGate.allowed;
 

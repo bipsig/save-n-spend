@@ -14,6 +14,8 @@ import CategoryName from "@/components/ui/CategoryName";
 import DateField from "@/components/ui/DateField";
 import ErrorState from "@/components/states/ErrorState";
 import NotFoundState from "@/components/states/NotFoundState";
+import SkeletonState from "@/components/states/SkeletonState";
+import { ListSkeleton } from "@/components/states/ScreenStates";
 import { haptics } from "@/lib/haptics";
 import { toast } from "@/store/toast";
 import { z } from "zod/v4";
@@ -27,13 +29,13 @@ import { useCategories, useCategoryById, useCategoryLabel } from "@/lib/categori
 import SegmentedControl from "@/components/ui/SegmentedControl";
 import CategoryPickerSheet from "@/components/sheets/CategoryPickerSheet";
 import type { IconName } from "@/lib/icons";
-import { spacing } from "@/theme";
+import { radius, spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
 import { accountById, useAccountById, useAccounts, useDefaultAccount } from "@/lib/accounts";
 import AccountPickerSheet from "@/components/sheets/AccountPickerSheet";
 import RevalueSheet from "@/components/sheets/RevalueSheet";
 import { useInvestments } from "@/lib/investments";
-import { ApiError, get, patch, post } from "@/lib/api";
+import { ApiError, get, getFetched, patch, post } from "@/lib/api";
 import { splitIssues } from "@/lib/apiError";
 import { useIdempotencyKey } from "@/lib/useIdempotencyKey";
 import { holderFor } from "@/lib/idempotency";
@@ -151,6 +153,9 @@ const AddTransaction = () => {
   // An edit whose transaction couldn't be read: the blank form must not be saved over it.
   const [editLoad, setEditLoad] = useState<{ notFound: boolean; message: string } | null>(null);
   const [editAttempt, setEditAttempt] = useState(0);
+  // When the transaction being edited was fetched; null until it has loaded, so the form
+  // (and its Save) stays hidden behind a skeleton rather than offering a blank record.
+  const [editFetchedAt, setEditFetchedAt] = useState<number | null>(null);
 
   // Shared by editing a transaction and repeating one — everything is the same except
   // which moment it lands on: the original's own timestamp for an edit, right now for a
@@ -177,8 +182,9 @@ const AddTransaction = () => {
 
     (async () => {
       try {
-        const transaction = await get<ITransaction>(`/transactions/${id}`);
+        const { data: transaction, fetchedAt } = await getFetched<ITransaction>(`/transactions/${id}`);
         applyTransactionToForm(transaction, transaction.occurredAt ? new Date(transaction.occurredAt) : new Date());
+        setEditFetchedAt(fetchedAt);
       }
       catch (err) {
         haptics.error();
@@ -603,6 +609,9 @@ const AddTransaction = () => {
 
   // Adding queues offline (store/outbox.ts); an edit has nowhere to wait.
   const editGate = useOnlineGate("Save Changes");
+  // What the offline strip dates: the record in edit mode, else the accounts behind the balances.
+  const accountsFetchedAt = useAccountStore((s) => s.fetchedAt);
+  const strip = { hasData: true, error: null, refetch: () => {}, fetchedAt: isEdit ? editFetchedAt : accountsFetchedAt };
 
   if (isEdit && editLoad) {
     return (
@@ -614,11 +623,23 @@ const AddTransaction = () => {
     );
   }
 
+  if (isEdit && editFetchedAt === null) {
+    return (
+      <ScreenScaffold title="Edit transaction" back="close" scroll={false}>
+        <View style={styles.body}>
+          <SkeletonState height={44} borderRadius={radius.md} />
+          <SkeletonState height={88} borderRadius={radius.lg} />
+          <ListSkeleton rows={3} height={56} />
+        </View>
+      </ScreenScaffold>
+    );
+  }
+
   return (
     // A native modal route hosts its own portal — without this, gorhom sheets render
     // behind the modal and read as unclickable.
     <BottomSheetModalProvider>
-    <ScreenScaffold title={isEdit ? "Edit transaction" : "Add transaction"} back="close" scroll={false}>
+    <ScreenScaffold title={isEdit ? "Edit transaction" : "Add transaction"} back="close" scroll={false} states={strip}>
       <View style={styles.body}>
         {/* Type — Expense / Income / Transfer. Immutable in edit mode. */}
         <View pointerEvents={isEdit ? "none" : "auto"} style={isEdit ? styles.segRowLocked : undefined}>
@@ -969,6 +990,7 @@ const AddTransaction = () => {
           loading={submitting}
           disabled={isEdit && !editGate.allowed}
           icon={isEdit ? editGate.icon : undefined}
+          hint={isEdit ? editGate.hint : undefined}
           label={
             isEdit ? editGate.label
             : type === "income" ? "Save Income"

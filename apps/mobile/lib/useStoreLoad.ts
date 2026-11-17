@@ -6,8 +6,9 @@ import { errorMessage, type ScreenState } from "@/lib/screenStates";
  * For a screen whose list lives in a store (accounts, categories) rather than a query: no
  * write or focus rule refreshes a store, so this reloads it each time the screen gains
  * focus, and hands ScreenScaffold / ScreenStates the same state a query hook would.
+ * `fetchedAt` is the store's own, so the offline strip gives this list's age (D18).
  */
-export const useStoreLoad = (loaded: boolean, load: () => Promise<void>): ScreenState => {
+export const useStoreLoad = (loaded: boolean, load: () => Promise<void>, fetchedAt: number | null): ScreenState => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,5 +28,5 @@ export const useStoreLoad = (loaded: boolean, load: () => Promise<void>): Screen
 
   useFocusEffect(useCallback(() => { void refetch(); }, [refetch]));
 
-  return { loading: !loaded && busy, refreshing: loaded && busy, error, hasData: loaded, refetch };
+  return { loading: !loaded && busy, refreshing: loaded && busy, error, hasData: loaded, refetch, fetchedAt };
 };

@@ -85,7 +85,7 @@ const ManageAccountsScreen = () => {
 
   // The list lives in a store, not a query, so no write or focus rule refreshes it. Balances
   // move with every transaction, so a stale list here would show wrong money.
-  const state = useStoreLoad(useAccountStore((s) => s.loaded), useAccountStore.getState().load);
+  const state = useStoreLoad(useAccountStore((s) => s.loaded), useAccountStore.getState().load, useAccountStore((s) => s.fetchedAt));
   const reorderGate = useOnlineGate("Reorder accounts");
 
   const openNew = () => {
