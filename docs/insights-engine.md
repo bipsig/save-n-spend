@@ -452,6 +452,11 @@ cards appear: the Highlights screen, the dashboard and Insights all show real
 amounts with privacy mode on. Keep sentences short
 and put the number in the title where the existing typography can carry it.
 
+From 2.8.4 the server's `formatAmount` and `formatPercent` (`apps/api/src/utils/money.ts`)
+follow the app's rules: exact paise, one decimal on a measured percentage, and the
+true minus (`₹9,500.00`, `37.5%`, `−5.1%`). See
+[Server-written sentences](api-reference.md#server-written-sentences).
+
 ## Out of scope
 
 | Not building | Why |

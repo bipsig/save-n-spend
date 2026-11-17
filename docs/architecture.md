@@ -1117,6 +1117,7 @@ whole picture. The disagreements it shows:
   that default, so exports do not contain them even though a comment in
   `transactionController.filterTransactions` says they do.
 - The dashboard's net-worth history (`services/netWorthHistoryService.ts`) walks
-  back from today's total, which sums non-archived accounts only, using every
-  income, expense and adjustment, including those on archived accounts. Past
-  points can therefore be off by whatever an archived account moved.
+  back from today's total over the same accounts (non-archived ones): each row
+  counts only where it lands on one of them, transfer legs included (D24, 2.8.4).
+  Up to 2.8.3 it used every account's income, expenses and adjustments and
+  ignored transfers, so archiving an account moved every past point.

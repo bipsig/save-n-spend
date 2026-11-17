@@ -848,7 +848,7 @@
                 { "key": "since", "value": "2026-07-20T09:00:00.000Z", "description": "ISO datetime of the device's last open", "disabled": true }
               ]
             },
-            "description": "The month's income, expense and net, this week's figures, net worth and its trend, streak, biggest expense, and the \"since you last opened\" digest.\n\n- `month`: `YYYY-MM`, defaults to the current month in the user's zone.\n- `since`: ISO datetime of **this device's** last open, so the digest is relative to this phone's last visit rather than a server-side session."
+            "description": "The month's income, expense and net, this week's figures, net worth and its trend, streak, biggest expense, and the \"since you last opened\" digest.\n\n- `month`: `YYYY-MM`, defaults to the current month in the user's zone.\n- `since`: ISO datetime of **this device's** last open, so the digest is relative to this phone's last visit rather than a server-side session.\n\n2.8.4: `tripExpenses`, `weekTripExpense` and `flowTrend[].tripExpense` are the trip part of `expenses`, `weekExpense` and `expense` (which still include trips). Everyday spending is the difference. `netWorthTrend` counts the same accounts as `netWorth`, so an archived account moves no past point."
           },
           "response": []
         },
@@ -858,7 +858,7 @@
             "method": "GET",
             "header": [],
             "url": { "raw": "{{BASE_URL}}/dashboard/health", "host": ["{{BASE_URL}}"], "path": ["dashboard", "health"] },
-            "description": "The finance health score with its pillars, band and hints, as shown on the Health screen."
+            "description": "The finance health score with its pillars, band and hints, as shown on the Health screen.\n\n2.8.4: `value` and `hint` use exact paise and one-decimal percentages (`20.5%`, `\u20b91,500.00`)."
           },
           "response": []
         },
@@ -1165,7 +1165,7 @@
                 { "key": "offset", "value": "0", "description": "0 = current, -1 = previous … never positive" }
               ]
             },
-            "description": "Trend, income vs expense series, category breakdown, accounts, heatmaps, movers and totals for one window.\n\n- `period`: `day` | `week` | `month` | `year` (default `month`).\n- `offset`: whole periods back from the current one; `0` = current, `-1` = previous. Never positive."
+            "description": "Trend, income vs expense series, category breakdown, accounts, heatmaps, movers and totals for one window.\n\n- `period`: `day` | `week` | `month` | `year` (default `month`).\n- `offset`: whole periods back from the current one; `0` = current, `-1` = previous. Never positive.\n\n2.8.4: `incomeVsExpense[].tripExpense` is the trip part of `expense`. Every `byCategory` slice but Trips has `share`, its share of everyday spending to one decimal; with `uncategorised.share` they add up to 100.0."
           },
           "response": []
         },
@@ -1183,7 +1183,7 @@
                 { "key": "offset", "value": "0", "description": "0 = current, -1 = previous" }
               ]
             },
-            "description": "One category over one window: its total, children, day-by-day trend and recent rows. Same `period` / `offset` as the summary. `404` for another user's category."
+            "description": "One category over one window: its total, children, day-by-day trend and recent rows. Same `period` / `offset` as the summary. `404` for another user's category.\n\n2.8.4: `shareOfEverydaySpend` divides by everyday spending (trips left out); `shareOfSpend` still divides by all spending."
           },
           "response": []
         }
@@ -1247,7 +1247,7 @@
             "method": "GET",
             "header": [],
             "url": { "raw": "{{BASE_URL}}/highlights", "host": ["{{BASE_URL}}"], "path": ["highlights"] },
-            "description": "The current highlights, materiality-ranked and capped. See the Insights engine doc for the rules."
+            "description": "The current highlights, materiality-ranked and capped. See the Insights engine doc for the rules.\n\n2.8.4: titles and bodies use exact paise, one-decimal percentages and the true minus."
           },
           "response": []
         },
@@ -1318,7 +1318,7 @@
                 { "key": "offset", "value": "-1", "description": "-1 = the one that just closed; must be negative" }
               ]
             },
-            "description": "A computed review of a **closed** period.\n\n- `period`: `week` | `month` (default `month`).\n- `offset`: whole periods back, **negative**: `-1` (default) is the one that just closed. `0`, the period containing today, is rejected."
+            "description": "A computed review of a **closed** period.\n\n- `period`: `week` | `month` (default `month`).\n- `offset`: whole periods back, **negative**: `-1` (default) is the one that just closed. `0`, the period containing today, is rejected.\n\n2.8.4: `tripExpenses` and `previousTripExpenses` are the trip part of `expenses` and `previousExpenses`. Each category but Trips has `share` (one decimal, of everyday spending, over every slice), and `uncategorised` is the everyday spend with no category. `netWorth` counts today's accounts only. The verdict and timeline use exact paise and one decimal; the timeline's biggest expense is the everyday one."
           },
           "response": []
         }
