@@ -142,7 +142,7 @@ test("summary: a past month and `since`; the history still ends today", async ()
     // March: shoes 150,000 + the 23:59:59 dinner 100,000.
     assert.deepEqual([d.month, d.income, d.expenses, d.savings], ["2026-03", 0, 250_000, -250_000]);
     assert.deepEqual(d.biggestExpense, { title: "Shoes", amount: 150_000, occurredAt: "2026-03-12T06:30:00.000Z" });
-    assert.deepEqual(d.sinceLastOpened, { transactions: 1, spent: 30_000 });
+    assert.deepEqual(d.sinceLastOpened, { transactions: 1, spent: 30_000, tripSpent: 0 });
     assert.equal(d.netWorth, NET_WORTH);
     assert.deepEqual(d.flowTrend.at(-1), { label: "2026-03", income: 0, expense: 250_000, tripExpense: 0 });
     assert.equal(d.tripExpenses, 0);
@@ -172,7 +172,7 @@ test("summary: a new account has one net-worth point and only this month's flow"
         month: "2026-04", income: 0, expenses: 0, tripExpenses: 0, savings: 0, netWorth: 0,
         netWorthTrend: [{ label: "2026-04", total: 0 }],
         flowTrend: [{ label: "2026-04", income: 0, expense: 0, tripExpense: 0 }],
-        currentStreak: 0, weekIncome: 0, weekExpense: 0, weekTripExpense: 0, biggestExpense: null,
+        currentStreak: 0, weekIncome: 0, weekExpense: 0, weekTripExpense: 0, biggestExpense: null, biggestEverydayExpense: null,
     });
     const b = await u.account("Bank", { startingBalance: 200_000 });
     await txn(u, "expense", 20_000, b, "2026-04-15T05:00:00Z");
@@ -195,6 +195,10 @@ test("summary (D21): this week's and this month's trip shares, inside the 2.8.1 
     // Everyday spending is what is left: 12,345. Savings still count the trip.
     assert.equal(d.savings, -27_345);
     assert.deepEqual(d.flowTrend.at(-1), { label: "2026-04", income: 0, expense: 27_345, tripExpense: 15_000 });
+    // The trip share is the month's biggest expense; the everyday one is the 12,345 row.
+    assert.deepEqual([d.biggestExpense.amount, d.biggestEverydayExpense.amount], [15_000, 12_345]);
+    const since = (await u.send("GET", "/dashboard/summary?since=2026-04-13T00:00:00Z")).json.data;
+    assert.deepEqual(since.sinceLastOpened, { transactions: 2, spent: 27_345, tripSpent: 15_000 });
 });
 
 test("summary: bad query is 400 invalid_input; unknown parameters are dropped; signed out is 401", async () => {

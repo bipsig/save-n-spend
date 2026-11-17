@@ -15,6 +15,9 @@ import { computeCurrentStreak } from "../services/highlightSnapshotService";
 import { netWorthTrend } from "../services/netWorthHistoryService";
 import { averageByDayOfMonth } from "../services/paceMath";
 
+const expenseRow = (row: { title?: unknown; amount?: unknown; occurredAt?: unknown } | undefined) =>
+  row ? { title: row.title as string, amount: row.amount as number, occurredAt: row.occurredAt as Date } : null;
+
 export const getDashboardSummary = async (req: Request, res: Response): Promise<void> => {
 
   const { query: { month, since } } = req.valid as Valid<typeof dashboardSummarySchemas>;
@@ -36,7 +39,7 @@ export const getDashboardSummary = async (req: Request, res: Response): Promise<
   // spending with a "Plus ₹X on trips" line while `total` keeps its 2.8.1 meaning.
   const flowGroup = { _id: "$type", total: { $sum: "$amount" }, trips: { $sum: { $cond: [{ $gt: ["$tripId", null] }, "$amount", 0] } } };
 
-  const [currentStreak, monthlySums, netWorth, weekSums, biggestExpense, sinceLastOpened, first] = await Promise.all([
+  const [currentStreak, monthlySums, netWorth, weekSums, biggestExpense, biggestEverydayExpense, sinceLastOpened, first] = await Promise.all([
     computeCurrentStreak(req.user!.userId, zone, now),
     Transaction.aggregate([
       {
@@ -72,10 +75,17 @@ export const getDashboardSummary = async (req: Request, res: Response): Promise<
       { $limit: 1 },
       { $project: { title: 1, amount: 1, occurredAt: 1 } }
     ]),
+    // The same, everyday spending only (D21): the 2.8.1 field above may name a trip share.
+    Transaction.aggregate([
+      { $match: { userId, type: "expense", tripId: null, occurredAt: { $gte: start, $lt: next } } },
+      { $sort: { amount: -1 } },
+      { $limit: 1 },
+      { $project: { title: 1, amount: 1, occurredAt: 1 } }
+    ]),
     since
       ? Transaction.aggregate([
         { $match: { userId, type: "expense", occurredAt: { $gte: new Date(since) } } },
-        { $group: { _id: null, count: { $sum: 1 }, total: { $sum: "$amount" } } }
+        { $group: { _id: null, count: { $sum: 1 }, total: { $sum: "$amount" }, trips: { $sum: { $cond: [{ $gt: ["$tripId", null] }, "$amount", 0] } } } }
       ])
       : Promise.resolve(null),
     Transaction.findOne({ userId }).sort({ occurredAt: 1 }).select("occurredAt").lean()
@@ -112,11 +122,10 @@ export const getDashboardSummary = async (req: Request, res: Response): Promise<
     weekIncome,
     weekExpense,
     weekTripExpense,
-    biggestExpense: biggestExpense[0]
-      ? { title: biggestExpense[0].title as string, amount: biggestExpense[0].amount as number, occurredAt: biggestExpense[0].occurredAt as Date }
-      : null,
+    biggestExpense: expenseRow(biggestExpense[0]),
+    biggestEverydayExpense: expenseRow(biggestEverydayExpense[0]),
     sinceLastOpened: sinceLastOpened
-      ? { transactions: sinceLastOpened[0]?.count ?? 0, spent: sinceLastOpened[0]?.total ?? 0 }
+      ? { transactions: sinceLastOpened[0]?.count ?? 0, spent: sinceLastOpened[0]?.total ?? 0, tripSpent: sinceLastOpened[0]?.trips ?? 0 }
       : undefined
   };
 

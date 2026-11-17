@@ -511,9 +511,12 @@ export interface DashboardSummary {
   /** The single expense that moved this month's total the most. Null on a month
    *  with no expenses at all. */
   biggestExpense: { title: string; amount: number; occurredAt: string } | null,
+  /** The same, everyday spending only (trip shares left out). */
+  biggestEverydayExpense: { title: string; amount: number; occurredAt: string } | null,
   /** Present only when the request named a `since` — how much happened between that
-   *  moment and now. Absent (not zero) when there's nothing to compare against yet. */
-  sinceLastOpened?: { transactions: number; spent: number }
+   *  moment and now. Absent (not zero) when there's nothing to compare against yet.
+   *  `spent` includes trips; `tripSpent` is the trip part of it. */
+  sinceLastOpened?: { transactions: number; spent: number; tripSpent: number }
 }
 
 // GET /dashboard/insights — the "For You" carousel's genuinely-new slides. Kept off
