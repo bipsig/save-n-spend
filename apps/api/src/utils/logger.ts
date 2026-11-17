@@ -63,3 +63,9 @@ export const log = (entry: LogEntry): void => {
         // Dropped — the stdout line above still has it.
     });
 };
+
+/** A stdout line at debug level, only when `LOG_LEVEL=debug`. Never saved to RequestLog. */
+export const logDebug = (entry: { requestId?: string | null; message: string }): void => {
+    if (process.env.LOG_LEVEL !== "debug") return;
+    console.log(JSON.stringify({ t: new Date().toISOString(), level: "debug", requestId: entry.requestId ?? null, message: scrub(entry.message) }));
+};

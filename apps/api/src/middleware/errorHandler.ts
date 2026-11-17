@@ -4,6 +4,7 @@ import type { ApiErrorCode, ApiIssue } from "@save-n-spend/types";
 import { AppError } from "../utils/AppError";
 import { MESSAGES, invalidReference, notFound } from "../utils/messages";
 import { labelFor } from "../schemas/errorMap";
+import { logDebug } from "../utils/logger";
 
 // Every error the API sends has one shape:
 //   { success: false, statusCode, code, message, issues?, data: null, requestId }
@@ -22,6 +23,8 @@ export type ApiFailure = {
     headers?: Record<string, string>;
     /** For the log only. */
     logMessage?: string;
+    /** Library text too detailed for the log; written only at debug level (see logDebug). */
+    debugMessage?: string;
     stack?: string;
 };
 
@@ -161,8 +164,9 @@ export const toFailure = (err: unknown, req: RequestLike): ApiFailure => {
     }
 
     // A unique index said no. The sentence stays generic until each route names its duplicate.
+    // The log gets the same sentence; Mongo's own text (collection, index, key) is debug only.
     if (e?.code === 11000 || e?.code === 11001) {
-        return { status: 409, code: "duplicate", message: MESSAGES.duplicateGeneric, logMessage: e.message };
+        return { status: 409, code: "duplicate", message: MESSAGES.duplicateGeneric, debugMessage: e.message };
     }
 
     return { status: 500, code: "internal", message: MESSAGES.internal, logMessage: e?.message ?? String(err), stack: e?.stack ?? String(err) };
@@ -172,6 +176,7 @@ export const toFailure = (err: unknown, req: RequestLike): ApiFailure => {
 export const sendError = (res: Response, f: ApiFailure): void => {
     res.locals.errorMessage = f.logMessage ?? f.message;
     if (f.stack) res.locals.errorStack = f.stack;
+    if (f.debugMessage) logDebug({ requestId: res.locals.requestId ?? null, message: f.debugMessage });
     for (const [k, v] of Object.entries(f.headers ?? {})) res.setHeader(k, v);
     if (f.status === 401) res.setHeader("WWW-Authenticate", 'Bearer realm="save-n-spend"');
     res.status(f.status).json({

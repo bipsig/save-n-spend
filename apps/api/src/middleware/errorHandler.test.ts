@@ -1,4 +1,4 @@
-import { test, after } from "node:test";
+import { test, after, mock } from "node:test";
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import "express-async-errors";
@@ -85,6 +85,8 @@ test("Mongoose ValidationError lists each path in plain words", () => {
 test("a duplicate key stays 409, now with code duplicate", () => {
     const f = toFailure(Object.assign(new Error("E11000 duplicate key error collection: x"), { code: 11000 }), req("/api/v1/transactions"));
     assert.deepEqual([f.status, f.code, f.message], [409, "duplicate", MESSAGES.duplicateGeneric]);
+    // S3: the log gets the friendly sentence; Mongo's text is for the debug line only.
+    assert.deepEqual([f.logMessage, f.debugMessage], [undefined, "E11000 duplicate key error collection: x"]);
 });
 
 test("AppError keeps its status; the code comes from it unless given", () => {
@@ -120,6 +122,11 @@ test("thingInPath names the resource before the id", () => {
 
 const app = express();
 app.use((_req, res, next) => { res.locals.requestId = "TEST42"; next(); });
+// What the request logger would write as the line's message.
+let logged: unknown;
+app.use((_req, res, next) => { res.on("finish", () => { logged = res.locals.errorMessage; }); next(); });
+const RAW_DUPLICATE = "E11000 duplicate key error collection: save-n-spend-dev.accounts index: _id_ dup key: { _id: ObjectId('6a764ebda1e3aa857dbec531') }";
+app.post("/restore", () => { throw Object.assign(new Error(RAW_DUPLICATE), { code: 11000 }); });
 app.use(express.json({ limit: "1kb" }));
 app.use(requireJsonBody);
 app.post("/echo", (r, res) => { res.json({ success: true, data: r.body ?? null }); });
@@ -173,6 +180,31 @@ test("401 carries WWW-Authenticate; unknown routes are route_not_found", async (
     assert.equal(auth.body.code, "unauthenticated");
     const missing = await call("/nope", { method: "PUT" });
     assert.deepEqual([missing.res.status, missing.body.code, missing.body.message, missing.body.requestId], [404, "route_not_found", MESSAGES.routeNotFound, "TEST42"]);
+});
+
+test("a duplicate restore logs the friendly sentence; Mongo's text only at LOG_LEVEL=debug", async () => {
+    const lines = mock.method(console, "log", () => undefined);
+    const before = process.env.LOG_LEVEL;
+    try {
+        delete process.env.LOG_LEVEL;
+        const quiet = await call("/restore", { method: "POST" });
+        await new Promise((r) => setImmediate(r));
+        assert.deepEqual([quiet.res.status, quiet.body.code, quiet.body.message], [409, "duplicate", MESSAGES.duplicateGeneric]);
+        assert.equal(logged, MESSAGES.duplicateGeneric);
+        assert.equal(lines.mock.callCount(), 0, "no debug line at the default level");
+
+        process.env.LOG_LEVEL = "debug";
+        await call("/restore", { method: "POST" });
+        await new Promise((r) => setImmediate(r));
+        assert.equal(logged, MESSAGES.duplicateGeneric);
+        assert.equal(lines.mock.callCount(), 1);
+        const line = JSON.parse(String(lines.mock.calls[0].arguments[0]));
+        assert.deepEqual([line.level, line.requestId, line.message], ["debug", "TEST42", RAW_DUPLICATE]);
+    }
+    finally {
+        lines.mock.restore();
+        if (before === undefined) delete process.env.LOG_LEVEL; else process.env.LOG_LEVEL = before;
+    }
 });
 
 test("429 has requestId, code rate_limited and Retry-After", async () => {
