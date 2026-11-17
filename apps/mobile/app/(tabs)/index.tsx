@@ -362,8 +362,8 @@ const HomeScreen = () => {
 
       {/* Anchored to THIS phone's own last visit, not the calendar — absent on a first-
           ever launch (nothing to compare against yet) and whenever the server hasn't
-          echoed the digest back (an older cached response, or the request still
-          in flight with the previous, unpersonalised query). */}
+          echoed the digest back (a saved copy never carries it, see lib/offlineSlot, or the
+          request still in flight with the previous, unpersonalised query). */}
       {previousOpenedAt && dashboardSummary.sinceLastOpened && since && (
         <SinceLastOpenedCard
           previousOpenedAt={previousOpenedAt}

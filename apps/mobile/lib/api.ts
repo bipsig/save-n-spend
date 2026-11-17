@@ -7,6 +7,7 @@ import { create } from "zustand";
 import { useSession } from "@/store/session";
 import { useConnectivity } from "@/store/connectivity";
 import * as offlineCache from "@/lib/offlineCache";
+import { offlineData, offlinePath } from "@/lib/offlineSlot";
 import { BASE_URL, HEALTH_URL } from "@/lib/apiBase";
 import { makeRequestId, routePattern } from "@/lib/requestId";
 import { APP_VERSION } from "@/lib/errorReporting";
@@ -115,7 +116,7 @@ const request = async <T>(method: Method, path: string, body?: unknown, opts: Re
     // A GET has a fallback a write does not: its last-known answer. Every hook renders
     // this exactly as if the request had succeeded — no per-hook offline handling.
     if (cacheable) {
-      const cached = await offlineCache.read<T>(path);
+      const cached = await offlineCache.read<T>(offlinePath(path));
       if (cached) return cached;
     }
     throw offlineError(requestId);
@@ -147,7 +148,7 @@ const request = async <T>(method: Method, path: string, body?: unknown, opts: Re
     useConnectivity.getState().reportOnline();
     setWaking(false);
     record(res.status);
-    if (cacheable) void offlineCache.write(path, parsed.data);
+    if (cacheable) void offlineCache.write(offlinePath(path), offlineData(path, parsed.data));
     if (method !== "GET" && opts.invalidate !== false) afterWrite(path, body);
     return { data: parsed.data as T, fetchedAt: Date.now() }; // unwrap the { success, message, data } envelope
   }
@@ -166,7 +167,7 @@ const request = async <T>(method: Method, path: string, body?: unknown, opts: Re
   // (`cache: false`) and writes still fail; the outbox handles writes.
   if (!isWakingReply(err)) setWaking(false);
   else if (cacheable) {
-    const cached = await offlineCache.read<T>(path);
+    const cached = await offlineCache.read<T>(offlinePath(path));
     if (cached) {
       setWaking(true);
       void retryUntilAwake();
