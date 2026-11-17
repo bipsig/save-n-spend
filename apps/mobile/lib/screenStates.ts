@@ -56,6 +56,11 @@ export const homeCardView = (s: { hasData: boolean; error: ScreenError; empty?: 
 export const errorMessage = (error: ScreenError): string | undefined =>
   !error ? undefined : typeof error === "string" ? error : error.message || undefined;
 
+/** From iOS's first accessibility text size (AX1, fontScale 1.786; xxxLarge is 1.353) a strip's message and its "Try again"
+ *  can't share a line without breaking words, so the action goes underneath. */
+export const STACK_ACTION_FONT_SCALE = 1.6;
+export const stacksAction = (fontScale: number): boolean => fontScale >= STACK_ACTION_FONT_SCALE;
+
 /** Several fetches drawn as one screen: it has data when every part has, shows the first
  *  error, and its age is the oldest part's. */
 export const mergeScreenStates = (...states: ScreenState[]): ScreenState => {

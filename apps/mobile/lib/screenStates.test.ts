@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { errorMessage, homeCardView, mergeScreenStates, screenView, stripFor, type ScreenState } from "./screenStates";
+import { errorMessage, homeCardView, mergeScreenStates, screenView, stacksAction, stripFor, type ScreenState } from "./screenStates";
 
 // Run from apps/api: TS_NODE_TRANSPILE_ONLY=true node --require ts-node/register --test ../mobile/lib/screenStates.test.ts
 
@@ -70,4 +70,12 @@ test("merged states: data when every part has it, first error, oldest age, one r
   assert.deepEqual(calls, ["a", "b", "c"]);
 
   assert.equal(mergeScreenStates(part("a", {}), part("b", {})).fetchedAt, null);
+});
+
+test("Try again goes under its message only at the accessibility text sizes (W-4)", () => {
+  // React Native's iOS fontScale per text size: default 1, xxxLarge 1.353, AX1 1.786, AX5 3.571.
+  assert.equal(stacksAction(1), false);
+  assert.equal(stacksAction(1.353), false);
+  assert.equal(stacksAction(1.786), true);
+  assert.equal(stacksAction(3.571), true);
 });
