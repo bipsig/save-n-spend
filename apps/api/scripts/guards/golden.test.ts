@@ -36,6 +36,12 @@ test("time-driven values and unordered lists don't count", () => {
     assert.equal(compareSnapshots(a, moved).length, 1);
 });
 
+test("GET /highlights generatedAt is a timestamp; the highlights themselves still count", () => {
+    const at = (generatedAt: string, title: string) => snap({ "GET /highlights": ok({ generatedAt, highlights: [{ title }] }) });
+    assert.deepEqual(compareSnapshots(at("t1", "A"), at("t2", "A")), []);
+    assert.deepEqual(compareSnapshots(at("t1", "A"), at("t2", "B")).map((d) => d.path), ["data.highlights.0.title"]);
+});
+
 test("R2 page shape: an old page compares to a new one, items to docs and total to totalDocs; ties by _id", () => {
     const row = (id: string, at: string, amount = 1) => ({ _id: id, occurredAt: at, amount });
     const old = { docs: [row("b", "t2"), row("a", "t2"), row("c", "t1")], totalDocs: 3, limit: 20, page: 1, totalPages: 1, pagingCounter: 1, hasPrevPage: false, hasNextPage: false, prevPage: null, nextPage: null };

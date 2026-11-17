@@ -31,7 +31,7 @@ export const AGREED = {
     /** Envelope fields whose wording may change (B3, B8). */
     envelope: ["message"],
     /** Values that change on every call, whatever the code. */
-    volatile: [/^GET \/diagnostics\/requests /, /^GET \/backup .*\.exportedAt$/, /^GET \/investments\/report data\.asOf$/],
+    volatile: [/^GET \/diagnostics\/requests /, /^GET \/backup .*\.exportedAt$/, /^GET \/investments\/report data\.asOf$/, /^GET \/highlights data\.generatedAt$/],
     /** Rates computed from "now": equal when within this relative tolerance. */
     approx: { keys: ["annualReturn"], tolerance: 1e-4 },
     /** Lists whose order among ties isn't fixed by the query: compared as sets. */
