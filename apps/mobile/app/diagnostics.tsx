@@ -121,32 +121,33 @@ const DiagnosticsScreen = () => {
         accessibilityLabel="Which log"
       />
 
-      <Card style={styles.summary}>
-        <Caps header>{view === "phone" ? "Today on this phone" : "Today on the server"}</Caps>
-        <StatRow
-          size="lg"
-          surface="plain"
-          items={[
-            { label: "Calls", text: String(summary.calls) },
-            { label: "Failed", text: String(summary.failed), tone: summary.failed ? "danger" : "ink" },
-            { label: "Typical", text: summary.typical !== null ? formatMs(summary.typical) : "—" },
-          ]}
-        />
-        {summary.slowest && (
-          <AppText size="xs" color="inkDim" style={styles.slow}>
-            Slowest: <AppText size="xs" weight="bold" color="ink">{labelOf(summary.slowest).replace(/^Loaded /, "")} · {formatMs(summary.slowest.durationMs ?? 0)}</AppText>
-            {(summary.slowest.durationMs ?? 0) > 20_000 ? " (server waking up)" : ""}
-          </AppText>
-        )}
-      </Card>
-
-      <View style={styles.chips}>
-        {filters.map((f) => (
-          <Chip key={f.key} label={f.label} selected={filter === f.key} onPress={() => setFilter(f.key)} />
-        ))}
-      </View>
-
+      {/* The summary and filters count the rows below, so they wait for them too. */}
       <ScreenStates state={state}>
+        <Card style={styles.summary}>
+          <Caps header>{view === "phone" ? "Today on this phone" : "Today on the server"}</Caps>
+          <StatRow
+            size="lg"
+            surface="plain"
+            items={[
+              { label: "Calls", text: String(summary.calls) },
+              { label: "Failed", text: String(summary.failed), tone: summary.failed ? "danger" : "ink" },
+              { label: "Typical", text: summary.typical !== null ? formatMs(summary.typical) : "—" },
+            ]}
+          />
+          {summary.slowest && (
+            <AppText size="xs" color="inkDim" style={styles.slow}>
+              Slowest: <AppText size="xs" weight="bold" color="ink">{labelOf(summary.slowest).replace(/^Loaded /, "")} · {formatMs(summary.slowest.durationMs ?? 0)}</AppText>
+              {(summary.slowest.durationMs ?? 0) > 20_000 ? " (server waking up)" : ""}
+            </AppText>
+          )}
+        </Card>
+
+        <View style={styles.chips}>
+          {filters.map((f) => (
+            <Chip key={f.key} label={f.label} selected={filter === f.key} onPress={() => setFilter(f.key)} />
+          ))}
+        </View>
+
         {groups.length === 0 ? (
           <EmptyState
             icon="receipt"
