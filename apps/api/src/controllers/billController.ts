@@ -4,7 +4,7 @@ import { AppError } from "../utils/AppError";
 import type { Valid } from "../middleware/validate";
 import { billProblems, createBillSchemas, updateBillSchemas, listBillsSchemas, payBillSchemas, billIdSchemas, skipBillSchemas } from "../schemas/billSchema";
 import Bill from "../models/Bill";
-import Category from "../models/Category";
+import { keepsCategory, requireCategory } from "../services/ownership";
 import * as reply from '../utils/response';
 import Account from "../models/Account";
 import Transaction from "../models/Transaction";
@@ -22,13 +22,16 @@ import { toDTO, toDTOs } from "../utils/dto";
 
 const ALREADY_PAID = conflict("This bill is already paid for this period");
 
-/** Each reference the body names must be one of the user's live records of the right kind. */
+/** Each reference the body names must be one of the user's live records of the right kind.
+ *  An edit that keeps the bill's category (the sheet sends it back) is not re-checked, so a
+ *  bill filed under a category archived since stays editable. */
 const checkReferences = async (
     userId: string,
     body: { category?: string | null; account?: string; toInvestment?: string | null },
+    before?: { category?: unknown },
 ): Promise<void> => {
-    if (body.category && !(await Category.exists({ _id: body.category, userId, isArchived: false }))) {
-        throw AppError.invalidReference("category", "Category", "categories");
+    if (body.category && !keepsCategory(before?.category, body.category)) {
+        await requireCategory(userId, body.category, { kind: "expense", live: true });
     }
     if (body.account && !(await Account.exists({ _id: body.account, userId, isArchived: false }))) {
         throw AppError.invalidReference("account", "Account", "accounts");
@@ -84,7 +87,7 @@ export const updateBill = async (req: Request, res: Response): Promise<void> => 
     }
 
     rejectProblems(billProblems({ ...existing, ...body }));
-    await checkReferences(userId, body);
+    await checkReferences(userId, body, existing);
 
     const bill = await Bill.findOneAndUpdate({ _id: id, userId }, body, { new: true });
 

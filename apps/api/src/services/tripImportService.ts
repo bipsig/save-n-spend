@@ -335,7 +335,7 @@ export const commitImport = async (
                         title: e.title, occurredAt: e.occurredAt, category: e.category ? String(e.category) : null,
                         cost: e.cost, paidBy: null, paidFrom: e.paidFrom ? String(e.paidFrom) : null,
                         shares: [...parts].map(([k, amount]) => ({ account: k === "me" ? null : k, amount })),
-                    }, session, at(), known);
+                    }, session, at(), known, e.category);
                     e.importKey = d.key;
                     await replaceExpense(session, userId, trip, e, input);
                     applied++;

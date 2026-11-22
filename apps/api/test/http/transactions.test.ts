@@ -427,3 +427,40 @@ test("races: delete ×3 and edit-vs-delete at once land once; a split edited and
     await par(8, (i) => post(u, { type: "expense", amount: 100 + i, account: a, category: c, title: `Burst ${i}` }));
     assert.equal(await balanceOf(api, a), 1_00_000 - (8 * 100 + 28));
 });
+
+test("one category rule (gaps row 18): own, right kind and live for a new choice; an edit may keep an archived one", async () => {
+    const bank = await me.account("Cat bank", { startingBalance: 1_00_000 });
+    const made = await me.send("POST", "/categories", { name: "Old hobby", kind: "expense" });
+    assert.equal(made.status, 201, made.text);
+    const old = made.json.data._id as string;
+    const kept = await spend(bank, 1_000, { category: old, title: "Paint" });
+    const bill = await me.send("POST", "/bills", { name: "Club", amount: 500, dueDate: now(), recurring: false, category: old });
+    assert.equal(bill.status, 201, bill.text);
+    const asha = await me.account("Cat Asha", { type: "person", startingBalance: 0 });
+    const trip = await me.send("POST", "/trips", { name: "Cat trip", startDate: daysAgo(2), endDate: daysAgo(-2), members: [asha], budget: null });
+    const tripExpense = (category: string) => ({ title: "Kit", occurredAt: now(), category, cost: 2_000, paidBy: null, paidFrom: bank, shares: [{ account: null, amount: 1_000 }, { account: asha, amount: 1_000 }] });
+    const te = await me.send("POST", `/trips/${trip.json.data._id}/expenses`, tripExpense(old));
+    assert.equal(te.status, 201, te.text);
+    assert.equal((await me.send("DELETE", `/categories/${old}`)).status, 200);
+
+    // A new row, or an edit that picks it, is refused.
+    failed(await me.send("POST", "/transactions", { type: "expense", amount: 100, account: bank, category: old, title: "x" }), 400, "invalid_reference", { path: "category" });
+    const fresh = await spend(bank, 100);
+    failed(await me.send("PATCH", `/transactions/${fresh._id}`, { category: old }), 400, "invalid_reference", { path: "category" });
+    failed(await me.send("PATCH", `/transactions/${fresh._id}`, { category: incomeCat }), 400, "invalid_reference", { path: "category" });
+    failed(await me.send("POST", "/bills", { name: "Club 2", amount: 500, dueDate: now(), recurring: false, category: old }), 400, "invalid_reference", { path: "category" });
+    failed(await me.send("POST", "/bills", { name: "Club 3", amount: 500, dueDate: now(), recurring: false, category: incomeCat }), 400, "invalid_reference", { path: "category" });
+    failed(await me.send("POST", "/budgets", { category: old, month: "2026-12", limit: 1_000 }), 400, "invalid_reference", { path: "category" });
+    failed(await me.send("POST", "/budgets", { category: incomeCat, month: "2026-12", limit: 1_000 }), 400, "invalid_reference", { path: "category" });
+    failed(await me.send("POST", "/budgets", { category: otherCat, month: "2026-12", limit: 1_000 }), 400, "invalid_reference", { path: "category" });
+    failed(await me.send("POST", `/trips/${trip.json.data._id}/expenses`, tripExpense(old)), 400, "invalid_reference", { path: "category" });
+    failed(await me.send("POST", `/trips/${trip.json.data._id}/expenses`, tripExpense(incomeCat)), 400, "invalid_reference", { path: "category" });
+
+    // Rows already filed under it stay editable, the category sent back as it is.
+    assert.equal((await me.send("PATCH", `/transactions/${kept._id}`, { category: old, amount: 1_200 })).status, 200);
+    assert.equal((await me.send("PATCH", `/bills/${bill.json.data._id}`, { category: old, amount: 600 })).status, 200);
+    // A bill on an archived category is an I6 problem of its own (archiving a category leaves
+    // its bills); removed so this file's invariant check is about this test's rows.
+    assert.equal((await me.send("DELETE", `/bills/${bill.json.data._id}`)).status, 200);
+    assert.equal((await me.send("PATCH", `/trips/${trip.json.data._id}/expenses/${te.json.data._id}`, { ...tripExpense(old), title: "Kit bag" })).status, 200);
+});

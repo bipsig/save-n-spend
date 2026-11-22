@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import Budget from "../models/Budget";
-import Category from "../models/Category";
 import type { Valid } from "../middleware/validate";
+import { requireCategory } from "../services/ownership";
 import { createBudgetSchemas, updateBudgetSchemas, listBudgetsSchemas, budgetIdSchemas } from "../schemas/budgetSchema";
 import { budgetProgress } from "../services/budgetService";
 import { resolveZone } from "../utils/userZone";
@@ -24,9 +24,7 @@ export const listBudgets = async (req: Request, res: Response): Promise<void> =>
 export const createBudget = async (req: Request, res: Response): Promise<void> => {
     const { body } = req.valid as Valid<typeof createBudgetSchemas>;
 
-    if (!(await Category.exists({ _id: body.category, userId: req.user?.userId, isArchived: false }))) {
-        throw AppError.invalidReference("category", "Category", "categories");
-    }
+    await requireCategory(req.user!.userId, body.category, { kind: "expense", live: true });
 
     try {
         // In a transaction so a sent Idempotency-Key is recorded with the budget (utils/inTransaction).

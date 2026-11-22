@@ -8,7 +8,8 @@ import {
 import Account from "../models/Account";
 import { AppError } from "../utils/AppError";
 import Transaction, { type ITransaction } from "../models/Transaction";
-import { applyEffects, changes, editedFields, requireCategory, requireLiveAccounts, resplit } from "../services/transactionService";
+import { applyEffects, changes, editedFields, requireLiveAccounts, resplit } from "../services/transactionService";
+import { requireCategory } from "../services/ownership";
 import { checkBudgetAlerts } from "../services/budgetAlertService";
 import * as reply from "../utils/response";
 import { resolveTransactionFilter, summaryTotals, type SummaryGroup } from "../services/transactionFilter";
@@ -72,7 +73,7 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
                 ...(body.type === "transfer" ? [{ path: "toAccount", id: body.toAccount, label: "The account it goes to", things: "accounts" }] : []),
                 ...(owedBy ?? []).map((row, i) => ({ path: `owedBy.${i}.account`, id: row.account, label: "A person in the split", things: "people", types: ["person"] })),
             ], session);
-            if (body.type === "expense" || body.type === "income") await requireCategory(userId, body.category, body.type, session);
+            if (body.type === "expense" || body.type === "income") await requireCategory(userId, body.category, { kind: body.type, live: true, session });
 
             // Redeeming (a transfer OUT of a holding) can't take it below zero — a negative
             // holding is meaningless. Banks may overdraw (a pending deposit, a corrected balance).
@@ -247,7 +248,9 @@ export const updateTransaction = async (req: Request, res: Response): Promise<vo
             ...(changes(row, set, "toAccount") ? [{ path: "toAccount", id: String(set.toAccount), label: "The account it goes to", things: "accounts" }] : []),
         ];
         if (refs.length) await requireLiveAccounts(userId, refs, session);
-        if (changes(row, set, "category")) await requireCategory(userId, String(set.category), row.type, session);
+        if (changes(row, set, "category")) {
+            await requireCategory(userId, String(set.category), { kind: row.type === "income" ? "income" : "expense", live: true, session });
+        }
 
         let noOverdraw: string[] = [];
         if (row.type === "transfer") {

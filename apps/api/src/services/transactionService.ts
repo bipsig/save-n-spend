@@ -1,7 +1,6 @@
 import mongoose, { type ClientSession } from "mongoose";
 import { ITransaction } from "../models/Transaction";
 import Account, { type IAccount } from "../models/Account";
-import Category from "../models/Category";
 import { AppError } from "../utils/AppError";
 import { createTransactionSchema, type TransactionPatch } from "../schemas/transactionSchema";
 
@@ -90,15 +89,6 @@ export const requireLiveAccounts = async (
         if (!a || (ref.types && !ref.types.includes(a.type))) throw AppError.invalidReference(ref.path, ref.label, ref.things);
     }
     return byId;
-};
-
-/** A category of the user's that fits the row: expense rows take expense categories, income
- *  rows income ones. An archived one is still accepted, as before R1, so an offline-queued
- *  entry or "Log again" made before the archive keeps saving. */
-export const requireCategory = async (userId: string, id: string, type: string, session: ClientSession): Promise<void> => {
-    const kind = type === "income" ? "income" : "expense";
-    const ok = await Category.exists({ _id: id, userId, kind }).session(session);
-    if (!ok) throw AppError.invalidReference("category", "Category", "categories");
 };
 
 /** A stored row as the create schema reads it: ids as text, the moment as ISO text, and

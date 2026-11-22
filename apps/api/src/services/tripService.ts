@@ -8,6 +8,7 @@ import { AppError } from "../utils/AppError";
 import { inTransaction } from "../utils/inTransaction";
 import { MESSAGES, conflict, notFound } from "../utils/messages";
 import { applyEffects, getEffectOf, type Movable } from "./transactionService";
+import { categoryQuery, keepsCategory, requireCategory } from "./ownership";
 import { dayKeyInZone } from "../utils/timezone";
 import {
     expensesSignature, isReroute, memberBalances, myShareOf, planLedger, planLetGo, planReroute, planSettlement,
@@ -133,23 +134,23 @@ const LEDGER_PATH: Record<string, string> = {
 
 /** What a bulk write already read once in its session: your own accounts money can move
  *  through, your expense categories, and your people's names. */
-export type KnownRefs = { ownAccounts: Set<string>; categories: Set<string>; names: Map<string, string> };
+export type KnownRefs = { ownAccounts: Set<string>; categories: { live: Set<string>; any: Set<string> }; names: Map<string, string> };
 
 export const loadKnownRefs = async (userId: string, session: ClientSession): Promise<KnownRefs> => {
     const own = await Account.find({ userId, isArchived: false, type: { $in: OWN_TYPES } }).select("_id").session(session).lean();
-    const cats = await Category.find({ userId, kind: "expense" }).select("_id").session(session).lean();
+    const cats = await Category.find(categoryQuery(userId, "expense", false)).select("_id isArchived").session(session).lean();
     const people = await Account.find({ userId, type: "person" }).select("name").session(session).lean();
     return {
         ownAccounts: new Set(own.map((a) => String(a._id))),
-        categories: new Set(cats.map((c) => String(c._id))),
+        categories: { live: new Set(cats.filter((c) => !c.isArchived).map((c) => String(c._id))), any: new Set(cats.map((c) => String(c._id))) },
         names: new Map(people.map((p) => [String(p._id), p.name])),
     };
 };
 
 /** References first (each with its path), then the ledger's rules. Read in the session, or
- *  from `known` when given. */
+ *  from `known` when given. `before` is the category an edited expense already has. */
 export const checkExpense = async (
-    userId: string, trip: ITrip, body: TripExpenseBody, session: ClientSession, at: At = here, known?: KnownRefs,
+    userId: string, trip: ITrip, body: TripExpenseBody, session: ClientSession, at: At = here, known?: KnownRefs, before?: unknown,
 ): Promise<TripExpenseIn> => {
     const lower = (id: string | null | undefined) => (id ? id.toLowerCase() : null);
     const input: TripExpenseIn = {
@@ -172,10 +173,12 @@ export const checkExpense = async (
         if (!known) await requireOwnAccount(userId, input.paidFrom, at("paidFrom"), "The account you paid from", session);
         else if (!known.ownAccounts.has(input.paidFrom.toLowerCase())) throw AppError.invalidReference(at("paidFrom"), "The account you paid from", "accounts");
     }
-    // Archived categories stay allowed, as before R1: an expense filed under one stays editable.
-    const categoryOk = !input.category
-        || (known ? known.categories.has(String(input.category).toLowerCase()) : await Category.exists({ _id: input.category, userId, kind: "expense" }).session(session));
-    if (!categoryOk) throw AppError.invalidReference(at("category"), "Category", "categories");
+    if (input.category) {
+        // A new choice must be live; an edit that keeps an archived category stays allowed.
+        const live = !keepsCategory(before, input.category);
+        if (!known) await requireCategory(userId, input.category, { kind: "expense", live, path: at("category"), session });
+        else if (!known.categories[live ? "live" : "any"].has(String(input.category).toLowerCase())) throw AppError.invalidReference(at("category"), "Category", "categories");
+    }
     return input;
 };
 
@@ -250,7 +253,7 @@ export const updateTripExpense = (userId: string, tripId: string, expenseId: str
         const trip = await claimTrip(userId, tripId, session);
         requireOpen(trip);
         const doc = await findExpense(userId, trip, expenseId, session);
-        return replaceExpense(session, userId, trip, doc, await checkExpense(userId, trip, body, session));
+        return replaceExpense(session, userId, trip, doc, await checkExpense(userId, trip, body, session, here, undefined, doc.category));
     });
 
 export const deleteTripExpense = (userId: string, tripId: string, expenseId: string) =>
