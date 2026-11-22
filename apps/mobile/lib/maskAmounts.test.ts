@@ -6,7 +6,16 @@ import { fake } from "../test/node";
 
 fake("@/store/settings", { useSettings: { getState: () => ({ privacyMode: false, peeking: false }) } });
 
-const { AMOUNT_HIDDEN, maskAmounts, splitAmounts } = require("./maskAmounts") as typeof import("./maskAmounts");
+const { AMOUNT_HIDDEN, maskAmounts, spoken, splitAmounts } = require("./maskAmounts") as typeof import("./maskAmounts");
+
+test("labels built from masked figures say amount hidden, sign kept as a word (gaps row 181)", () => {
+  assert.equal(spoken(`HDFC Savings, ${M} available`), "HDFC Savings, amount hidden available");
+  assert.equal(spoken(`Gain, +${M}`), "Gain, plus amount hidden");
+  assert.equal(spoken(`Spent −${M} of ${M}`), "Spent minus amount hidden of amount hidden");
+  assert.equal(spoken(`Owes you ${M.replace(" ", "\u00A0")}`), "Owes you amount hidden");
+  assert.equal(spoken("₹4,200.00 spent"), "₹4,200.00 spent", "an unmasked figure is left alone");
+  assert.equal(spoken("Password ••••••••"), "Password ••••••••", "bullets with no rupee are not a figure");
+});
 const { MASKED_MONEY: M } = require("./money") as typeof import("./money");
 
 test("whole-rupee server sentences (before 2.8.4)", () => {

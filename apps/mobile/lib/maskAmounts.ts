@@ -37,3 +37,16 @@ export const AMOUNT_HIDDEN = "amount hidden";
 /** The sentence with every rupee figure replaced, "₹ ••••" unless told otherwise. */
 export const maskAmounts = (sentence: string, replacement: string = MASKED_MONEY): string =>
   splitAmounts(sentence).map((p) => (p.amount ? replacement : p.text)).join("");
+
+const MASKED_FIGURE = new RegExp(`([+\\-−]?)${MASKED_MONEY.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(" ", "[ \\u00A0]")}`, "g");
+
+/**
+ * A label as VoiceOver should say it (gaps row 181): each masked figure the app built with
+ * `formatMoney` ("₹ ••••", "−₹ ••••") becomes "amount hidden", its sign kept as a word, the
+ * way `Money` and server sentences already read. AppText, PressableScale and Card pass every
+ * label through this, so a screen can't forget it.
+ */
+export const spoken = (label: string): string =>
+  label.includes("••••")
+    ? label.replace(MASKED_FIGURE, (_m, sign: string) => `${sign === "+" ? "plus " : sign ? "minus " : ""}${AMOUNT_HIDDEN}`)
+    : label;

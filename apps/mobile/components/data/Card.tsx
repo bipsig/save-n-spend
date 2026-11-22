@@ -3,6 +3,7 @@ import { StyleSheet, View } from "react-native";
 import type { ViewProps } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { colors, radius } from "@/theme";
+import { spoken } from "@/lib/maskAmounts";
 
 type Props = ViewProps & {
   children: ReactNode
@@ -16,9 +17,14 @@ type Props = ViewProps & {
 // semi-opaque dark plate that reads as a solid tile. The mockup's glass is a
 // translucent WHITE fill letting the ambient glow bleed through — over the
 // already-soft glow, backdrop blur adds nothing visible.
-const Card = ({ children, padded = true, style, ...rest }: Props) => {
+const Card = ({ children, padded = true, style, accessibilityLabel, ...rest }: Props) => {
   return (
-    <View style={[styles.card, padded && styles.padded, style]} {...rest}>
+    <View
+      style={[styles.card, padded && styles.padded, style]}
+      {...rest}
+      // A masked figure is read "amount hidden" (gaps row 181).
+      accessibilityLabel={accessibilityLabel === undefined ? undefined : spoken(accessibilityLabel)}
+    >
       <LinearGradient
         colors={[colors.line, "rgba(255,255,255,0.035)"]}
         start={{ x: 0, y: 0 }}

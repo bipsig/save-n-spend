@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { Pressable, type PressableProps, type StyleProp, type ViewStyle } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
 import { haptics } from "@/lib/haptics";
+import { spoken } from "@/lib/maskAmounts";
 
 type Props = Omit<PressableProps, "style"> & {
   children: React.ReactNode;
@@ -42,6 +43,7 @@ const PressableScale = ({
   onPressOut,
   disabled,
   accessibilityState,
+  accessibilityLabel,
   ...rest
 }: Props) => {
   const scale = useSharedValue(1);
@@ -78,6 +80,8 @@ const PressableScale = ({
       accessibilityState={{ disabled: !!disabled, ...accessibilityState }}
       style={[style, animatedStyle]}
       {...rest}
+      // A masked figure is read "amount hidden", not as bullets (gaps row 181).
+      accessibilityLabel={accessibilityLabel === undefined ? undefined : spoken(accessibilityLabel)}
     >
       {children}
     </AnimatedPressable>
