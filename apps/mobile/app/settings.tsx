@@ -428,7 +428,7 @@ const SettingsScreen = () => {
           kind="value"
           icon="download"
           tint="teal"
-          label="Export all data"
+          label="Export transactions"
           value="CSV"
           onPress={() => exportRef.current?.present()}
         />
