@@ -16,7 +16,7 @@ import { rangeNavLabel } from "@/lib/dateRange";
 // Each window is its own key, so stepping periods shows the skeleton (or that window's saved
 // figures), never the previous window's chart under the new label.
 export const useInsights = (period: InsightsPeriod, offset: number) =>
-  useApiQuery<InsightsSummary>(`/insights?period=${period}&offset=${offset}`);
+  useApiQuery<InsightsSummary>(`/insights?period=${period}&offset=${offset}&trips=entries`);
 
 /**
  * One category over one window — the detail screen's own fetch.
@@ -27,7 +27,7 @@ export const useInsights = (period: InsightsPeriod, offset: number) =>
  */
 export const useCategoryInsights = (categoryId: string, period: InsightsPeriod, offset: number) =>
   useApiQuery<InsightsCategoryDetail>(
-    categoryId ? `/insights/category/${encodeURIComponent(categoryId)}?period=${period}&offset=${offset}` : null,
+    categoryId ? `/insights/category/${encodeURIComponent(categoryId)}?period=${period}&offset=${offset}&trips=entries` : null,
   );
 
 // Client-side derivations (values-in-hand).

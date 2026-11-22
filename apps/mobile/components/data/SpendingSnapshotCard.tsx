@@ -44,12 +44,11 @@ const SpendingSnapshotCard = ({ byCategory, uncategorised, biggestExpense, onPre
   // Zero expenses this month — three empty bars would be filler, not information.
   if (byCategory.length === 0) return null;
 
-  // The server's shares of everyday spending, the same as Insights' "By category".
+  // The server's shares of all spending (Trips ranked among them), as Insights' "By category".
   const shares = categoryShares(byCategory, uncategorised, 3);
   const top: BarSlice[] = shares
     ? shares.list.map((s) => ({ ...s, pct: s.pct ?? 0 }))
     : foldCategories(byCategory, 3);
-  // A month whose only spending is trips: no everyday share to draw.
   if (top.length === 0) return null;
   const label = `Where it went: ${top.map((s) => `${s.name} ${formatPct(s.pct)}`).join(", ")}. Opens Insights.`;
 

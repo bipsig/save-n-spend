@@ -346,7 +346,7 @@ const buildHtml = (data: InsightsSummary, period: InsightsPeriod, offset: number
   return pdfDocument({
     section: "Insights",
     rangeLabel: label,
-    meta: count(data.txnCount, "transaction"),
+    meta: count(data.entryCount ?? data.txnCount, "transaction"),
     body: `${kpiRow([
       kpi("Income", htmlEscape(formatMoney(income)), "pos"),
       kpi("Expenses", htmlEscape(formatMoney(expense)), "neg"),
@@ -447,8 +447,8 @@ export const exportInsightsWindow = async (
   offset: number,
   inHand?: InsightsSummary | null,
 ): Promise<ExportResult> => {
-  const data = inHand ?? (await get<InsightsSummary>(`/insights?period=${period}&offset=${offset}`, { cache: false }));
-  if (data.txnCount === 0) return { shared: false, count: 0 };
+  const data = inHand ?? (await get<InsightsSummary>(`/insights?period=${period}&offset=${offset}&trips=entries`, { cache: false }));
+  if ((data.entryCount ?? data.txnCount) === 0) return { shared: false, count: 0 };
   await exportInsights(data, period, offset);
-  return { shared: true, count: data.txnCount };
+  return { shared: true, count: data.entryCount ?? data.txnCount };
 };

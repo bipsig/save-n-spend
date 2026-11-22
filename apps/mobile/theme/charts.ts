@@ -4,6 +4,9 @@ export const chartPalette = ['#0FA873', '#8E7DE3', '#C98500', '#3572D9', '#E65A6
 
 export const chartOthers = '#767489'
 
+// The built-in Trips category: one fixed teal on every screen, outside the ranked palette.
+export const tripsColor = '#14B8A6'
+
 // Income / expense series colours (spec legend).
 export const incomeColor = '#0FA873'
 export const expenseColor = '#E65A64'

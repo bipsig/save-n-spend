@@ -190,7 +190,7 @@ const scheduleDailySummary = async (
 
   // The endpoint clamps to zone-local day bounds server-side, so one key for both ends is
   // yesterday whole.
-  const summary = await get<Summary>(`/transactions/summary?startDate=${key}&endDate=${key}`);
+  const summary = await get<Summary>(`/transactions/summary?startDate=${key}&endDate=${key}&trips=entries`);
   const hadFlow = summary.income !== 0 || summary.expenses !== 0;
 
   // An empty day is the commonest day there is, and normally the server stays quiet on one
@@ -230,7 +230,7 @@ const scheduleWeeklySummary = async (
   const startKey = weekStart.toISOString().slice(0, 10);
   const endKey = weekEnd.toISOString().slice(0, 10);
 
-  const summary = await get<Summary>(`/transactions/summary?startDate=${startKey}&endDate=${endKey}`);
+  const summary = await get<Summary>(`/transactions/summary?startDate=${startKey}&endDate=${endKey}&trips=entries`);
   if (summary.income === 0 && summary.expenses === 0) return;
 
   await deliver(WEEKLY_ID, weeklyNotice(dateLabel(weekStart), dateLabel(weekEnd), summary), { link: { screen: "insights" } }, at(fireAt));
@@ -257,7 +257,7 @@ const scheduleMonthlySummary = async (
   const startKey = lastMonthStart.toISOString().slice(0, 10);
   const endKey = lastMonthEnd.toISOString().slice(0, 10);
 
-  const summary = await get<Summary>(`/transactions/summary?startDate=${startKey}&endDate=${endKey}`);
+  const summary = await get<Summary>(`/transactions/summary?startDate=${startKey}&endDate=${endKey}&trips=entries`);
   if (summary.income === 0 && summary.expenses === 0) return;
 
   await deliver(MONTHLY_ID, monthlyNotice(monthLabel(lastMonthStart), summary), { link: { screen: "insights" } }, at(fireAt));

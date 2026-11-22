@@ -106,11 +106,11 @@ test("privacy off: banners carry their amounts and the owed nudge", async () => 
   assert.equal(w.scheduled.some((r) => r.identifier.startsWith("bill:b2:")), false);
 });
 
-test("digests: everyday spending with a trips clause from a 2.8.4 summary, and a trip-only day still gets one", async () => {
+test("digests: spending includes closed trips with no trips clause, and a trip-only day still gets one", async () => {
   relaunch();
   const w = world({ income: 1_20_000_00, expenses: 86_090_20, savings: 33_909_80, tripExpenses: 6_450_00 });
   await w.local.rescheduleLocalNotifications(inputs);
-  const line = `Spent ${w.rs(79_640_20)} plus ${w.rs(6_450_00)} on trips, earned ${w.rs(1_20_000_00)} — ${w.rs(33_909_80)} put aside.`;
+  const line = `Spent ${w.rs(86_090_20)}, earned ${w.rs(1_20_000_00)} — ${w.rs(33_909_80)} put aside.`;
   assert.equal(last(w.scheduled, "local:dailySummary")?.content.body, `${line} · Ravi has owed you ${w.rs(1_250_00)} since 2 Nov`);
   assert.equal(last(w.scheduled, "local:weeklySummary")?.content.body, line);
 
@@ -123,7 +123,7 @@ test("digests: everyday spending with a trips clause from a 2.8.4 summary, and a
   await trips.local.rescheduleLocalNotifications({ ...inputs, accounts: [] });
   assert.equal(
     last(trips.scheduled, "local:dailySummary")?.content.body,
-    `Spent ${trips.rs(0)} plus ${trips.rs(6_450_00)} on trips, earned ${trips.rs(0)} — ${trips.rs(6_450_00)} more than you earned.`,
+    `Spent ${trips.rs(6_450_00)}, earned ${trips.rs(0)} — ${trips.rs(6_450_00)} more than you earned.`,
   );
 });
 

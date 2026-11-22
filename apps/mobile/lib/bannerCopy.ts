@@ -1,4 +1,3 @@
-import { tripLine } from "@/lib/everydaySpend";
 import { formatMoneyExact } from "@/lib/money";
 
 // The words of every local banner, kept apart from the scheduling in lib/localNotifications.ts
@@ -29,17 +28,11 @@ export const compose = (notice: Notice, { masked }: { masked: boolean }): Banner
 export const plural = (count: number, word: string): string => `${count} ${word}${count === 1 ? "" : "s"}`;
 
 /** The server's `flowLine`, minus the transaction count: /transactions/summary returns totals
- *  only, and a figure invented here could disagree with the feed entry. `expenses` counts
- *  trips; "Spent" names everyday spending and the trips get their own clause, while what was
- *  put aside still counts them (D21 A+, Q1). An API older than 2.8.4 sends no `tripExpenses`,
- *  and the sentence is then the one it always was. */
-export const flowLine = (income: number, expenses: number, tripExpenses?: number): string => {
+ *  only, and a figure invented here could disagree with the feed entry. `expenses` holds each
+ *  closed trip as one expense (trips=entries). */
+export const flowLine = (income: number, expenses: number): string => {
   const net = income - expenses;
-  const trips = tripLine(tripExpenses);
-  const spent = trips === null
-    ? formatMoneyExact(expenses)
-    : `${formatMoneyExact(expenses - trips)} plus ${formatMoneyExact(trips)} on trips`;
-  return `Spent ${spent}, earned ${formatMoneyExact(income)}`
+  return `Spent ${formatMoneyExact(expenses)}, earned ${formatMoneyExact(income)}`
     + (net >= 0
       ? ` — ${formatMoneyExact(net)} put aside.`
       : ` — ${formatMoneyExact(-net)} more than you earned.`);
@@ -52,28 +45,28 @@ export const owedLine = (name: string, balance: number, since: string): string =
     ? `${name} has owed you ${formatMoneyExact(balance)} since ${since}`
     : `You've owed ${name} ${formatMoneyExact(-balance)} since ${since}`;
 
-/** /transactions/summary over the period; `tripExpenses` from 2.8.4 on. */
-type Flow = { income: number; expenses: number; tripExpenses?: number };
+/** /transactions/summary over the period. */
+type Flow = { income: number; expenses: number };
 
 /** Null when the day had neither flow nor a nudge, the commonest day there is. */
 export const dailyNotice = (day: string, flow: Flow | null, nudge: string | null): Notice | null => {
   if (!flow && !nudge) return null;
   return {
     title: `${day} in review`,
-    body: [flow ? flowLine(flow.income, flow.expenses, flow.tripExpenses) : null, nudge].filter(Boolean).join(" · "),
+    body: [flow ? flowLine(flow.income, flow.expenses) : null, nudge].filter(Boolean).join(" · "),
     privateBody: "Your daily summary is ready.",
   };
 };
 
 export const weeklyNotice = (from: string, to: string, flow: Flow): Notice => ({
   title: `${from}–${to} in review`,
-  body: flowLine(flow.income, flow.expenses, flow.tripExpenses),
+  body: flowLine(flow.income, flow.expenses),
   privateBody: "Your weekly summary is ready.",
 });
 
 export const monthlyNotice = (month: string, flow: Flow): Notice => ({
   title: `${month} in review`,
-  body: flowLine(flow.income, flow.expenses, flow.tripExpenses),
+  body: flowLine(flow.income, flow.expenses),
   privateBody: "Your monthly summary is ready.",
 });
 

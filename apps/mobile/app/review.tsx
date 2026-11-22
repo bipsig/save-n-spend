@@ -1,10 +1,12 @@
+import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import type { ReviewPeriod } from "@save-n-spend/types";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import Card from "@/components/data/Card";
 import ReviewTimeline from "@/components/data/ReviewTimeline";
-import TripLine from "@/components/data/TripLine";
+import TripsList from "@/components/data/TripsList";
+import PressableScale from "@/components/ui/PressableScale";
 import Sparkline from "@/components/charts/Sparkline";
 import Money from "@/components/ui/Money";
 import Caps from "@/components/ui/Caps";
@@ -15,7 +17,7 @@ import Icon from "@/components/ui/Icon";
 import NotFoundState from "@/components/states/NotFoundState";
 import ScreenStates, { ListSkeleton } from "@/components/states/ScreenStates";
 import { useReview } from "@/lib/reviews";
-import { reviewSpend } from "@/lib/everydaySpend";
+import { isTrips, reviewRows } from "@/lib/everydaySpend";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { count } from "@/lib/format/count";
 import { formatPct, percentOf } from "@/lib/format/pct";
@@ -23,6 +25,7 @@ import { rangeLabel } from "@/lib/dateRange";
 import { chartSummary } from "@/lib/chartSummary";
 import { barGradients } from "@/theme/gradients";
 import { colors, spacing } from "@/theme";
+import { tripsColor } from "@/theme/charts";
 import { signTone } from "@/lib/signTone";
 
 /** "+6.8% vs last month" / "Same as last month" / null. Null when there's no real previous
@@ -46,8 +49,9 @@ const ReviewScreen = () => {
   const closed = Number.isInteger(offset) && offset <= -1;
   const q = useReview(period, offset, closed);
   const review = q.data;
-  // Expenses and "Where it went" are everyday spending (D21 A+); Saved counts trips (Q1).
-  const spend = review ? reviewSpend(review) : null;
+  // Every figure holds each closed trip once, on its close day (trips=entries).
+  const rows = review ? reviewRows(review) : null;
+  const [tripsOpen, setTripsOpen] = useState(false);
   const state = { ...q, hasData: review != null };
   const against = period === "month" ? "last month" : "last week";
 
@@ -57,7 +61,7 @@ const ReviewScreen = () => {
         <NotFoundState thing="review" subtitle="A review is ready once its period has finished" />
       ) : (
         <ScreenStates state={state} skeleton={<ListSkeleton rows={4} height={80} />}>
-          {() => review && spend && (
+          {() => review && rows && (
             <>
               <Card style={styles.card}>
                 <View style={styles.heroRow}>
@@ -87,7 +91,7 @@ const ReviewScreen = () => {
                 items={(
                   [
                     ["Income", review.income, review.previousIncome, "up"],
-                    ["Expenses", spend.expenses, spend.previousExpenses, "down"],
+                    ["Expenses", review.expenses, review.previousExpenses, "down"],
                     ["Saved", review.saved, review.previousSaved, "up"],
                   ] as const
                 ).map(([label, amount, previous, goodWhen]) => {
@@ -99,37 +103,46 @@ const ReviewScreen = () => {
                   };
                 })}
               />
-              {/* Full width: three tiles across leave no room for it inside Expenses. */}
-              {spend.trips !== null && (
-                <TripLine amount={spend.trips} note="counted in saved" seeTrips style={styles.tripLine} />
-              )}
 
-              {spend.rows.length > 0 && (
+              {rows.length > 0 && (
                 <>
                   <Caps header style={styles.groupLabel}>Where it went</Caps>
                   <Card style={styles.card}>
-                    {spend.rows.map((cat, i) => (
-                      <View key={cat.id} style={[styles.catRow, i === spend.rows.length - 1 && styles.noBorder]}>
-                        <AppText size="sm" weight="semibold" color="inkSecondary" numberOfLines={1} style={styles.catName}>
-                          {cat.name}
-                        </AppText>
-                        {/* Trips has no share of everyday spending, so its row states the amount. */}
-                        {cat.pct !== null ? (
-                          <>
-                            <View style={styles.catBarTrack}>
-                              <View style={[styles.catBarFill, { width: `${cat.pct}%`, backgroundColor: barGradients.violet[1] }]} />
-                            </View>
-                            <AppText size="xs" weight="bold" color="inkDim">
-                              {formatPct(cat.pct)}
+                    {rows.map((cat, i) => {
+                      const trips = isTrips(cat.id);
+                      const row = (
+                        <View style={[styles.catRow, i === rows.length - 1 && !(trips && tripsOpen) && styles.noBorder]}>
+                          <View style={[styles.catName, styles.catNameRow]}>
+                            <AppText size="sm" weight="semibold" color="inkSecondary" numberOfLines={1} style={styles.shrink}>
+                              {cat.name}
                             </AppText>
-                          </>
-                        ) : (
+                            {trips && <Icon name={tripsOpen ? "chevronUp" : "chevronDown"} size={14} color="inkDim" />}
+                          </View>
+                          <View style={styles.catBarTrack}>
+                            <View style={[styles.catBarFill, { width: `${cat.pct}%`, backgroundColor: trips ? tripsColor : barGradients.violet[1] }]} />
+                          </View>
                           <AppText size="xs" weight="bold" color="inkDim">
-                            {formatMoney(cat.total)}
+                            {formatPct(cat.pct)}
                           </AppText>
-                        )}
-                      </View>
-                    ))}
+                        </View>
+                      );
+                      if (!trips) return <View key={cat.id}>{row}</View>;
+                      const kids = review.categories.find((c) => c.categoryId === cat.id)?.children ?? [];
+                      return (
+                        <View key={cat.id}>
+                          <PressableScale
+                            onPress={() => setTripsOpen((v) => !v)}
+                            scaleTo={0.98}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Trips, ${formatPct(cat.pct)}, ${formatMoney(cat.total)}`}
+                            accessibilityState={{ expanded: tripsOpen }}
+                          >
+                            {row}
+                          </PressableScale>
+                          {tripsOpen && kids.length > 0 && <View style={styles.tripsList}><TripsList trips={kids} /></View>}
+                        </View>
+                      );
+                    })}
                     {review.biggestExpense && (
                       <AppText size="xs" color="inkDim" style={styles.biggestExpense}>
                         Biggest expense: <AppText size="xs" weight="bold" color="ink">{review.biggestExpense.title} · {formatMoney(review.biggestExpense.amount)}</AppText>
@@ -306,9 +319,16 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.line,
   },
-  tripLine: {
-    marginTop: -spacing.xs,
-    paddingHorizontal: 2,
+  catNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  shrink: {
+    flexShrink: 1,
+  },
+  tripsList: {
+    paddingVertical: spacing.sm,
   },
   netWorthDelta: {
     marginTop: 2,

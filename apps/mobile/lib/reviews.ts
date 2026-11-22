@@ -6,7 +6,7 @@ import { useApiQuery } from "@/lib/query/useApiQuery";
 // useDashboardSummary. `offset` must be -1 or older (a review is a CLOSED period; the
 // server rejects 0).
 export const useReview = (period: ReviewPeriod, offset: number, enabled = true) =>
-  useApiQuery<ReviewPayload>(enabled ? `/reviews?period=${period}&offset=${offset}` : null);
+  useApiQuery<ReviewPayload>(enabled ? `/reviews?period=${period}&offset=${offset}&trips=entries` : null);
 
 /** The "YYYY-MM-DD" a period's own start falls on — reused as a stable key: two calls
  *  with the same period/offset always agree, and it doubles as something a human could

@@ -97,26 +97,19 @@ test("the flow line says what was put aside or overspent", () => {
   assert.equal(copy.flowLine(1_000_00, 4_000_00), `Spent ${rs(4_000_00)}, earned ${rs(1_000_00)} — ${rs(3_000_00)} more than you earned.`);
 });
 
-test("the flow line names everyday spending and gives trips their own clause; put aside counts both", () => {
-  // Mockup 08's November: ₹86,090.20 spent in all, ₹6,450.00 of it on trips.
+test("the flow line counts each closed trip as one expense, with no trips clause", () => {
+  // November so far with Udupi closed 12 Nov: ₹1,15,731.77 spent, Trips included.
   assert.equal(
-    copy.flowLine(1_20_000_00, 86_090_20, 6_450_00),
-    "Spent ₹79,640.20 plus ₹6,450.00 on trips, earned ₹1,20,000.00 — ₹33,909.80 put aside.",
+    copy.flowLine(0, 1_15_731_77),
+    `Spent ${rs(1_15_731_77)}, earned ${rs(0)} — ${rs(1_15_731_77)} more than you earned.`,
   );
-  assert.equal(
-    copy.flowLine(0, 6_450_00, 6_450_00),
-    `Spent ${rs(0)} plus ${rs(6_450_00)} on trips, earned ${rs(0)} — ${rs(6_450_00)} more than you earned.`,
-  );
-  // No trips, or an API older than 2.8.4 that sends no tripExpenses: the sentence as it was.
-  const before = `Spent ${rs(86_090_20)}, earned ${rs(1_20_000_00)} — ${rs(33_909_80)} put aside.`;
-  assert.equal(copy.flowLine(1_20_000_00, 86_090_20, 0), before);
-  assert.equal(copy.flowLine(1_20_000_00, 86_090_20), before);
+  assert.equal(copy.flowLine(1_20_000_00, 86_090_20), `Spent ${rs(86_090_20)}, earned ${rs(1_20_000_00)} — ${rs(33_909_80)} put aside.`);
 });
 
-test("digests carry the trips clause with privacy off and only 'ready' with it on", () => {
-  const flow = { income: 1_20_000_00, expenses: 86_090_20, tripExpenses: 6_450_00 };
-  const line = copy.flowLine(flow.income, flow.expenses, flow.tripExpenses);
-  assert.ok(line.includes("on trips"));
+test("digests carry the flow line with privacy off and only 'ready' with it on", () => {
+  const flow = { income: 1_20_000_00, expenses: 86_090_20 };
+  const line = copy.flowLine(flow.income, flow.expenses);
+  assert.equal(line.includes("on trips"), false);
   const day = copy.dailyNotice("14 Nov", flow, null)!;
   const week = copy.weeklyNotice("9 Nov", "15 Nov", flow);
   const month = copy.monthlyNotice("October 2026", flow);
@@ -155,7 +148,6 @@ test("no banner kind shows a rupee sign or an empty body with privacy on", () =>
     copy.dailyNotice("1 Nov", { income: 1, expenses: 2 }, copy.owedLine("R", 5_00, "1 Oct"))!,
     copy.weeklyNotice("a", "b", { income: 1, expenses: 0 }),
     copy.monthlyNotice("m", { income: 0, expenses: 1 }),
-    copy.monthlyNotice("m", { income: 0, expenses: 3, tripExpenses: 2 }),
     copy.investmentNotice(2), copy.recurringNotice(["X"]),
   ];
   for (const n of all) {

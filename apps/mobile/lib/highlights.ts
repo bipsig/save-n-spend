@@ -78,7 +78,7 @@ const prune = (map: DismissedMap, now: number): DismissedMap =>
   Object.fromEntries(Object.entries(map).filter(([, at]) => now - at < DISMISS_FOR_MS));
 
 export const useHighlights = () => {
-  const { data, loading, refreshing, error, errorStatus, refetch, fetchedAt } = useApiQuery<HighlightsPayload>("/highlights");
+  const { data, loading, refreshing, error, errorStatus, refetch, fetchedAt } = useApiQuery<HighlightsPayload>("/highlights?trips=entries");
   // Null until read. Read again with each new answer, so a card waved away on another
   // screen stays hidden here; until the first read no card shows, so a freshly opened
   // screen never flashes one dismissed yesterday.

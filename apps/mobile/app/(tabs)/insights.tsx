@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { TRIPS_SLICE_ID } from "@/lib/trips";
 import { Pressable, StyleSheet, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
@@ -11,7 +10,7 @@ import { relativePeriod } from "@/lib/format/period";
 import GradientCard from "@/components/shell/GradientCard";
 import Card from "@/components/data/Card";
 import ShareBar from "@/components/data/ShareBar";
-import TripLine from "@/components/data/TripLine";
+import TripsList from "@/components/data/TripsList";
 import AreaChart from "@/components/charts/AreaChart";
 import PairedColumns from "@/components/charts/PairedColumns";
 import DualLineChart from "@/components/charts/DualLineChart";
@@ -52,7 +51,7 @@ import {
   prevLabel,
 } from "@/lib/insights";
 import { useHighlights } from "@/lib/highlights";
-import { categoryShares, dailyAverages, everydayTrend, insightsSpend, noEverydayLine, OTHERS_ID, UNCATEGORISED_ID } from "@/lib/everydaySpend";
+import { categoryShares, insightsSpend, isTrips, OTHERS_ID, UNCATEGORISED_ID } from "@/lib/everydaySpend";
 import { useAppZone } from "@/lib/zone";
 import { colors, radius, spacing, incomeColor, expenseColor, chartValueColor } from "@/theme";
 import { signTone, toneSoft } from "@/lib/signTone";
@@ -104,6 +103,8 @@ const InsightsScreen = () => {
   // strip's is an hour number for the same reason.
   const [heatDay, setHeatDay] = useState<string | null>(null);
   const [heatHour, setHeatHour] = useState<number | null>(null);
+  // The Trips row's list of trips; closes with the tooltips when the window changes.
+  const [tripsOpen, setTripsOpen] = useState(false);
   const exportRef = useRef<BottomSheetModal>(null);
   const insightsQuery = useInsights(period, offset);
   const { data, loading } = insightsQuery;
@@ -111,7 +112,7 @@ const InsightsScreen = () => {
   // Always about THIS month, independent of whatever period/offset is selected below —
   // see docs/insights-engine.md. Its own fetch, not threaded through useInsights.
   // `warmingUp` doubles as this screen's own "too new to say anything real" signal —
-  // account-wide, unlike `data.txnCount`, which is scoped to whichever window is on
+  // account-wide, unlike the entry count, which is scoped to whichever window is on
   // screen (see the empty-state branch below).
   const { highlights, dismiss, warmingUp } = useHighlights();
 
@@ -120,6 +121,7 @@ const InsightsScreen = () => {
     setTip(null);
     setHeatDay(null);
     setHeatHour(null);
+    setTripsOpen(false);
   };
 
   const changePeriod = (p: InsightsPeriod) => {
@@ -141,22 +143,27 @@ const InsightsScreen = () => {
 
   // A What's new link opens the export once the period has loaded; the param is cleared so
   // coming back to this tab doesn't open it again.
-  const { export: exportParam } = useLocalSearchParams<{ export?: string }>();
+  const { export: exportParam, period: periodParam, focus } = useLocalSearchParams<{ export?: string; period?: string; focus?: string }>();
+  // Home's Savings tile opens on its own period (`focus` makes a second tap re-apply it).
+  useEffect(() => {
+    if (periodParam && SEGMENTS.some((s) => s.key === periodParam)) changePeriod(periodParam as InsightsPeriod);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [periodParam, focus]);
   useEffect(() => {
     if (exportParam !== "1" || loading) return;
-    if (data && data.txnCount > 0) exportRef.current?.present();
+    if (data && (data.entryCount ?? data.txnCount) > 0) exportRef.current?.present();
     router.setParams({ export: undefined });
   }, [exportParam, loading, data, router]);
 
   const renderBody = () => {
-    // `data.txnCount === 0` only says THIS window is empty — a quiet Tuesday on an
+    // An entry count of 0 only says THIS window is empty — a quiet Tuesday on an
     // account with two years of history looks identical to a brand-new one from that
     // number alone. `warmingUp` is the account-wide signal that tells the two apart, so
     // the three branches below are genuinely different situations, not one fact dressed
     // up three ways: no history at all yet, this window just happens to be quiet but you
     // could still add to it, or this window is closed and adding a transaction now
     // wouldn't even land in it.
-    if (!data || data.txnCount === 0) {
+    if (!data || (data.entryCount ?? data.txnCount) === 0) {
       if (warmingUp) {
         return (
           <EmptyState
@@ -194,24 +201,22 @@ const InsightsScreen = () => {
       );
     }
 
-    // Savings rate counts trips (Q1); the spending figures are everyday (D21 A+).
+    // Every figure holds each closed trip once, on its close day (trips=entries).
     const stats = seriesStats(data.incomeVsExpense);
     const spend = insightsSpend(data.incomeVsExpense);
-    // The trend, pace, rhythm and projections are everyday spending too; `byAccount` keeps trips.
-    const dayTrend = everydayTrend(data.trend);
-    const averages = dailyAverages(data);
+    const dayTrend = data.trend;
+    const averages = { current: data.avgDailySpendCurrent, previous: data.avgDailySpendPrevious };
     const trend = buildTrend(dayTrend, period);
-    // The server's shares of everyday spending; null on an older API, which keeps the 2.8.3 fold.
+    // The server's shares of all spending; null on an older API, which keeps the 2.8.3 fold.
     const shares = categoryShares(data.byCategory, data.uncategorised);
-    const cats = shares ? shares.list.map((c) => ({ ...c, pct: c.pct ?? 0 })) : foldCategories(data.byCategory);
+    const cats = shares ? shares.list : foldCategories(data.byCategory);
     const accts = accountShares(data.byAccount);
     const pairs = spend.columns;
     const labels = data.incomeVsExpense.map((p) => seriesLabel(p.periodStart, period));
     const top = shares ? cats.find((c) => c.id !== OTHERS_ID && c.id !== UNCATEGORISED_ID) : cats[0];
-    const noEveryday = noEverydayLine(shares?.list, spend.trips);
 
     const vsLabel = prevLabel(period, offset);
-    const pace = cumulativePair(dayTrend, everydayTrend(data.previousTrend), period);
+    const pace = cumulativePair(dayTrend, data.previousTrend, period);
     const paceDelta = pace.atCurrentEnd.current - pace.atCurrentEnd.previous;
     const movers = compareRows(data.categoryCompare);
     // Only the window in progress has anything left to project — a finished period's
@@ -228,8 +233,7 @@ const InsightsScreen = () => {
     const heatmap = period === "year" || period === "day" ? null : buildHeatmap(dayTrend);
     const hourlyPattern = period === "day" ? buildHourlyPattern(dayTrend) : null;
     const donutSlices = (shares ? shares.ring : cats).filter((c) => c.total > 0);
-    // In a trip window the ring has the Trips slice, so its centre is everything, and says so.
-    const spendTotal = shares ? (spend.withTrips ?? spend.current) : cats.reduce((a, c) => a + c.total, 0);
+    const spendTotal = shares ? spend.current : cats.reduce((a, c) => a + c.total, 0);
     // The tapped slice's own sub-categories, listed under the ring. "Others" is a fold of
     // several categories, so it has none.
     const openSlice = tip?.chart === "donut" ? donutSlices[tip.i] : undefined;
@@ -245,7 +249,6 @@ const InsightsScreen = () => {
             </AppText>
             <DeltaPill value={spend.deltaPct} goodWhen="down" vs={vsLabel} />
           </View>
-          {spend.trips !== null && <TripLine amount={spend.trips} seeTrips />}
           <AreaChart
             data={trend.values}
             labels={trend.axis}
@@ -311,9 +314,8 @@ const InsightsScreen = () => {
           <Caps>Where it went</Caps>
           <DonutChart
             data={donutSlices}
-            centerLabel={spend.withTrips !== null && shares ? "WITH TRIPS" : "TOTAL SPENT"}
+            centerLabel={shares ? "SPENT" : "TOTAL SPENT"}
             centerValue={spendTotal}
-            summaryTitle={spend.withTrips !== null && shares ? "Spending with trips" : undefined}
             activeIndex={tip?.chart === "donut" ? tip.i : null}
             onScrub={(i) => setTip(i === null ? null : { chart: "donut", i })}
           />
@@ -340,9 +342,8 @@ const InsightsScreen = () => {
 
         {/* By category */}
         <Card style={styles.stack}>
-          <Caps>{shares ? "By category · share of everyday spending" : "By category"}</Caps>
+          <Caps>{shares ? "By category · share of spending" : "By category"}</Caps>
           <View style={styles.catList}>
-            {noEveryday && <AppText size="sm" color="inkDim">{noEveryday}</AppText>}
             {cats.map((c) => {
               // "Others" is a fold of several categories and "Uncategorised" is none, so neither
               // has one category to open.
@@ -369,7 +370,7 @@ const InsightsScreen = () => {
                       <AppText size="xs" color="inkDim" style={styles.catPct}>
                         {formatPct(c.pct)}
                       </AppText>
-                      {openable && <Icon name="chevronRight" size={16} color="inkDim" />}
+                      {openable && <Icon name={isTrips(c.id) ? (tripsOpen ? "chevronUp" : "chevronDown") : "chevronRight"} size={16} color="inkDim" />}
                     </View>
                   </View>
                   <View style={styles.catTrack}>
@@ -380,22 +381,35 @@ const InsightsScreen = () => {
 
               if (!openable) return <View key={c.id} style={styles.catRow}>{body}</View>;
 
+              // Trips expands in place to the trips closed in the period; each opens its page.
+              if (isTrips(c.id)) {
+                return (
+                  <View key={c.id} style={styles.catList}>
+                    <PressableScale
+                      style={styles.catRow}
+                      accessibilityLabel={`${c.name}, ${formatMoney(c.total)}, ${formatPct(c.pct)}`}
+                      accessibilityState={{ expanded: tripsOpen }}
+                      onPress={() => setTripsOpen((v) => !v)}
+                    >
+                      {body}
+                    </PressableScale>
+                    {tripsOpen && c.children?.length ? <TripsList trips={c.children} /> : null}
+                  </View>
+                );
+              }
+
               return (
                 <PressableScale
                   key={c.id}
                   style={styles.catRow}
                   accessibilityLabel={`${c.name}, ${formatMoney(c.total)}, ${formatPct(c.pct)}`}
                   onPress={() =>
-                    // Trips isn't a category — its slice opens the Trips screen, where each
-                    // trip's own breakdown lives.
-                    c.id === TRIPS_SLICE_ID
-                      ? router.push("/trips")
-                      : router.push({
-                        pathname: "/category-insights",
-                        // The window travels with the tap: the detail screen opens on the same
-                        // month the user was looking at, not on the current one.
-                        params: { id: c.id, name: c.name, period, offset: `${offset}` },
-                      })
+                    router.push({
+                      pathname: "/category-insights",
+                      // The window travels with the tap: the detail screen opens on the same
+                      // month the user was looking at, not on the current one.
+                      params: { id: c.id, name: c.name, period, offset: `${offset}` },
+                    })
                   }
                 >
                   {body}
@@ -474,7 +488,7 @@ const InsightsScreen = () => {
             size="lg"
             style={styles.kpi}
             label="Transactions"
-            text={groupIndian(data.txnCount)}
+            text={groupIndian(data.entryCount ?? data.txnCount)}
             change={{ text: "this period" }}
           />
           <StatTile
@@ -515,7 +529,7 @@ const InsightsScreen = () => {
     );
   };
 
-  const hasData = !!data && data.txnCount > 0;
+  const hasData = !!data && (data.entryCount ?? data.txnCount) > 0;
 
   return (
     <ScreenScaffold
