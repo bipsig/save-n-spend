@@ -82,6 +82,9 @@ export type RequestOptions = {
   cache?: boolean;
   /** False when the caller refreshes the screens itself once a batch is done (the outbox). */
   invalidate?: boolean;
+  /** Sent as `If-Match`: the `updatedAt` an edit's save got back, so an undo is refused (409
+   *  `conflict`) when the record changed since. */
+  ifMatch?: string;
 };
 
 /** What a read returns with its data: when that data was fetched. A saved copy carries the
@@ -136,6 +139,7 @@ const request = async <T>(method: Method, path: string, body?: unknown, opts: Re
         "X-App-Version": APP_VERSION,
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(opts.idempotencyKey ? { "Idempotency-Key": opts.idempotencyKey } : {}),
+        ...(opts.ifMatch ? { "If-Match": opts.ifMatch } : {}),
       },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });

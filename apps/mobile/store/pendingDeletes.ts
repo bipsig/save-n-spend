@@ -34,6 +34,9 @@ type Commit = (opts: RequestOptions) => Promise<void>;
 
 type ScheduleOptions = {
   ms?: number;
+  /** The DELETE this stands for, kept on disk for a replay. Without it the key's own route is
+   *  used (`deleteRequestFor`), as for deletes saved by 2.8.6 and older. */
+  request?: ReplayRequest;
   /** Sent after a replayed DELETE lands, for what the commit does next (clearing a default). */
   after?: ReplayRequest[];
 };
@@ -87,7 +90,7 @@ export const usePendingDeletes = create<PendingDeletesState>((set) => {
       const idempotencyKey = existing?.idempotencyKey ?? makeIdempotencyKey();
       const userId = useSession.getState().user?._id ?? null;
 
-      const request = deleteRequestFor(key);
+      const request = opts.request ?? deleteRequestFor(key);
       if (userId && request) {
         const item: PersistedDelete = { key, label, idempotencyKey, requests: [request, ...(opts.after ?? [])], at: Date.now() };
         void updatePendingDeletes(userId, (items) => withItem(items, item));
