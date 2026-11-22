@@ -20,9 +20,8 @@ import { formatPct } from "@/lib/format/pct";
 import { count } from "@/lib/format/count";
 import { screenTitles } from "@/data/menu";
 import type { HeaderAction } from "@/lib/screenHeader";
-import { useGoals, goalsSummary, sortGoals, deleteGoal } from "@/lib/goals";
-import { toast } from "@/store/toast";
-import { pendingDeletes, usePendingDeletes } from "@/store/pendingDeletes";
+import { useGoals, goalsSummary, sortGoals } from "@/lib/goals";
+import { deleteTarget, deleteWithUndo, useVisible } from "@/lib/undo";
 import { radius, spacing } from "@/theme";
 
 const GoalsScreen = () => {
@@ -32,8 +31,7 @@ const GoalsScreen = () => {
   const state = { ...goals, hasData: goals.data !== null };
   // Hidden the instant delete is confirmed — the real DELETE only fires if the undo
   // grace window elapses undisturbed (see store/pendingDeletes.ts).
-  const pendingKeys = usePendingDeletes((s) => s.keys);
-  const items = goals.items.filter((g) => !pendingKeys.has(`goal:${g._id}`));
+  const items = useVisible("goal", goals.items);
 
   const contributeRef = useRef<BottomSheetModal>(null);
   const deleteRef = useRef<BottomSheetModal>(null);
@@ -139,15 +137,7 @@ const GoalsScreen = () => {
         needsConnection
         onConfirm={() => {
           if (!removing) return;
-          const key = `goal:${removing._id}`;
-          const name = removing.name;
-          pendingDeletes.schedule(key, name, async (opts) => {
-            await deleteGoal(removing._id, opts);
-          });
-          toast.action("info", `${name} deleted`, {
-            label: "Undo",
-            onPress: () => pendingDeletes.cancel(key),
-          });
+          deleteWithUndo({ ...deleteTarget.goal(removing._id), label: removing.name, message: `${removing.name} deleted` });
         }}
       />
     </ScreenScaffold>

@@ -1,5 +1,5 @@
 import type { InvestedHow, InvestmentsPayload, ITransaction, PortfolioTrend } from "@save-n-spend/types";
-import { del, patch, post, type RequestOptions } from "@/lib/api";
+import { patch, post, type RequestOptions } from "@/lib/api";
 import { useApiQuery } from "@/lib/query/useApiQuery";
 import { useAccountStore } from "@/store/accounts";
 import { chartPalette, chartOthers } from "@/theme";
@@ -58,12 +58,8 @@ export const updateInvestmentBasis = async (id: string, basis: InvestmentBasis):
 
 export type DeleteInvestmentMode = "undo" | "keep";
 
-/** Removes a holding and everything on it. See the API's deleteInvestment for what the two
- *  modes do to the accounts on the other side of its money moves. */
-export const deleteInvestment = async (id: string, mode: DeleteInvestmentMode): Promise<void> => {
-  await del(`/investments/${id}?mode=${mode}`);
-  await useAccountStore.getState().load().catch(() => {});
-};
+/** What a holding's delete reloads beyond the screens' reads (balances it moved). */
+export const reloadAfterInvestmentDelete = () => useAccountStore.getState().load();
 
 /** A holding's own icon and colour — what every SIP bill, contribution and redemption wears,
  *  so each one is recognisable as *that* holding rather than a generic "investment". */

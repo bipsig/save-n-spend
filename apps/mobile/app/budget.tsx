@@ -28,6 +28,7 @@ import {
 } from "@/lib/budgets";
 import { rangeNavLabel } from "@/lib/dateRange";
 import { useCategories } from "@/lib/categories";
+import { useVisible } from "@/lib/undo";
 import { radius, spacing } from "@/theme";
 
 type Totals = ReturnType<typeof budgetTotals>;
@@ -98,7 +99,8 @@ const BudgetScreen = () => {
   const month = monthKey(offset);
 
   const budgets = useBudgets(month);
-  const { items, refetch } = budgets;
+  const { refetch } = budgets;
+  const items = useVisible("budget", budgets.items, (b) => b.budget._id);
   const state = { ...budgets, hasData: budgets.data !== null };
   const categories = useCategories();
 

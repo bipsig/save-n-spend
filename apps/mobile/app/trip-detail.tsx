@@ -36,6 +36,7 @@ import { hintedLabel, useOnlineGate } from "@/lib/onlineGate";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { chartPalette, colors, radius, spacing } from "@/theme";
+import { useTripWhilePending } from "@/lib/tripPending";
 
 const BAR_COLORS = [colors.primary, colors.warning, colors.info, colors.success, colors.teal];
 
@@ -109,7 +110,8 @@ const TripDetailScreen = () => {
   const router = useRouter();
   const { id, match } = useLocalSearchParams<{ id: string; match?: string }>();
   const q = useTrip(id);
-  const { data, refetch } = q;
+  const { refetch } = q;
+  const data = useTripWhilePending(q.data);
   const state = { ...q, hasData: data != null, notFound: !id || q.errorStatus === 404 };
   const reopenGate = useOnlineGate("Reopen");
 
@@ -419,7 +421,7 @@ const TripDetailScreen = () => {
         <Button label="Wrap up this trip" variant="secondary" onPress={() => router.push({ pathname: "/trip-wrapup", params: { id: trip._id } })} />
       )}
 
-      <TripSheet ref={editTripRef} trip={trip} onDeleted={goBackOrHome} />
+      <TripSheet ref={editTripRef} trip={trip} expenseCount={data.expenses.length} onDeleted={goBackOrHome} />
       {closedOn && (
         <CloseDateSheet
           ref={closeDateRef}

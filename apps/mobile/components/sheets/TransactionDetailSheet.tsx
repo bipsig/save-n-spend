@@ -18,12 +18,11 @@ import Caps from "../ui/Caps";
 import Button from "../ui/Button";
 import { formatFullDate } from "@/lib/date";
 import { categoryBg } from "@/lib/categories";
-import { del } from "@/lib/api";
 import { toast } from "@/store/toast";
 import { useRouter } from "expo-router";
 import { useAccountStore } from "@/store/accounts";
 import { useOnlineGate } from "@/lib/onlineGate";
-import { pendingDeletes } from "@/store/pendingDeletes";
+import { deleteTarget, deleteWithUndo } from "@/lib/undo";
 import AccountPickerSheet from "@/components/sheets/AccountPickerSheet";
 import { convertToInvestment, holdingLook } from "@/lib/investments";
 import { holderFor } from "@/lib/idempotency";
@@ -172,25 +171,18 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
   // the group's real splitGroupId is never touched by anything client-side.
   const handleDelete = () => {
     if (!transaction) return;
-    const key = `transaction:${transaction._id}`;
-    const label = title;
-    pendingDeletes.schedule(key, label, async (opts) => {
-      await del(`/transactions/${transaction._id}`, opts);
-      // A delete reverts the balance move it made — the account list held elsewhere
-      // (Net Worth, the account picker) is stale until this reloads it. Caught rather
-      // than awaited-and-thrown: a drop here means the delete itself still went through,
-      // and the store's next successful load fills in the real number anyway.
-      await useAccountStore.getState().load().catch(() => {});
-      onCommitted?.();
-    });
     dismiss();
-    // Names the row so the receipt still means something once the sheet — the only place
-    // that named the account — has already closed.
-    toast.action(
-      "info",
-      isTransfer ? "Transfer deleted" : `${title} deleted`,
-      { label: "Undo", onPress: () => pendingDeletes.cancel(key) }
-    );
+    deleteWithUndo({
+      ...deleteTarget.transaction(transaction._id),
+      label: title,
+      // Names the row so the receipt still means something once the sheet — the only place
+      // that named the account — has already closed.
+      message: isTransfer ? "Transfer deleted" : `${title} deleted`,
+      // A delete reverts the balance move it made: the account list held elsewhere (Net
+      // Worth, the account picker) is stale until this reloads it.
+      reload: () => useAccountStore.getState().load(),
+      onCommitted,
+    });
   }
 
   return (

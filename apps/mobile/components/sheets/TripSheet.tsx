@@ -15,7 +15,8 @@ import { createAccount, useAccounts } from "@/lib/accounts";
 import { haptics } from "@/lib/haptics";
 import { parseMoney, paiseToInput } from "@/lib/money";
 import { startOfToday } from "@/lib/date";
-import { TRIP_EMOJIS, TRIP_GRADIENTS, createTrip, deleteTrip, pickerToTripDay, tripDayToPicker, updateTrip } from "@/lib/trips";
+import { TRIP_EMOJIS, TRIP_GRADIENTS, createTrip, pickerToTripDay, reloadAfterTripDelete, tripDayToPicker, updateTrip } from "@/lib/trips";
+import { deleteTarget, deletedMessage, deleteWithUndo } from "@/lib/undo";
 import { holderFor } from "@/lib/idempotency";
 import { recoverCreated, sameName } from "@/lib/replayed";
 import { useAccountStore } from "@/store/accounts";
@@ -31,11 +32,13 @@ type Props = {
   onSaved?: (tripId: string) => void;
   /** After the trip is deleted — the trip's own screen has nothing left to show. */
   onDeleted?: () => void;
+  /** Named in the delete's toast: "Goa 2026 deleted with 14 expenses". */
+  expenseCount?: number;
 };
 
 // New trip / edit trip. The people are person accounts — the same ones splits and settle-ups
 // already use — picked with a tick, or added here by name.
-const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDeleted }, ref) => {
+const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDeleted, expenseCount = 0 }, ref) => {
   const innerRef = useRef<BottomSheetModal>(null);
   useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
   // Needs the server: offline the button says so before the tap.
@@ -215,13 +218,16 @@ const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDelete
         title={`Delete ${trip?.name ?? "this trip"}?`}
         body="Every expense and settle-up on it comes off, and every balance and account it touched goes back to how it was. The people stay."
         confirmLabel="Delete trip"
-        hold
         needsConnection
-        onConfirm={async () => {
+        onConfirm={() => {
           if (!trip) return;
-          await deleteTrip(trip._id);
           innerRef.current?.dismiss();
-          toast.info(`${trip.name} deleted`);
+          deleteWithUndo({
+            ...deleteTarget.trip(trip._id),
+            label: trip.name,
+            message: deletedMessage(trip.name, [[expenseCount, "expense", "expenses"]]),
+            reload: reloadAfterTripDelete,
+          });
           onDeleted?.();
         }}
       />

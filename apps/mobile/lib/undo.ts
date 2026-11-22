@@ -27,6 +27,8 @@ export type DeleteWithUndo = DeleteTarget & {
   message: string;
   /** Sent after the DELETE lands, and kept on disk for a replay (clearing a default). */
   after?: ReplayRequest[];
+  /** Sends `after` itself, when the app has its own call for it (one that updates the session). */
+  afterDelete?: () => Promise<unknown>;
   /** Reloads beyond the screens' reads (the account and category stores). Awaited before the
    *  row's key is cleared. */
   reload?: () => Promise<unknown>;
@@ -37,11 +39,12 @@ export type DeleteWithUndo = DeleteTarget & {
 const quietly = (work: Promise<unknown> | undefined) => (work ?? Promise.resolve()).then(() => {}, () => {});
 
 /** The commit the store runs when the window ends. Exported for the tests. */
-export const commitDelete = (o: Pick<DeleteWithUndo, "request" | "after" | "reload" | "onCommitted">) =>
+export const commitDelete = (o: Pick<DeleteWithUndo, "request" | "after" | "afterDelete" | "reload" | "onCommitted">) =>
   async ({ idempotencyKey }: RequestOptions): Promise<void> => {
     await del(o.request.path, { idempotencyKey, invalidate: false });
     // The DELETE landed: what follows can't make it a failure.
-    for (const r of o.after ?? []) await quietly(patch(r.path, r.body, { invalidate: false }));
+    if (o.afterDelete) await quietly(o.afterDelete());
+    else for (const r of o.after ?? []) await quietly(patch(r.path, r.body, { invalidate: false }));
     await Promise.all([quietly(invalidateReads(readsChangedBy(o.request.path))), quietly(o.reload?.())]);
     o.onCommitted?.();
   };

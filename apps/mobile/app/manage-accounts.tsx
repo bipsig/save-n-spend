@@ -15,7 +15,7 @@ import PressableScale from "@/components/ui/PressableScale";
 import DragList from "@/components/ui/DragList";
 import EmptyState from "@/components/states/EmptyState";
 import ScreenStates from "@/components/states/ScreenStates";
-import { ACCOUNT_GROUPS, archiveAccount, reorderAccounts, useAccounts } from "@/lib/accounts";
+import { ACCOUNT_GROUPS, reorderAccounts, useAccounts } from "@/lib/accounts";
 import { archiveNotice } from "@/lib/archiveNotice";
 import { useBills } from "@/lib/bills";
 import { mergeSectionOrder } from "@/lib/accountOrder";
@@ -27,7 +27,7 @@ import { useStoreLoad } from "@/lib/useStoreLoad";
 import { useAccountStore } from "@/store/accounts";
 import { useSession } from "@/store/session";
 import { toast } from "@/store/toast";
-import { pendingDeletes } from "@/store/pendingDeletes";
+import { deleteTarget, deleteWithUndo } from "@/lib/undo";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { spacing } from "@/theme";
@@ -217,26 +217,20 @@ const ManageAccountsScreen = () => {
         needsConnection
         onConfirm={() => {
           if (!pendingDelete) return;
-          const key = `account:${pendingDelete._id}`;
           const name = pendingDelete.name;
           const wasDefault = pendingDelete._id === defaultAccountId;
-          pendingDeletes.schedule(key, name, async (opts) => {
-            await archiveAccount(pendingDelete._id, opts);
-            // Otherwise the preference would still name an archived account, and every
-            // form that preselects it would silently fall back to nothing. Inside the
-            // commit, not at schedule-time — undoing the delete correctly undoes losing
-            // the default too, for free.
-            if (wasDefault) await updatePrefs({ defaultAccount: null });
-          }, wasDefault ? { after: [{ method: "PATCH", path: "/users/me", body: { prefs: { defaultAccount: null } } }] } : undefined);
-          // Says the second consequence out loud: losing the default is a change the
-          // user didn't ask for, and they'd otherwise meet it at the next form.
-          toast.action(
-            "info",
-            wasDefault
-              ? `${name} archived — you have no default account now`
-              : `${name} archived`,
-            { label: "Undo", onPress: () => pendingDeletes.cancel(key) }
-          );
+          deleteWithUndo({
+            ...deleteTarget.account(pendingDelete._id),
+            label: name,
+            // Says the second consequence out loud: losing the default is a change the
+            // user didn't ask for, and they'd otherwise meet it at the next form.
+            message: wasDefault ? `${name} archived — you have no default account now` : `${name} archived`,
+            // Otherwise the preference would still name an archived account. Sent only once
+            // the delete lands, so undoing the delete undoes losing the default too.
+            ...(wasDefault ? { after: [{ method: "PATCH" as const, path: "/users/me", body: { prefs: { defaultAccount: null } } }] } : {}),
+            afterDelete: wasDefault ? () => updatePrefs({ defaultAccount: null }) : undefined,
+            reload: () => useAccountStore.getState().load(),
+          });
         }}
       />
     </ScreenScaffold>

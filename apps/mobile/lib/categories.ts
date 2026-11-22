@@ -3,7 +3,7 @@ import type { CategoryKind, ICategory } from "@save-n-spend/types";
 import type { ColorToken } from "@/theme";
 import { useCategoryStore } from "@/store/categories";
 import { usePendingDeletes } from "@/store/pendingDeletes";
-import { del, patch, post, type RequestOptions } from "@/lib/api";
+import { patch, post, type RequestOptions } from "@/lib/api";
 import { applyOrder, persistOrder } from "@/lib/reorder";
 import { labelFrom, type CategoryLabel } from "@/lib/categoryLabel";
 
@@ -159,10 +159,3 @@ export const reorderCategories = async (ids: string[]): Promise<void> => {
   }
 };
 
-// Archived, not deleted, so past transactions keep resolving to a real category. The
-// server cascades to children; the count comes back so the caller can say so.
-export const archiveCategory = async (id: string, opts?: RequestOptions): Promise<number> => {
-  const result = await del<{ archivedChildren: number } | null>(`/categories/${id}`, opts);
-  await useCategoryStore.getState().load();
-  return result?.archivedChildren ?? 0;
-};

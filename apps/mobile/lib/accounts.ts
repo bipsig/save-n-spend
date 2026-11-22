@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useAccountStore } from "@/store/accounts";
 import { useSession } from "@/store/session";
 import { usePendingDeletes } from "@/store/pendingDeletes";
-import { del, patch, post, type RequestOptions } from "@/lib/api";
+import { patch, post, type RequestOptions } from "@/lib/api";
 import { applyOrder, persistOrder } from "@/lib/reorder";
 import formatMoney from "@/lib/money";
 import type { AccountType, IAccount, InvestedHow } from "@save-n-spend/types";
@@ -38,7 +38,8 @@ export const ACCOUNT_GROUPS: { label: string; types: AccountType[] }[] = [
 export const useAccounts = () : IAccount[] => {
   const list = useAccountStore((s) => s.list);
   const pending = usePendingDeletes((s) => s.keys);
-  return useMemo(() => list.filter((a) => !pending.has(`account:${a._id}`)), [list, pending]);
+  // A holding being deleted is an account too.
+  return useMemo(() => list.filter((a) => !pending.has(`account:${a._id}`) && !pending.has(`investment:${a._id}`)), [list, pending]);
 }
 
 // One account by id, reactive — re-renders when accounts load/change.
@@ -132,11 +133,4 @@ export const reorderAccounts = async (ids: string[]): Promise<void> => {
     await useAccountStore.getState().load().catch(() => {});
     throw error;
   }
-};
-
-// Archives rather than destroys — transactions keep pointing at a real account,
-// so history stays readable.
-export const archiveAccount = async (id: string, opts?: RequestOptions): Promise<void> => {
-  await del<null>(`/accounts/${id}`, opts);
-  await useAccountStore.getState().load();
 };

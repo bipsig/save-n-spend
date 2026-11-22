@@ -16,6 +16,7 @@ import ScreenStates from "@/components/states/ScreenStates";
 import SkeletonState from "@/components/states/SkeletonState";
 import TripSheet from "@/components/sheets/TripSheet";
 import { TRIP_GRADIENTS, tripDayNumber, useTrips } from "@/lib/trips";
+import { useVisible } from "@/lib/undo";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { count } from "@/lib/format/count";
 import { formatSpan } from "@/lib/format/period";
@@ -70,7 +71,7 @@ const TripsScreen = () => {
   const newRef = useRef<BottomSheetModal>(null);
   const [year, setYear] = useState<number | null>(null);
 
-  const trips = data?.trips ?? [];
+  const trips = useVisible("trip", data?.trips ?? []);
   const yearOf = (t: { startDate: string }) => new Date(t.startDate).getUTCFullYear();
   const active = trips.filter((t) => t.status === "active" && (year === null || yearOf(t) === year));
   const closed = trips.filter((t) => t.status === "closed" && (year === null || yearOf(t) === year));

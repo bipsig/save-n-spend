@@ -23,7 +23,7 @@ import { formatPct } from "@/lib/format/pct";
 import { count } from "@/lib/format/count";
 import { useCategoryInsights, buildTrend, pctChange } from "@/lib/insights";
 import { useTransactionFeed } from "@/lib/transactions";
-import { usePendingDeletes } from "@/store/pendingDeletes";
+import { useVisible } from "@/lib/undo";
 import { rangeBounds, rangeNavLabel } from "@/lib/dateRange";
 import { relativePeriod } from "@/lib/format/period";
 import { useAppZone } from "@/lib/zone";
@@ -87,8 +87,7 @@ const CategoryInsightsScreen = () => {
   });
   // Hidden the instant delete is confirmed — the real DELETE only fires if the undo
   // grace window elapses undisturbed (see store/pendingDeletes.ts).
-  const pendingKeys = usePendingDeletes((s) => s.keys);
-  const visibleItems = feed.items.filter((t) => !pendingKeys.has(`transaction:${t._id}`));
+  const visibleItems = useVisible("transaction", feed.items);
 
   const detailRef = useRef<BottomSheetModal>(null);
   const [active, setActive] = useState<ITransaction | null>(null);

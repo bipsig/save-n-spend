@@ -1,5 +1,5 @@
 import type { TripDetailPayload, TripsPayload } from "@save-n-spend/types";
-import { del, get, patch, post, put, type RequestOptions } from "@/lib/api";
+import { get, patch, post, put, type RequestOptions } from "@/lib/api";
 import { useAccountStore } from "@/store/accounts";
 import { useApiQuery } from "@/lib/query/useApiQuery";
 import { useTripNameStore } from "@/store/tripNames";
@@ -51,11 +51,8 @@ export const updateTrip = async (id: string, draft: Partial<TripDraft>) => {
   await patch(`/trips/${id}`, draft);
   void reloadTripNames();
 };
-export const deleteTrip = async (id: string) => {
-  await del(`/trips/${id}`);
-  await reloadAccounts();
-  void reloadTripNames();
-};
+/** What a trip delete reloads beyond the screens' reads: balances and Activity's trip names. */
+export const reloadAfterTripDelete = () => Promise.all([reloadAccounts(), reloadTripNames()]);
 
 export const addTripExpense = async (tripId: string, draft: TripExpenseDraft, opts?: RequestOptions) => {
   await post(`/trips/${tripId}/expenses`, draft, opts);
@@ -65,10 +62,8 @@ export const updateTripExpense = async (tripId: string, expenseId: string, draft
   await patch(`/trips/${tripId}/expenses/${expenseId}`, draft, opts);
   await reloadAccounts();
 };
-export const deleteTripExpense = async (tripId: string, expenseId: string) => {
-  await del(`/trips/${tripId}/expenses/${expenseId}`);
-  await reloadAccounts();
-};
+/** What a trip expense or plan delete reloads beyond the screens' reads. */
+export const reloadAfterTripRowsDelete = reloadAccounts;
 
 export const settleTrip = async (tripId: string, body: { person: string; account: string; amount: number; direction: "received" | "paid" }, opts?: RequestOptions) => {
   await post(`/trips/${tripId}/settle`, body, opts);
@@ -92,10 +87,6 @@ export const savePlan = async (tripId: string, entries: { account: string; amoun
 };
 
 /** Back to the exact amounts. */
-export const clearPlan = async (tripId: string) => {
-  await del(`/trips/${tripId}/plan`);
-  await reloadAccounts();
-};
 
 /** Evenly, to the paisa — the first few absorb the remainder so the shares always add up.
  *  Mirrors the API's splitEvenly. */

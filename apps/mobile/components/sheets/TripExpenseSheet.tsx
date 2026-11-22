@@ -19,7 +19,8 @@ import { useAccountById, useDefaultAccount } from "@/lib/accounts";
 import { useCategoryById } from "@/lib/categories";
 import { haptics } from "@/lib/haptics";
 import formatMoney, { parseMoney, paiseToInput, usePrivacyMask } from "@/lib/money";
-import { addTripExpense, deleteTripExpense, splitEvenly, updateTripExpense } from "@/lib/trips";
+import { addTripExpense, reloadAfterTripRowsDelete, splitEvenly, updateTripExpense } from "@/lib/trips";
+import { deleteTarget, deleteWithUndo } from "@/lib/undo";
 import { holderFor } from "@/lib/idempotency";
 import { toast } from "@/store/toast";
 import type { IconName } from "@/lib/icons";
@@ -284,12 +285,16 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
         body="It comes off the trip, and every balance and account it touched goes back to how it was."
         confirmLabel="Delete"
         needsConnection
-        onConfirm={async () => {
+        onConfirm={() => {
           if (!expense) return;
-          await deleteTripExpense(tripId, expense._id);
           innerRef.current?.dismiss();
-          onSaved?.();
-          toast.info(`${expense.title} deleted`);
+          deleteWithUndo({
+            ...deleteTarget.tripExpense(tripId, expense._id),
+            label: expense.title,
+            message: `${expense.title} deleted`,
+            reload: reloadAfterTripRowsDelete,
+            onCommitted: onSaved,
+          });
         }}
       />
     </>

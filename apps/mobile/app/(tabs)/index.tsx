@@ -64,6 +64,7 @@ import SkeletonState from "@/components/states/SkeletonState";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { HomePeriod, ITransaction } from "@save-n-spend/types";
+import { useVisible } from "@/lib/undo";
 
 const PERIODS: { key: HomePeriod; label: string }[] = [
   { key: "month", label: "Month" },
@@ -95,7 +96,7 @@ const HomeScreen = () => {
   const goalsQuery = useGoals();
   const goals = goalsQuery.items;
   const transactionsQuery = useTransactions();
-  const transactions = transactionsQuery.items;
+  const transactions = useVisible("transaction", transactionsQuery.items);
 
   // Feeds both the Get started checklist and the Safe to spend card below — no month
   // param, so the server's own default (the current month) is what comes back.
@@ -129,7 +130,7 @@ const HomeScreen = () => {
   const dashboardInsights = dashboardInsightsQuery.data;
 
   // Open trips count nowhere until closed; Home shows each one's running share on its own.
-  const openTrips = (useTrips().data?.trips ?? []).filter((t) => t.status === "active");
+  const openTrips = useVisible("trip", useTrips().data?.trips ?? []).filter((t) => t.status === "active");
 
   // Queued transactions waiting on this phone — a stable selector (the raw items array),
   // mapped to displayable rows in a memo rather than in the selector itself, so this

@@ -21,6 +21,7 @@ import RevalueSheet from "@/components/sheets/RevalueSheet";
 import InvestmentsExportSheet, { type InvestmentsExportHandle } from "@/components/sheets/InvestmentsExportSheet";
 import TrendsView, { INVEST_TABS, type InvestTab } from "@/components/investments/TrendsView";
 import { useInvestments, useInvestmentTrend, returnPct, formatAnnual, holdingLook } from "@/lib/investments";
+import { useVisible } from "@/lib/undo";
 import { useAccounts } from "@/lib/accounts";
 import { useBills } from "@/lib/bills";
 import { formatDueLabel } from "@/lib/date";
@@ -121,7 +122,7 @@ const InvestmentsScreen = () => {
     router.setParams({ export: undefined });
   }, [exportParam, data, router]);
 
-  const holdings = data?.holdings ?? [];
+  const holdings = useVisible("investment", data?.holdings ?? [], (h) => h.accountId);
   // Holdings whose opening amount has no date — the yearly return can't be worked out.
   const undated = holdings.filter((h) => h.annualReturnStatus === "noStartDate");
   // Strongest holding. Ranked by yearly return when at least two holdings have one — all-time

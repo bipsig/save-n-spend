@@ -8,7 +8,8 @@ import Button from "@/components/ui/Button";
 import PressableScale from "@/components/ui/PressableScale";
 import { haptics } from "@/lib/haptics";
 import formatMoney, { parseMoney, paiseToInput, usePrivacyMask } from "@/lib/money";
-import { clearPlan, savePlan } from "@/lib/trips";
+import { reloadAfterTripRowsDelete, savePlan } from "@/lib/trips";
+import { deleteTarget, deleteWithUndo } from "@/lib/undo";
 import { holderFor } from "@/lib/idempotency";
 import { toast } from "@/store/toast";
 import { colors, spacing } from "@/theme";
@@ -87,21 +88,16 @@ const MatchSplitwiseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, membe
     }
   };
 
-  const backToExact = async () => {
-    setBusy(true);
-    try {
-      await clearPlan(tripId);
-      innerRef.current?.dismiss();
-      onSaved?.();
-      toast.info("Back to the exact amounts");
-    }
-    catch (err) {
-      haptics.error();
-      setError(err instanceof Error ? err.message : "Couldn't undo that");
-    }
-    finally {
-      setBusy(false);
-    }
+  // The trip page shows the exact amounts while this waits out its undo window.
+  const backToExact = () => {
+    innerRef.current?.dismiss();
+    deleteWithUndo({
+      ...deleteTarget.plan(tripId),
+      label: "the matched amounts",
+      message: "Back to the exact amounts",
+      reload: reloadAfterTripRowsDelete,
+      onCommitted: onSaved,
+    });
   };
 
   const status = balanced

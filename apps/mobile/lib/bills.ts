@@ -1,7 +1,7 @@
 import type { IBill, BillFrequency, ICategory } from "@save-n-spend/types";
 import type { BudgetSummary } from "@/lib/budgets";
 import { billsAgainstBudgets } from "@/lib/safeToSpend";
-import { del, patch, type RequestOptions } from "@/lib/api";
+import { patch } from "@/lib/api";
 import { appZone, calendarDate, calendarDaysBetween, calendarToday, monthKeyOf } from "@/lib/zone";
 import { useApiQuery } from "@/lib/query/useApiQuery";
 
@@ -55,10 +55,6 @@ export type BillPatch = {
 };
 
 export const updateBill = (id: string, body: BillPatch) => patch<IBill>(`/bills/${id}`, body);
-
-// Unlike a category or an account, a bill really is erased: nothing is filed under it,
-// and paying one writes a transaction that stands on its own.
-export const deleteBill = (id: string, opts?: RequestOptions) => del<null>(`/bills/${id}`, opts);
 
 export type BillGroups = {
   overdue: IBill[];

@@ -23,12 +23,12 @@ import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { count } from "@/lib/format/count";
 import { screenTitles } from "@/data/menu";
 import type { HeaderAction } from "@/lib/screenHeader";
-import { useBills, groupBills, outstandingTotal, isActionable, deleteBill } from "@/lib/bills";
+import { useBills, groupBills, outstandingTotal, isActionable } from "@/lib/bills";
 import { bulkConvertToInvestment, dismissRecurring, useRecurringSuggestions } from "@/lib/recurring";
 import { useAccountById } from "@/lib/accounts";
 import { startOfToday } from "@/lib/date";
 import { toast } from "@/store/toast";
-import { pendingDeletes, usePendingDeletes } from "@/store/pendingDeletes";
+import { deleteTarget, deleteWithUndo, useVisible } from "@/lib/undo";
 import { holderFor } from "@/lib/idempotency";
 import { radius, spacing } from "@/theme";
 
@@ -68,8 +68,7 @@ const BillsScreen = () => {
   const state = { ...bills, hasData: bills.data !== null };
   // Hidden the instant delete is confirmed — the real DELETE only fires if the undo
   // grace window elapses undisturbed (see store/pendingDeletes.ts).
-  const pendingKeys = usePendingDeletes((s) => s.keys);
-  const items = bills.items.filter((b) => !pendingKeys.has(`bill:${b._id}`));
+  const items = useVisible("bill", bills.items);
 
   const markRef = useRef<BottomSheetModal>(null);
   const editRef = useRef<BottomSheetModal>(null);
@@ -279,15 +278,7 @@ const BillsScreen = () => {
         needsConnection
         onConfirm={() => {
           if (!removing) return;
-          const key = `bill:${removing._id}`;
-          const name = removing.name;
-          pendingDeletes.schedule(key, name, async (opts) => {
-            await deleteBill(removing._id, opts);
-          });
-          toast.action("info", `${name} deleted`, {
-            label: "Undo",
-            onPress: () => pendingDeletes.cancel(key),
-          });
+          deleteWithUndo({ ...deleteTarget.bill(removing._id), label: removing.name, message: `${removing.name} deleted` });
         }}
       />
     </ScreenScaffold>

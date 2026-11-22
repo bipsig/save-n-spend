@@ -16,13 +16,13 @@ import EmptyState from "@/components/states/EmptyState";
 import ScreenStates from "@/components/states/ScreenStates";
 import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
-import { archiveCategory, reorderCategories, useCategoryTree, type CategoryGroup } from "@/lib/categories";
+import { reorderCategories, useCategoryTree, type CategoryGroup } from "@/lib/categories";
 import { countTransactionsIn } from "@/lib/transactions";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { useStoreLoad } from "@/lib/useStoreLoad";
 import { useCategoryStore } from "@/store/categories";
 import { toast } from "@/store/toast";
-import { pendingDeletes } from "@/store/pendingDeletes";
+import { deleteTarget, deleteWithUndo } from "@/lib/undo";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { count } from "@/lib/format/count";
@@ -275,7 +275,6 @@ const ManageCategoriesScreen = () => {
         needsConnection
         onConfirm={() => {
           if (!pendingDelete) return;
-          const key = `category:${pendingDelete._id}`;
           const name = pendingDelete.name;
           // childCount is already known client-side (deleteBody above computes it from
           // the tree already in memory) — the server's own echo of it only arrives once
@@ -283,16 +282,14 @@ const ManageCategoriesScreen = () => {
           const childCount = pendingDelete.parent === null
             ? (expenses.concat(income).find((g) => g.parent._id === pendingDelete._id)?.children.length ?? 0)
             : 0;
-          pendingDeletes.schedule(key, name, (opts) => archiveCategory(pendingDelete._id, opts).then(() => {}));
           // "Archived", not "deleted", or the confirm's wording is undone by its own
           // receipt. Children counted in, because they go too.
-          toast.action(
-            "info",
-            childCount === 0
-              ? `${name} archived`
-              : `${name} and ${count(childCount, "sub-category", "sub-categories")} archived`,
-            { label: "Undo", onPress: () => pendingDeletes.cancel(key) }
-          );
+          deleteWithUndo({
+            ...deleteTarget.category(pendingDelete._id),
+            label: name,
+            message: childCount === 0 ? `${name} archived` : `${name} and ${count(childCount, "sub-category", "sub-categories")} archived`,
+            reload: () => useCategoryStore.getState().load(),
+          });
         }}
       />
     </ScreenScaffold>

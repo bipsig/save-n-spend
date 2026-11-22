@@ -5,6 +5,7 @@ import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";
+import ConfirmSheet from "./ConfirmSheet";
 import Button from "@/components/ui/Button";
 import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
@@ -16,7 +17,8 @@ import formatMoney, { formatRemaining, parseMoney, paiseToInput, usePrivacyMask 
 import { formatPct } from "@/lib/format/pct";
 import { useCategoryById } from "@/lib/categories";
 import CategoryName from "@/components/ui/CategoryName";
-import { post, patch, del } from "@/lib/api";
+import { post, patch } from "@/lib/api";
+import { deleteTarget, deleteWithUndo } from "@/lib/undo";
 import { splitIssues } from "@/lib/apiError";
 import { holderFor } from "@/lib/idempotency";
 import { haptics } from "@/lib/haptics";
@@ -53,6 +55,7 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
   // Own handle, so `dismiss` closes this form and not the category picker that may
   // still be animating out on top of it (see CategoryPickerSheet).
   const innerRef = useRef<BottomSheetModal>(null);
+  const confirmRef = useRef<BottomSheetModal>(null);
   useImperativeHandle(ref, () => innerRef.current as BottomSheetModal);
   const removeGate = useOnlineGate("Remove from budget");
   const dismiss = () => innerRef.current?.dismiss();
@@ -63,7 +66,6 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
   const spent = summary?.spent ?? 0;
 
   const [saving, setSaving] = useState(false);
-  const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const {
@@ -136,25 +138,21 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
     }
   };
 
-  const onRemove = async () => {
+  const name = category?.name ?? "Category";
+
+  // Confirmed in its own sheet, then held for the undo window like every delete; the Budget
+  // screen hides the row meanwhile.
+  const onRemove = () => {
     if (!summary) return;
-    setRemoving(true);
-    setError(null);
-    try {
-      await del(`/budgets/${summary.budget._id}`);
-      dismiss();
-      onChanged?.();
-      // Says what removing it means, not just that it went: the category keeps its
-      // spending, it simply stops being measured against a limit.
-      toast.success(`${category?.name ?? "Category"} is no longer budgeted`);
-    }
-    catch (err) {
-      haptics.error();
-      setError(err instanceof Error ? err.message : "Couldn't remove the budget");
-    }
-    finally {
-      setRemoving(false);
-    }
+    const id = summary.budget._id;
+    dismiss();
+    confirmRef.current?.present();
+    setRemovingId(id);
+  };
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const confirmRemove = () => {
+    if (!removingId) return;
+    deleteWithUndo({ ...deleteTarget.budget(removingId), label: `the ${name} budget`, message: `${name} budget removed`, onCommitted: onChanged });
   };
 
   const needsCategory = !isEdit && !categoryId;
@@ -200,6 +198,7 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
   );
 
   return (
+    <>
     <AppSheet ref={innerRef} onDismiss={resetForm}>
       {isEdit ? (
         <View style={styles.identity}>{identity}</View>
@@ -265,9 +264,20 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
 
       <Button label={saveGate.label} icon={saveGate.icon} hint={saveGate.hint} onPress={handleSubmit(onSave)} loading={saving} disabled={!saveGate.allowed || !isValid || needsCategory} />
       {isEdit && (
-        <Button label={removeGate.label} icon={removeGate.icon} hint={removeGate.hint} variant="dangerGhost" onPress={onRemove} loading={removing} disabled={!removeGate.allowed} />
+        <Button label={removeGate.label} icon={removeGate.icon} hint={removeGate.hint} variant="dangerGhost" onPress={onRemove} disabled={!removeGate.allowed} />
       )}
     </AppSheet>
+    <ConfirmSheet
+      ref={confirmRef}
+      icon="delete"
+      title={`Remove the ${name} budget?`}
+      // Says what removing it means: the spending stays, it stops being measured.
+      body={`Its spending stays. It just stops being measured against a limit ${closed ? `in ${monthTitle(month)}` : "this month"}.`}
+      confirmLabel="Remove budget"
+      needsConnection
+      onConfirm={confirmRemove}
+    />
+    </>
   );
 });
 

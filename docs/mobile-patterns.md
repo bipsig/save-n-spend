@@ -233,30 +233,61 @@ const gate = useOnlineGate(`Add ${formatMoney(amount)}`);
 <Button label={gate.label} icon={gate.icon ?? "plus"} disabled={!gate.allowed || !valid} onPress={save} />
 ```
 
-**Deletes are undoable, and survive the app closing.** `store/pendingDeletes.ts` defers a
-destructive call for five seconds. The row disappears at once (screens filter their
-items against `usePendingDeletes((s) => s.keys)`), an `info` toast with an **Undo**
-action is shown, and only after the window does the real call run. Undo calls
-`pendingDeletes.cancel(key)` and the API is never touched. The timers are module-level,
-so navigating away does not cancel a delete; a failed commit restores the row with an
-error toast; and sign-out flushes any pending deletes so a confirmed delete is not
-reverted. Bills, goals, categories, accounts and transactions use it.
+### Delete and undo
 
-Each delete is also written to `documentDirectory/pending-deletes/<userId>.json` and removed
-when it commits, fails or is undone. If the app is killed or suspended inside the window (or
-sign-out had no token left to send it), the next authed launch or reconnect sends it
-(`replayPendingDeletes`), with the same `Idempotency-Key` the commit gets as `opts`. A 404 on
-that resend means it already landed. The DELETE route comes from the key, `<kind>:<id>` for
-`transaction`, `goal`, `bill`, `category` and `account` (`lib/pendingDeleteReplay.ts`); `after`
-adds follow-up requests, such as clearing the default account.
+**Every record delete is confirm, then a five-second "<name> deleted · Undo" toast** (2.8.7,
+gaps rows 64, 65). Nothing is sent until the window ends, so a cascade (a trip with its
+expenses, a holding with its payments, a trip expense with its shares) costs the same as one
+row, and Undo never touches the API. Only **deleting your account** and **restoring a backup**
+keep the hold confirm (`ConfirmSheet hold`), with no undo: they aren't records.
+
+| Record | Confirm | Key |
+|---|---|---|
+| Transaction | inline confirm on the detail sheet | `transaction:<id>` |
+| Goal (archives), bill, category (archives, with children), account (archives) | `ConfirmSheet` | `goal:`, `bill:`, `category:`, `account:` |
+| Budget | `ConfirmSheet` "Remove the Groceries budget?" | `budget:<id>` |
+| Trip expense | `ConfirmSheet` | `tripExpense:<id>` |
+| Trip | `ConfirmSheet`, a tap | `trip:<id>` |
+| Investment | `DeleteInvestmentSheet` (keep or undo the money moved), a tap | `investment:<id>` |
+| Match Splitwise plan ("Back to exact amounts") | none, it is the reverse of Save | `plan:<tripId>` |
+
+Every one goes through `deleteWithUndo` (`lib/undo.ts`) with a target from `deleteTarget`:
 
 ```ts
-pendingDeletes.schedule(key, name, (opts) => deleteBill(id, opts));
-toast.action("info", `${name} deleted`, { label: "Undo", onPress: () => pendingDeletes.cancel(key) });
+deleteWithUndo({
+  ...deleteTarget.trip(trip._id),               // key + the DELETE, kept on disk for a replay
+  label: trip.name,                              // "Couldn't delete Goa 2026 — it's back"
+  message: deletedMessage(trip.name, [[14, "expense", "expenses"]]),
+  reload: reloadAfterTripDelete,                 // stores beyond the screens' reads
+});
 ```
 
-Not every delete is deferred: deleting an investment goes through
-`DeleteInvestmentSheet` and calls the API directly, because it needs a chosen mode.
+Screens hide what is waiting with `useVisible(kind, items, idOf?)`; `useAccounts()` and
+`useCategories()` already filter theirs, and a trip page reads `useTripWhilePending`. The key
+is cleared only after the commit has reloaded the screens' reads and `reload`, so a row never
+flashes back. A refused commit brings the row back with "Couldn't delete <label> — it's back".
+
+The window lives in `store/pendingDeletes.ts`: module-level timers, so navigating away does
+not cancel a delete; sign-out sends whatever is still waiting (`logOut()`). Each delete is
+also written to `documentDirectory/pending-deletes/<userId>.json` with its request (an
+investment's `?mode=keep` included); if the app is killed inside the window, the next authed
+launch or reconnect sends it with the same `Idempotency-Key`. A 404 then means it landed.
+Deletes written by 2.8.6 and older carry no request; their route comes from the key.
+
+### Edit undo
+
+A single-record edit toasts "Changes saved · Undo" through `editWithUndo({ path, previous,
+saved, message, reload })`. Undo sends `previous` (the old value of every key the save sent)
+with `If-Match: <saved.updatedAt>` and a fresh Idempotency-Key. The API refuses it with 409
+`conflict` when anything wrote the record since: "This changed after you saved it, so it
+wasn't undone". Offline at the tap, nothing is sent: "Couldn't undo — you're offline".
+
+Gets Undo: transactions (not split), goals, bills, budget limits, categories, accounts (a
+save that only sent the account PATCH), trips, trip expenses (every share is exact paise) and
+a closed trip's close date. **No Undo** (plain toast): a split expense or its owed transfers
+(rescaling back can land a paisa off), an account save that also corrected the balance or
+re-based a holding (undoing would add a second adjustment), archive and unarchive, close and
+reopen, Match Splitwise's Save, profile, password and settings.
 
 ## Add a screen
 
@@ -431,7 +462,7 @@ Reach for these before writing a new confirm or export sheet.
 
 | Sheet | Use for |
 |---|---|
-| `ConfirmSheet` | Any destructive or consequential confirm: `icon`, `title`, a `body` that says what will actually happen, `confirmLabel`, `tone` (`danger` default, or `primary`). `hold` swaps the tap for a 1.5 s `HoldButton`, reserved for what cannot be undone. `onConfirm` is awaited and the sheet stays open on a rejection so the message can be read. |
+| `ConfirmSheet` | Any destructive or consequential confirm: `icon`, `title`, a `body` that says what will actually happen, `confirmLabel`, `tone` (`danger` default, or `primary`). `hold` swaps the tap for a 1.5 s `HoldButton`, reserved for what has no undo (deleting your account, restoring a backup). `onConfirm` is awaited and the sheet stays open on a rejection so the message can be read. |
 | `OptionSheet` | A short list of numeric choices as chips (reminder lead, auto-lock timing); picking is the decision, so there is no save button. A choice too large for chips, such as the time zone, gets its own searchable sheet (`TimeZoneSheet`). |
 | `ExportSheet` | Activity, Insights and Settings exports. See [Export a report](#export-a-report). |
 | `InvestmentsExportSheet` | The Investments statement. See [Export a report](#export-a-report). |

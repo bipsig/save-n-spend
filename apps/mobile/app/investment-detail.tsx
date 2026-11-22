@@ -21,7 +21,6 @@ import RevalueSheet from "@/components/sheets/RevalueSheet";
 import EditAccountSheet from "@/components/sheets/EditAccountSheet";
 import DeleteInvestmentSheet, { type DeleteInvestmentSummary } from "@/components/sheets/DeleteInvestmentSheet";
 import { useBills } from "@/lib/bills";
-import { toast } from "@/store/toast";
 import { useAccountById, useAccounts } from "@/lib/accounts";
 import { useAccountStore } from "@/store/accounts";
 import { formatTxnDate } from "@/lib/date";
@@ -281,10 +280,7 @@ const InvestmentDetailScreen = () => {
       <DeleteInvestmentSheet
         ref={deleteRef}
         summary={deleteSummary}
-        onDeleted={() => {
-          goBackOrHome();
-          toast.success(`${account.name} deleted`);
-        }}
+        onDeleted={goBackOrHome}
       />
     </ScreenScaffold>
   );

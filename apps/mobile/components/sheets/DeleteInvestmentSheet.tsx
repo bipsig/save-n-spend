@@ -4,11 +4,10 @@ import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";
 import { AppText } from "@/components/ui/AppText";
 import Button from "@/components/ui/Button";
-import HoldButton from "@/components/ui/HoldButton";
 import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
-import { deleteInvestment, type DeleteInvestmentMode } from "@/lib/investments";
-import { haptics } from "@/lib/haptics";
+import { reloadAfterInvestmentDelete, type DeleteInvestmentMode } from "@/lib/investments";
+import { deleteTarget, deletedMessage, deleteWithUndo } from "@/lib/undo";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { count } from "@/lib/format/count";
 import Caps from "@/components/ui/Caps";
@@ -53,7 +52,7 @@ const Choice = ({ selected, title, body, onPress }: { selected: boolean; title: 
 // Deleting a holding outright, to start over. Says exactly what goes with it, and asks the
 // one thing that can't be guessed: whether the money moved into it really moved. If it did
 // (the holding was just set up wrong), the bank's balance must stay put; if the entries
-// were mistakes, the money goes back. Held, not tapped — none of it can be undone.
+// were mistakes, the money goes back. A tap, then the undo window every delete has.
 const DeleteInvestmentSheet = forwardRef<BottomSheetModal, Props>(({ summary, onDeleted }, ref) => {
   usePrivacyMask();
   const innerRef = useRef<BottomSheetModal>(null);
@@ -62,8 +61,6 @@ const DeleteInvestmentSheet = forwardRef<BottomSheetModal, Props>(({ summary, on
   const gate = useOnlineGate("");
   // Keep by default: it's the choice that never changes another account's balance.
   const [mode, setMode] = useState<DeleteInvestmentMode>("keep");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   if (!summary) return <AppSheet ref={innerRef}><View /></AppSheet>;
   const { moneyIn, moneyOut } = summary;
@@ -71,21 +68,15 @@ const DeleteInvestmentSheet = forwardRef<BottomSheetModal, Props>(({ summary, on
   // Every account on the other side of a money move — what "keep" leaves alone.
   const others = [...new Set([...moneyIn.from, ...moneyOut.to])];
 
-  const run = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      await deleteInvestment(summary.id, mode);
-      innerRef.current?.dismiss();
-      onDeleted();
-    }
-    catch (err) {
-      haptics.error();
-      setError(err instanceof Error ? err.message : "Couldn't delete it. Try again.");
-    }
-    finally {
-      setBusy(false);
-    }
+  const run = () => {
+    innerRef.current?.dismiss();
+    deleteWithUndo({
+      ...deleteTarget.investment(summary.id, mode),
+      label: summary.name,
+      message: deletedMessage(summary.name, [[moneyIn.count, "payment", "payments"], [summary.valueUpdates, "value update", "value updates"]]),
+      reload: reloadAfterInvestmentDelete,
+    });
+    onDeleted();
   };
 
   const goes: string[] = [];
@@ -95,7 +86,17 @@ const DeleteInvestmentSheet = forwardRef<BottomSheetModal, Props>(({ summary, on
   if (summary.sipBills.length) goes.push(`the SIP bill${summary.sipBills.length === 1 ? "" : "s"} ${names(summary.sipBills)}`);
 
   return (
-    <AppSheet ref={innerRef} scrollable onDismiss={() => { setError(null); setMode("keep"); }}>
+    <AppSheet
+      ref={innerRef}
+      scrollable
+      onDismiss={() => setMode("keep")}
+      footer={
+        <View style={styles.actions}>
+          <Button label={gate.label || "Delete"} accessibilityLabel={`Delete ${summary.name}`} hint={gate.hint} icon="delete" variant="danger" disabled={!gate.allowed} onPress={run} />
+          <Button label="Cancel" variant="ghost" onPress={() => innerRef.current?.dismiss()} />
+        </View>
+      }
+    >
       <View style={styles.header}>
         <Icon name="delete" size={22} container="square" containerSize={48} containerRadius={16} gradient="red" />
         <View style={styles.headerText}>
@@ -129,12 +130,6 @@ const DeleteInvestmentSheet = forwardRef<BottomSheetModal, Props>(({ summary, on
         </View>
       )}
 
-      {error && <AppText size="sm" color="danger">{error}</AppText>}
-
-      <View style={styles.actions}>
-        <HoldButton label="Hold to delete" accessibilityLabel={`Delete ${summary.name}`} hint={gate.hint} holdingLabel="Keep holding to delete…" icon="delete" loading={busy} disabled={!gate.allowed} onComplete={run} />
-        <Button label="Cancel" variant="ghost" disabled={busy} onPress={() => innerRef.current?.dismiss()} />
-      </View>
     </AppSheet>
   );
 });

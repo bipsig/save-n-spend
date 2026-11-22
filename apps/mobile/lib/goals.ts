@@ -1,5 +1,5 @@
 import type { IGoal } from "@save-n-spend/types";
-import { del, get, patch, type RequestOptions } from "@/lib/api";
+import { get, patch } from "@/lib/api";
 import { useApiQuery } from "@/lib/query/useApiQuery";
 import { percentOf } from "@/lib/format/pct";
 
@@ -19,10 +19,6 @@ export type GoalPatch = {
 };
 
 export const updateGoal = (id: string, body: GoalPatch) => patch<IGoal>(`/goals/${id}`, body);
-
-// Contributions are records of money that moved, so deleting the goal leaves them —
-// only the target and the progress bar built on it go away.
-export const deleteGoal = (id: string, opts?: RequestOptions) => del<null>(`/goals/${id}`, opts);
 
 // The edit form is a route, so it can be reached without the list that was on screen.
 // There is no GET /goals/:id, and the list is small enough that filtering it here beats

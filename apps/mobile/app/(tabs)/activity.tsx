@@ -30,7 +30,7 @@ import { RANGES, rangeBounds, rangeLabel, rangeNavLabel, isRangeKey, type RangeK
 import { dayHeaderLabel, monthHeaderLabel } from "@/lib/activityHeaders";
 import { dayKey, monthKeyOf, useAppZone } from "@/lib/zone";
 import { useOutbox } from "@/store/outbox";
-import { usePendingDeletes } from "@/store/pendingDeletes";
+import { useVisible } from "@/lib/undo";
 import { colors, radius, spacing } from "@/theme";
 import { signTone } from "@/lib/signTone";
 import { screenView } from "@/lib/screenStates";
@@ -272,15 +272,14 @@ const ActivityScreen = () => {
   // grace window elapses undisturbed (see store/pendingDeletes.ts). `syncedClientIds`
   // above deliberately still reads the unfiltered `feed.items` — outbox dedup and delete
   // state are unrelated, so a deleted-but-not-yet-committed row still counts as "synced".
-  const pendingDeleteKeys = usePendingDeletes((s) => s.keys);
+  const visibleFeedItems = useVisible("transaction", feed.items);
   const mergedTransactions = useMemo(() => {
-    const visibleFeedItems = feed.items.filter((t) => !pendingDeleteKeys.has(`transaction:${t._id}`));
     return pendingTransactions.length === 0
       ? visibleFeedItems
       : [...pendingTransactions, ...visibleFeedItems].sort(
         (a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime()
       );
-  }, [feed.items, pendingTransactions, pendingDeleteKeys]);
+  }, [visibleFeedItems, pendingTransactions]);
 
   // The list is the screen: its rows (live, saved, or kept across a search) decide the state.
   // The totals card shows a dash until its own answer lands, and a failed totals refresh
