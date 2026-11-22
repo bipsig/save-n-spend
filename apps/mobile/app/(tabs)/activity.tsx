@@ -22,7 +22,7 @@ import Fab from "@/components/ui/Fab";
 import EmptyState from "@/components/states/EmptyState";
 import ErrorState from "@/components/states/ErrorState";
 import SkeletonState from "@/components/states/SkeletonState";
-import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { usePrivacyMask } from "@/lib/money";
 import { screenTitles } from "@/data/menu";
 import { useCategories } from "@/lib/categories";
 import { useTransactionFeed, useTransactionSummary } from "@/lib/transactions";
@@ -34,6 +34,8 @@ import { useVisible } from "@/lib/undo";
 import { colors, radius, spacing } from "@/theme";
 import { signTone } from "@/lib/signTone";
 import { screenView } from "@/lib/screenStates";
+import Money from "@/components/ui/Money";
+import type { ColorToken } from "@/theme";
 
 // A flat feed row is either a transaction or a group header injected between days
 // (and a heavier month break when the list spans months).
@@ -74,7 +76,10 @@ const SummaryCard = ({
    *  doesn't describe — and it holds the space the number will occupy, so nothing reflows. */
   blank?: boolean;
 }) => {
-  const money = (paise: number) => (blank ? "—" : formatMoney(paise));
+  const figure = (paise: number, opts: { color?: ColorToken; align?: "left" | "right" } = {}) =>
+    blank
+      ? <AppText size="lg" weight="black">—</AppText>
+      : <Money value={paise} size="lg" weight="black" color={opts.color} align={opts.align} />;
 
   return (
     <GradientCard gradient="brand" style={styles.summary}>
@@ -85,18 +90,14 @@ const SummaryCard = ({
           <AppText color="inkDim" size="xs">
             Total income
           </AppText>
-          <AppText size="lg" weight="black">
-            {money(income)}
-          </AppText>
+          {figure(income)}
         </View>
 
         <View style={[styles.summaryCol, styles.summaryColRight]}>
           <AppText color="inkDim" size="xs">
             Total expenses
           </AppText>
-          <AppText size="lg" weight="black">
-            {money(expense)}
-          </AppText>
+          {figure(expense, { align: "right" })}
         </View>
       </View>
 
@@ -106,9 +107,7 @@ const SummaryCard = ({
         <AppText color="inkDim" size="xs">
           Net savings
         </AppText>
-        <AppText size="lg" weight="black" color={blank ? "ink" : signTone(savings, { neutral: "ink" })}>
-          {money(savings)}
-        </AppText>
+        {figure(savings, { color: signTone(savings, { neutral: "ink" }), align: "right" })}
       </View>
 
     </GradientCard>

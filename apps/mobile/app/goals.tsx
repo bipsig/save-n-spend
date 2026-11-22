@@ -23,6 +23,7 @@ import type { HeaderAction } from "@/lib/screenHeader";
 import { useGoals, goalsSummary, sortGoals } from "@/lib/goals";
 import { deleteTarget, deleteWithUndo, useVisible } from "@/lib/undo";
 import { radius, spacing } from "@/theme";
+import Money from "@/components/ui/Money";
 
 const GoalsScreen = () => {
   usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
@@ -90,9 +91,7 @@ const GoalsScreen = () => {
           <GradientCard style={styles.hero}>
             <Caps color="onGradientDim">{`Total saved · ${count(summary.count, "goal")}`}</Caps>
             <View style={styles.heroRow}>
-              <AppText size="2xl" weight="black" color="surface">
-                {formatMoney(summary.totalSaved)}
-              </AppText>
+              <Money value={summary.totalSaved} size="2xl" weight="black" color="surface" />
               <AppText size="lg" weight="black" color="surface">
                 {formatPct(summary.percent)}
               </AppText>

@@ -19,7 +19,7 @@ import RecurringSuggestionsSheet from "@/components/sheets/RecurringSuggestionsS
 import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
 import ConfirmSheet from "@/components/sheets/ConfirmSheet";
-import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { usePrivacyMask } from "@/lib/money";
 import { count } from "@/lib/format/count";
 import { screenTitles } from "@/data/menu";
 import type { HeaderAction } from "@/lib/screenHeader";
@@ -31,6 +31,7 @@ import { toast } from "@/store/toast";
 import { deleteTarget, deleteWithUndo, useVisible } from "@/lib/undo";
 import { holderFor } from "@/lib/idempotency";
 import { radius, spacing } from "@/theme";
+import Money from "@/components/ui/Money";
 
 type SectionProps = {
   label: string;
@@ -219,9 +220,7 @@ const BillsScreen = () => {
         <>
           <Card style={styles.strip}>
             <Caps>Outstanding this month</Caps>
-            <AppText size="2xl" weight="black">
-              {formatMoney(total)}
-            </AppText>
+            <Money value={total} size="2xl" weight="black" />
             <View style={styles.counts}>
               <Badge label={`${pending} pending`} tone="warning" size="sm" />
               {overdue > 0 && <Badge label={`${overdue} overdue`} tone="danger" size="sm" />}

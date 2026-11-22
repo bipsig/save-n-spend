@@ -30,6 +30,7 @@ import { useAppZone } from "@/lib/zone";
 import { chartValueColor, colors, radius, spacing } from "@/theme";
 import { signTone } from "@/lib/signTone";
 import { mergeScreenStates } from "@/lib/screenStates";
+import Money from "@/components/ui/Money";
 
 const SEGMENTS: { key: InsightsPeriod; label: string }[] = [
   { key: "day", label: "Day" },
@@ -127,9 +128,7 @@ const CategoryInsightsScreen = () => {
         <GradientCard gradient="brand" style={styles.stack}>
           <Caps>Spent here</Caps>
           <View style={styles.heroRow}>
-            <AppText size="xl" weight="black">
-              {formatMoney(data.total)}
-            </AppText>
+            <Money value={data.total} size="xl" weight="black" />
             {data.previousTotal > 0 && (
               <AppText size="sm" weight="bold" color={signTone(delta, { goodWhen: "down" })}>
                 {formatPct(delta, { kind: "change" })}

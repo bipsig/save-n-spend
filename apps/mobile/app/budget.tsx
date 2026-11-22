@@ -30,6 +30,7 @@ import { rangeNavLabel } from "@/lib/dateRange";
 import { useCategories } from "@/lib/categories";
 import { useVisible } from "@/lib/undo";
 import { radius, spacing } from "@/theme";
+import Money from "@/components/ui/Money";
 
 type Totals = ReturnType<typeof budgetTotals>;
 
@@ -61,15 +62,11 @@ const MonthlyBudgetCard = ({ totals }: { totals: Totals }) => {
       <View style={styles.heroTop}>
         <View>
           <Caps color="onGradientDim">Monthly budget</Caps>
-          <AppText size="2xl" weight="black" color="surface">
-            {formatMoney(totals.total)}
-          </AppText>
+          <Money value={totals.total} size="2xl" weight="black" color="surface" />
         </View>
         <View style={styles.spentCol}>
           <Caps color="onGradientDim">Spent</Caps>
-          <AppText size="lg" weight="black" color="surface">
-            {formatMoney(totals.spent)}
-          </AppText>
+          <Money value={totals.spent} size="lg" weight="black" color="surface" align="right" />
         </View>
       </View>
 

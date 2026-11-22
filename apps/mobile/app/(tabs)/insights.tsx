@@ -55,6 +55,7 @@ import { categoryShares, insightsSpend, isTrips, OTHERS_ID, UNCATEGORISED_ID } f
 import { useAppZone } from "@/lib/zone";
 import { colors, radius, spacing, incomeColor, expenseColor, chartValueColor } from "@/theme";
 import { signTone, toneSoft } from "@/lib/signTone";
+import Money from "@/components/ui/Money";
 
 const SEGMENTS: { key: InsightsPeriod; label: string }[] = [
   { key: "day", label: "Day" },
@@ -244,9 +245,7 @@ const InsightsScreen = () => {
         <GradientCard gradient="brand" style={styles.stack}>
           <Caps>Spending</Caps>
           <View style={styles.heroRow}>
-            <AppText size="xl" weight="black">
-              {formatMoney(spend.current)}
-            </AppText>
+            <Money value={spend.current} size="xl" weight="black" />
             <DeltaPill value={spend.deltaPct} goodWhen="down" vs={vsLabel} />
           </View>
           <AreaChart
@@ -263,12 +262,8 @@ const InsightsScreen = () => {
         <Card style={styles.stack}>
           <Caps>{`Pace vs ${windowLabel(period, offset - 1)}`}</Caps>
           <View style={styles.heroRow}>
-            <AppText size="lg" weight="black">
-              {formatMoney(pace.atCurrentEnd.current)}
-            </AppText>
-            <AppText size="sm" weight="semibold" color={signTone(paceDelta, { goodWhen: "down" })}>
-              {formatMoney(paceDelta, { sign: "always" })}
-            </AppText>
+            <Money value={pace.atCurrentEnd.current} size="lg" weight="black" />
+            <Money value={paceDelta} sign="always" size="sm" weight="semibold" color={signTone(paceDelta, { goodWhen: "down" })} />
           </View>
           {/* Says what the figure above is measured against, because "so far" is the whole
               point: the previous line runs to the end of its period, but the comparison is
