@@ -15,7 +15,7 @@ import { wholeDays } from "./highlightSnapshotMath";
 import { addDaysInZone, partsInZone } from "../utils/timezone";
 import { formatAmount, formatPercent } from "../utils/money";
 import type { ReviewPayload } from "@save-n-spend/types";
-import { everydayMatch, rowsFor, type TripRule } from "./tripEntries";
+import { everydayMatch, rowsFor, TRIPS_CATEGORY, type TripRule } from "./tripEntries";
 
 const FLOW_TYPES = ["income", "expense"];
 
@@ -133,6 +133,8 @@ export const buildReview = async (
         total: c.total,
         pct: totalCategorySpend > 0 ? Math.round((c.total / totalCategorySpend) * 100) : 0,
         ...(c.share !== undefined ? { share: c.share } : {}),
+        // Trips expands to the trips closed in the period (2.8.6 only).
+        ...(rule?.entries && c.categoryId === TRIPS_CATEGORY && c.children ? { children: c.children } : {}),
     }));
 
     const biggestExpense = biggestExpenseRows[0]
