@@ -88,8 +88,16 @@ const TripEntryRow = ({ transaction }: { transaction: ITransaction }) => {
           <AppText size="sm" color="inkDim">Trips · closed · your share</AppText>
           <View style={styles.metaRow}>
             <MetaItem icon="date" label={day} />
-            {inside && <MetaItem icon="search" label={inside} shrink />}
           </View>
+          {/* Its own line, free to wrap: beside the date and the amount column it cut to "Matche…". */}
+          {inside && (
+            <View style={styles.metaRow}>
+              <View style={[styles.metaItem, styles.metaItemShrink]}>
+                <Icon name="search" size={14} color="inkDim" />
+                <AppText size="xs" color="inkDim" style={styles.metaTextShrink}>{inside}</AppText>
+              </View>
+            </View>
+          )}
         </View>
         <Money value={-transaction.amount} sign="always" size="md" weight="black" color="danger" />
       </Card>
