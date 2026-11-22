@@ -45,7 +45,7 @@ import { useTitleSuggestionStore } from "@/store/titleSuggestions";
 import { useTitleMatches } from "@/lib/titleSuggestions";
 import { useOutbox } from "@/store/outbox";
 import type { ITransaction } from "@save-n-spend/types";
-import { editWithUndo, previousValues } from "@/lib/undo";
+import { editUndoAllowed, editWithUndo, previousValues } from "@/lib/undo";
 
 const schema = z.object({
   title: z.string(),
@@ -579,9 +579,7 @@ const AddTransaction = () => {
       // The screen is already gone by the time this shows, so it is the only receipt —
       // hence naming the amount and direction rather than just "Saved".
       const amount = formatMoney(parseMoney(data.amount));
-      // No Undo on a split (the expense or an owed transfer): rescaling the shares back can
-      // land a paisa off.
-      if (isEdit && edited && editOriginal && !editOriginal.splitGroupId) {
+      if (isEdit && edited && editOriginal && editUndoAllowed.transaction(editOriginal)) {
         editWithUndo({
           path: edited.path,
           previous: previousValues(editOriginal, edited.sent, { note: "", location: "" }),

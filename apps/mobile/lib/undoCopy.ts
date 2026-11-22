@@ -62,6 +62,15 @@ export const previousValues = (
   return out;
 };
 
+/** Which edits get "Saved · Undo" (docs/mobile-patterns.md, "Edit undo"). */
+export const editUndoAllowed = {
+  /** Not a split expense or one of its owed transfers: rescaling back can land a paisa off. */
+  transaction: (row: { splitGroupId?: string | null }) => !row.splitGroupId,
+  /** Only a save that sent the account PATCH alone: undoing a balance correction or a
+   *  re-base would add a second adjustment. */
+  account: (save: { correctedBalance: boolean; rebased: boolean }) => !save.correctedBalance && !save.rebased,
+};
+
 export type UndoOutcome = "undone" | "changed" | "offline" | "failed";
 
 /** What an undo's answer means: null is success. */

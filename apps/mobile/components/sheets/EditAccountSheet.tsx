@@ -27,7 +27,7 @@ import { toast } from "@/store/toast";
 import type { ColorToken } from "@/theme";
 import { spacing } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
-import { editWithUndo, previousValues } from "@/lib/undo";
+import { editUndoAllowed, editWithUndo, previousValues } from "@/lib/undo";
 import { useAccountStore } from "@/store/accounts";
 
 type Props = {
@@ -213,6 +213,8 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
       // Blank kind on an investment falls back to "Other" so the hub always has a group.
       const kind = type === "investment" ? (investmentKind.trim() || "Other") : undefined;
       let undo: { saved: object; sent: Record<string, unknown> } | null = null;
+      let rebased = false;
+      let correctedBalance = false;
       if (editing) {
         const sent = { name: trimmed, type, icon, color, investmentKind: kind };
         undo = { saved: await updateAccount(account._id, sent), sent };
@@ -225,7 +227,7 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
           }
           if (Object.keys(basis).length > 0) {
             await updateInvestmentBasis(account._id, basis);
-            undo = null;
+            rebased = true;
           }
         }
         // A second call, skipped when the field was blank, so renaming an account never
@@ -239,8 +241,7 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
             idempotencyKey: idem.keyFor("PATCH", path, noteText ? { balance: target, note: noteText } : { balance: target }),
           });
           idem.reset();
-          // Undoing would leave the correction's adjustment and add another.
-          undo = null;
+          correctedBalance = true;
         }
       }
       else {
@@ -263,7 +264,7 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
       // Names the correction when there was one — the bigger of the two things that just
       // happened, which a bare "updated" would hide.
       if (editing && delta !== 0) toast.success(`${trimmed} balance updated`);
-      else if (editing && undo) {
+      else if (editing && undo && editUndoAllowed.account({ correctedBalance, rebased })) {
         editWithUndo({
           path: `/accounts/${account._id}`,
           previous: previousValues(account, undo.sent),

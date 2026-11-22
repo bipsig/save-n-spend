@@ -18,7 +18,7 @@ import { pendingDeletes, usePendingDeletes } from "@/store/pendingDeletes";
 import { toast, type ToastTone } from "@/store/toast";
 import { UNDO_COPY, undoOutcome, type DeleteTarget } from "@/lib/undoCopy";
 
-export { UNDO_COPY, deleteTarget, deletedMessage, previousValues, undoOutcome } from "@/lib/undoCopy";
+export { UNDO_COPY, deleteTarget, deletedMessage, editUndoAllowed, previousValues, undoOutcome } from "@/lib/undoCopy";
 
 export type DeleteWithUndo = DeleteTarget & {
   /** Named in "Couldn't delete <label> — it's back". */
