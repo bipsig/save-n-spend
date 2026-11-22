@@ -11,6 +11,8 @@ import { onlineGate, useOnlineGate } from "@/lib/onlineGate";
 import type { IconName } from "@/lib/icons";
 import { spacing } from "@/theme";
 import { errorText } from "@/lib/apiError";
+import { useFormError } from "@/lib/useFormError";
+import FormError from "@/components/ui/FormError";
 
 type Props = {
   icon: IconName;
@@ -46,16 +48,16 @@ const ConfirmSheet = forwardRef<BottomSheetModal, Props>((
   const gate = needsConnection ? online : onlineGate(false, confirmLabel);
 
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { error, fail, clear: clearError } = useFormError();
 
   const reset = () => {
     setBusy(false);
-    setError(null);
+    clearError();
   };
 
   const run = async () => {
     setBusy(true);
-    setError(null);
+    clearError();
     try {
       await onConfirm();
       dismiss();
@@ -64,8 +66,7 @@ const ConfirmSheet = forwardRef<BottomSheetModal, Props>((
       // The one failure that must not be missed: the user just agreed to something
       // destructive, so if it didn't happen they need to know before they walk away
       // believing it did. The buzz arrives before the sentence can be read.
-      haptics.error();
-      setError(errorText(err, "That didn't work. Try again."));
+      fail(errorText(err, "That didn't work. Try again."));
     }
     finally {
       setBusy(false);
@@ -100,11 +101,7 @@ const ConfirmSheet = forwardRef<BottomSheetModal, Props>((
         </AppText>
       )}
 
-      {error && (
-        <AppText size="sm" color="danger" style={styles.hint}>
-          {error}
-        </AppText>
-      )}
+      <FormError message={error} />
 
       <View style={styles.actions}>
         {hold ? (

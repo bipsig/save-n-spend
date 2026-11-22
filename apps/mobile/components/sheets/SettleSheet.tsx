@@ -19,6 +19,8 @@ import { toast } from "@/store/toast";
 import { spacing } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { errorText } from "@/lib/apiError";
+import { useFormError } from "@/lib/useFormError";
+import FormError from "@/components/ui/FormError";
 
 type Props = {
   tripId: string;
@@ -44,7 +46,7 @@ const SettleSheet = forwardRef<BottomSheetModal, Props>(({ tripId, member, onSav
   const [amount, setAmount] = useState("");
   const [accountId, setAccountId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { error, fail, clear: clearError } = useFormError();
 
   const theyOwe = (member?.balance ?? 0) > 0;
   const owed = Math.abs(member?.balance ?? 0);
@@ -52,7 +54,7 @@ const SettleSheet = forwardRef<BottomSheetModal, Props>(({ tripId, member, onSav
   const resetForm = useCallback(() => {
     setAmount(owed > 0 ? paiseToInput(owed) : "");
     setAccountId(defaultAccount?._id ?? null);
-    setError(null);
+    clearError();
   }, [owed, defaultAccount?._id]);
   useEffect(() => { resetForm(); }, [resetForm, member?.account]);
 
@@ -60,10 +62,10 @@ const SettleSheet = forwardRef<BottomSheetModal, Props>(({ tripId, member, onSav
   const value = parseMoney(amount);
 
   const save = async () => {
-    if (!member || !(value > 0)) { haptics.error(); setError("Enter the amount."); return; }
-    if (!account) { haptics.error(); setError("Pick the account."); return; }
+    if (!member || !(value > 0)) { fail("Enter the amount."); return; }
+    if (!account) { fail("Pick the account."); return; }
     setBusy(true);
-    setError(null);
+    clearError();
     try {
       const body = { person: member.account, account: account._id, amount: value, direction: theyOwe ? "received" as const : "paid" as const };
       const idem = holderFor(`trip:${tripId}:settle:${member.account}`);
@@ -74,8 +76,7 @@ const SettleSheet = forwardRef<BottomSheetModal, Props>(({ tripId, member, onSav
       toast.success(theyOwe ? `${member.name} paid you ${formatMoney(value)}` : `You paid ${member.name} ${formatMoney(value)}`);
     }
     catch (err) {
-      haptics.error();
-      setError(errorText(err, "Couldn't record it"));
+      fail(errorText(err, "Couldn't record it"));
     }
     finally {
       setBusy(false);
@@ -110,7 +111,7 @@ const SettleSheet = forwardRef<BottomSheetModal, Props>(({ tripId, member, onSav
               <AppText size="xs" color="inkDim">{formatMoney(owed - value)} will still be open.</AppText>
             )}
             <AppText size="xs" color="inkDim">Settling up isn't spending or income — it only moves money between you.</AppText>
-            {error && <AppText size="sm" color="danger">{error}</AppText>}
+            <FormError message={error} />
             <Button label={theyOwe ? "Record payment received" : "Record payment"} icon={gate.icon} hint={gate.hint} loading={busy} disabled={!gate.allowed} onPress={save} />
           </>
         )}

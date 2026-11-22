@@ -7,6 +7,8 @@ import Icon from "@/components/ui/Icon";
 import { haptics } from "@/lib/haptics";
 import { colors, spacing } from "@/theme";
 import { errorText } from "@/lib/apiError";
+import { useFormError } from "@/lib/useFormError";
+import FormError from "@/components/ui/FormError";
 
 type Props = {
   value: number;
@@ -25,24 +27,23 @@ const DayOfMonthSheet = forwardRef<BottomSheetModal, Props>(({ value, onPick }, 
   const dismiss = () => innerRef.current?.dismiss();
 
   const [pending, setPending] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { error, fail, clear: clearError } = useFormError();
 
   const reset = () => {
     setPending(null);
-    setError(null);
+    clearError();
   };
 
   const choose = async (day: number) => {
     if (pending !== null) return;
     setPending(day);
-    setError(null);
+    clearError();
     try {
       await onPick(day);
       dismiss();
     }
     catch (err) {
-      haptics.error();
-      setError(errorText(err, "Couldn't save that. Try again."));
+      fail(errorText(err, "Couldn't save that. Try again."));
       setPending(null);
     }
   };
@@ -78,7 +79,7 @@ const DayOfMonthSheet = forwardRef<BottomSheetModal, Props>(({ value, onPick }, 
         })}
       </View>
 
-      {error && <AppText size="sm" color="danger" style={styles.error}>{error}</AppText>}
+      <FormError message={error} />
     </AppSheet>
   );
 });

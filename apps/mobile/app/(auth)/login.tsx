@@ -17,6 +17,7 @@ import { gradients, spacing } from "@/theme";
 import { useSession } from "@/store/session";
 import { get, post } from "@/lib/api";
 import type { IUser } from "@save-n-spend/types";
+import FormError from "@/components/ui/FormError";
 
 const schema = z.object({
   email: z.email("Enter a valid email"),
@@ -121,9 +122,7 @@ const LoginForm = () => {
 
       {authError && (
         <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)}>
-          <AppText size="xs" color="danger">
-            {authError}
-          </AppText>
+          <FormError message={authError} />
         </Animated.View>
       )}
 

@@ -25,6 +25,8 @@ import { toast } from "@/store/toast";
 import { colors, spacing } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { errorText } from "@/lib/apiError";
+import { useFormError } from "@/lib/useFormError";
+import FormError from "@/components/ui/FormError";
 
 type Props = {
   /** The trip being edited, or null for a new one. */
@@ -56,7 +58,7 @@ const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDelete
   const [budget, setBudget] = useState("");
   const [newPerson, setNewPerson] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { error, fail, clear: clearError } = useFormError();
 
   // Back to the trip it was opened for (or blank) — on open and on dismiss, so a second new
   // trip never shows the first one's entries.
@@ -69,7 +71,7 @@ const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDelete
     setMembers(trip?.members ?? []);
     setBudget(trip?.budget ? paiseToInput(trip.budget) : "");
     setNewPerson("");
-    setError(null);
+    clearError();
   }, [trip]);
   useEffect(() => { resetForm(); }, [resetForm]);
 
@@ -92,24 +94,22 @@ const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDelete
       setNewPerson("");
     }
     catch (err) {
-      setError(errorText(err, "Couldn't add them"));
+      fail(errorText(err, "Couldn't add them"));
     }
   };
 
   const save = async () => {
     if (name.trim().length === 0) {
-      haptics.error();
-      setError("Give the trip a name.");
+      fail("Give the trip a name.");
       return;
     }
     if (end < start) {
-      haptics.error();
-      setError("The trip can't end before it starts.");
+      fail("The trip can't end before it starts.");
       return;
     }
     const budgetPaise = budget.trim() ? parseMoney(budget) : null;
     setBusy(true);
-    setError(null);
+    clearError();
     try {
       const draft = {
         name: name.trim(), emoji, color,
@@ -134,8 +134,7 @@ const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDelete
       else toast.success(`${draft.name} started`);
     }
     catch (err) {
-      haptics.error();
-      setError(errorText(err, "Couldn't save the trip"));
+      fail(errorText(err, "Couldn't save the trip"));
     }
     finally {
       setBusy(false);
@@ -154,7 +153,7 @@ const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDelete
         footer={
           // Above the button, since the body is long enough that the end of it is off-screen.
           <View style={styles.footer}>
-            {error && <AppText size="sm" color="danger">{error}</AppText>}
+            <FormError message={error} />
             <Button label={trip ? "Save changes" : "Start trip"} icon={gate.icon} hint={gate.hint} loading={busy} disabled={!gate.allowed} onPress={save} />
           </View>
         }
@@ -163,7 +162,7 @@ const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDelete
           <AppText size="lg" weight="black" numberOfLines={1}>{emoji} {name.trim() || (trip ? "Edit trip" : "New trip")}</AppText>
         </LinearGradient>
 
-        <Input label="Name" placeholder="e.g. Kerala" value={name} onChangeText={(v) => { setName(v); setError(null); }} autoCapitalize="words" InputComponent={BottomSheetTextInput} />
+        <Input label="Name" placeholder="e.g. Kerala" value={name} onChangeText={(v) => { setName(v); clearError(); }} autoCapitalize="words" InputComponent={BottomSheetTextInput} />
 
         <View style={styles.field}>
           <Caps>Look</Caps>

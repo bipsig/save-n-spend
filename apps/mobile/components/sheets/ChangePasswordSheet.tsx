@@ -18,6 +18,7 @@ import { toast } from "@/store/toast";
 import { spacing } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { errorText } from "@/lib/apiError";
+import FormError from "@/components/ui/FormError";
 
 const schema = z
   .object({
@@ -176,9 +177,7 @@ const ChangePasswordSheet = forwardRef<BottomSheetModal, { onChanged?: () => voi
 
       {error && (
         <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)}>
-          <AppText size="sm" color="danger">
-            {error}
-          </AppText>
+          <FormError message={error} />
         </Animated.View>
       )}
     </AppSheet>

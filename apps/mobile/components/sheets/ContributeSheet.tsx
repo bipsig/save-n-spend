@@ -26,6 +26,8 @@ import type { IconName } from "@/lib/icons";
 import { spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
+import { useFormError } from "@/lib/useFormError";
+import FormError from "@/components/ui/FormError";
 
 type Props = {
   goal: IGoal | null;
@@ -48,7 +50,7 @@ const ContributeSheet = forwardRef<BottomSheetModal, Props>(({ goal, onChanged }
   const dismiss = () => innerRef.current?.dismiss();
 
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { error, fail, clear: clearError } = useFormError();
 
   const remaining = goal ? Math.max(goal.target - goal.saved, 0) : 0;
   const color = (goal?.color ?? "accent") as ColorToken;
@@ -93,7 +95,7 @@ const ContributeSheet = forwardRef<BottomSheetModal, Props>(({ goal, onChanged }
   const onSubmit = async (data: FormValues) => {
     if (!goal) return;
     setSubmitting(true);
-    setError(null);
+    clearError();
     try {
       const added = parseMoney(data.amount);
       const path = `/goals/${goal._id}/contribute`;
@@ -117,11 +119,10 @@ const ContributeSheet = forwardRef<BottomSheetModal, Props>(({ goal, onChanged }
     }
     catch (err) {
       // Kept in the sheet rather than toasted: the amount is still in the field, and
-      // the reason belongs beside it. The buzz is what makes it noticeable.
-      haptics.error();
+      // the reason belongs beside it.
       const { byField, rest } = splitIssues(err, { amount: "amount" } as const, "Couldn't add the contribution");
       if (byField.amount) setFieldError("amount", { message: byField.amount });
-      setError(rest);
+      fail(rest);
     }
     finally {
       setSubmitting(false);
@@ -129,7 +130,7 @@ const ContributeSheet = forwardRef<BottomSheetModal, Props>(({ goal, onChanged }
   };
 
   return (
-    <AppSheet ref={innerRef} onDismiss={() => { reset(); setError(null); }}>
+    <AppSheet ref={innerRef} onDismiss={() => { reset(); clearError(); }}>
       {goal && (
         <>
           {/* Spec .centerid — the card's identity repeated so context never drops */}
@@ -207,11 +208,7 @@ const ContributeSheet = forwardRef<BottomSheetModal, Props>(({ goal, onChanged }
             )}
           />
 
-          {error && (
-            <AppText size="xs" color="danger">
-              {error}
-            </AppText>
-          )}
+          <FormError message={error} />
 
           {/* Spec: live CTA — the amount AND the resulting % */}
           <Button

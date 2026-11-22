@@ -29,6 +29,8 @@ import { spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { editWithUndo } from "@/lib/undo";
+import { useFormError } from "@/lib/useFormError";
+import FormError from "@/components/ui/FormError";
 
 type Props = {
   month: string;
@@ -67,7 +69,7 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
   const spent = summary?.spent ?? 0;
 
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { error, fail, clear: clearError } = useFormError();
 
   const {
     control,
@@ -86,7 +88,7 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
   // Also on dismiss: reopening on the same budget (same props) must not show a cancelled edit.
   const resetForm = () => {
     reset({ limit: summary ? paiseToInput(summary.budget.limit) : "" });
-    setError(null);
+    clearError();
   };
 
   useEffect(() => {
@@ -106,7 +108,7 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
 
   const onSave = async (data: FormValues) => {
     setSaving(true);
-    setError(null);
+    clearError();
     let saved: { updatedAt?: string } | null = null;
     try {
       if (summary) {
@@ -135,10 +137,9 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
     catch (err) {
       // Kept in the sheet: the limit is still in the field beside the meter that
       // explains it, and a banner would expire before either is re-read.
-      haptics.error();
       const { byField, rest } = splitIssues(err, { limit: "limit" } as const, "Couldn't save the budget");
       if (byField.limit) setFieldError("limit", { message: byField.limit });
-      setError(rest);
+      fail(rest);
     }
     finally {
       setSaving(false);
@@ -259,15 +260,11 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
       </View>
 
       {errors.limit && (
-        <AppText size="xs" color="danger">
+        <AppText size="xs" weight="bold" color="danger">
           {errors.limit.message}
         </AppText>
       )}
-      {error && (
-        <AppText size="xs" color="danger">
-          {error}
-        </AppText>
-      )}
+      <FormError message={error} />
 
       <Button label={saveGate.label} icon={saveGate.icon} hint={saveGate.hint} onPress={handleSubmit(onSave)} loading={saving} disabled={!saveGate.allowed || !isValid || needsCategory} />
       {isEdit && (

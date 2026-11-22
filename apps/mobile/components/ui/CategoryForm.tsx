@@ -11,6 +11,7 @@ import SegmentedControl from "@/components/ui/SegmentedControl";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { spacing } from "@/theme";
+import FormError from "@/components/ui/FormError";
 
 export type CategoryFormValue = {
   name: string;
@@ -130,11 +131,7 @@ const CategoryForm = ({
         <ColorPicker value={value.color} onChange={(color) => onChange({ color })} />
       </View>
 
-      {error && (
-        <AppText size="sm" color="danger">
-          {error}
-        </AppText>
-      )}
+      <FormError message={error} />
     </>
   );
 };

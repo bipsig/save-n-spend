@@ -35,6 +35,7 @@ import type { IconName } from "@/lib/icons";
 import { radius, spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
 import { editWithUndo, previousValues } from "@/lib/undo";
+import FormError from "@/components/ui/FormError";
 
 const schema = z.object({
   name: z.string().min(NAME_MIN, "Name is required").max(NAME_MAX, `Keep it to ${NAME_MAX} characters`),
@@ -330,7 +331,7 @@ const AddGoal = () => {
             </AppText>
           )}
           {errors.amount && amountRaw !== "" && (
-            <AppText size="xs" color="danger">
+            <AppText size="xs" weight="bold" color="danger">
               {errors.amount.message}
             </AppText>
           )}
@@ -421,9 +422,7 @@ const AddGoal = () => {
         {/* Fixed bottom — numpad + create, always visible with the target above */}
         {submitError && (
           <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)}>
-            <AppText size="xs" color="danger">
-              {submitError}
-            </AppText>
+            <FormError message={submitError} />
           </Animated.View>
         )}
 

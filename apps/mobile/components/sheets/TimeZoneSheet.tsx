@@ -12,6 +12,8 @@ import { searchZones, shortlistZones } from "@/lib/timezones";
 import { deviceZone } from "@/lib/zone";
 import { colors, radius, spacing } from "@/theme";
 import { errorText } from "@/lib/apiError";
+import { useFormError } from "@/lib/useFormError";
+import FormError from "@/components/ui/FormError";
 
 // Fixed height, like the category picker: the list is long, and a sheet that grows to
 // fit it would open at a different height depending on what was typed last.
@@ -37,7 +39,7 @@ const TimeZoneSheet = forwardRef<BottomSheetModal, Props>(({ value, onPick }, re
 
   const [search, setSearch] = useState("");
   const [pending, setPending] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { error, fail, clear: clearError } = useFormError();
 
   const device = deviceZone();
   const browsing = search.trim() === "";
@@ -48,7 +50,7 @@ const TimeZoneSheet = forwardRef<BottomSheetModal, Props>(({ value, onPick }, re
   const reset = () => {
     setSearch("");
     setPending(null);
-    setError(null);
+    clearError();
   };
 
   const choose = async (zone: string) => {
@@ -58,7 +60,7 @@ const TimeZoneSheet = forwardRef<BottomSheetModal, Props>(({ value, onPick }, re
       return;
     }
     setPending(zone);
-    setError(null);
+    clearError();
     try {
       await onPick(zone);
       dismiss();
@@ -66,8 +68,7 @@ const TimeZoneSheet = forwardRef<BottomSheetModal, Props>(({ value, onPick }, re
     catch (err) {
       // Kept in the sheet rather than toasted: the sheet stays open on failure and
       // the reason belongs beside the row that refused.
-      haptics.error();
-      setError(errorText(err, "Couldn't save that time zone. Try again."));
+      fail(errorText(err, "Couldn't save that time zone. Try again."));
       setPending(null);
     }
   };
@@ -164,11 +165,7 @@ const TimeZoneSheet = forwardRef<BottomSheetModal, Props>(({ value, onPick }, re
         )}
       </View>
 
-      {error && (
-        <AppText size="sm" color="danger" style={styles.error}>
-          {error}
-        </AppText>
-      )}
+      <FormError message={error} />
     </AppSheet>
   );
 });

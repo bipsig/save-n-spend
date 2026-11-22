@@ -28,6 +28,8 @@ import type { ColorToken } from "@/theme";
 import { colors, spacing } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { errorText } from "@/lib/apiError";
+import { useFormError } from "@/lib/useFormError";
+import FormError from "@/components/ui/FormError";
 
 type Props = {
   tripId: string;
@@ -72,7 +74,7 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
   const [mode, setMode] = useState<"equal" | "custom">("equal");
   const [custom, setCustom] = useState<Record<Who, string>>({});
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { error, fail, clear: clearError } = useFormError();
 
   const resetForm = useCallback(() => {
     if (expense) {
@@ -100,7 +102,7 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
       setMode("equal");
       setCustom({});
     }
-    setError(null);
+    clearError();
   }, [expense, defaultDate, defaultAccount?._id, everyone]);
   useEffect(() => { resetForm(); }, [resetForm]);
 
@@ -138,11 +140,11 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
   };
 
   const save = async () => {
-    if (!(cost > 0)) { haptics.error(); setError("Enter the amount."); return; }
-    if (!title.trim()) { haptics.error(); setError("Give it a name."); return; }
-    if (shares.length === 0) { haptics.error(); setError("Tick who it's split between."); return; }
-    if (assigned !== cost) { haptics.error(); setError(`The shares add up to ${formatMoney(assigned)} — they need to make ${formatMoney(cost)}.`); return; }
-    if (payer === ME && !fromAccount) { haptics.error(); setError("Pick the account you paid from."); return; }
+    if (!(cost > 0)) { fail("Enter the amount."); return; }
+    if (!title.trim()) { fail("Give it a name."); return; }
+    if (shares.length === 0) { fail("Tick who it's split between."); return; }
+    if (assigned !== cost) { fail(`The shares add up to ${formatMoney(assigned)} — they need to make ${formatMoney(cost)}.`); return; }
+    if (payer === ME && !fromAccount) { fail("Pick the account you paid from."); return; }
     const draft = {
       title: title.trim(),
       occurredAt: date.toISOString(),
@@ -153,7 +155,7 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
       shares: shares.map((s) => ({ account: s.who === ME ? null : s.who, amount: s.amount })),
     };
     setBusy(true);
-    setError(null);
+    clearError();
     try {
       const idem = holderFor(`trip:${tripId}:expense:${expense?._id ?? "new"}`);
       let saved: { updatedAt?: string } | null = null;
@@ -181,8 +183,7 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
       else toast.success(`${draft.title} added · your share ${formatMoney(myShare)}`);
     }
     catch (err) {
-      haptics.error();
-      setError(errorText(err, "Couldn't save it"));
+      fail(errorText(err, "Couldn't save it"));
     }
     finally {
       setBusy(false);
@@ -286,7 +287,7 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
         )}
         {effect && <AppText size="xs" color="inkDim" style={styles.center}>{effect}</AppText>}
 
-        {error && <AppText size="sm" color="danger">{error}</AppText>}
+        <FormError message={error} />
         {expense && <Button label="Delete expense" variant="dangerGhost" icon={gate.icon ?? "delete"} hint={gate.hint} disabled={!gate.allowed} onPress={() => deleteRef.current?.present()} />}
       </AppSheet>
 

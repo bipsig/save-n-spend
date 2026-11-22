@@ -373,7 +373,7 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, draft, onChan
       />
 
       {(errors.name || errors.amount || errors.category || errors.toInvestment || error) && (
-        <AppText size="xs" color="danger">
+        <AppText size="xs" weight="bold" color="danger">
           {errors.name?.message ?? errors.amount?.message ?? errors.category?.message ?? errors.toInvestment?.message ?? error}
         </AppText>
       )}

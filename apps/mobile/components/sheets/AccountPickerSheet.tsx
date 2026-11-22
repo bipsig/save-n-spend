@@ -22,6 +22,7 @@ import type { ColorToken } from "@/theme";
 import { colors, radius, spacing } from "@/theme";
 import { KEYBOARD_DONE_ID } from "@/components/ui/KeyboardDoneBar";
 import { errorText } from "@/lib/apiError";
+import FormError from "@/components/ui/FormError";
 
 /** Past this many rows, finding one by eye stops working and the list gets a search box. */
 const SEARCH_FROM = 8;
@@ -204,9 +205,7 @@ const AccountPickerSheet = forwardRef<BottomSheetModal, Props>((
             inputAccessoryViewID={KEYBOARD_DONE_ID}
             style={styles.createInput}
           />
-          {createError && (
-            <AppText size="xs" color="danger">{createError}</AppText>
-          )}
+          <FormError message={createError} />
           <View style={styles.createActions}>
             <Button label={addGate.label} icon={addGate.icon} hint={addGate.hint} disabled={!addGate.allowed} onPress={onCreate} loading={creatingBusy} size="sm" />
             <Button label="Cancel" variant="ghost" size="sm" onPress={() => setCreating(false)} />

@@ -31,6 +31,8 @@ import { editUndoAllowed, editWithUndo, previousValues } from "@/lib/undo";
 import { useAccountStore } from "@/store/accounts";
 import { ACCOUNT_TYPE_LABEL } from "@/lib/accountLabels";
 import { errorText } from "@/lib/apiError";
+import { useFormError } from "@/lib/useFormError";
+import FormError from "@/components/ui/FormError";
 
 type Props = {
   /** The account being edited, or `null` to create a new one. */
@@ -97,7 +99,7 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
   const [icon, setIcon] = useState<IconName>("bank");
   const [color, setColor] = useState<ColorToken>("info");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { error, fail, clear: clearError } = useFormError();
 
   // The balance correction, when editing. NOT prefilled: a prefill prints a real figure
   // into a text field privacy mode cannot mask, and makes "I didn't touch this"
@@ -136,7 +138,7 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
     setStartDate(account?.investedSince ? new Date(account.investedSince) : startOfToday());
     setHow(account?.investedHow ?? "sip");
     setBasisTouched(false);
-    setError(null);
+    clearError();
   }, [account, defaultType]);
 
   useEffect(() => { resetForm(); }, [resetForm]);
@@ -183,29 +185,25 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
   const save = async () => {
     const trimmed = name.trim();
     if (trimmed.length < NAME_MIN) {
-      haptics.error();
-      setError("Give the account a name");
+      fail("Give the account a name");
       return;
     }
     const startingBalance = toPaise(opening);
     if (startingBalance === null) {
-      haptics.error();
-      setError("Enter the opening balance as a number, or leave it blank for zero.");
+      fail("Enter the opening balance as a number, or leave it blank for zero.");
       return;
     }
     if (target === undefined) {
-      haptics.error();
-      setError("Enter the balance as a number, or leave it blank to keep the one you have.");
+      fail("Enter the balance as a number, or leave it blank to keep the one you have.");
       return;
     }
     // `toPaise` answers null for a typo; a blank field is already null above and means "keep".
     if (isInvestment && ((worth.trim() !== "" && worthPaise === null) || (investedInput.trim() !== "" && investedPaise === null))) {
-      haptics.error();
-      setError("Enter amounts as numbers, or leave them blank.");
+      fail("Enter amounts as numbers, or leave them blank.");
       return;
     }
     setBusy(true);
-    setError(null);
+    clearError();
     try {
       // Blank kind on an investment falls back to "Other" so the hub always has a group.
       const kind = type === "investment" ? (investmentKind.trim() || "Other") : undefined;
@@ -273,8 +271,7 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
       else toast.success(editing ? `${trimmed} updated` : `${trimmed} added`);
     }
     catch (err) {
-      haptics.error();
-      setError(errorText(err, "Couldn't save the account. Try again."));
+      fail(errorText(err, "Couldn't save the account. Try again."));
     }
     finally {
       setBusy(false);
@@ -521,11 +518,7 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
         <ColorPicker value={color} onChange={setColor} />
       </View>
 
-      {error && (
-        <AppText size="sm" color="danger">
-          {error}
-        </AppText>
-      )}
+      <FormError message={error} />
     </AppSheet>
   );
 });

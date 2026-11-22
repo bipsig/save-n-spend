@@ -15,6 +15,8 @@ import { spacing } from "@/theme";
 import { signTone } from "@/lib/signTone";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { errorText } from "@/lib/apiError";
+import { useFormError } from "@/lib/useFormError";
+import FormError from "@/components/ui/FormError";
 
 /** What each row needs to frame a revaluation as investment growth, not an account reset. */
 export type RevalueHolding = {
@@ -55,12 +57,12 @@ const RevalueSheet = forwardRef<BottomSheetModal, Props>(({ holdings, onSaved },
 
   const [values, setValues] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { error, fail, clear: clearError } = useFormError();
 
   const reset = () => {
     setValues({});
     setBusy(false);
-    setError(null);
+    clearError();
   };
 
   const save = async () => {
@@ -70,8 +72,7 @@ const RevalueSheet = forwardRef<BottomSheetModal, Props>(({ holdings, onSaved },
       if (!raw) continue; // left blank — unchanged
       const paise = toPaise(raw);
       if (paise === null) {
-        haptics.error();
-        setError(`Enter ${h.name}'s value as a number, or leave it blank.`);
+        fail(`Enter ${h.name}'s value as a number, or leave it blank.`);
         return;
       }
       if (paise !== h.current) changes.push({ id: h.accountId, paise });
@@ -83,7 +84,7 @@ const RevalueSheet = forwardRef<BottomSheetModal, Props>(({ holdings, onSaved },
     }
 
     setBusy(true);
-    setError(null);
+    clearError();
     try {
       // Sequential: each sync writes an adjustment and reloads the account store, and
       // overlapping reloads would thrash it.
@@ -100,8 +101,7 @@ const RevalueSheet = forwardRef<BottomSheetModal, Props>(({ holdings, onSaved },
       toast.success(`Updated ${count(changes.length, "value")}`);
     }
     catch (err) {
-      haptics.error();
-      setError(errorText(err, "Couldn't update. Try again."));
+      fail(errorText(err, "Couldn't update. Try again."));
     }
     finally {
       setBusy(false);
@@ -162,7 +162,7 @@ const RevalueSheet = forwardRef<BottomSheetModal, Props>(({ holdings, onSaved },
         Leave one blank to skip it. You can update anytime, not just today.
       </AppText>
 
-      {error && <AppText size="sm" color="danger">{error}</AppText>}
+      <FormError message={error} />
     </AppSheet>
   );
 });

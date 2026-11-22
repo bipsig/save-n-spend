@@ -9,6 +9,8 @@ import { haptics } from "@/lib/haptics";
 import type { IconName } from "@/lib/icons";
 import { spacing } from "@/theme";
 import { errorText } from "@/lib/apiError";
+import { useFormError } from "@/lib/useFormError";
+import FormError from "@/components/ui/FormError";
 
 export type Option = { value: number; label: string };
 
@@ -39,17 +41,17 @@ const OptionSheet = forwardRef<BottomSheetModal, Props>((
 
   // Which option is mid-save, so only that one shows as pending.
   const [pending, setPending] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { error, fail, clear: clearError } = useFormError();
 
   const reset = () => {
     setPending(null);
-    setError(null);
+    clearError();
   };
 
   const choose = async (next: number) => {
     if (pending !== null) return;
     setPending(next);
-    setError(null);
+    clearError();
     try {
       await onPick(next);
       dismiss();
@@ -58,8 +60,7 @@ const OptionSheet = forwardRef<BottomSheetModal, Props>((
       // Kept in the sheet rather than toasted: the sheet stays open on failure, and
       // the reason belongs beside the option that refused. The buzz is what makes it
       // noticeable — the chip just goes back to looking unpicked otherwise.
-      haptics.error();
-      setError(errorText(err, "Couldn't save that. Try again."));
+      fail(errorText(err, "Couldn't save that. Try again."));
       setPending(null);
     }
   };
@@ -93,11 +94,7 @@ const OptionSheet = forwardRef<BottomSheetModal, Props>((
         ))}
       </View>
 
-      {error && (
-        <AppText size="sm" color="danger" style={styles.error}>
-          {error}
-        </AppText>
-      )}
+      <FormError message={error} />
     </AppSheet>
   );
 });

@@ -33,6 +33,8 @@ import { formatSpan } from "@/lib/format/period";
 import { toast } from "@/store/toast";
 import { colors, spacing } from "@/theme";
 import { errorText } from "@/lib/apiError";
+import { useFormError } from "@/lib/useFormError";
+import FormError from "@/components/ui/FormError";
 
 type Choice = { include: boolean; category: string | null; account: string | null; parts: Part[] | null };
 
@@ -71,7 +73,7 @@ const TripImportScreen = () => {
   const [summary, setSummary] = useState<{ myShare: number; balance: number; fileBalance: number | null; matchesFile: boolean } | null>(null);
   const [choices, setChoices] = useState<Record<string, Choice>>({});
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { error, fail, clear: clearError } = useFormError();
   const [showSkipped, setShowSkipped] = useState(false);
 
   const personRef = useRef<BottomSheetModal>(null);
@@ -82,7 +84,7 @@ const TripImportScreen = () => {
   const [target, setTarget] = useState<string | null>(null);
 
   const pick = async () => {
-    setError(null);
+    clearError();
     const result = await DocumentPicker.getDocumentAsync({ type: ["text/csv", "text/comma-separated-values", "text/plain", "public.comma-separated-values-text"] });
     if (result.canceled) return;
     setBusy(true);
@@ -96,8 +98,7 @@ const TripImportScreen = () => {
       }
     }
     catch (err) {
-      haptics.error();
-      setError(errorText(err, "Couldn't read that file"));
+      fail(errorText(err, "Couldn't read that file"));
     }
     finally {
       setBusy(false);
@@ -106,9 +107,9 @@ const TripImportScreen = () => {
 
   const review = async () => {
     if (!csv) return;
-    if (!Object.values(mapping).includes("me")) { haptics.error(); setError("Pick which name is you."); return; }
+    if (!Object.values(mapping).includes("me")) { fail("Pick which name is you."); return; }
     setBusy(true);
-    setError(null);
+    clearError();
     try {
       const preview = await previewImport(id, csv, mapping);
       if (preview.needsMapping) return;
@@ -122,8 +123,7 @@ const TripImportScreen = () => {
       }])));
     }
     catch (err) {
-      haptics.error();
-      setError(errorText(err, "Couldn't read that file"));
+      fail(errorText(err, "Couldn't read that file"));
     }
     finally {
       setBusy(false);
@@ -154,8 +154,7 @@ const TripImportScreen = () => {
       else goBackOrHome();
     }
     catch (err) {
-      haptics.error();
-      setError(errorText(err, "Couldn't import"));
+      fail(errorText(err, "Couldn't import"));
     }
     finally {
       setBusy(false);
@@ -201,7 +200,7 @@ const TripImportScreen = () => {
           </AppText>
           <Button label={chooseGate.label} icon={chooseGate.icon} hint={chooseGate.hint} disabled={!chooseGate.allowed} loading={busy} onPress={pick} />
         </Card>
-        {error && <AppText size="sm" color="danger">{error}</AppText>}
+        <FormError message={error} />
         <AppText size="xs" color="inkDim" style={styles.lh}>
           If the file won't read, you can still add each shared expense from the trip with "Expense" — who paid, and who it's split between.
         </AppText>
@@ -240,7 +239,7 @@ const TripImportScreen = () => {
             );
           })}
         </Card>
-        {error && <AppText size="sm" color="danger">{error}</AppText>}
+        <FormError message={error} />
         <Button label={reviewGate.label} icon={reviewGate.icon} hint={reviewGate.hint} disabled={!reviewGate.allowed} loading={busy} onPress={review} />
         <AccountPickerSheet ref={personRef} title="Who is this?" filterType="person" onPick={(acc) => { if (personFor) setMapping((m) => ({ ...m, [personFor]: acc })); }} />
       </ScreenScaffold>
@@ -367,7 +366,7 @@ const TripImportScreen = () => {
         </Card>
       )}
 
-      {error && <AppText size="sm" color="danger">{error}</AppText>}
+      <FormError message={error} />
       <Button label={approveGate.label} icon={approveGate.icon} hint={approveGate.hint} loading={busy} disabled={!approveGate.allowed || approving === 0} onPress={approve} />
       {/* Rows are saved one by one (each moves balances the next one reads), so a long file
           takes a while — say so rather than leave a bare spinner. */}

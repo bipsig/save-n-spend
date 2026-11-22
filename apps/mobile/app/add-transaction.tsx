@@ -46,6 +46,7 @@ import { useTitleMatches } from "@/lib/titleSuggestions";
 import { useOutbox } from "@/store/outbox";
 import type { ITransaction } from "@save-n-spend/types";
 import { editUndoAllowed, editWithUndo, previousValues } from "@/lib/undo";
+import FormError from "@/components/ui/FormError";
 
 const schema = z.object({
   title: z.string(),
@@ -678,7 +679,7 @@ const AddTransaction = () => {
             </AppText>
           )}
           {errors.amount && amountRaw !== "" && (
-            <AppText size="xs" color="danger">
+            <AppText size="xs" weight="bold" color="danger">
               {errors.amount.message}
             </AppText>
           )}
@@ -771,7 +772,7 @@ const AddTransaction = () => {
                 <Icon name="chevronRight" size={20} color="inkDim" />
               </PressableScale>
               {errors.category && (
-                <AppText size="xs" color="danger">{errors.category.message}</AppText>
+                <AppText size="xs" weight="bold" color="danger">{errors.category.message}</AppText>
               )}
             </Animated.View>
           )}
@@ -972,9 +973,7 @@ const AddTransaction = () => {
         {/* Fixed bottom — numpad + save, always visible with the amount above */}
         {submitError && (
           <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)}>
-            <AppText size="xs" color="danger">
-              {submitError}
-            </AppText>
+            <FormError message={submitError} />
           </Animated.View>
         )}
 

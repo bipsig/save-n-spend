@@ -15,6 +15,8 @@ import { toast } from "@/store/toast";
 import { colors, spacing } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { errorText } from "@/lib/apiError";
+import { useFormError } from "@/lib/useFormError";
+import FormError from "@/components/ui/FormError";
 
 type Props = {
   tripId: string;
@@ -44,11 +46,11 @@ const MatchSplitwiseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, membe
 
   const [rows, setRows] = useState<Record<string, Row>>(() => rowsFrom(members, plan));
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { error, fail, clear: clearError } = useFormError();
 
   const reset = useCallback(() => {
     setRows(rowsFrom(members, plan));
-    setError(null);
+    clearError();
   }, [members, plan]);
   useEffect(() => { reset(); }, [reset]);
 
@@ -69,7 +71,7 @@ const MatchSplitwiseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, membe
   const save = async () => {
     if (!balanced) { haptics.error(); return; }
     setBusy(true);
-    setError(null);
+    clearError();
     try {
       const entries = members.filter((m) => signed(m) !== 0).map((m) => ({ account: m.account, amount: signed(m) }));
       const idem = holderFor(`trip:${tripId}:plan`);
@@ -80,8 +82,7 @@ const MatchSplitwiseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, membe
       toast.success("Matched to Splitwise");
     }
     catch (err) {
-      haptics.error();
-      setError(errorText(err, "Couldn't save that"));
+      fail(errorText(err, "Couldn't save that"));
     }
     finally {
       setBusy(false);
@@ -113,7 +114,7 @@ const MatchSplitwiseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, membe
       footer={
         <View style={styles.footer}>
           <AppText size="xs" weight="bold" color={balanced ? "success" : "warning"} style={styles.center}>{status}</AppText>
-          {error && <AppText size="sm" color="danger" style={styles.center}>{error}</AppText>}
+          <FormError message={error} />
           <Button label="Save" icon={gate.icon} hint={gate.hint} loading={busy} disabled={!balanced || !gate.allowed} onPress={save} />
         </View>
       }

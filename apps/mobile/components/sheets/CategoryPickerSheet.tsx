@@ -24,6 +24,8 @@ import type { IconName } from "@/lib/icons";
 import { colors, radius, spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
 import { errorText } from "@/lib/apiError";
+import { useFormError } from "@/lib/useFormError";
+import FormError from "@/components/ui/FormError";
 
 // Fixed height, so the sheet reads as nested over Add Transaction / Budgets instead of
 // growing to near-full-height.
@@ -54,7 +56,7 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
   const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { error, fail, clear: clearError } = useFormError();
   // The heading the new category sits under, or `null` for top-level. Set by which
   // affordance was tapped, never asked as a question.
   const [newParent, setNewParent] = useState<ICategory | null>(null);
@@ -86,7 +88,7 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
       icon: (parent?.icon as IconName) ?? "more",
       color: (parent?.color as ColorToken) ?? "accent",
     });
-    setError(null);
+    clearError();
     setCreating(true);
   };
 
@@ -187,18 +189,17 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
     setCreating(false);
     setNewParent(null);
     setDraft(emptyDraft);
-    setError(null);
+    clearError();
   };
 
   const onCreate = async () => {
     const trimmed = draft.name.trim();
     if (trimmed.length < NAME_MIN) {
-      haptics.error();
-      setError("Give the category a name");
+      fail("Give the category a name");
       return;
     }
     setSaving(true);
-    setError(null);
+    clearError();
     try {
       const body = {
         name: trimmed,
@@ -218,8 +219,7 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
       dismiss();
     }
     catch (err) {
-      haptics.error();
-      setError(errorText(err, "Couldn't create the category"));
+      fail(errorText(err, "Couldn't create the category"));
     }
     finally {
       setSaving(false);
@@ -231,11 +231,7 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
     <>
       {/* Here rather than inside the form, where it would render below a long icon grid
           the user has already scrolled past. */}
-      {error && (
-        <AppText size="xs" color="danger">
-          {error}
-        </AppText>
-      )}
+      <FormError message={error} />
       {/* Tracks the draft's parent, so the button never says "category" over a form
           showing a sub-category. */}
       <Button

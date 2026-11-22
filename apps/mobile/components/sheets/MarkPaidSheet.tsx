@@ -24,6 +24,8 @@ import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { formatDueLabel, rollDueDate, formatFullDate } from "@/lib/date";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { errorText } from "@/lib/apiError";
+import { useFormError } from "@/lib/useFormError";
+import FormError from "@/components/ui/FormError";
 
 type Props = {
   bill: IBill | null;
@@ -59,7 +61,7 @@ const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
 
   const [accountId, setAccountId] = useState<string | null>(null);
   const [busy, setBusy] = useState<"pay" | "skip" | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { error, fail, clear: clearError } = useFormError();
 
   useEffect(() => {
     setAccountId(bill?.account ?? defaultAccount?._id ?? null);
@@ -70,7 +72,7 @@ const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
   const run = async (action: "pay" | "skip") => {
     if (!bill) return;
     setBusy(action);
-    setError(null);
+    clearError();
     try {
       const path = `/bills/${bill._id}/${action}`;
       const body = action === "pay" && accountId ? { account: accountId } : undefined;
@@ -97,8 +99,7 @@ const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
     catch (err) {
       // Kept in the sheet: the failure has to be read next to the effects it was
       // meant to cause, and the sheet stays open so they're still on screen.
-      haptics.error();
-      setError(errorText(err, "Something went wrong"));
+      fail(errorText(err, "Something went wrong"));
     }
     finally {
       setBusy(null);
@@ -110,7 +111,7 @@ const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
     <AppSheet ref={innerRef} onDismiss={() => {
       // Back to the bill's own account — a "pay from" picked and then cancelled shouldn't stick.
       setAccountId(bill?.account ?? defaultAccount?._id ?? null);
-      setError(null);
+      clearError();
     }}>
       {bill && (
         <>
@@ -167,11 +168,7 @@ const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
             <Icon name="chevronRight" size={20} color="inkDim" />
           </PressableScale>
 
-          {error && (
-            <AppText size="xs" color="danger">
-              {error}
-            </AppText>
-          )}
+          <FormError message={error} />
 
           <Button
             label={isSip ? "Mark as invested" : "Mark as Paid"}

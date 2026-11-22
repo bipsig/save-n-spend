@@ -11,6 +11,8 @@ import { haptics } from "@/lib/haptics";
 import { inRange, monthGrid, monthOfDay, monthTitle, movesBetween, shiftMonth, type CloseRange } from "@/lib/tripClose";
 import { colors, spacing } from "@/theme";
 import { errorText } from "@/lib/apiError";
+import { useFormError } from "@/lib/useFormError";
+import FormError from "@/components/ui/FormError";
 
 type Props = {
   tripName: string;
@@ -38,25 +40,24 @@ const CloseDateSheet = forwardRef<BottomSheetModal, Props>(({ tripName, amount, 
   const [day, setDay] = useState(initial);
   const [month, setMonth] = useState(monthOfDay(initial));
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { error, fail, clear: clearError } = useFormError();
   const spent = new Set(expenseDays);
 
   const reset = () => {
     setDay(initial);
     setMonth(monthOfDay(initial));
-    setError(null);
+    clearError();
   };
 
   const confirm = async () => {
     setBusy(true);
-    setError(null);
+    clearError();
     try {
       await onConfirm(day);
       innerRef.current?.dismiss();
     }
     catch (err) {
-      haptics.error();
-      setError(errorText(err, "Couldn't save that. Try again."));
+      fail(errorText(err, "Couldn't save that. Try again."));
     }
     finally {
       setBusy(false);
@@ -129,7 +130,7 @@ const CloseDateSheet = forwardRef<BottomSheetModal, Props>(({ tripName, amount, 
       <AppText size="xs" color="inkDim" style={styles.lh}>
         {helper} Pick any day from the trip's start ({formatCalendar(range.first)}) to today. Dots mark days with trip expenses.
       </AppText>
-      {error && <AppText size="sm" color="danger">{error}</AppText>}
+      <FormError message={error} />
     </AppSheet>
   );
 });

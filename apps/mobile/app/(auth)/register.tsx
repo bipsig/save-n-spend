@@ -16,6 +16,7 @@ import { spacing } from "@/theme";
 import { haptics } from "@/lib/haptics";
 import { post } from "@/lib/api";
 import { deviceZone } from "@/lib/zone";
+import FormError from "@/components/ui/FormError";
 
 const schema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -150,9 +151,7 @@ const RegisterForm = () => {
 
       {authError && (
         <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)}>
-          <AppText size="xs" color="danger">
-            {authError}
-          </AppText>
+          <FormError message={authError} />
         </Animated.View>
       )}
 

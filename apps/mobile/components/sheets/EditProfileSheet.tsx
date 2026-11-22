@@ -16,6 +16,8 @@ import { toast } from "@/store/toast";
 import { spacing } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { errorText } from "@/lib/apiError";
+import { useFormError } from "@/lib/useFormError";
+import FormError from "@/components/ui/FormError";
 
 const schema = z.object({
   name: z.string().trim().min(2, "Give us at least two characters").max(60),
@@ -34,7 +36,7 @@ const EditProfileSheet = forwardRef<BottomSheetModal, { onSaved?: () => void }>(
   const dismiss = () => innerRef.current?.dismiss();
 
   const user = useSession((s) => s.user);
-  const [error, setError] = useState<string | null>(null);
+  const { error, fail, clear: clearError } = useFormError();
 
   const { setValue, watch, handleSubmit, formState: { errors, isSubmitting } } = useForm<Form>({
     resolver: zodResolver(schema),
@@ -50,7 +52,7 @@ const EditProfileSheet = forwardRef<BottomSheetModal, { onSaved?: () => void }>(
   }, [user?.name]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const submit = handleSubmit(async (values) => {
-    setError(null);
+    clearError();
     try {
       await updateProfile({ name: values.name });
       onSaved?.();
@@ -63,8 +65,7 @@ const EditProfileSheet = forwardRef<BottomSheetModal, { onSaved?: () => void }>(
       // Kept in the sheet rather than toasted: the rejected name is still in the
       // field, and the reason belongs beside it, not in a banner that expires. The
       // buzz is what makes it noticeable without a banner.
-      haptics.error();
-      setError(errorText(err, "Couldn't save your profile. Try again."));
+      fail(errorText(err, "Couldn't save your profile. Try again."));
     }
   });
 
@@ -74,7 +75,7 @@ const EditProfileSheet = forwardRef<BottomSheetModal, { onSaved?: () => void }>(
       onDismiss={() => {
         // A cancelled edit shouldn't be there next time — the saved name should.
         setValue("name", user?.name ?? "");
-        setError(null);
+        clearError();
       }}
       footer={<Button label="Save profile" icon={gate.icon} hint={gate.hint} loading={isSubmitting} disabled={!gate.allowed} onPress={submit} />}
     >
@@ -105,11 +106,7 @@ const EditProfileSheet = forwardRef<BottomSheetModal, { onSaved?: () => void }>(
         Your email is how you sign in, so it can&apos;t be changed here.
       </AppText>
 
-      {error && (
-        <AppText size="sm" color="danger">
-          {error}
-        </AppText>
-      )}
+      <FormError message={error} />
     </AppSheet>
   );
 });
