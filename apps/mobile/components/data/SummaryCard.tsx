@@ -1,15 +1,12 @@
 import { IconName } from "@/lib/icons"
 import { ColorToken, spacing } from "@/theme"
 import Card from "@/components/data/Card"
-import type { ReactNode } from "react"
 import { StyleSheet, View } from "react-native"
 import Icon from "../ui/Icon"
 import { AppText } from "../ui/AppText"
 import Money from "../ui/Money"
 import PressableScale from "../ui/PressableScale"
-import Sparkline from "../charts/Sparkline"
 import formatMoney, { usePrivacyMask } from "@/lib/money"
-import { chartSummary } from "@/lib/chartSummary"
 
 type Props = {
   icon: IconName
@@ -26,12 +23,11 @@ type Props = {
   amount: number
   /** For a net (Savings): see lib/signTone. Every other tile's figure stays `ink`. */
   amountColor?: ColorToken
+  /** The tile's one plain line under the figure ("+24.7% vs Oct", "30.4% saved"). */
   caption?: string
   captionColor?: ColorToken
-  /** A line under the figure that may wrap (Expenses' "Plus ₹X on trips"), with the words
-   *  VoiceOver reads for it in the tile's label. */
-  note?: ReactNode
-  noteLabel?: string
+  /** All four Home tiles share one size, picked from the longest figure (lib/homeTiles). */
+  size?: "lg" | "md"
   /**
    * Opens whatever breaks the figure down. Optional, and left off deliberately when there
    * is nothing behind it — a tile that squeezes under the finger without leading anywhere
@@ -41,12 +37,6 @@ type Props = {
   /** The screen `onPress` opens, spoken by the accessibility label ("Opens Activity.") —
    *  a prop rather than inferred, since this card doesn't know its own destination. */
   destination?: string
-  /** Oldest-first trend points. Under 2 points renders nothing rather than a flat,
-   *  meaningless line. */
-  trend?: number[]
-  /** Passed straight to Sparkline — "down" for Expenses, where a rising line is bad
-   *  news and green would say the opposite of what's true. */
-  trendGoodDirection?: "up" | "down"
 }
 
 const SummaryCard = ({
@@ -58,20 +48,13 @@ const SummaryCard = ({
   amountColor,
   caption,
   captionColor = "gray500",
-  note,
-  noteLabel,
+  size = "lg",
   onPress,
   destination,
-  trend,
-  trendGoodDirection = "up"
 }: Props) => {
-  const masked = usePrivacyMask(); // subscribe: the accessibility labels below read formatMoney() directly
+  usePrivacyMask(); // subscribe: the accessibility label below reads formatMoney() directly
 
-  const trendPhrase = trend && trend.length >= 2
-    ? `${trend[trend.length - 1] >= trend[0] ? "up" : "down"} from ${formatMoney(trend[0])}`
-    : null;
-  const trendNote = trendPhrase ? `, ${trendPhrase}` : "";
-  const accessibilityLabel = `${label}: ${formatMoney(amount)}${noteLabel ? `, ${noteLabel}` : ""}${caption ? `, ${caption}` : ""}${trendNote}`
+  const accessibilityLabel = `${label}: ${formatMoney(amount)}${caption ? `, ${caption}` : ""}`
     + (onPress && destination ? `. Opens ${destination}.` : "");
 
   // Spec .sum tile: 26px soft chip + 10.5 dim cap · 17/800 amount · 10 delta.
@@ -100,15 +83,7 @@ const SummaryCard = ({
       {/* One line, ellipsised rather than wrapped. A flex item is never squeezed below the
           width of its own content, so a long figure would push its tile wider than the one
           beside it — which is how two tiles in a row stopped being the same size. */}
-      <Money value={amount} weight="black" size="lg" color={amountColor} numberOfLines={1} />
-      {note}
-      {trend && (
-        <Sparkline
-          values={trend}
-          goodDirection={trendGoodDirection}
-          summary={chartSummary({ title: label, masked, parts: [trendPhrase] })}
-        />
-      )}
+      <Money value={amount} weight="black" size={size} color={amountColor} numberOfLines={1} />
       {/* Exactly one line high whether or not there is a caption, hence the fixed height
           and not a minimum: an empty Text has no line box, so a reserved minimum still came
           out shorter than a captioned tile beside it. */}
@@ -135,7 +110,6 @@ const SummaryCard = ({
       onPress={onPress}
       scaleTo={0.98}
       style={styles.tile}
-      accessible={!!trend}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
     >

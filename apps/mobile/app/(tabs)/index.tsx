@@ -2,7 +2,9 @@ import { StyleSheet, View } from "react-native";
 import AppHeader from "@/components/shell/AppHeader";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import SummaryCard from "@/components/data/SummaryCard";
-import TripLine from "@/components/data/TripLine";
+import OpenTripCard from "@/components/data/OpenTripCard";
+import SegmentedControl from "@/components/ui/SegmentedControl";
+import { AppText } from "@/components/ui/AppText";
 import HealthScoreCard from "@/components/data/HealthScoreCard";
 import SafeToSpendCard from "@/components/data/SafeToSpendCard";
 import GetStartedCard from "@/components/data/GetStartedCard";
@@ -17,8 +19,8 @@ import Fab from "@/components/ui/Fab";
 import TransactionRow from "@/components/rows/TransactionRow";
 import NetWorthSheet from "@/components/sheets/NetWorthSheet";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
-import { biggestEveryday, dailyAverages, dashboardEveryday, homeSpend, sinceSpend } from "@/lib/everydaySpend";
-import { formatPct, percentOf } from "@/lib/format/pct";
+import { homeTiles, tileSize, tileTargets } from "@/lib/homeTiles";
+import { useTrips } from "@/lib/trips";
 import { signTone } from "@/lib/signTone";
 import { radius, spacing } from "@/theme";
 import { useRouter } from "expo-router";
@@ -43,7 +45,7 @@ import NetWorthMilestoneBanner from "@/components/data/NetWorthMilestoneBanner";
 import { currentPeriodKey } from "@/lib/reviews";
 import { rangeNavLabel } from "@/lib/dateRange";
 import ReviewReadyBanner from "@/components/data/ReviewReadyBanner";
-import { appZone, calendarDate, calendarDaysBetween, calendarToday } from "@/lib/zone";
+import { appZone, calendarDate, calendarDaysBetween, calendarToday, dayKey } from "@/lib/zone";
 import { buildSteps, progressOf } from "@/lib/onboarding";
 import type { OnboardingStep } from "@/lib/onboarding";
 import { useSession } from "@/store/session";
@@ -61,10 +63,16 @@ import ScreenStates from "@/components/states/ScreenStates";
 import SkeletonState from "@/components/states/SkeletonState";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
-import type { ITransaction } from "@save-n-spend/types";
+import type { HomePeriod, ITransaction } from "@save-n-spend/types";
+
+const PERIODS: { key: HomePeriod; label: string }[] = [
+  { key: "month", label: "Month" },
+  { key: "year", label: "Year" },
+  { key: "all", label: "All time" },
+];
 
 const HomeScreen = () => {
-  usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
+  const masked = usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
 
   const router = useRouter();
   const netWorthRef = useRef<BottomSheetModal>(null);
@@ -75,7 +83,9 @@ const HomeScreen = () => {
   // Read once at mount and held for the whole session (see store/lastOpened) — the
   // moment this specific screen instance's own digest is anchored to.
   const previousOpenedAt = useLastOpened((s) => s.previousOpenedAt);
-  const summaryQuery = useDashboardSummary(previousOpenedAt);
+  // The four tiles' Month / Year / All time, kept across launches.
+  const homePeriod = useSettings((s) => s.homePeriod);
+  const summaryQuery = useDashboardSummary(previousOpenedAt, homePeriod);
   const dashboardSummary = summaryQuery.data;
 
   // The three previews (action queue / motivation / recency), composed client-side from the
@@ -117,6 +127,9 @@ const HomeScreen = () => {
   // above deals in.
   const dashboardInsightsQuery = useDashboardInsights();
   const dashboardInsights = dashboardInsightsQuery.data;
+
+  // Open trips count nowhere until closed; Home shows each one's running share on its own.
+  const openTrips = (useTrips().data?.trips ?? []).filter((t) => t.status === "active");
 
   // Queued transactions waiting on this phone — a stable selector (the raw items array),
   // mapped to displayable rows in a memo rather than in the selector itself, so this
@@ -205,8 +218,9 @@ const HomeScreen = () => {
   // Activity, already narrowed to the tile that was tapped: the same month the figure was
   // summed over, and only that half of it. `focus` is a nonce, so a second tap re-applies
   // the filter even if it was changed by hand in between (see the Activity screen).
+  const targets = tileTargets(homePeriod);
   const openActivity = (type: "income" | "expense") =>
-    router.push({ pathname: "/activity", params: { type, range: "month", focus: String(Date.now()) } });
+    router.push({ pathname: "/activity", params: { type, range: targets.activityRange, focus: String(Date.now()) } });
 
   // Remaining budget minus what unpaid bills are still going to draw from those budgets —
   // the one figure that's actually actionable "right now", so it leads the dashboard. Not
@@ -226,8 +240,10 @@ const HomeScreen = () => {
   // states on their own. Income is never projected forward (see lib/forecast) — it's
   // typically lumpy, so income-to-date only ever understates likely savings, the safer
   // direction to be wrong in.
-  const savingsPace = forecast && dashboardSummary
-    ? dashboardSummary.income - (dashboardSummary.expenses + forecast.dailyBurnRate * budgetTotalsThisMonth.daysLeft)
+  // This month's own figures close the flow series whatever the tiles' period is.
+  const thisMonth = dashboardSummary?.flowTrend.at(-1);
+  const savingsPace = forecast && thisMonth
+    ? thisMonth.income - (thisMonth.expense + forecast.dailyBurnRate * budgetTotalsThisMonth.daysLeft)
     : undefined;
 
   // Null with fewer than 2 trend points — nothing to compare against yet, same as the
@@ -270,19 +286,26 @@ const HomeScreen = () => {
     .sort((a, b) => new Date(b.occurredAt as string).getTime() - new Date(a.occurredAt as string).getTime())
     .slice(0, 3);
 
-  // Expenses, its sparkline and the week's "Spent" are everyday spending; trips get their own
-  // line (D21 A+). Savings and its sparkline still count trips (Q1).
-  const spend = dashboardSummary ? homeSpend(dashboardSummary) : null;
-  const since = dashboardSummary?.sinceLastOpened ? sinceSpend(dashboardSummary.sinceLastOpened) : null;
-  const biggest = dashboardSummary ? biggestEveryday(dashboardSummary) : null;
-  // No-spend days, the weekday pattern and the pace card on everyday spending too.
-  const daily = dashboardInsights ? dashboardEveryday(dashboardInsights) : null;
-  const averages = insights ? dailyAverages(insights) : null;
+  // Every figure holds each closed trip once, on its close day (trips=entries).
+  const biggest = dashboardSummary ? (dashboardSummary.biggestEverydayExpense ?? dashboardSummary.biggestExpense) : null;
+  const daily = dashboardInsights
+    ? { noSpendDays: dashboardInsights.forYou.noSpendDays, weekdayHeatmap: dashboardInsights.forYou.weekdayHeatmap, pace: dashboardInsights.pace }
+    : null;
+  const averages = insights ? { current: insights.avgDailySpendCurrent, previous: insights.avgDailySpendPrevious } : null;
 
-  // Savings rate is the only delta stated from values in hand; the rest need last month.
-  const savingsCaption = dashboardSummary && dashboardSummary.income > 0
-    ? `${formatPct(percentOf(dashboardSummary.savings, dashboardSummary.income))} saved`
-    : undefined;
+  const zone = appZone();
+  const tiles = dashboardSummary
+    ? homeTiles(dashboardSummary, {
+      period: homePeriod,
+      startDay: homePeriod !== "all" && dashboardSummary.periodStart ? dayKey(new Date(dashboardSummary.periodStart), zone) : null,
+      firstDay: dashboardSummary.firstRecordAt ? dayKey(new Date(dashboardSummary.firstRecordAt), zone) : null,
+      signedMoney: (paise) => formatMoney(paise, { sign: "always" }),
+      masked,
+    })
+    : null;
+  const size = dashboardSummary
+    ? tileSize([dashboardSummary.income, dashboardSummary.expenses, dashboardSummary.savings, dashboardSummary.netWorth].map((p) => formatMoney(p)))
+    : "lg";
 
   // One horizontally swipeable stack in place of several separate vertical cards — same
   // signal (a highlight, a goal's pace, a pattern), without permanently claiming that much
@@ -346,7 +369,7 @@ const HomeScreen = () => {
           </View>
         }
       >
-      {() => dashboardSummary && spend && (
+      {() => dashboardSummary && tiles && (
       <>
       {/* First on the screen, above the score and the tiles. For an account with nothing
           in it yet, this is the only thing here that can be acted on — everything below
@@ -364,12 +387,11 @@ const HomeScreen = () => {
           ever launch (nothing to compare against yet) and whenever the server hasn't
           echoed the digest back (a saved copy never carries it, see lib/offlineSlot, or the
           request still in flight with the previous, unpersonalised query). */}
-      {previousOpenedAt && dashboardSummary.sinceLastOpened && since && (
+      {previousOpenedAt && dashboardSummary.sinceLastOpened && (
         <SinceLastOpenedCard
           previousOpenedAt={previousOpenedAt}
           transactions={dashboardSummary.sinceLastOpened.transactions}
-          spent={since.spent}
-          tripSpent={since.trips}
+          spent={dashboardSummary.sinceLastOpened.spent}
         />
       )}
 
@@ -393,7 +415,18 @@ const HomeScreen = () => {
           split across the screen. Every tile still leads to where its figure comes
           from: the two halves to their own transactions, savings to the trend that
           explains the gap, net worth to the accounts it sums. */}
+      {/* The switch changes only the four tiles under it; everything else stays on now. */}
       <View style={styles.grid}>
+        <View style={styles.scope}>
+          <SegmentedControl
+            segments={PERIODS}
+            value={homePeriod}
+            onChange={(p) => updateSettings({ homePeriod: p })}
+            size="sm"
+            accessibilityLabel="Period for the four figures"
+          />
+          <AppText size="xs" color="inkDim">{tiles.scope}</AppText>
+        </View>
         <View style={styles.gridRow}>
           <SummaryCard
             icon="income"
@@ -401,41 +434,41 @@ const HomeScreen = () => {
             iconBg="successSoft"
             label="Income"
             amount={dashboardSummary.income}
+            size={size}
+            caption={tiles.income?.text}
+            captionColor={tiles.income?.tone}
             onPress={() => openActivity("income")}
             destination="Activity"
-            trend={dashboardSummary.flowTrend.map((point) => point.income)}
           />
           <SummaryCard
             icon="expenses"
             iconColor="danger"
             iconBg="dangerSoft"
             label="Expenses"
-            amount={spend.expenses}
-            note={spend.trips !== null && <TripLine amount={spend.trips} />}
-            noteLabel={spend.trips !== null ? `plus ${formatMoney(spend.trips)} on trips` : undefined}
+            amount={dashboardSummary.expenses}
+            size={size}
+            caption={tiles.expenses?.text}
+            captionColor={tiles.expenses?.tone}
             onPress={() => openActivity("expense")}
             destination="Activity"
-            trend={spend.trend}
-            trendGoodDirection="down"
           />
         </View>
 
         <View style={styles.gridRow}>
-          {/* Insights rather than Goals: this is income minus expenses for the month, and
-              the screen that breaks it down is the one with the trend and the savings rate.
-              Goals are what savings are FOR, and they have their own section below. */}
+          {/* Insights rather than Goals: this is income minus expenses for the period, and
+              the screen that breaks it down is the one with the trend and the savings rate. */}
           <SummaryCard
             icon="wallet"
             iconColor="info"
             iconBg="infoSoft"
-            label="Savings"
+            label={tiles.savingsLabel}
             amount={dashboardSummary.savings}
             amountColor={signTone(dashboardSummary.savings, { neutral: "ink" })}
-            caption={savingsCaption}
-            captionColor="info"
-            onPress={() => router.push("/insights")}
+            size={size}
+            caption={tiles.savings?.text}
+            captionColor={tiles.savings?.tone}
+            onPress={() => router.push({ pathname: "/insights", params: { period: targets.insightsPeriod, focus: String(Date.now()) } })}
             destination="Insights"
-            trend={dashboardSummary.flowTrend.map((point) => point.income - point.expense)}
           />
           <SummaryCard
             icon="investments"
@@ -443,12 +476,16 @@ const HomeScreen = () => {
             iconBg="accentSoft"
             label="Net worth"
             amount={dashboardSummary.netWorth}
+            size={size}
+            caption={tiles.netWorth?.text}
+            captionColor={tiles.netWorth?.tone}
             onPress={accounts.length > 0 ? () => netWorthRef.current?.present() : undefined}
             destination="your accounts"
-            trend={netWorthTrend?.map((point) => point.total)}
           />
         </View>
       </View>
+
+      {openTrips.map((trip) => <OpenTripCard key={trip._id} trip={trip} />)}
 
       {netWorthMilestone !== null && (
         <NetWorthMilestoneBanner
@@ -556,7 +593,7 @@ const HomeScreen = () => {
 
       <WeekPulseRow
         income={dashboardSummary.weekIncome}
-        expense={spend.weekExpense}
+        expense={dashboardSummary.weekExpense}
         savingsPace={savingsPace}
       />
 
@@ -605,6 +642,9 @@ const styles = StyleSheet.create({
   gridRow: {
     flexDirection: "row",
     gap: 12,
+  },
+  scope: {
+    gap: spacing.sm,
   },
 });
 

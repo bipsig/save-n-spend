@@ -6,6 +6,7 @@
 // reads this store to mask amounts.
 import { create } from 'zustand';
 import { readJson, writeJson } from '@/lib/deviceStore';
+import type { HomePeriod } from '@save-n-spend/types';
 
 const STORAGE_KEY = 'sns.deviceSettings';
 
@@ -42,6 +43,8 @@ export interface DeviceSettings {
   /** Settings → Diagnostics shown (the recent-requests log). Off by default and hidden: it's a
    *  developer's view, switched on by tapping the version number seven times. */
   diagnostics: boolean;
+  /** Home's Month / Year / All time switch, kept across launches. */
+  homePeriod: HomePeriod;
 }
 
 const DEFAULTS: DeviceSettings = {
@@ -52,6 +55,7 @@ const DEFAULTS: DeviceSettings = {
   netWorthMilestoneSeen: 0,
   lastReviewedPeriod: { week: null, month: null },
   diagnostics: false,
+  homePeriod: "month",
 };
 
 /** How long a peek lasts — long enough to read a screenful, short enough that putting the
@@ -92,8 +96,8 @@ export const useSettings = create<SettingsState>((set, get) => ({
   // written, keeping the stored shape identical to the state's.
   update: (patch) => {
     set(patch);
-    const { privacyMode, appLock, autoLockSeconds, getStartedDismissed, netWorthMilestoneSeen, lastReviewedPeriod } = get();
-    void writeJson(STORAGE_KEY, { privacyMode, appLock, autoLockSeconds, getStartedDismissed, netWorthMilestoneSeen, lastReviewedPeriod });
+    const { privacyMode, appLock, autoLockSeconds, getStartedDismissed, netWorthMilestoneSeen, lastReviewedPeriod, homePeriod } = get();
+    void writeJson(STORAGE_KEY, { privacyMode, appLock, autoLockSeconds, getStartedDismissed, netWorthMilestoneSeen, lastReviewedPeriod, homePeriod });
     // Switching privacy mode ON must not leave a peek running — it would mask nothing.
     if (patch.privacyMode !== undefined) get().hide();
   },

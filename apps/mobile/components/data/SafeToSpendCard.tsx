@@ -113,19 +113,22 @@ const SafeToSpendCard = ({ hasBudgets, safeToSpend, budgetRemaining, billsOwed, 
           />
           <View style={styles.titleCol}>
             <Caps>Safe to spend</Caps>
-            <AppText size="lg" weight="black">{verdict}</AppText>
+            <AppText size="md" weight="black" numberOfLines={1}>{verdict}</AppText>
           </View>
-          <View style={styles.score}>
-            <Money
-              value={heroValue}
-              size="xl"
-              weight="black"
-              color={overspent ? "danger" : overNow ? "warning" : "ink"}
-            />
-            {daysLeft > 0 && (
-              <AppText size="xs" weight="semibold" color="inkDim">a day</AppText>
-            )}
-          </View>
+        </View>
+
+        {/* Its own row, so the verdict never wraps and a long figure never clips. */}
+        <View style={styles.score}>
+          <Money
+            value={heroValue}
+            size="xl"
+            weight="black"
+            color={overspent ? "danger" : overNow ? "warning" : "ink"}
+            numberOfLines={1}
+          />
+          {daysLeft > 0 && (
+            <AppText size="sm" weight="semibold" color="inkDim">a day</AppText>
+          )}
         </View>
 
         {forecast && <ForecastLine series={forecast.series} />}
@@ -162,7 +165,9 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   score: {
-    alignItems: "flex-end",
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 6,
   },
 });
 
