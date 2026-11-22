@@ -74,7 +74,6 @@ const MatchSplitwiseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, membe
       const idem = holderFor(`trip:${tripId}:plan`);
       await savePlan(tripId, entries, { idempotencyKey: idem.keyFor("PUT", `/trips/${tripId}/plan`, { entries }) });
       idem.reset();
-      haptics.success();
       innerRef.current?.dismiss();
       onSaved?.();
       toast.success("Matched to Splitwise");

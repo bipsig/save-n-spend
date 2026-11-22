@@ -773,8 +773,12 @@ right there in the sheet.
 **Haptics** (`lib/haptics.ts`) are named by meaning, never intensity: `tap` (a press), `select`
 (moving through a set: chips, tabs, a chart scrub), `toggle` and `press` (a switch, a primary
 action), `heavy` (something irreversible finished), and `success`, `warning`, `error`. Calls are
-fire-and-forget and swallow failure. `PressableScale` ticks for you on press; pass
-`haptic={false}` where the action fires its own, as `FormatCards` does.
+fire-and-forget and swallow failure. `PressableScale` and `Button` tick for you on press;
+pass `haptic={false}` where the action fires its own, as `FormatCards` does.
+
+**One buzz per action** (gaps row 73): never call a haptic next to a toast (the toast has its
+own) or inside a `Button`'s `onPress` (the button has its own). A failed submit that shows its
+error in the sheet buzzes once, through `useFormError().fail`.
 
 ## Handle loading, empty, and error states
 

@@ -143,7 +143,6 @@ const TripImportScreen = () => {
         idempotencyKey: idem.keyFor("POST", `/trips/${id}/import/commit`, { csv, mapping, decisions }),
       });
       idem.reset();
-      haptics.success();
       // No counts when the reply had none (see lib/replayed.ts); the write refreshes the trip page.
       toast.success(res
         ? `Imported ${count(res.added + res.applied, "expense")}${res.settled ? ` and ${count(res.settled, "settle-up")}` : ""}`

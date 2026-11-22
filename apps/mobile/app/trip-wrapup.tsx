@@ -102,7 +102,6 @@ const TripWrapUpScreen = () => {
     const idem = holderFor(`trip:${trip._id}:close`);
     await closeTrip(trip._id, letGo, closedOn, { idempotencyKey: idem.keyFor("POST", `/trips/${trip._id}/close`, { letGo, closedOn }) });
     idem.reset();
-    haptics.success();
     toast.success(`${trip.name} closed · ${formatMoney(totals.myShare)} in Trips on ${formatCalendar(closedOn)}`);
     goBackOrHome();
   };

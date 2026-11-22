@@ -45,13 +45,13 @@ const FailedTransactionSheet = forwardRef<BottomSheetModal, Props>((
       </View>
 
       <View style={styles.actions}>
-        <Button label="Retry" onPress={() => { haptics.tap(); dismiss(); onRetry(); }} />
-        <Button label="Edit as new draft" variant="secondary" onPress={() => { haptics.tap(); dismiss(); onEdit(); }} />
+        <Button label="Retry" onPress={() => { dismiss(); onRetry(); }} />
+        <Button label="Edit as new draft" variant="secondary" onPress={() => { dismiss(); onEdit(); }} />
         <Button
           label="Discard"
           variant="danger"
           loading={discarding}
-          onPress={() => { setDiscarding(true); haptics.tap(); dismiss(); onDiscard(); }}
+          onPress={() => { setDiscarding(true); dismiss(); onDiscard(); }}
         />
       </View>
     </AppSheet>

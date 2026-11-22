@@ -39,11 +39,9 @@ const WhatsNewScreen = () => {
       taps.current.count = 0;
       const next = !useSettings.getState().diagnostics;
       useSettings.getState().update({ diagnostics: next });
-      haptics.success();
       toast.info(next ? "Diagnostics on — it's at the bottom of Settings" : "Diagnostics off");
     }
     else if (left <= 3) {
-      haptics.tap();
       toast.info(`${count(left, "more tap", "more taps")}`);
     }
   };

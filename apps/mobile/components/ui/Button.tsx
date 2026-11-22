@@ -13,6 +13,8 @@ type Variant = "primary" | "success" | "secondary" | "ghost" | "danger" | "dange
 type Size = "sm" | "md" | "lg";
 
 type Props = PressableProps & {
+  /** False when the handler buzzes something of its own; a toast already has its haptic. */
+  haptic?: boolean
   label: string
   variant?: Variant
   size?: Size
@@ -92,6 +94,7 @@ const Button = ({
   icon,
   hint,
   disabled,
+  haptic = true,
   onPress,
   ...rest
 }: Props) => {
@@ -132,7 +135,7 @@ const Button = ({
         onPress={onPress}
         onPressIn={() => {
           scale.value = withSpring(PRESSED_SCALE, SPRING);
-          FEEL_BY_VARIANT[variant]();
+          if (haptic) FEEL_BY_VARIANT[variant]();
         }}
         onPressOut={() => {
           scale.value = withSpring(1, SPRING);
