@@ -19,3 +19,10 @@ test("archive confirm: an empty account says only what disappears; debt and peop
   assert.match(archiveNotice({ _id: "a", balance: 500, type: "person" }, [], rs), /^They still owe you ₹5\.00\./);
   assert.match(archiveNotice({ _id: "a", balance: -500, type: "person" }, [], rs), /^You still owe them ₹5\.00\./);
 });
+
+test("archive confirm: archiving the default account says you'll pick an account, since there's no default left to fall back on", () => {
+  const bills = [{ account: "a" }, { account: "a" }];
+  assert.match(archiveNotice({ _id: "a", balance: 0, type: "bank" }, bills, rs, true), /It's your default account, so you'll pick an account for new entries and for the 2 bills paid from it\./);
+  assert.match(archiveNotice({ _id: "a", balance: 0, type: "bank" }, [bills[0]], rs, true), /new entries and for the bill paid from it\./);
+  assert.doesNotMatch(archiveNotice({ _id: "a", balance: 0, type: "bank" }, bills, rs, true), /use your default account/);
+});

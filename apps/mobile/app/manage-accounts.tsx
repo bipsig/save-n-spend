@@ -119,7 +119,7 @@ const ManageAccountsScreen = () => {
     void reorderAccounts(whole).catch((err) => toast.fromError(err, "Couldn't save that order"));
   };
 
-  const deleteBody = pendingDelete ? archiveNotice(pendingDelete, bills, formatMoney) : "";
+  const deleteBody = pendingDelete ? archiveNotice(pendingDelete, bills, formatMoney, pendingDelete._id === defaultAccountId) : "";
 
   return (
     <ScreenScaffold

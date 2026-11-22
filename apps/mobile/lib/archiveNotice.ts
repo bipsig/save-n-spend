@@ -6,7 +6,7 @@ import type { IAccount, IBill } from "@save-n-spend/types";
  * masks it. Then what the server does to its bills: a bill paid from it falls back to the
  * default account, and a SIP into a holding is paused until it points at another one.
  */
-export const archiveNotice = (account: Pick<IAccount, "_id" | "balance" | "type">, bills: Pick<IBill, "account" | "toInvestment">[], money: (paise: number) => string): string => {
+export const archiveNotice = (account: Pick<IAccount, "_id" | "balance" | "type">, bills: Pick<IBill, "account" | "toInvestment">[], money: (paise: number) => string, isDefault = false): string => {
   const paidFrom = bills.filter((b) => b.account === account._id && !b.toInvestment).length;
   const sips = bills.filter((b) => b.toInvestment === account._id).length;
   const left = money(Math.abs(account.balance));
@@ -17,7 +17,9 @@ export const archiveNotice = (account: Pick<IAccount, "_id" | "balance" | "type"
     account.balance === 0
       ? "It disappears from your pickers."
       : `${owing} It disappears from your pickers and stops counting toward your totals.`,
-    paidFrom > 0 ? `${paidFrom === 1 ? "A bill paid" : `${paidFrom} bills paid`} from it will use your default account.` : "",
+    isDefault
+      ? `It's your default account, so you'll pick an account for new entries${paidFrom === 0 ? "" : paidFrom === 1 ? " and for the bill paid from it" : ` and for the ${paidFrom} bills paid from it`}.`
+      : paidFrom > 0 ? `${paidFrom === 1 ? "A bill paid" : `${paidFrom} bills paid`} from it will use your default account.` : "",
     sips > 0 ? `${sips === 1 ? "Its SIP is" : `Its ${sips} SIPs are`} paused until you pick another holding.` : "",
     "Transactions already recorded against it keep their history.",
   ].filter(Boolean).join(" ");
