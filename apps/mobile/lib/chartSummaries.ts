@@ -74,28 +74,16 @@ export const pairedSummary = (data: readonly { income: number; expense: number }
   });
 };
 
-/** DonutChart: the whole, then the three biggest slices with their shares.
- *
- *  A slice without a share is trip spending beside shares of everyday spending (Insights in a
- *  trip window). The whole is then everyday spending, so it matches the shares, and the trips
- *  come last with their amount alone: "₹79,890.70 everyday, Bills & Utilities 50.1%, …; plus
- *  ₹36,850.00 on trips". */
+/** DonutChart: the whole, then the three biggest slices with their shares (Trips is a slice
+ *  like any other). */
 export const donutSummary = (
   title: string,
   total: number,
-  slices: readonly { name: string; pct: number | null; total?: number }[],
+  slices: readonly { name: string; pct: number; total?: number }[],
   masked: boolean,
 ) => {
-  const shares = slices.filter((s): s is typeof s & { pct: number } => s.pct !== null);
-  const shareList = shares.slice(0, 3).map((s) => `${s.name} ${formatPct(s.pct)}`).join(", ");
-  const trips = slices.reduce((a, s) => a + (s.pct === null ? s.total ?? 0 : 0), 0);
-  if (trips <= 0) {
-    return chartSummary({ title, masked, parts: shares.length ? [`${exact(total)} in all`, shareList] : [] });
-  }
-  const everyday = total - trips;
-  const head = [everyday > 0 && `${exact(everyday)} everyday`, shareList].filter(Boolean).join(", ");
-  const tail = `${head ? "plus " : ""}${exact(trips)} on trips`;
-  return chartSummary({ title, masked, parts: [head ? `${head}; ${tail}` : tail] });
+  const shareList = slices.slice(0, 3).map((s) => `${s.name} ${formatPct(s.pct)}`).join(", ");
+  return chartSummary({ title, masked, parts: slices.length ? [`${exact(total)} in all`, shareList] : [] });
 };
 
 /** ValueHistoryChart: where the value and the money put in stand at the latest month. */

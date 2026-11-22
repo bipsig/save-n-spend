@@ -65,29 +65,16 @@ test("donut: Investments' allocation reads as it always did", () => {
   assert.equal(s.donutSummary("Allocation", 0, [], false), "Allocation, chart. Nothing to show yet.");
 });
 
-test("donut in a trip window: everyday whole with its shares, then the trips amount", () => {
+test("donut with Trips: a slice like any other, shares of all spending", () => {
   const ring = [
-    { name: "Bills & Utilities", pct: 50.1, total: 4004000 },
-    { name: "Food & Dining", pct: 23.1, total: 1845500 },
-    { name: "Shopping", pct: 16.2, total: 1294000 },
-    { name: "Transportation", pct: 10.6, total: 845570 },
-    { name: "Trips", pct: null, total: 3685000 },
+    { name: "Bills & Utilities", pct: 35.0 }, { name: "Shopping", pct: 18.2 },
+    { name: "Transportation", pct: 15.7 }, { name: "Trips", pct: 11.6 },
   ];
   assert.equal(
-    s.donutSummary("Spending with trips", 11674070, ring, false),
-    "Spending with trips, chart. ₹79,890.70 everyday, Bills & Utilities 50.1%, Food & Dining 23.1%, Shopping 16.2%; plus ₹36,850.00 on trips.",
+    s.donutSummary("SPENT", 9503270, ring, false),
+    "SPENT, chart. ₹95,032.70 in all, Bills & Utilities 35.0%, Shopping 18.2%, Transportation 15.7%.",
   );
-  assert.equal(s.donutSummary("Spending with trips", 11674070, ring, true), "Spending with trips, chart. Amounts hidden.");
-});
-
-test("donut on a trips-only window: the trip slice, not 'nothing to show'", () => {
-  const trips = [{ name: "Trips", pct: null, total: 321050 }];
-  assert.equal(s.donutSummary("Spending with trips", 321050, trips, false), "Spending with trips, chart. ₹3,210.50 on trips.");
-  // Everyday spending in no category (uncategorised) still gets its amount.
-  assert.equal(
-    s.donutSummary("Spending with trips", 421050, trips, false),
-    "Spending with trips, chart. ₹1,000.00 everyday; plus ₹3,210.50 on trips.",
-  );
+  assert.equal(s.donutSummary("SPENT", 9503270, ring, true), "SPENT, chart. Amounts hidden.");
 });
 
 const month = (label: string, value: number, invested: number): MonthPoint =>

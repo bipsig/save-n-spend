@@ -8,12 +8,8 @@ import { donutSummary } from "@/lib/chartSummaries";
 import { useScrubTick } from "@/lib/useScrubTick";
 
 export type DonutSlice = { id: string; name: string; total: number; pct: number; color: string };
-/** A null `pct` is a slice with no share to state (Trips, beside shares of everyday spending):
- *  tapping it shows its amount alone, and VoiceOver hears it after the shares (`donutSummary`). */
-type RingSlice = Omit<DonutSlice, "pct"> & { pct: number | null };
-
 type Props = {
-  data: RingSlice[];
+  data: DonutSlice[];
   /** Shown in the hole when nothing is selected — the whole. */
   centerLabel: string;
   centerValue: number;
@@ -151,7 +147,7 @@ const DonutChart = ({
           <AppText size="md" weight="black" numberOfLines={1} style={styles.holeValue}>
             {formatMoney(shown ? shown.total : centerValue)}
           </AppText>
-          {shown && shown.pct !== null && (
+          {shown && (
             <AppText size="xs" color="inkDim">
               {formatPct(shown.pct)}
             </AppText>
