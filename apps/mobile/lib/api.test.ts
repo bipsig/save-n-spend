@@ -10,7 +10,9 @@ import { OFFLINE_MESSAGE, WAKING_MESSAGE, type ApiError } from "./apiError";
 // The real lib/api.ts and lib/offlineCache.ts, with fetch, the file system and the stores faked.
 
 const fs = memoryFileSystem();
-const session = { token: "tok" as string | null, signOuts: 0 };
+// A token shaped like the API's: the offline cache is keyed by its userId (gaps row 179).
+const TOKEN = `e30.${Buffer.from(JSON.stringify({ userId: "65a1b2c3d4e5f60718293a41" })).toString("base64url")}.sig`;
+const session = { token: TOKEN as string | null, signOuts: 0 };
 const reach: string[] = [];
 const log: { status: number; route: string; message?: string }[] = [];
 
@@ -45,7 +47,7 @@ beforeEach(async () => {
   sent = [];
   reach.length = 0;
   log.length = 0;
-  session.token = "tok";
+  session.token = TOKEN;
   session.signOuts = 0;
   api.useServerWaking.setState({ waking: false });
   await cache.clearAll();
@@ -70,7 +72,7 @@ test("every request names the app version, a request id and the token", async ()
   assert.equal(method, "GET");
   assert.equal(headers["X-App-Version"], "2.8.1");
   assert.match(headers["X-Request-Id"], /^[2-9A-HJKMNP-Z]{6}$/);
-  assert.equal(headers.Authorization, "Bearer tok");
+  assert.equal(headers.Authorization, `Bearer ${TOKEN}`);
   assert.equal(headers["Idempotency-Key"], undefined);
 
   session.token = null;

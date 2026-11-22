@@ -8,7 +8,9 @@ import { fake, memoryFileSystem, relaunch } from "../test/node";
 // client and offline cache: only fetch, the disk and SecureStore are faked. The steps are the
 // ones app/_layout.tsx takes on a launch with a cached session and no connection.
 
-const ME = { _id: "u1", name: "W", email: "w@example.test", prefs: { timeZone: "Asia/Kolkata" } };
+const ME = { _id: "65a1b2c3d4e5f60718293a41", name: "W", email: "w@example.test", prefs: { timeZone: "Asia/Kolkata" } };
+// The cache is keyed by the user the token names (gaps row 179).
+const TOKEN = `e30.${Buffer.from(JSON.stringify({ userId: ME._id })).toString("base64url")}.sig`;
 const CATEGORIES = [{ _id: "c1", userId: "u1", name: "Groceries", kind: "expense", parent: null, isArchived: false }];
 const ACCOUNTS = [{ _id: "a1", name: "Cash", type: "cash", balance: 0 }];
 
@@ -27,7 +29,7 @@ const launch = (fs: ReturnType<typeof memoryFileSystem>) => {
     if (!net.up) throw new TypeError("Network request failed");
     return new Response(JSON.stringify(server(url)), { status: 200 });
   }) as typeof fetch;
-  const keychain = new Map<string, string>([["sns.accessToken", "tok"]]);
+  const keychain = new Map<string, string>([["sns.accessToken", TOKEN]]);
   fake("expo-file-system/legacy", fs.api);
   fake("expo-constants", { __esModule: true, default: { expoConfig: { version: "2.8.1" } } });
   fake("expo-secure-store", {
@@ -59,14 +61,14 @@ const offlineFirstLaunch = async (withFix: boolean) => {
   const fs = memoryFileSystem();
   const old = launch(fs);
   old.net.up = true;
-  await old.cache.write("/auth/me", ME);
-  await old.cache.write("/categories", CATEGORIES);
-  await old.cache.write("/accounts", ACCOUNTS);
+  await old.cache.write("/auth/me", ME, ME._id);
+  await old.cache.write("/categories", CATEGORIES, ME._id);
+  await old.cache.write("/accounts", ACCOUNTS, ME._id);
   fs.files.delete("file:///doc/offline-cache/epoch.json");
 
   const app = launch(fs);
   await app.session.getState().hydrate();
-  const cachedMe = await app.cache.read<typeof ME>("/auth/me");
+  const cachedMe = await app.cache.read<typeof ME>("/auth/me", ME._id);
   assert.ok(cachedMe, "the upgrade keeps the signed-in user");
   // _layout's boot: unreachable, so the cached user and the offline flag.
   app.session.getState().setUser(cachedMe.data as never);

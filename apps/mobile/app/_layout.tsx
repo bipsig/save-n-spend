@@ -22,6 +22,7 @@ import WakeGate from "@/components/shell/WakeGate";
 import WhatsNewHost from "@/components/whatsNew/WhatsNewHost";
 import { ping, useWake } from "@/store/wake";
 import * as offlineCache from "@/lib/offlineCache";
+import { tokenOwner } from "@/lib/cacheOwner";
 import { useSession } from "@/store/session";
 import { useSettings } from "@/store/settings";
 import { useConnectivity } from "@/store/connectivity";
@@ -85,7 +86,7 @@ const RootLayout = () => {
       const token = useSession.getState().token;
       if (!token) return; // no token → hydrate already set `guest`
 
-      const cachedMe = await offlineCache.read<IUser>("/auth/me");
+      const cachedMe = await offlineCache.read<IUser>("/auth/me", tokenOwner(token));
 
       if (!cachedMe) {
         // No cached session to fall back on — a fresh install, or a cleared cache. Only

@@ -5,6 +5,7 @@
 import { create } from 'zustand';
 import type { IUser } from '@save-n-spend/types';
 import * as secure from '@/lib/secure';
+import * as offlineCache from '@/lib/offlineCache';
 
 // loading = still checking SecureStore on boot; authed = token verified via /me;
 // guest = no token (or signed out) → show the auth screens.
@@ -47,9 +48,12 @@ export const useSession = create<SessionState>((set) => ({
   setUser: (user) => set({ user, status: 'authed' }),
 
   // Wipe everything and drop back to the auth screens. Idempotent — safe for the
-  // 401 interceptor to call repeatedly.
+  // 401 interceptor to call repeatedly. The saved copies are gone before the login screen
+  // shows (gaps row 179); they are keyed by user anyway, so a failed clear still can't show
+  // them to the next account.
   signOut: async () => {
     await secure.clearToken();
+    await offlineCache.clearAll();
     set({ status: 'guest', token: null, user: null });
   },
 }));
