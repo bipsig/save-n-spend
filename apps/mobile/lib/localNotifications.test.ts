@@ -139,9 +139,10 @@ test("switching privacy on and off re-plans the queued digests, once each way", 
   assert.equal(w.cancels(), before + 1);
   assert.equal(last(w.scheduled, "local:dailySummary")?.content.body, "Your daily summary is ready.");
   assert.equal(last(w.scheduled, "local:weeklySummary")?.content.body, "Your weekly summary is ready.");
-  // Bill and goal banners went out at once and are remembered, so a re-plan doesn't repeat them.
+  // At 10:30 the bill and goal banners still wait for the send hour, so the re-plan queues
+  // them again, masked now (gaps row 176).
   const replanned = w.scheduled.slice(firstRun).map((r) => r.identifier).sort();
-  assert.deepEqual(replanned, ["local:dailySummary", "local:weeklySummary"]);
+  assert.deepEqual(replanned, ["bill:b1:today:2026-11-16", "goal:g1:deadline:2026-11-19", "local:dailySummary", "local:weeklySummary"]);
   assert.ok(w.scheduled.slice(firstRun).every((r) => !hasAmount(r)));
 
   // A peek is in-app only: nothing to re-plan.
@@ -200,4 +201,28 @@ test("privacy on: bill and goal banners leave the amount out, title-only where n
   await w.local.fireGoalMilestone({ _id: "g1", name: "Goa trip", saved: 15_000_00, target: 30_000_00 }, 8_000_00, prefs);
   assert.equal(last(w.scheduled, "local:goal:g1:milestone:75")?.content.body, `${w.rs(23_000_00)} of ${w.rs(30_000_00)} saved.`);
   await settle();
+});
+
+test("reminders wait for the server's send hour, under its dedupe keys, and go out once (gaps row 176)", async () => {
+  relaunch();
+  const w = world();
+  await w.local.rescheduleLocalNotifications(inputs);
+  const sixPm = Date.parse("2026-11-16T12:30:00.000Z");
+  const bill = last(w.scheduled, "bill:b1:today:2026-11-16");
+  const goal = last(w.scheduled, "goal:g1:deadline:2026-11-19");
+  assert.equal((bill?.trigger as { date: Date }).date.getTime(), sixPm, "18:00 in Kolkata, not 10:30");
+  assert.equal((goal?.trigger as { date: Date }).date.getTime(), sixPm);
+
+  // After the send hour: at once, and remembered as sent, so the next launch says nothing.
+  assert.equal(w.local.reminderFireTime(new Date(sixPm + 60_000), IST).getTime(), sixPm + 60_000);
+  assert.equal(w.local.alreadySent(sixPm, sixPm - 1), false, "still to come: planned again");
+  assert.equal(w.local.alreadySent(sixPm, sixPm), true);
+  assert.equal(w.local.alreadySent(true, 0), true, "a 2.8.7 entry counts as sent");
+});
+
+test("the repeating-payment key is the reminder job's", async () => {
+  relaunch();
+  const w = world();
+  const { keysSignature } = require("../../api/src/services/recurringService") as { keysSignature: (k: string[]) => string };
+  for (const keys of [["netflix|64900"], ["b|2", "a|1"], []]) assert.equal(w.local.keysSignature(keys), keysSignature(keys));
 });

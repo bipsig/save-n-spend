@@ -38,6 +38,8 @@ import { MONTHS_LONG, shortDay } from "@/lib/format/months";
 /** Mirrors SEND_HOUR / DAILY_HOUR in the API's jobs/reminderJob.ts, so the banner arrives with
  *  the feed entry it belongs to rather than an hour off it. */
 const DIGEST_HOUR = 18;
+/** Mirrors SEND_HOUR: nothing reminds before it (bills, deadlines, repeating payments). */
+const SEND_HOUR = 18;
 
 /** Prefixed so a reschedule clears only what this module owns. */
 const DAILY_ID = "local:dailySummary";
@@ -287,24 +289,32 @@ const scheduleInvestmentReminder = async (
 /**
  * A bill within its lead window notifies once, not once per relaunch that finds it still
  * there — the server gets this for free from a unique DB index; a local reschedule has no
- * such memory, so it keeps one itself. Never pruned: a few dozen keys, a few dozen bytes
- * each, is not worth the complexity of expiring them.
+ * such memory, so it keeps one itself, under the server's own dedupe key. The value is when
+ * the banner fires (ms epoch; `true` from before 2.8.8 means it already did): one still to
+ * come is planned again by the next reschedule, which cancels everything queued first. Never
+ * pruned: a few dozen keys, a few dozen bytes each, is not worth the complexity of expiring them.
  */
 const NOTIFIED_KEY = "sns.notifiedKeys";
 
+type NotifiedMap = Record<string, true | number>;
+
+/** Sent already, rather than waiting for its send hour. */
+export const alreadySent = (value: true | number | undefined, now: number): boolean =>
+  value === true || (typeof value === "number" && value <= now);
+
 const alreadyNotified = async (key: string): Promise<boolean> => {
-  const map = await readJson<Record<string, true>>(NOTIFIED_KEY);
-  return !!map?.[key];
+  const map = await readJson<NotifiedMap>(NOTIFIED_KEY);
+  return alreadySent(map?.[key], Date.now());
 };
 
 /** Writes queue behind each other: the schedulers run in parallel, and two read-modify-writes of
  *  the one map at once would keep only the last, so the other banner repeats next time. */
 let marking: Promise<void> = Promise.resolve();
 
-const markNotified = (key: string): Promise<void> => {
+const markNotified = (key: string, firesAt: number): Promise<void> => {
   const write = marking.then(async () => {
-    const map = (await readJson<Record<string, true>>(NOTIFIED_KEY)) ?? {};
-    map[key] = true;
+    const map = (await readJson<NotifiedMap>(NOTIFIED_KEY)) ?? {};
+    map[key] = firesAt;
     await writeJson(NOTIFIED_KEY, map);
   });
   marking = write.catch(() => {});
@@ -312,9 +322,28 @@ const markNotified = (key: string): Promise<void> => {
 };
 
 /**
- * Bills already inside their reminder window, one banner per bill per due date — the
- * content is already true the moment it's fetched, so unlike the digests above there is
- * no evening to wait for.
+ * When a bill, deadline or repeating-payment banner goes out (gaps row 176): the server sends
+ * nothing before its send hour where the user is, so a morning launch waits for it rather than
+ * firing "Rent due in 3 days" at 9. After that hour, at once, as the bell has it by then.
+ */
+export const reminderFireTime = (now: Date, zone: string): Date => {
+  const { year, month, day } = zonedParts(now, zone);
+  const sendHour = instantInZone(zone, year, month, day, SEND_HOUR, 0);
+  return sendHour.getTime() > now.getTime() ? sendHour : now;
+};
+
+/** Hands a reminder to the OS for its fire time and remembers it under its key. */
+const deliverReminder = async (key: string, notice: Notice, data: Record<string, unknown>, zone: string): Promise<void> => {
+  const now = new Date();
+  const fireAt = reminderFireTime(now, zone);
+  await deliver(key, notice, data, fireAt.getTime() > now.getTime() ? at(fireAt) : null);
+  await markNotified(key, fireAt.getTime());
+};
+
+/**
+ * Bills already inside their reminder window, one banner per bill per due date, at the
+ * server's send hour (`reminderFireTime`). Paying one before then reloads the accounts, which
+ * re-plans everything (app/_layout.tsx), and its banner goes with the cancel.
  */
 const scheduleBillReminders = async (
   prefs: INotificationPrefs | undefined,
@@ -351,11 +380,11 @@ const scheduleBillReminders = async (
     });
     if (!notice) continue;
 
+    // The reminder job's dedupe key, word for word.
     const key = `bill:${bill._id}:${notice.when}:${dayKey(due, zone)}`;
     if (await alreadyNotified(key)) continue;
 
-    await deliver(key, notice, { link: { screen: "bills", id: bill._id } }, null);
-    await markNotified(key);
+    await deliverReminder(key, notice, { link: { screen: "bills", id: bill._id } }, zone);
   }
 };
 
@@ -389,8 +418,7 @@ const scheduleGoalDeadlines = async (
     if (await alreadyNotified(key)) continue;
 
     const notice = goalDeadlineNotice(goal.name, days, Math.max(goal.target - goal.saved, 0));
-    await deliver(key, notice, { link: { screen: "goals", id: goal._id } }, null);
-    await markNotified(key);
+    await deliverReminder(key, notice, { link: { screen: "goals", id: goal._id } }, zone);
   }
 };
 
@@ -399,7 +427,15 @@ const scheduleGoalDeadlines = async (
  * Keyed by the set of suggestions, so it fires once per new find rather than every launch
  * the same ones are still waiting. No amounts in the copy, so privacy mode has nothing to hide.
  */
-const scheduleRecurringFound = async (prefs: INotificationPrefs | undefined): Promise<void> => {
+/** The server's `keysSignature` (services/recurringService), so this banner and the bell's row
+ *  share one key; localNotifications.test.ts checks the two agree. */
+export const keysSignature = (keys: string[]): string => {
+  let h = 5381;
+  for (const ch of [...keys].sort().join("|")) h = ((h << 5) + h + ch.charCodeAt(0)) | 0;
+  return (h >>> 0).toString(36);
+};
+
+const scheduleRecurringFound = async (prefs: INotificationPrefs | undefined, zone: string): Promise<void> => {
   if (prefs?.enabled === false) return;
 
   let expenses: RecurringSuggestionsPayload["expenses"];
@@ -411,11 +447,10 @@ const scheduleRecurringFound = async (prefs: INotificationPrefs | undefined): Pr
   }
   if (expenses.length === 0) return;
 
-  const key = `recurring:${expenses.map((p) => p.key).sort().join("|")}`;
+  const key = `recurring:${keysSignature(expenses.map((p) => p.key))}`;
   if (await alreadyNotified(key)) return;
 
-  await deliver(`local:recurring`, recurringNotice(expenses.map((p) => p.title)), { link: { screen: "bills", id: "suggestions" } }, null);
-  await markNotified(key);
+  await deliverReminder(key, recurringNotice(expenses.map((p) => p.title)), { link: { screen: "bills", id: "suggestions" } }, zone);
 };
 
 /** The 25/50/75/100% crossings a goal can hit, word for word the API's `checkGoalMilestone`. */
@@ -518,7 +553,7 @@ export const rescheduleLocalNotifications = async (inputs: RescheduleInputs): Pr
       safe("bills", () => scheduleBillReminders(notificationPrefs, zone)),
       safe("goals", () => scheduleGoalDeadlines(notificationPrefs, zone)),
       safe("investment", () => scheduleInvestmentReminder(notificationPrefs, zone, accounts)),
-      safe("recurring", () => scheduleRecurringFound(notificationPrefs)),
+      safe("recurring", () => scheduleRecurringFound(notificationPrefs, zone)),
     ]);
   }
   catch (err) {
