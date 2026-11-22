@@ -7,6 +7,7 @@ import type { NotificationLink } from "@save-n-spend/types";
 import { patch } from "@/lib/api";
 import { routeFor } from "@/lib/notifications";
 import { useNotifications } from "@/store/notifications";
+import { colors } from "@/theme";
 
 // The device half of notifications: permission, the token the server pushes to, and what
 // happens when one arrives or is tapped.
@@ -36,7 +37,7 @@ const ensureAndroidChannel = async (): Promise<void> => {
   await Notifications.setNotificationChannelAsync("default", {
     name: "Reminders",
     importance: Notifications.AndroidImportance.HIGH,
-    lightColor: "#9B8CFF",
+    lightColor: colors.primary,
   });
 };
 

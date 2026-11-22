@@ -27,7 +27,7 @@ import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { count } from "@/lib/format/count";
 import { screenTitles } from "@/data/menu";
-import { spacing } from "@/theme";
+import { spacing, colors } from "@/theme";
 
 const ManageCategoriesScreen = () => {
   const expenses = useCategoryTree("expense");
@@ -313,9 +313,9 @@ const styles = StyleSheet.create({
     paddingLeft: 30,
     paddingVertical: 11,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.06)",
+    borderTopColor: colors.surface2,
     borderLeftWidth: 1,
-    borderLeftColor: "rgba(255,255,255,0.14)",
+    borderLeftColor: colors.glassBorder,
   },
 });
 

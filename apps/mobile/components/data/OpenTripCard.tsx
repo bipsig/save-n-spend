@@ -7,6 +7,7 @@ import { AppText } from "../ui/AppText";
 import Icon from "../ui/Icon";
 import PressableScale from "../ui/PressableScale";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
+import { colors, withAlpha, tripsColor } from "@/theme";
 
 // A trip still open, on Home: it counts in no total until it is closed, so this is the only
 // place its running share shows outside the trip page.
@@ -21,7 +22,7 @@ const OpenTripCard = ({ trip }: { trip: TripListItem }) => {
       accessibilityLabel={`${trip.name}, in progress, ${line}. Opens the trip`}
     >
       <Card style={styles.card}>
-        <LinearGradient colors={["#5EEAD4", "#14B8A6"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.emoji}>
+        <LinearGradient colors={[colors.tealLight, tripsColor]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.emoji}>
           <AppText size="lg">{trip.emoji}</AppText>
         </LinearGradient>
         <View style={styles.grow}>
@@ -35,7 +36,7 @@ const OpenTripCard = ({ trip }: { trip: TripListItem }) => {
 };
 
 const styles = StyleSheet.create({
-  card: { flexDirection: "row", alignItems: "center", gap: 12, borderColor: "rgba(45,212,191,0.40)", backgroundColor: "rgba(45,212,191,0.10)" },
+  card: { flexDirection: "row", alignItems: "center", gap: 12, borderColor: withAlpha(colors.teal, 0.40), backgroundColor: withAlpha(colors.teal, 0.10) },
   emoji: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center" },
   grow: { flex: 1, minWidth: 0 },
 });

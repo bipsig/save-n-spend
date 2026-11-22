@@ -23,7 +23,7 @@ import { formatCalendar, MONTHS_LONG } from "@/lib/format/date";
 import { screenTitles } from "@/data/menu";
 import { toast } from "@/store/toast";
 import type { IconName } from "@/lib/icons";
-import { radius, spacing } from "@/theme";
+import { colors, radius, spacing, withAlpha } from "@/theme";
 
 const ICON: Record<CashFlowItem["kind"], IconName> = { bill: "bills", sip: "investments", income: "income" };
 
@@ -262,7 +262,7 @@ const styles = StyleSheet.create({
   monthBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: spacing.xs },
   legend: { justifyContent: "center", paddingTop: spacing.xs },
   agendaDay: { gap: spacing.sm },
-  agendaSelected: { borderColor: "rgba(155,140,255,0.55)" },
+  agendaSelected: { borderColor: withAlpha(colors.primary, 0.55) },
   agendaHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   dayBalance: { alignItems: "flex-end" },
   item: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: 4 },

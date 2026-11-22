@@ -6,7 +6,7 @@ import Toggle from "@/components/ui/Toggle";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import type { ChipTint } from "@/theme/gradients";
-import { spacing } from "@/theme";
+import { spacing, colors } from "@/theme";
 
 type Base = {
   label: string;
@@ -137,7 +137,7 @@ const styles = StyleSheet.create({
   // spec: rows inside one glass card, separated by hairlines
   divider: {
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.06)",
+    borderTopColor: colors.surface2,
   },
   faded: {
     opacity: 0.55, // spec locked row

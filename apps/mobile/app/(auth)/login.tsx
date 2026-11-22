@@ -13,7 +13,7 @@ import Button from "@/components/ui/Button";
 import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
 import { haptics } from "@/lib/haptics";
-import { gradients, spacing } from "@/theme";
+import { gradients, spacing, colors } from "@/theme";
 import { useSession } from "@/store/session";
 import { get, post } from "@/lib/api";
 import type { IUser } from "@save-n-spend/types";
@@ -179,7 +179,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: spacing.sm,
     // Violet halo, same recipe as the primary Button glow.
-    shadowColor: "#6D5CFF",
+    shadowColor: colors.glow,
     shadowOpacity: 0.5,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 6 },

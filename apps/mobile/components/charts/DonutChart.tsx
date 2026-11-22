@@ -6,6 +6,7 @@ import { formatPct } from "@/lib/format/pct";
 import { chartA11y } from "@/lib/chartSummary";
 import { donutSummary } from "@/lib/chartSummaries";
 import { useScrubTick } from "@/lib/useScrubTick";
+import { colors } from "@/theme";
 
 export type DonutSlice = { id: string; name: string; total: number; pct: number; color: string };
 type Props = {
@@ -118,7 +119,7 @@ const DonutChart = ({
         <Svg width={size} height={size}>
           {/* A ring behind the slices, so a window with no spending still reads as a chart
               waiting for data rather than as a failure to draw. */}
-          <Circle cx={cx} cy={cy} r={(rOuter + rInner) / 2} stroke="rgba(255,255,255,0.06)" strokeWidth={thickness} fill="none" />
+          <Circle cx={cx} cy={cy} r={(rOuter + rInner) / 2} stroke={colors.surface2} strokeWidth={thickness} fill="none" />
           <G>
             {arcs.map(({ slice, from, to }, i) => {
               if (to - from <= 0) return null;

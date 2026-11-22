@@ -8,7 +8,7 @@ import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { chartA11y } from "@/lib/chartSummary";
 import { dualLineSummary } from "@/lib/chartSummaries";
 import { useScrubTick } from "@/lib/useScrubTick";
-import { chartScrubLine } from "@/theme";
+import { chartScrubLine, colors, chartValueColor } from "@/theme";
 
 type Props = {
   /** The series in focus, drawn solid. Its length sets the x-axis. */
@@ -58,7 +58,7 @@ const DualLineChart = ({
   previousLabel,
   activeIndex,
   onScrub,
-  color = "#B0A2FF",
+  color = chartValueColor,
   previousColor = "rgba(255,255,255,0.42)",
   height = 108,
 }: Props) => {
@@ -189,10 +189,10 @@ const DualLineChart = ({
             {/* Where the current period has actually got to. Without it the solid line just
                 ends, which reads as a gap in the data rather than as today. */}
             {curEnd >= 0 && (
-              <Circle cx={x(curEnd)} cy={y(current[curEnd])} r={4.5} fill={color} stroke="#211e33" strokeWidth={2} />
+              <Circle cx={x(curEnd)} cy={y(current[curEnd])} r={4.5} fill={color} stroke={colors.chartRing} strokeWidth={2} />
             )}
             {active !== null && active < current.length && (
-              <Circle cx={x(active)} cy={y(current[active])} r={5} fill={color} stroke="#211e33" strokeWidth={2} />
+              <Circle cx={x(active)} cy={y(current[active])} r={5} fill={color} stroke={colors.chartRing} strokeWidth={2} />
             )}
           </Svg>
         )}

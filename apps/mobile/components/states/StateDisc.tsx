@@ -1,7 +1,7 @@
 import { StyleSheet, View } from "react-native";
 import Icon from "../ui/Icon";
 import type { IconName } from "@/lib/icons";
-import { colors } from "@/theme";
+import { colors, withAlpha } from "@/theme";
 
 type Props = {
   icon: IconName;
@@ -25,12 +25,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   accent: {
-    backgroundColor: "rgba(139,123,255,0.15)",
-    borderColor: "rgba(163,148,255,0.3)",
+    backgroundColor: withAlpha(colors.brandLight, 0.15),
+    borderColor: withAlpha(colors.seriesViolet, 0.3),
   },
   danger: {
     backgroundColor: colors.dangerSoft,
-    borderColor: "rgba(255,107,116,0.35)",
+    borderColor: withAlpha(colors.danger, 0.35),
   },
 });
 

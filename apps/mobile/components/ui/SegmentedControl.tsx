@@ -3,7 +3,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { AppText } from "./AppText";
 import { haptics } from "@/lib/haptics";
-import { gradients, touchTarget } from "@/theme";
+import { gradients, touchTarget, colors } from "@/theme";
 
 type Segment<T extends string> = {
   key: T;
@@ -86,7 +86,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: "rgba(255,255,255,0.05)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: colors.line,
     gap: 4,
   },
   segment: {
@@ -96,7 +96,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   segmentOn: {
-    shadowColor: "#6D5CFF",
+    shadowColor: colors.glow,
     shadowOpacity: 0.45,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },

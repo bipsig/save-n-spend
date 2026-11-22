@@ -76,7 +76,7 @@ const styles = StyleSheet.create({
   selected: { backgroundColor: colors.primary },
   glow: {
     backgroundColor: gradients.brand[1],
-    shadowColor: "#6D5CFF",
+    shadowColor: colors.glow,
     shadowOpacity: 0.6,
     shadowRadius: 9,
     shadowOffset: { width: 0, height: 6 },

@@ -38,7 +38,7 @@ export const useScreenRefresh = (onRefresh?: () => unknown, refreshing = false) 
       onRefresh={pull}
       tintColor={colors.primary}
       colors={[colors.primary]}
-      progressBackgroundColor="#1B1730"
+      progressBackgroundColor={colors.stripBg}
     />
   );
 };

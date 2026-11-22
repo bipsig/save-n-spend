@@ -4,6 +4,7 @@ import PressableScale from "@/components/ui/PressableScale";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { count } from "@/lib/format/count";
 import type { HeatCell, Heatmap } from "@/lib/insights";
+import { colors, withAlpha } from "@/theme";
 
 type Props = {
   heatmap: Heatmap;
@@ -18,10 +19,10 @@ const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"];
 // in opacity, and four bands are four things a legend can name.
 const BANDS = [
   "rgba(255,255,255,0.05)",  // nothing spent
-  "rgba(155,140,255,0.28)",
-  "rgba(155,140,255,0.55)",
-  "rgba(155,140,255,0.82)",
-  "#9B8CFF",
+  withAlpha(colors.primary, 0.28),
+  withAlpha(colors.primary, 0.55),
+  withAlpha(colors.primary, 0.82),
+  colors.primary,
 ] as const;
 
 const bandFor = (cell: HeatCell): string => {
@@ -142,7 +143,7 @@ const styles = StyleSheet.create({
   },
   cellActive: {
     borderWidth: 1.5,
-    borderColor: "#F5F4FC",
+    borderColor: colors.ink,
   },
 });
 

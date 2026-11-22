@@ -3,7 +3,7 @@ import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
 import { AppText } from "@/components/ui/AppText";
 import { haptics } from "@/lib/haptics";
-import { radius } from "@/theme";
+import { radius, colors } from "@/theme";
 
 type Props = {
   label: string;
@@ -65,9 +65,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: colors.surface2,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: colors.line,
   },
   off: {
     opacity: 0.35,

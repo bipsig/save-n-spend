@@ -94,3 +94,13 @@ const TINT_BY_TOKEN: Partial<Record<ColorToken, ChipTint>> = {
 
 export const chipTintFor = (token?: string): ChipTint =>
   TINT_BY_TOKEN[(token ?? '') as ColorToken] ?? 'violet'
+
+// A trip card's band, by the colour key stored on the trip.
+export const tripGradients: Record<string, [string, string]> = {
+  teal: ["#14b8a6", "#6d5cf6"],
+  sunset: ["#f59e0b", "#e24a55"],
+  ocean: ["#3b82f6", "#7b68ee"],
+  forest: ["#10b981", "#3b82f6"],
+  rose: ["#ec4899", "#8b5cf6"],
+  sand: ["#eab308", "#f97316"],
+};

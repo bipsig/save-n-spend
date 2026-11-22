@@ -10,7 +10,7 @@ import Icon from "../ui/Icon";
 import { ArchivedBadgeSegment, ArchivedChip } from "../ui/ArchivedMark";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
-import { colors, spacing } from "@/theme";
+import { colors, spacing, withAlpha } from "@/theme";
 import { StyleSheet, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { AppText } from "../ui/AppText";
@@ -371,9 +371,9 @@ const styles = StyleSheet.create({
     gap: 8,
     padding: 12,
     borderRadius: 14,
-    backgroundColor: "rgba(155,140,255,0.10)",
+    backgroundColor: withAlpha(colors.primary, 0.10),
     borderWidth: 1,
-    borderColor: "rgba(155,140,255,0.30)",
+    borderColor: withAlpha(colors.primary, 0.30),
   },
   tripNoteText: { flex: 1, lineHeight: 17 },
   // The fading wrapper carries the gap, since its children no longer get the sheet's.

@@ -8,7 +8,7 @@ import Icon from "../ui/Icon"
 import MaskedText from "../ui/MaskedText"
 import PressableScale from "../ui/PressableScale"
 import { BAND_COLOR, pillarColor } from "@/lib/health"
-import { spacing } from "@/theme"
+import { spacing, colors } from "@/theme"
 
 type Props = {
   health: HealthScore
@@ -140,7 +140,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     paddingTop: spacing.xs,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.06)",
+    borderTopColor: colors.surface2,
   },
   focusText: {
     flex: 1,

@@ -3,7 +3,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import PressableScale from "./PressableScale";
 import { haptics } from "@/lib/haptics";
 import type { ColorToken } from "@/theme";
-import { spacing } from "@/theme";
+import { spacing, colors } from "@/theme";
 import { chipGradients, chipTintFor } from "@/theme/gradients";
 
 // The palette offered in colour pickers — the semantic tints, rendered as their
@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
     borderColor: "transparent",
   },
   ringOn: {
-    borderColor: "#FFFFFF",
+    borderColor: colors.surface,
   },
   swatch: {
     width: 36,

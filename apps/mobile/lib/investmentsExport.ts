@@ -1,7 +1,7 @@
 import type { GrowthPoint, HoldingTrend, InvestmentReport, LedgerEntry, MonthPoint, PortfolioGrowth, PortfolioPoint } from "@save-n-spend/types";
 import { get } from "@/lib/api";
 import { deliver, dayStamp, type ExportFormat, type ExportResult } from "@/lib/export";
-import { htmlEscape, kpiCard, kpiRow, pdfDocument } from "@/lib/pdfShell";
+import { htmlEscape, kpiCard, kpiRow, pdfDocument, PDF_COLORS } from "@/lib/pdfShell";
 import { formatCompactExact } from "@/lib/format/compact";
 import { formatPct } from "@/lib/format/pct";
 import { formatCalendar, formatInstant } from "@/lib/format/date";
@@ -28,12 +28,12 @@ export type InvestmentsExportOptions = {
 
 export const fetchInvestmentReport = () => get<InvestmentReport>("/investments/report", { cache: false });
 
-const AXIS = "#9995ad";
-const GRID = "#eeecf6";
-const VIOLET = "#6D5CFF";
-const TEAL = "#2DD4BF";
-const UP = "#0f9d63";
-const DOWN = "#d64550";
+const AXIS = PDF_COLORS.faint;
+const GRID = PDF_COLORS.track;
+const VIOLET = PDF_COLORS.brand;
+const TEAL = PDF_COLORS.teal;
+const UP = PDF_COLORS.up;
+const DOWN = PDF_COLORS.down;
 
 const signed = (n: number) => formatMoney(n, { sign: "always" });
 const tone = (n: number): "pos" | "neg" | "" => (n > 0 ? "pos" : n < 0 ? "neg" : "");
@@ -93,11 +93,11 @@ const profitSvg = (points: MonthPoint[], growth: GrowthPoint[]): string => {
   }).join("");
   const last = profit[profit.length - 1];
   return `<svg width="${W}" height="${h}" viewBox="0 0 ${W} ${h}">
-    <line x1="0" x2="${W - PAD_R + 4}" y1="${z.toFixed(1)}" y2="${z.toFixed(1)}" stroke="#cfcce0"/>
+    <line x1="0" x2="${W - PAD_R + 4}" y1="${z.toFixed(1)}" y2="${z.toFixed(1)}" stroke="${PDF_COLORS.zero}"/>
     <polyline fill="none" stroke="${last >= 0 ? UP : DOWN}" stroke-width="2.4" stroke-linejoin="round" points="${profit.map((v, k) => `${x(k).toFixed(1)},${y(v).toFixed(1)}`).join(" ")}"/>
     <text x="${W - PAD_R + 8}" y="${(y(last) + 3).toFixed(1)}" font-size="8" font-weight="700" fill="${last >= 0 ? UP : DOWN}">${htmlEscape(formatCompactExact(last, { sign: "always" }))}</text>
     <text x="${PAD_L}" y="${topH + gap - 4}" font-size="7" fill="${AXIS}" letter-spacing="1">MONTHLY CHANGE</text>
-    <line x1="0" x2="${W - PAD_R + 4}" y1="${bz.toFixed(1)}" y2="${bz.toFixed(1)}" stroke="#cfcce0"/>${bars}${axisLabels(points.map((p) => p.label), h, x)}</svg>`;
+    <line x1="0" x2="${W - PAD_R + 4}" y1="${bz.toFixed(1)}" y2="${bz.toFixed(1)}" stroke="${PDF_COLORS.zero}"/>${bars}${axisLabels(points.map((p) => p.label), h, x)}</svg>`;
 };
 
 // Sections.
@@ -201,14 +201,14 @@ const ledgerHtml = (entries: LedgerEntry[], showHolding: boolean): string => {
 const CSS = `
     td { vertical-align: top; }
     tr { page-break-inside: avoid; }
-    .desc { font-weight: 600; } .subl { color: #6b6880; font-size: 10px; margin-top: 2px; }
-    td.amt { font-weight: 600; white-space: nowrap; } td.nw { white-space: nowrap; color: #6b6880; }
-    td.amt.pos { color: #0f9d63; } td.amt.neg { color: #d64550; }
-    tr.total td { border-top: 2px solid #e7e5f0; }
+    .desc { font-weight: 600; } .subl { color: ${PDF_COLORS.muted}; font-size: 10px; margin-top: 2px; }
+    td.amt { font-weight: 600; white-space: nowrap; } td.nw { white-space: nowrap; color: ${PDF_COLORS.muted}; }
+    td.amt.pos { color: ${PDF_COLORS.up}; } td.amt.neg { color: ${PDF_COLORS.down}; }
+    tr.total td { border-top: 2px solid ${PDF_COLORS.rule}; }
     .stack { display: flex; height: 14px; border-radius: 7px; overflow: hidden; gap: 2px; margin: 8px 0; } .stack span { display: block; }
-    .legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 11px; color: #6b6880; }
+    .legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 11px; color: ${PDF_COLORS.muted}; }
     .ld { display: inline-flex; align-items: center; gap: 6px; } .dot { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
-    .note { font-size: 10px; color: #6b6880; line-height: 1.5; border-left: 3px solid #e7e5f0; padding-left: 10px; margin-top: 16px; }
+    .note { font-size: 10px; color: ${PDF_COLORS.muted}; line-height: 1.5; border-left: 3px solid ${PDF_COLORS.rule}; padding-left: 10px; margin-top: 16px; }
     .pb { page-break-before: always; } .hh { margin-top: 4px; font-size: 17px; }`;
 
 const FOOTNOTE = `<div class="note">Growth is the change in value from updates you entered; money you add is not counted as growth. History starts the day each holding was added, and a month with no update carries the last value forward.</div>`;

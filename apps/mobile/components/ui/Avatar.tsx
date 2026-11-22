@@ -2,12 +2,12 @@ import { Image, StyleSheet, View } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { AppText } from './AppText'
 import Icon from './Icon'
-import { colors, radius } from '@/theme'
+import { colors, radius, withAlpha } from '@/theme'
 import type { ColorToken } from '@/theme'
 import type { IconName } from '@/lib/icons'
 
 // Spec .av / .av2 — violet gradient disc with a violet halo.
-const AVATAR_GRADIENT = ['#A394FF', '#6D5CFF'] as const
+const AVATAR_GRADIENT = [colors.seriesViolet, colors.glow] as const
 
 type Size = 'sm' | 'md' | 'lg'
 
@@ -37,7 +37,7 @@ const Avatar = ({ size = 'md', uri, initials, iconName, background = 'accentSoft
     return <Image source={{ uri }} style={base} />
   }
 
-  const glowColor = gradient ? 'rgba(109,92,255,0.9)' : colors[background]
+  const glowColor = gradient ? withAlpha(colors.glow, 0.9) : colors[background]
 
   return (
     <View

@@ -7,17 +7,17 @@ import Icon from "@/components/ui/Icon";
 import type { IconName } from "@/lib/icons";
 import { useToast, type ToastTone } from "@/store/toast";
 import type { ChipTint } from "@/theme/gradients";
-import { radius, spacing } from "@/theme";
+import { radius, spacing, colors, withAlpha } from "@/theme";
 
 // Per tone: the glyph, the chip tint, and the border that tints the glass. A red
 // hairline is what makes a failure legible at a glance, before the sentence is read.
 const LOOK: Record<ToastTone, { icon: IconName; tint: ChipTint; border: string }> = {
-  success: { icon: "check", tint: "green", border: "rgba(52,224,161,0.42)" },
-  error: { icon: "budgetOver", tint: "red", border: "rgba(255,107,116,0.45)" },
+  success: { icon: "check", tint: "green", border: withAlpha(colors.success, 0.42) },
+  error: { icon: "budgetOver", tint: "red", border: withAlpha(colors.danger, 0.45) },
   // Amber and the budget-warning glyph, the same pair every over-80% row uses — so
   // "it saved, but look" reads as caution rather than as a failure.
-  warning: { icon: "budgetWarning", tint: "amber", border: "rgba(255,177,92,0.45)" },
-  info: { icon: "info", tint: "violet", border: "rgba(155,140,255,0.40)" },
+  warning: { icon: "budgetWarning", tint: "amber", border: withAlpha(colors.warning, 0.45) },
+  info: { icon: "info", tint: "violet", border: withAlpha(colors.primary, 0.40) },
 };
 
 // The app's transient feedback banner. It enters from the top rather than the
@@ -50,7 +50,7 @@ const Toast = () => {
       >
         <View style={[styles.card, { borderColor: look.border }]}>
           <LinearGradient
-            colors={["rgba(40,34,66,0.98)", "rgba(24,19,42,0.98)"]}
+            colors={[withAlpha(colors.toastTop, 0.98), withAlpha(colors.toastBottom, 0.98)]}
             start={{ x: 0, y: 0 }}
             end={{ x: 0.6, y: 1 }}
             style={StyleSheet.absoluteFill}
@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     // Opaque, unlike a Card: this floats over arbitrary content, and glass over a
     // busy chart is unreadable. The shadow is what lifts it off that content.
-    shadowColor: "#08060F",
+    shadowColor: colors.scrim,
     shadowOpacity: 0.5,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },

@@ -50,7 +50,7 @@ const styles = StyleSheet.create({
     top: 4,
     bottom: -4,
     width: 2,
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: colors.line,
   },
   dot: {
     position: "absolute",

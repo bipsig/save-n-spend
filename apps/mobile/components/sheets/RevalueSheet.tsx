@@ -10,7 +10,7 @@ import { holderFor } from "@/lib/idempotency";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { count } from "@/lib/format/count";
 import { toast } from "@/store/toast";
-import { spacing } from "@/theme";
+import { spacing, colors, withAlpha } from "@/theme";
 import { signTone } from "@/lib/signTone";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { errorText } from "@/lib/apiError";
@@ -148,7 +148,7 @@ const RevalueSheet = forwardRef<BottomSheetModal, Props>(({ holdings, onSaved },
                 value={values[h.accountId] ?? ""}
                 onChangeText={(v) => setValues((prev) => ({ ...prev, [h.accountId]: v }))}
                 placeholder="0"
-                placeholderTextColor="rgba(245,244,252,0.35)"
+                placeholderTextColor={withAlpha(colors.ink, 0.35)}
                 keyboardType="decimal-pad"
                 style={styles.inputField}
               />
@@ -195,7 +195,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: "rgba(255,255,255,0.07)",
     borderWidth: 1,
-    borderColor: "rgba(155,140,255,0.6)",
+    borderColor: withAlpha(colors.primary, 0.6),
   },
   inputField: {
     flex: 1,
@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
     textAlign: "right",
     fontSize: 15,
     fontWeight: "800",
-    color: "#F5F4FC",
+    color: colors.ink,
   },
   note: {
     lineHeight: 17,

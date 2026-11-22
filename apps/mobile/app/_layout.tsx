@@ -40,6 +40,7 @@ import { APP_VERSION, useWhatsNew } from "@/store/whatsNew";
 import { installGlobalErrorHandler, setCurrentScreen } from "@/lib/errorReporting";
 import CrashScreen from "@/components/shell/CrashScreen";
 import ScreenErrorBoundary from "@/components/shell/ScreenErrorBoundary";
+import { colors } from "@/theme";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -260,7 +261,7 @@ const RootLayout = () => {
               <WakeGate>
                 <Stack screenOptions={{
                   headerShown: false,
-                  contentStyle: { backgroundColor: "#0C0A16" },
+                  contentStyle: { backgroundColor: colors.bg },
                 }}
                 // Each screen gets its own crash boundary, so a screen that throws is replaced
                 // in place and the stack keeps its history. "Go to Home" pops back to the tabs.

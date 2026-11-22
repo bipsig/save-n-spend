@@ -8,7 +8,7 @@ import PressableScale from "@/components/ui/PressableScale";
 import { AppText } from "@/components/ui/AppText";
 import { listReviewMonths, listReviewWeeks, type ReviewHistoryRow } from "@/lib/reviews";
 import { screenTitles } from "@/data/menu";
-import { spacing } from "@/theme";
+import { spacing, colors } from "@/theme";
 
 // Nothing is fetched here — every row is an enumerable calendar date (see
 // listReviewMonths/listReviewWeeks), and the review behind it is computed fresh the
@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
   },
   rowDivider: {
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.06)",
+    borderTopColor: colors.surface2,
   },
   rowLabel: {
     flex: 1,

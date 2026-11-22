@@ -5,7 +5,7 @@ import { AppText } from "@/components/ui/AppText";
 import { haptics } from "@/lib/haptics";
 import type { IconName } from "@/lib/icons";
 import type { ExportFormat } from "@/lib/export";
-import { colors, radius, spacing } from "@/theme";
+import { colors, radius, spacing, withAlpha } from "@/theme";
 
 const FORMATS: { key: ExportFormat; label: string; desc: string; icon: IconName }[] = [
   { key: "csv", label: "CSV", desc: "Spreadsheet", icon: "bills" },
@@ -73,7 +73,7 @@ const styles = StyleSheet.create({
   },
   cardOn: {
     borderColor: colors.primary,
-    backgroundColor: "rgba(139,123,255,0.14)",
+    backgroundColor: withAlpha(colors.brandLight, 0.14),
   },
   cardOff: {
     opacity: 0.4,

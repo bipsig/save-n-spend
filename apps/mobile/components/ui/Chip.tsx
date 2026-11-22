@@ -5,7 +5,7 @@ import { AppText } from './AppText'
 import Icon from './Icon'
 import type { IconName } from '@/lib/icons'
 import { haptics } from '@/lib/haptics'
-import { colors, gradients, radius, spacing } from '@/theme'
+import { colors, gradients, radius, spacing, withAlpha } from '@/theme'
 
 type Props = PressableProps & {
   label: string
@@ -38,7 +38,7 @@ const Chip = ({ label, selected = false, active = false, grow = false, icon, sin
         styles.base,
         grow ? styles.grow : styles.hug,
         {
-          backgroundColor: selected ? 'transparent' : active ? 'rgba(139,123,255,0.14)' : colors.surface2,
+          backgroundColor: selected ? 'transparent' : active ? withAlpha(colors.brandLight, 0.14) : colors.surface2,
           borderColor: selected ? 'transparent' : active ? colors.primary : colors.line,
           opacity: disabled ? 0.4 : pressed ? 0.85 : 1,
         },
@@ -101,7 +101,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   glow: {
-    shadowColor: '#6D5CFF',
+    shadowColor: colors.glow,
     shadowOpacity: 0.4,
     shadowRadius: 7,
     shadowOffset: { width: 0, height: 4 },

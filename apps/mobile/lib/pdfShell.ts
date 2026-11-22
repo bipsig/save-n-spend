@@ -1,5 +1,26 @@
 import { formatInstant } from "@/lib/format/date";
 
+/** The paper palette every PDF uses (gaps row 121): not the app theme, which is dark. */
+export const PDF_COLORS = {
+  ink: "#1a1730",
+  brand: "#6D5CFF",
+  muted: "#6b6880",
+  faint: "#9995ad",
+  rule: "#e7e5f0",
+  ruleSoft: "#f1f0f6",
+  track: "#eeecf6",
+  zero: "#cfcce0",
+  up: "#0f9d63",
+  down: "#d64550",
+  teal: "#2DD4BF",
+  tripRow: "#e9fbf8",
+  new: "#b8860b",
+  heat1: "#d9d3ff",
+  heat2: "#b3a3ff",
+  heat3: "#8c73ff",
+} as const;
+
+
 // The frame every exported PDF shares: letterhead, KPI cards, section headings, tables, footer.
 // A report supplies its section name, the span it covers, its body, and CSS for whatever is
 // its own — so a new report starts from the same look and the three can't drift apart.
@@ -17,23 +38,23 @@ export const kpiRow = (cards: string[]): string => `<div class="cards">${cards.j
 
 const SHELL_CSS = `
     * { box-sizing: border-box; }
-    body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; color: #1a1730; margin: 0; padding: 32px 28px; }
-    .head { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid #6D5CFF; padding-bottom: 14px; }
+    body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; color: ${PDF_COLORS.ink}; margin: 0; padding: 32px 28px; }
+    .head { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid ${PDF_COLORS.brand}; padding-bottom: 14px; }
     .brand { font-size: 22px; font-weight: 800; letter-spacing: -0.4px; }
-    .brand span { color: #6D5CFF; }
-    .range { font-size: 12px; color: #6b6880; text-transform: uppercase; letter-spacing: 1px; text-align: right; }
-    h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1.2px; color: #6b6880; margin: 26px 0 8px; }
+    .brand span { color: ${PDF_COLORS.brand}; }
+    .range { font-size: 12px; color: ${PDF_COLORS.muted}; text-transform: uppercase; letter-spacing: 1px; text-align: right; }
+    h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1.2px; color: ${PDF_COLORS.muted}; margin: 26px 0 8px; }
     .cards { display: flex; flex-wrap: wrap; gap: 12px; margin: 20px 0 4px; }
-    .card { flex: 1 1 22%; border: 1px solid #e7e5f0; border-radius: 12px; padding: 12px 14px; }
-    .card .k { font-size: 10px; color: #6b6880; text-transform: uppercase; letter-spacing: 1px; }
+    .card { flex: 1 1 22%; border: 1px solid ${PDF_COLORS.rule}; border-radius: 12px; padding: 12px 14px; }
+    .card .k { font-size: 10px; color: ${PDF_COLORS.muted}; text-transform: uppercase; letter-spacing: 1px; }
     .card .v { font-size: 17px; font-weight: 800; margin-top: 4px; }
-    .card .sub { font-size: 10px; color: #9995ad; margin-top: 3px; }
-    .v.pos { color: #0f9d63; } .v.neg { color: #d64550; }
+    .card .sub { font-size: 10px; color: ${PDF_COLORS.faint}; margin-top: 3px; }
+    .v.pos { color: ${PDF_COLORS.up}; } .v.neg { color: ${PDF_COLORS.down}; }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    th { text-align: left; color: #6b6880; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; padding: 8px; border-bottom: 1px solid #e7e5f0; }
-    td { padding: 8px; border-bottom: 1px solid #f1f0f6; }
+    th { text-align: left; color: ${PDF_COLORS.muted}; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; padding: 8px; border-bottom: 1px solid ${PDF_COLORS.rule}; }
+    td { padding: 8px; border-bottom: 1px solid ${PDF_COLORS.ruleSoft}; }
     th.amt, td.amt { text-align: right; }
-    .foot { margin-top: 24px; font-size: 10px; color: #9995ad; text-align: center; }`;
+    .foot { margin-top: 24px; font-size: 10px; color: ${PDF_COLORS.faint}; text-align: center; }`;
 
 type Doc = {
   /** Named after the brand in the letterhead: "Transactions", "Insights". */

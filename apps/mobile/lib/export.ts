@@ -12,7 +12,7 @@ import { accountById } from "@/lib/accounts";
 // asked for would be a bug.
 import { formatMoneyExact as formatMoney } from "@/lib/money";
 import { appZone, dayKey, zonedParts } from "@/lib/zone";
-import { htmlEscape, kpiCard, kpiRow, pdfDocument } from "@/lib/pdfShell";
+import { htmlEscape, kpiCard, kpiRow, pdfDocument, PDF_COLORS } from "@/lib/pdfShell";
 import { count } from "@/lib/format/count";
 import { formatSpan } from "@/lib/format/period";
 
@@ -183,13 +183,13 @@ const buildHtml = (txns: ITransaction[], range: RangeKey, offset: number): strin
     css: `
     table { margin-top: 20px; }
     td { vertical-align: top; padding: 9px 8px; }
-    td.date { color: #6b6880; white-space: nowrap; }
+    td.date { color: ${PDF_COLORS.muted}; white-space: nowrap; }
     td.date .time { display: block; font-size: 10px; opacity: 0.7; }
     .desc { font-weight: 600; }
-    .sub { color: #6b6880; font-size: 11px; margin-top: 2px; }
+    .sub { color: ${PDF_COLORS.muted}; font-size: 11px; margin-top: 2px; }
     td.amt { font-weight: 700; white-space: nowrap; }
-    td.amt.pos { color: #0f9d63; } td.amt.neg { color: #1a1730; }
-    tr.trip td { background: #e9fbf8; }`,
+    td.amt.pos { color: ${PDF_COLORS.up}; } td.amt.neg { color: ${PDF_COLORS.ink}; }
+    tr.trip td { background: ${PDF_COLORS.tripRow}; }`,
   });
 };
 

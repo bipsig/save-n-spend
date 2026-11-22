@@ -13,7 +13,7 @@ import { authenticate } from "@/lib/lock";
 import { coversScreen } from "@/lib/appCover";
 import { useSession } from "@/store/session";
 import { useSettings } from "@/store/settings";
-import { spacing } from "@/theme";
+import { spacing, colors } from "@/theme";
 
 type Props = { children: React.ReactNode };
 
@@ -155,7 +155,7 @@ const AppLockGate = ({ children }: Props) => {
           {/* Not faded in, unlike every other appearing surface: a fade is a few frames of
               the user's balances showing through a half-opaque overlay. */}
           <LinearGradient
-            colors={["#151129", "#0C0A16"]}
+            colors={[colors.bgDeep, colors.bg]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={StyleSheet.absoluteFill}

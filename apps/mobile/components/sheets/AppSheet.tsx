@@ -15,7 +15,7 @@ import type {
   BottomSheetBackgroundProps,
   BottomSheetFooterProps,
 } from "@gorhom/bottom-sheet";
-import { spacing } from "@/theme";
+import { spacing, colors } from "@/theme";
 
 type Props = {
   children: React.ReactNode;
@@ -41,7 +41,7 @@ type Props = {
 const SheetBackground = ({ style }: BottomSheetBackgroundProps) => (
   <View style={[style, styles.bgClip]}>
     <LinearGradient
-      colors={["#241E42", "#151024"]}
+      colors={[colors.sheetTop, colors.sheetBottom]}
       start={{ x: 0, y: 0 }}
       end={{ x: 0, y: 1 }}
       style={StyleSheet.absoluteFill}
@@ -211,7 +211,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.30)",
   },
   scrim: {
-    backgroundColor: "#08060F",
+    backgroundColor: colors.scrim,
   },
   handle: {
     paddingTop: spacing.md,
@@ -233,9 +233,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.md,
     gap: spacing.sm,
-    backgroundColor: "#151024",
+    backgroundColor: colors.sheetBottom,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.10)",
+    borderTopColor: colors.line,
   },
 });
 

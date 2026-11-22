@@ -28,9 +28,9 @@ const Toggle = ({ value, onValueChange, disabled = false, label }: Props) => (
     // On iOS `trackColor.true` is the on-tint and `ios_backgroundColor` shows
     // through in the off state — the default grey reads as a light-mode leftover
     // against the dark ground, so both are set.
-    trackColor={{ false: "rgba(255,255,255,0.14)", true: colors.accent }}
+    trackColor={{ false: colors.glassBorder, true: colors.accent }}
     thumbColor={colors.surface}
-    ios_backgroundColor="rgba(255,255,255,0.14)"
+    ios_backgroundColor={colors.glassBorder}
   />
 );
 

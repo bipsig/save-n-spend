@@ -5,7 +5,7 @@ import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
 import Card from "@/components/data/Card";
 import { useServerWaking } from "@/lib/api";
-import { radius, spacing } from "@/theme";
+import { radius, spacing, colors } from "@/theme";
 
 /** The strip itself, in the offline banner's look, for a screen that places it inline. */
 export const ServerWakingNotice = () => {
@@ -55,8 +55,8 @@ const styles = StyleSheet.create({
     left: 20,
     right: 20,
     borderRadius: radius.lg,
-    backgroundColor: "#1B1730",
-    shadowColor: "#08060F",
+    backgroundColor: colors.stripBg,
+    shadowColor: colors.scrim,
     shadowOpacity: 0.5,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },

@@ -25,7 +25,7 @@ import { haptics } from "@/lib/haptics";
 import { isMonthClosed, monthTitle, type BudgetSummary } from "@/lib/budgets";
 import { toast } from "@/store/toast";
 import type { IconName } from "@/lib/icons";
-import { spacing } from "@/theme";
+import { spacing, colors } from "@/theme";
 import type { ColorToken } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { editWithUndo } from "@/lib/undo";
@@ -307,7 +307,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.13)",
+    borderColor: colors.fieldBorder,
     backgroundColor: "rgba(255,255,255,0.05)",
   },
   meter: {

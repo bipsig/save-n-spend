@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
 import Icon from "@/components/ui/Icon";
 import { haptics } from "@/lib/haptics";
-import { gradients, spacing } from "@/theme";
+import { gradients, spacing, colors } from "@/theme";
 
 // Deeper than a CTA's 0.98: the FAB is a small circle, so it needs more travel
 // before the squeeze is visible at all.
@@ -64,8 +64,8 @@ const styles = StyleSheet.create({
     },
     glow: {
         borderRadius: 29,
-        backgroundColor: "#6D5CF6",
-        shadowColor: "#6D5CFF",
+        backgroundColor: colors.brandDeep,
+        shadowColor: colors.glow,
         shadowOpacity: 0.55,
         shadowRadius: 12,
         shadowOffset: { width: 0, height: 8 },

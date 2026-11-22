@@ -19,7 +19,7 @@ import Caps from "@/components/ui/Caps";
 import type { IconName } from "@/lib/icons";
 import type { AccountType, IAccount } from "@save-n-spend/types";
 import type { ColorToken } from "@/theme";
-import { colors, radius, spacing } from "@/theme";
+import { colors, radius, spacing, withAlpha } from "@/theme";
 import { KEYBOARD_DONE_ID } from "@/components/ui/KeyboardDoneBar";
 import { errorText } from "@/lib/apiError";
 import FormError from "@/components/ui/FormError";
@@ -343,9 +343,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderRadius: radius.md,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: colors.surface2,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: colors.line,
   },
   searchInput: {
     flex: 1,
@@ -361,11 +361,11 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: "rgba(255,255,255,0.05)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: colors.line,
   },
   rowSelected: {
-    borderColor: "rgba(163,148,255,0.5)",
-    backgroundColor: "rgba(139,123,255,0.15)",
+    borderColor: withAlpha(colors.seriesViolet, 0.5),
+    backgroundColor: withAlpha(colors.brandLight, 0.15),
   },
   rowDim: {
     opacity: 0.55,
@@ -380,7 +380,7 @@ const styles = StyleSheet.create({
   createInput: {
     borderWidth: 1,
     borderRadius: 16,
-    borderColor: "rgba(255,255,255,0.13)",
+    borderColor: colors.fieldBorder,
     backgroundColor: "rgba(255,255,255,0.07)",
     paddingHorizontal: 16,
     paddingVertical: 12,

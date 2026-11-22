@@ -64,9 +64,9 @@ const GRADIENT_BY_VARIANT: Partial<Record<Variant, GradientToken>> = {
   danger: "danger",
 };
 const GLOW_BY_VARIANT: Partial<Record<Variant, string>> = {
-  primary: "#6D5CFF",
-  success: "#12B981",
-  danger: "#F5525C",
+  primary: colors.glow,
+  success: colors.successDeep,
+  danger: colors.dangerDeep,
 };
 
 // Shallower than PressableScale's 0.97: a full-width CTA is large, so the same
@@ -124,7 +124,7 @@ const Button = ({
         pill ? styles.pillWrap : styles.wrap,
         gradient && !isDisabled && {
           ...styles.glow,
-          shadowColor: GLOW_BY_VARIANT[variant] ?? "#6D5CFF",
+          shadowColor: GLOW_BY_VARIANT[variant] ?? colors.glow,
           backgroundColor: colors[v.background],
         },
         isDisabled ? styles.disabled : null,

@@ -5,6 +5,7 @@ import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { count } from "@/lib/format/count";
 import { hourAbbr } from "@/lib/insights";
 import type { HourCell, HourlyPattern } from "@/lib/insights";
+import { colors, withAlpha } from "@/theme";
 
 type Props = {
   rhythm: HourlyPattern;
@@ -17,10 +18,10 @@ type Props = {
 // should read as the same kind of thing.
 const BANDS = [
   "rgba(255,255,255,0.05)",  // nothing spent
-  "rgba(155,140,255,0.28)",
-  "rgba(155,140,255,0.55)",
-  "rgba(155,140,255,0.82)",
-  "#9B8CFF",
+  withAlpha(colors.primary, 0.28),
+  withAlpha(colors.primary, 0.55),
+  withAlpha(colors.primary, 0.82),
+  colors.primary,
 ] as const;
 
 const bandFor = (cell: HourCell): string => {
@@ -113,7 +114,7 @@ const styles = StyleSheet.create({
   },
   cellActive: {
     borderWidth: 1.5,
-    borderColor: "#F5F4FC",
+    borderColor: colors.ink,
   },
   axisSlot: {
     flex: 1,

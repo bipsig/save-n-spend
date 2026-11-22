@@ -10,7 +10,7 @@ import Caps from "@/components/ui/Caps";
 import { haptics } from "@/lib/haptics";
 import { searchZones, shortlistZones } from "@/lib/timezones";
 import { deviceZone } from "@/lib/zone";
-import { colors, radius, spacing } from "@/theme";
+import { colors, radius, spacing, withAlpha } from "@/theme";
 import { errorText } from "@/lib/apiError";
 import { useFormError } from "@/lib/useFormError";
 import SheetFooter from "./SheetFooter";
@@ -188,9 +188,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderRadius: radius.md,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: colors.surface2,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: colors.line,
   },
   searchInput: {
     flex: 1,
@@ -209,11 +209,11 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: "rgba(255,255,255,0.05)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: colors.line,
   },
   rowSelected: {
-    borderColor: "rgba(163,148,255,0.5)",
-    backgroundColor: "rgba(139,123,255,0.15)",
+    borderColor: withAlpha(colors.seriesViolet, 0.5),
+    backgroundColor: withAlpha(colors.brandLight, 0.15),
   },
   rowPending: {
     opacity: 0.6,

@@ -6,7 +6,7 @@ import Icon from "./Icon";
 import type { IconName } from "@/lib/icons";
 import { haptics } from "@/lib/haptics";
 import { hintedLabel } from "@/lib/onlineGate";
-import { colors, gradients, radius, spacing } from "@/theme";
+import { colors, gradients, radius, spacing, withAlpha } from "@/theme";
 
 type Props = {
   label: string;
@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     borderWidth: 1,
     borderColor: colors.danger,
-    backgroundColor: "rgba(255,107,116,0.10)",
+    backgroundColor: withAlpha(colors.danger, 0.10),
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing.xl,
   },

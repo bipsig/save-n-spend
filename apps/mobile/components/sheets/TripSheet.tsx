@@ -241,7 +241,7 @@ const styles = StyleSheet.create({
   band: { borderRadius: 18, paddingVertical: 18, paddingHorizontal: 16 },
   field: { gap: spacing.sm },
   wrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  emoji: { width: 42, height: 42, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.10)" },
+  emoji: { width: 42, height: 42, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.line },
   emojiOn: { borderColor: colors.primary, backgroundColor: colors.accentSoft },
   swatch: { width: 34, height: 34, borderRadius: 17 },
   swatchOn: { borderWidth: 3, borderColor: colors.ink },

@@ -8,7 +8,7 @@ import { recurringBillsTotal, urgentBills } from "@/lib/bills";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { count } from "@/lib/format/count";
 import type { IBill } from "@save-n-spend/types";
-import { spacing } from "@/theme";
+import { spacing, colors } from "@/theme";
 
 type Props = {
   items: IBill[];
@@ -90,7 +90,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     paddingTop: spacing.xs,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.06)",
+    borderTopColor: colors.surface2,
   },
   nudgeText: {
     flex: 1,

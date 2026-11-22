@@ -7,7 +7,7 @@ import Icon from "../ui/Icon";
 import PressableScale from "../ui/PressableScale";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { formatCalendar } from "@/lib/format/date";
-import { spacing } from "@/theme";
+import { spacing, colors, tripsColor } from "@/theme";
 
 type Props = {
   /** The Trips row's children: the trips closed in the period, each its whole share. */
@@ -30,7 +30,7 @@ const TripsList = ({ trips }: Props) => {
           accessibilityRole="button"
           accessibilityLabel={`${t.name}${t.closedOn ? `, closed ${formatCalendar(t.closedOn)}` : ""}, ${formatMoney(t.total)}. Opens the trip`}
         >
-          <LinearGradient colors={["#5EEAD4", "#14B8A6"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.emoji}>
+          <LinearGradient colors={[colors.tealLight, tripsColor]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.emoji}>
             <AppText size="md">{t.emoji ?? "🧳"}</AppText>
           </LinearGradient>
           <View style={styles.grow}>

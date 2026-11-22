@@ -5,7 +5,7 @@ import GlowBackground from "./GlowBackground";
 import ScreenStrip, { type ScreenStripInput } from "./ScreenStrip";
 import { useScreenRefresh } from "./ScreenRefresh";
 import ScreenHeader, { type HeaderAction } from "./ScreenHeader";
-import { spacing } from "@/theme";
+import { spacing, colors } from "@/theme";
 
 type Props = {
   title?: string;
@@ -60,7 +60,7 @@ const ScreenScaffold = ({
     // Full-bleed dark ground + glow — no padding here, so the glow reaches the
     // screen edges. Padding lives on the inner content wrapper.
     <LinearGradient
-      colors={["#151129", "#0C0A16"]}
+      colors={[colors.bgDeep, colors.bg]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={styles.fill}

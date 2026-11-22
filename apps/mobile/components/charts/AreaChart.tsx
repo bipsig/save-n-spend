@@ -7,7 +7,7 @@ import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { chartA11y } from "@/lib/chartSummary";
 import { areaSummary } from "@/lib/chartSummaries";
 import { useScrubTick } from "@/lib/useScrubTick";
-import { chartScrubLine } from "@/theme";
+import { chartScrubLine, colors, chartPalette } from "@/theme";
 
 type Props = {
   data: number[];
@@ -34,7 +34,7 @@ const sampleTicks = (labels: string[]): string[] => {
 // Single-series area (spec spending trend). Tap or drag across it to inspect the
 // exact amount on a given day — a scrubber line, dot, and tooltip. Width is
 // measured (onLayout) so coordinates are real px and the endpoint stays round.
-const AreaChart = ({ data, labels, tipLabels, activeIndex, onScrub, color = "#8E7DE3", height = 96, summaryTitle = "Spending" }: Props) => {
+const AreaChart = ({ data, labels, tipLabels, activeIndex, onScrub, color = chartPalette[1], height = 96, summaryTitle = "Spending" }: Props) => {
   const masked = usePrivacyMask(); // also subscribes: a peek has to re-render the amounts below
   const [w, setW] = useState(0);
   const active = activeIndex ?? null;
@@ -80,10 +80,10 @@ const AreaChart = ({ data, labels, tipLabels, activeIndex, onScrub, color = "#8E
               <Line x1={x(active)} y1={0} x2={x(active)} y2={chartH} stroke={chartScrubLine} strokeWidth={1} />
             )}
             {n > 0 && (
-              <Circle cx={x(n - 1)} cy={y(data[n - 1])} r={4.5} fill={color} stroke="#211e33" strokeWidth={2} />
+              <Circle cx={x(n - 1)} cy={y(data[n - 1])} r={4.5} fill={color} stroke={colors.chartRing} strokeWidth={2} />
             )}
             {active !== null && (
-              <Circle cx={x(active)} cy={y(data[active])} r={5} fill={color} stroke="#211e33" strokeWidth={2} />
+              <Circle cx={x(active)} cy={y(data[active])} r={5} fill={color} stroke={colors.chartRing} strokeWidth={2} />
             )}
           </Svg>
         )}

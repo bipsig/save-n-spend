@@ -20,7 +20,7 @@ const Card = ({ children, padded = true, style, ...rest }: Props) => {
   return (
     <View style={[styles.card, padded && styles.padded, style]} {...rest}>
       <LinearGradient
-        colors={["rgba(255,255,255,0.10)", "rgba(255,255,255,0.035)"]}
+        colors={[colors.line, "rgba(255,255,255,0.035)"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 0.6, y: 1 }}
         style={StyleSheet.absoluteFill}
@@ -45,7 +45,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 1,
-    backgroundColor: "rgba(255,255,255,0.14)",
+    backgroundColor: colors.glassBorder,
   },
   padded: {
     padding: 18, // spec .rowcard / .hero 14px × device scale

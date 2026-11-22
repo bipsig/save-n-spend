@@ -23,7 +23,7 @@ const GradientCard = ({
   return (
     <View style={[styles.card, padded && styles.padded, style]} {...rest}>
       <LinearGradient
-        colors={["rgba(255,255,255,0.10)", "rgba(255,255,255,0.035)"]}
+        colors={[colors.line, "rgba(255,255,255,0.035)"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 0.6, y: 1 }}
         style={StyleSheet.absoluteFill}

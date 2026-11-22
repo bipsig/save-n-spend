@@ -4,7 +4,7 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import type { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import Caps from "./Caps";
 import Button from "./Button";
-import { colors } from "@/theme";
+import { colors, withAlpha } from "@/theme";
 import { formatCalendar, formatClock, localCalendar } from "@/lib/format/date";
 import FieldRow from "./FieldRow";
 
@@ -117,10 +117,10 @@ const DateField = ({ label, value, onChange, minimumDate, maximumDate, mode = "d
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(8,6,15,0.55)",
+    backgroundColor: withAlpha(colors.scrim, 0.55),
   },
   picker: {
-    backgroundColor: "#1B1530",
+    backgroundColor: colors.sheetBg,
     paddingHorizontal: 20,
     paddingTop: 8,
     paddingBottom: 28,

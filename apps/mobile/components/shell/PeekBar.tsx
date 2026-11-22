@@ -14,7 +14,7 @@ import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
 import { haptics } from "@/lib/haptics";
 import { PEEK_MS, useSettings } from "@/store/settings";
-import { radius, spacing } from "@/theme";
+import { radius, spacing, colors, withAlpha } from "@/theme";
 
 // The receipt for a peek, and its escape hatch.
 //
@@ -59,7 +59,7 @@ const PeekBar = () => {
         >
           <View style={styles.card}>
             <LinearGradient
-              colors={["rgba(40,34,66,0.98)", "rgba(24,19,42,0.98)"]}
+              colors={[withAlpha(colors.toastTop, 0.98), withAlpha(colors.toastBottom, 0.98)]}
               start={{ x: 0, y: 0 }}
               end={{ x: 0.6, y: 1 }}
               style={StyleSheet.absoluteFill}
@@ -103,10 +103,10 @@ const styles = StyleSheet.create({
     gap: 9,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: "rgba(155,140,255,0.40)", // the same violet hairline `info` uses
+    borderColor: withAlpha(colors.primary, 0.40), // the same violet hairline `info` uses
     overflow: "hidden",
     // Opaque and lifted, like Toast: it floats over arbitrary content.
-    shadowColor: "#08060F",
+    shadowColor: colors.scrim,
     shadowOpacity: 0.5,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
@@ -128,7 +128,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.09)",
   },
   fill: {
-    backgroundColor: "#9B8CFF",
+    backgroundColor: colors.primary,
   },
 });
 

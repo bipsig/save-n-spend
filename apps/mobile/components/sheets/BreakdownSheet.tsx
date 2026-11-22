@@ -10,7 +10,7 @@ import Input from "@/components/ui/Input";
 import PressableScale from "@/components/ui/PressableScale";
 import { useCategoryStore } from "@/store/categories";
 import formatMoney, { parseMoney, paiseToInput, usePrivacyMask } from "@/lib/money";
-import { spacing } from "@/theme";
+import { spacing, colors } from "@/theme";
 import SheetFooter from "./SheetFooter";
 
 export type Part = { title: string; category: string | null; cost: number };
@@ -106,12 +106,12 @@ const BreakdownSheet = forwardRef<BottomSheetModal, Props>(({ row, initial, onSa
 BreakdownSheet.displayName = "BreakdownSheet";
 
 const styles = StyleSheet.create({
-  part: { gap: 6, paddingBottom: spacing.sm, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.06)" },
+  part: { gap: 6, paddingBottom: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.surface2 },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   grow: { flex: 1 },
   amount: { width: 96 },
   status: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  catChip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.13)", flex: 1 },
+  catChip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.fieldBorder, flex: 1 },
 });
 
 export default BreakdownSheet;

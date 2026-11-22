@@ -28,7 +28,7 @@ import { useOnlineGate } from "@/lib/onlineGate";
 import { toast } from "@/store/toast";
 import { closeRange, defaultCloseDay } from "@/lib/tripClose";
 import { dayKey, useAppZone } from "@/lib/zone";
-import { radius, spacing } from "@/theme";
+import { radius, spacing, colors, withAlpha, tripsColor } from "@/theme";
 
 /** Balances at or under this (paise) start on "Let go" — ₹50, as agreed. */
 const LET_GO_BELOW = 5_000;
@@ -147,7 +147,7 @@ const TripWrapUpScreen = () => {
         </>
       )}
 
-      <LinearGradient colors={["rgba(20,184,166,0.22)", "rgba(109,92,246,0.18)"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.summary}>
+      <LinearGradient colors={[withAlpha(tripsColor, 0.22), withAlpha(colors.brandDeep, 0.18)]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.summary}>
         <Caps>Your {trip.name} in numbers</Caps>
         <View style={styles.three}>
           <View style={styles.grow}><Money value={totals.myShare} size="md" weight="black" /><AppText size="xs" color="inkDim">your share</AppText></View>
@@ -180,8 +180,8 @@ const styles = StyleSheet.create({
   list: { paddingVertical: 2 },
   step: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   check: { width: 22, height: 22, borderRadius: 7, borderWidth: 2, borderColor: "rgba(255,255,255,0.35)", alignItems: "center", justifyContent: "center" },
-  checkOn: { backgroundColor: "#9B8CFF", borderColor: "#9B8CFF" },
-  balanceRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.06)" },
+  checkOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  balanceRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.surface2 },
   summary: { borderRadius: 20, padding: spacing.md, gap: spacing.sm, borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" },
   three: { flexDirection: "row", gap: spacing.sm },
 });

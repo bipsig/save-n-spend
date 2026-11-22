@@ -1,7 +1,7 @@
 import type { InsightsSummary, InsightsPeriod } from "@save-n-spend/types";
 import { deliver, dayStamp, type ExportResult } from "@/lib/export";
 import { get } from "@/lib/api";
-import { htmlEscape, kpiCard, kpiRow, pdfDocument } from "@/lib/pdfShell";
+import { htmlEscape, kpiCard, kpiRow, pdfDocument, PDF_COLORS } from "@/lib/pdfShell";
 import {
   buildTrend,
   foldCategories,
@@ -50,9 +50,9 @@ const currentTotals = (data: InsightsSummary) => {
 
 // PDF: the graphs, redrawn as vector SVG.
 
-const AXIS = "#9995ad";
-const GRID = "#eeecf6";
-const BRAND = "#6D5CFF";
+const AXIS = PDF_COLORS.faint;
+const GRID = PDF_COLORS.track;
+const BRAND = PDF_COLORS.brand;
 
 // Chart canvas (viewBox units ≈ points). PAD_L reserves room for the y-axis
 // amount labels; PAD_B for the x-axis category labels.
@@ -115,7 +115,7 @@ const columnsSvg = (pairs: { income: number; expense: number }[], labels: string
     .map((l, i) => `<text x="${(PAD_L + slotW * i + slotW / 2).toFixed(1)}" y="${H - 5}" font-size="9" fill="${AXIS}" text-anchor="middle">${htmlEscape(l)}</text>`)
     .join("");
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${yAxis(max)}
-    <line x1="${PAD_L}" y1="${PLOT_H}" x2="${W}" y2="${PLOT_H}" stroke="#e7e5f0" stroke-width="1"/>${bars}${lbls}</svg>`;
+    <line x1="${PAD_L}" y1="${PLOT_H}" x2="${W}" y2="${PLOT_H}" stroke="${PDF_COLORS.rule}" stroke-width="1"/>${bars}${lbls}</svg>`;
 };
 
 // Mirrors DualLineChart on screen: two running totals on one axis, the previous one dashed
@@ -203,7 +203,7 @@ const donutHtml = (slices: Slice[], centerLabel: string, centerValue: number): s
 // heaviest day in the window. The dark app's bands (translucent white climbing to solid
 // violet) are inverted for a white page — very light violet climbing to the same brand
 // violet, so the ramp reads the same way against either background.
-const HEAT_BANDS = ["#f1f0f6", "#d9d3ff", "#b3a3ff", "#8c73ff", BRAND];
+const HEAT_BANDS = [PDF_COLORS.ruleSoft, PDF_COLORS.heat1, PDF_COLORS.heat2, PDF_COLORS.heat3, BRAND];
 
 // Structural rather than `HeatCell` specifically — `HourCell` shares just the two fields
 // this reads, and reuses the exact same bands rather than a second copy of the thresholds.
@@ -260,9 +260,9 @@ const hourlyPatternHtml = (rhythm: HourlyPattern): string => {
 // the one before it in the same colour at low opacity, so the pair reads as one category
 // measured twice rather than two different things.
 const moverChange = (row: CompareRow): string => {
-  if (row.previous === 0) return `<span style="color:#b8860b">new</span>`;
-  if (row.current === 0) return `<span style="color:#0f9d63">stopped</span>`;
-  return `<span style="color:${row.delta <= 0 ? "#0f9d63" : "#d64550"}">${formatPct(row.deltaPct ?? 0, { kind: "change" })}</span>`;
+  if (row.previous === 0) return `<span style="color:${PDF_COLORS.new}">new</span>`;
+  if (row.current === 0) return `<span style="color:${PDF_COLORS.up}">stopped</span>`;
+  return `<span style="color:${row.delta <= 0 ? PDF_COLORS.up : PDF_COLORS.down}">${formatPct(row.deltaPct ?? 0, { kind: "change" })}</span>`;
 };
 
 const moversHtml = (rows: CompareRow[], previousLabel: string): string => {
@@ -390,7 +390,7 @@ const buildHtml = (data: InsightsSummary, period: InsightsPeriod, offset: number
     <div class="stack">${stack}</div>
     <div class="legend">${acctLegend}</div>`,
     css: `
-    .legend { display: flex; flex-wrap: wrap; gap: 16px; margin: 6px 0 2px; font-size: 11px; color: #6b6880; }
+    .legend { display: flex; flex-wrap: wrap; gap: 16px; margin: 6px 0 2px; font-size: 11px; color: ${PDF_COLORS.muted}; }
     .ld { display: inline-flex; align-items: center; gap: 6px; }
     .dot { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
     .dashline { display: inline-flex; gap: 3px; width: 14px; }
@@ -401,30 +401,30 @@ const buildHtml = (data: InsightsSummary, period: InsightsPeriod, offset: number
     .desc { font-weight: 600; }
     td.amt { font-weight: 700; white-space: nowrap; }
     td.barcell { width: 42%; }
-    .bar { width: 100%; height: 8px; border-radius: 4px; background: #eeecf6; overflow: hidden; }
+    .bar { width: 100%; height: 8px; border-radius: 4px; background: ${PDF_COLORS.track}; overflow: hidden; }
     .bar span { display: block; height: 100%; }
-    td.sh { text-align: right; color: #6b6880; width: 46px; }
-    tr.sub td { border-bottom: none; padding-top: 2px; padding-bottom: 2px; color: #6b6880; font-size: 11px; }
+    td.sh { text-align: right; color: ${PDF_COLORS.muted}; width: 46px; }
+    tr.sub td { border-bottom: none; padding-top: 2px; padding-bottom: 2px; color: ${PDF_COLORS.muted}; font-size: 11px; }
     tr.sub .desc { font-weight: 400; padding-left: 22px; }
     tr.sub td.amt { font-weight: 600; }
     .donut-wrap { display: flex; align-items: center; gap: 24px; margin: 8px 0 4px; }
-    .donut-center .k { font-size: 10px; color: #6b6880; text-transform: uppercase; letter-spacing: 1px; }
+    .donut-center .k { font-size: 10px; color: ${PDF_COLORS.muted}; text-transform: uppercase; letter-spacing: 1px; }
     .donut-center .v { font-size: 20px; font-weight: 800; margin-top: 3px; }
     .heat { margin: 8px 0 2px; }
     .hrow { display: flex; gap: 4px; margin-bottom: 4px; }
-    .hlabel { width: 26px; text-align: center; font-size: 9px; color: #9995ad; font-weight: 600; }
+    .hlabel { width: 26px; text-align: center; font-size: 9px; color: ${PDF_COLORS.faint}; font-weight: 600; }
     .hcell { width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; }
     .hcell.empty { visibility: hidden; }
-    .heat-note { font-size: 11px; color: #6b6880; margin-top: 4px; }
+    .heat-note { font-size: 11px; color: ${PDF_COLORS.muted}; margin-top: 4px; }
     .strip { display: flex; gap: 2px; height: 34px; margin: 8px 0 2px; }
     .sbar { flex: 1; border-radius: 3px; }
     .mover { margin-bottom: 14px; }
     .mover:last-child { margin-bottom: 0; }
     .mrow-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; margin-bottom: 4px; }
-    .mbar { width: 100%; height: 8px; border-radius: 4px; background: #eeecf6; overflow: hidden; margin-bottom: 3px; }
+    .mbar { width: 100%; height: 8px; border-radius: 4px; background: ${PDF_COLORS.track}; overflow: hidden; margin-bottom: 3px; }
     .mbar span { display: block; height: 100%; }
     .mbar.prev span { opacity: .4; }
-    .mprev { font-size: 10px; color: #9995ad; }`,
+    .mprev { font-size: 10px; color: ${PDF_COLORS.faint}; }`,
   });
 };
 

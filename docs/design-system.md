@@ -60,6 +60,11 @@ Defined in `apps/mobile/theme/colors.ts`.
 | `glassBorder` | `rgba(255,255,255,0.14)` | Card hairline. |
 | `line` | `rgba(255,255,255,0.10)` | Dividers, field borders. |
 | `lineSoft` | `rgba(255,255,255,0.06)` | Fainter dividers. |
+| `fieldBorder` | `rgba(255,255,255,0.13)` | `FieldRow` and field outlines. |
+| `bgDeep`, `tabBar`, `scrim` | `#151129`, `#100E1C`, `#08060F` | The screen gradient's lower stop, the tab bar, behind a modal. |
+| `sheetTop`, `sheetBottom`, `sheetBg` | `#241E42`, `#151024`, `#1B1530` | Sheet gradient, the date picker plate. `sheetTop` is also the chart tooltip plate. |
+| `stripBg`, `toastTop`, `toastBottom` | `#1B1730`, `#282242`, `#18132A` | Refresh and waking strips, the toast and peek bar gradient. |
+| `rowLifted`, `chartRing` | `#2A2350`, `#211E33` | A row held while dragging; the ring round a chart's end dot. |
 
 **Note**
 `surface` is white. On a gradient card, `color="surface"` is how you get legible
@@ -78,6 +83,10 @@ white text — it does not mean "the card background".
 | `danger` / `dangerInk` / `dangerSoft` | `#FF6B74` / `#B1060F` / 16% tint | Expense, over budget, destructive. |
 | `warning` / `warningSoft` | `#FFB15C` / 16% tint | Approaching a limit. |
 | `info` / `infoSoft` | `#68A8FF` / 16% tint | Neutral informational. |
+| `glow`, `glowDeep` | `#6D5CFF`, `#6A4CFF` | Brand glow and shadow colour. |
+| `brandLight`, `brandDeep` | `#8B7BFF`, `#6D5CF6` | `gradients.brand`'s stops, for tints of it. |
+| `seriesViolet`, `selectedFill` | `#A394FF`, `#7C6BF8` | Violet marks and selected icons; a selected preset chip. |
+| `successDeep`, `dangerDeep`, `tealLight` | `#12B981`, `#F5525C`, `#5EEAD4` | The lower stops of the health and danger gradients, their glows; the trips teal's light stop. |
 
 ### Extended palette
 
@@ -573,7 +582,11 @@ nothing prints "1 days".
   from `Pressable`'s `({ pressed })` callback, or from `useState` with
   `onFocus`/`onBlur`.
 - Spell colors as role tokens. If you find yourself reaching for a hex value,
-  the token you want either exists or should be added to `theme/colors.ts`.
+  the token you want either exists or should be added to `theme/colors.ts`. A tint
+  of a token is `withAlpha(colors.primary, 0.55)`; white and black at an alpha may
+  stay written out. `lib/colorTokens.test.ts` (in `npm test`) fails on any hex or
+  tinted `rgba` outside `theme/` and `lib/pdfShell.ts`, whose `PDF_COLORS` is the
+  paper palette every PDF uses (gaps row 121).
 - Comments in this codebase explain *why*, and cite the design spec where a
   value comes from one (`// spec .flabel`). Match that density — do not narrate
   what the code already says.

@@ -5,6 +5,7 @@ import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { formatPct } from "@/lib/format/pct";
 import { chartA11y, chartSummary } from "@/lib/chartSummary";
 import { useScrubTick } from "@/lib/useScrubTick";
+import { colors } from "@/theme";
 
 type Datum = { id: string; name: string; total: number; pct: number; color: string };
 
@@ -123,9 +124,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: colors.surface2,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: colors.line,
   },
   dot: {
     width: 10,

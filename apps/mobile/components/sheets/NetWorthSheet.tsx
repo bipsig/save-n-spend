@@ -17,7 +17,7 @@ import { count } from "@/lib/format/count";
 import { screenTitles } from "@/data/menu";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
-import { spacing } from "@/theme";
+import { spacing, colors } from "@/theme";
 import { accountSubline } from "@/lib/accountLabels";
 
 // Biggest holding first, which also drops anything owed (a used credit card carries a
@@ -152,7 +152,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: "rgba(255,255,255,0.05)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: colors.line,
   },
   info: {
     flex: 1,

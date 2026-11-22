@@ -19,7 +19,7 @@ import { initialsOf } from "@/lib/profile";
 import { mergeScreenStates } from "@/lib/screenStates";
 import { formatPct } from "@/lib/format/pct";
 import { useSession } from "@/store/session";
-import { spacing } from "@/theme";
+import { spacing, colors, withAlpha } from "@/theme";
 import type { ColorToken } from "@/theme";
 import LogoutSheet from "@/components/sheets/LogoutSheet";
 
@@ -136,7 +136,7 @@ const MoreScreen = () => {
       <PressableScale onPress={() => router.push("/assistant")} scaleTo={0.98}>
         <View style={styles.aiHero}>
           <LinearGradient
-            colors={["rgba(139,123,255,0.32)", "rgba(109,92,246,0.14)"]}
+            colors={[withAlpha(colors.brandLight, 0.32), withAlpha(colors.brandDeep, 0.14)]}
             start={{ x: 0, y: 0 }}
             end={{ x: 0.8, y: 1 }}
             style={StyleSheet.absoluteFill}
@@ -224,9 +224,9 @@ const styles = StyleSheet.create({
     padding: 18,
     borderRadius: 26, // spec .aihero radius × device scale
     borderWidth: 1,
-    borderColor: "rgba(163,148,255,0.4)",
+    borderColor: withAlpha(colors.seriesViolet, 0.4),
     overflow: "hidden",
-    shadowColor: "#6D5CFF",
+    shadowColor: colors.glow,
     shadowOpacity: 0.25,
     shadowRadius: 11,
     shadowOffset: { width: 0, height: 6 },
@@ -248,7 +248,7 @@ const styles = StyleSheet.create({
   },
   rowDivider: {
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.06)",
+    borderTopColor: colors.surface2,
   },
   rowLabel: {
     flex: 1,

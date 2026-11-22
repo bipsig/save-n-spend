@@ -23,7 +23,7 @@ import { fireGoalMilestone } from "@/lib/localNotifications";
 import { useSession } from "@/store/session";
 import { toast } from "@/store/toast";
 import type { IconName } from "@/lib/icons";
-import { spacing } from "@/theme";
+import { spacing, colors } from "@/theme";
 import type { ColorToken } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { useFormError } from "@/lib/useFormError";
@@ -254,13 +254,13 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.13)",
+    borderColor: colors.fieldBorder,
     backgroundColor: "rgba(255,255,255,0.05)",
   },
   presetOn: {
-    backgroundColor: "#7C6BF8",
+    backgroundColor: colors.selectedFill,
     borderColor: "transparent",
-    shadowColor: "#6D5CFF",
+    shadowColor: colors.glow,
     shadowOpacity: 0.4,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 4 },

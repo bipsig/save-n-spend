@@ -90,7 +90,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.md,
     borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: colors.surface2,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
   },
@@ -102,7 +102,7 @@ const styles = StyleSheet.create({
   buttons: { alignSelf: "stretch", gap: spacing.sm, marginTop: spacing.sm },
   button: { alignItems: "center", paddingVertical: 14, borderRadius: 999, borderWidth: 1 },
   primary: { backgroundColor: colors.accentSoft, borderColor: colors.primary },
-  secondary: { backgroundColor: "rgba(255,255,255,0.06)", borderColor: "rgba(255,255,255,0.12)" },
+  secondary: { backgroundColor: colors.surface2, borderColor: "rgba(255,255,255,0.12)" },
   pressed: { opacity: 0.7 },
 });
 

@@ -9,6 +9,7 @@ import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { count } from "@/lib/format/count";
 import { formatPct } from "@/lib/format/pct";
 import type { InsightsCategorySlice, UncategorisedSpend } from "@save-n-spend/types";
+import { colors } from "@/theme";
 
 type BarSlice = { id: string; name: string; pct: number; color: string };
 
@@ -97,7 +98,7 @@ const styles = StyleSheet.create({
   biggest: {
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.06)",
+    borderTopColor: colors.surface2,
     lineHeight: 17,
   },
 });

@@ -4,7 +4,7 @@ import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
-import { spacing } from "@/theme";
+import { spacing, colors } from "@/theme";
 
 type Props = {
   icon: IconName;
@@ -119,7 +119,7 @@ const styles = StyleSheet.create({
   // spec: rows inside one glass card, separated by hairlines
   divider: {
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.06)",
+    borderTopColor: colors.surface2,
   },
   // The indent plus a rail that runs the height of the row, so a run of children
   // reads as one continuous line hanging off the parent rather than as stray inset
@@ -128,7 +128,7 @@ const styles = StyleSheet.create({
   rowNested: {
     paddingLeft: 30,
     borderLeftWidth: 1,
-    borderLeftColor: "rgba(255,255,255,0.14)",
+    borderLeftColor: colors.glassBorder,
     marginLeft: 24,
   },
   body: {
@@ -154,7 +154,7 @@ const styles = StyleSheet.create({
   },
   // Opaque, because the row is over its own neighbours while it is up.
   rowHeld: {
-    backgroundColor: "#2A2350",
+    backgroundColor: colors.rowLifted,
     borderRadius: 14,
     borderTopWidth: 0,
   },

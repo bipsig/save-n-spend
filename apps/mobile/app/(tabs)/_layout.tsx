@@ -1,4 +1,4 @@
-import { theme } from "@/theme";
+import { theme, colors } from "@/theme";
 import { haptics } from "@/lib/haptics";
 import { iconMap } from "@/lib/icons";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -28,10 +28,10 @@ const TabsLayout = () => {
         // you leave), mis-placed under "shift". An instant cut has nothing to get stuck,
         // and it's how native iOS tab bars behave anyway. Stack pushes keep their slide.
         animation: "none",
-        tabBarActiveTintColor: "#A394FF", // spec .tabi.on — violet
+        tabBarActiveTintColor: colors.seriesViolet, // spec .tabi.on — violet
         tabBarInactiveTintColor: theme.colors.inkDim,
         tabBarStyle: {
-          backgroundColor: "#100E1C",
+          backgroundColor: colors.tabBar,
           borderTopColor: "rgba(255,255,255,0.09)",
         },
         tabBarLabelStyle: {

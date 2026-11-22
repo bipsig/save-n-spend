@@ -1,7 +1,7 @@
 import { InputAccessoryView, Keyboard, Platform, StyleSheet, View } from "react-native";
 import { AppText } from "./AppText";
 import PressableScale from "./PressableScale";
-import { spacing } from "@/theme";
+import { spacing, colors, withAlpha } from "@/theme";
 
 /** Hand to a field's `inputAccessoryViewID` to give it the bar. */
 export const KEYBOARD_DONE_ID = "sns-keyboard-done";
@@ -45,9 +45,9 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
-    backgroundColor: "rgba(21,16,36,0.94)",
+    backgroundColor: withAlpha(colors.sheetBottom, 0.94),
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.10)",
+    borderTopColor: colors.line,
   },
   button: {
     paddingHorizontal: spacing.sm,

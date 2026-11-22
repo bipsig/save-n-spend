@@ -32,7 +32,7 @@ import { useOnlineGate } from "@/lib/onlineGate";
 import { toast } from "@/store/toast";
 import { NAME_MAX, NAME_MIN, type IGoal } from "@save-n-spend/types";
 import type { IconName } from "@/lib/icons";
-import { radius, spacing } from "@/theme";
+import { radius, spacing, colors } from "@/theme";
 import type { ColorToken } from "@/theme";
 import { editWithUndo, previousValues } from "@/lib/undo";
 import FormError from "@/components/ui/FormError";
@@ -511,8 +511,8 @@ const styles = StyleSheet.create({
     height: 34,
     borderRadius: 2,
     marginLeft: 5,
-    backgroundColor: "#A394FF",
-    shadowColor: "#A394FF",
+    backgroundColor: colors.seriesViolet,
+    shadowColor: colors.seriesViolet,
     shadowOpacity: 0.9,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 0 },

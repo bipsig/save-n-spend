@@ -11,7 +11,7 @@ import { useCategoryById } from "@/lib/categories";
 import { useAccountById } from "@/lib/accounts";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
-import { spacing } from "@/theme";
+import { spacing, colors, withAlpha } from "@/theme";
 import { holdingLook } from "@/lib/investments";
 import { formatDueLabel } from "@/lib/date";
 import { isActionable } from "@/lib/bills";
@@ -110,7 +110,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   overdue: {
-    borderColor: "rgba(255,107,116,0.35)", // spec: overdue rows get a red-tinted border
+    borderColor: withAlpha(colors.danger, 0.35), // spec: overdue rows get a red-tinted border
   },
   scheduled: {
     opacity: 0.6, // handled this cycle — shown but not yet actionable
@@ -129,8 +129,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "rgba(163,148,255,0.5)",
-    backgroundColor: "rgba(139,123,255,0.15)",
+    borderColor: withAlpha(colors.seriesViolet, 0.5),
+    backgroundColor: withAlpha(colors.brandLight, 0.15),
   },
 });
 

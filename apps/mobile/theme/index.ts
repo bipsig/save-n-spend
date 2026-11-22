@@ -1,8 +1,8 @@
-import { colors } from './colors'
+import { colors, withAlpha } from './colors'
 import { spacing, radius, touchTarget } from './spacing'
 import { fontWeight, fontSize, caps } from './typography'
 import { shadows } from './shadows'
-import { gradients, chipGradients, chipInk, barGradients } from './gradients'
+import { gradients, chipGradients, chipInk, barGradients, tripGradients } from './gradients'
 
 export const theme = {
   colors,
@@ -14,8 +14,8 @@ export const theme = {
   gradients,
 } as const;
 
-export { colors, spacing, radius, touchTarget, fontWeight, fontSize, caps, shadows, gradients, chipGradients, chipInk, barGradients }
-export { chartPalette, chartOthers, incomeColor, expenseColor, chartValueColor, chartScrubLine, chartTooltip, chartLegend } from './charts'
+export { colors, withAlpha, spacing, radius, touchTarget, fontWeight, fontSize, caps, shadows, gradients, chipGradients, chipInk, barGradients, tripGradients }
+export { chartPalette, chartOthers, tripsColor, incomeColor, expenseColor, chartValueColor, chartScrubLine, chartTooltip, chartLegend } from './charts'
 
 export type { ColorToken } from './colors'
 export type { SpacingToken, RadiusToken } from './spacing'

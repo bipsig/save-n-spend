@@ -6,7 +6,7 @@ import Icon from "../ui/Icon";
 import PressableScale from "../ui/PressableScale";
 import ProgressBar from "./ProgressBar";
 import type { OnboardingProgress, OnboardingStep } from "@/lib/onboarding";
-import { radius, spacing } from "@/theme";
+import { radius, spacing, colors, withAlpha } from "@/theme";
 
 type Props = {
   progress: OnboardingProgress
@@ -90,7 +90,7 @@ const GetStartedCard = ({ progress, onStepPress, onDismiss }: Props) => {
   return (
     <Animated.View layout={LinearTransition.duration(220)} style={styles.card}>
       <LinearGradient
-        colors={["rgba(139,123,255,0.30)", "rgba(109,92,246,0.10)"]}
+        colors={[withAlpha(colors.brandLight, 0.30), withAlpha(colors.brandDeep, 0.10)]}
         start={{ x: 0, y: 0 }}
         end={{ x: 0.8, y: 1 }}
         style={StyleSheet.absoluteFill}
@@ -144,9 +144,9 @@ const styles = StyleSheet.create({
     padding: 18,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: "rgba(163,148,255,0.4)",
+    borderColor: withAlpha(colors.seriesViolet, 0.4),
     overflow: "hidden",
-    shadowColor: "#6D5CFF",
+    shadowColor: colors.glow,
     shadowOpacity: 0.25,
     shadowRadius: 11,
     shadowOffset: { width: 0, height: 6 },
@@ -188,7 +188,7 @@ const styles = StyleSheet.create({
     borderRadius: 9,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(52,224,161,0.16)",
+    backgroundColor: withAlpha(colors.success, 0.16),
   },
   dismiss: {
     alignSelf: "flex-end",

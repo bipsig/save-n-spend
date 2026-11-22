@@ -11,7 +11,7 @@ import { useTitleSuggestionStore } from "@/store/titleSuggestions";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
-import { spacing } from "@/theme";
+import { spacing, colors } from "@/theme";
 
 /** How many habitual transactions to shortcut — enough to be useful, not so many the
  *  row reads as a wall rather than a shortcut (mirrors CHIP_LIMIT in lib/titleSuggestions). */
@@ -94,9 +94,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 10,
     borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: colors.surface2,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: colors.line,
   },
   title: {
     maxWidth: 110,

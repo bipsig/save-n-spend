@@ -9,7 +9,7 @@ import type { IconName } from "@/lib/icons"
 import type { ColorToken } from "@/theme"
 import { holdingLook } from "@/lib/investments"
 import { useTripName } from "@/store/tripNames"
-import { spacing } from "@/theme"
+import { spacing, colors, withAlpha, tripsColor } from "@/theme"
 import { formatTxnDate } from "@/lib/date"
 import { formatCalendar } from "@/lib/format/date"
 import { count } from "@/lib/format/count"
@@ -77,7 +77,7 @@ const TripEntryRow = ({ transaction }: { transaction: ITransaction }) => {
       accessibilityHint="Opens the trip"
     >
       <Card style={[styles.card, styles.tripCard]}>
-        <LinearGradient colors={["#5EEAD4", "#14B8A6"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.tripEmoji}>
+        <LinearGradient colors={[colors.tealLight, tripsColor]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.tripEmoji}>
           <AppText size="lg">{transaction.emoji ?? "🧳"}</AppText>
         </LinearGradient>
         <View style={styles.details}>
@@ -272,8 +272,8 @@ const styles = StyleSheet.create({
     maxWidth: 110,
   },
   tripCard: {
-    borderColor: "rgba(45,212,191,0.40)",
-    backgroundColor: "rgba(45,212,191,0.10)",
+    borderColor: withAlpha(colors.teal, 0.40),
+    backgroundColor: withAlpha(colors.teal, 0.10),
   },
   tripEmoji: {
     width: 44,
@@ -294,7 +294,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 1,
     borderRadius: 6,
-    backgroundColor: "rgba(45,212,191,0.22)",
+    backgroundColor: withAlpha(colors.teal, 0.22),
   },
 })
 

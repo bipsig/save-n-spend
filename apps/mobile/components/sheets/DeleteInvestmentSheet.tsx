@@ -147,7 +147,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: colors.line,
     backgroundColor: "rgba(255,255,255,0.04)",
   },
   choiceOn: { borderColor: colors.primary, backgroundColor: colors.accentSoft },

@@ -28,7 +28,7 @@ import { useCategories, useCategoryById, useCategoryLabel } from "@/lib/categori
 import SegmentedControl from "@/components/ui/SegmentedControl";
 import CategoryPickerSheet from "@/components/sheets/CategoryPickerSheet";
 import type { IconName } from "@/lib/icons";
-import { radius, spacing } from "@/theme";
+import { radius, spacing, colors } from "@/theme";
 import type { ColorToken } from "@/theme";
 import { accountById, useAccountById, useAccounts, useDefaultAccount } from "@/lib/accounts";
 import AccountPickerSheet from "@/components/sheets/AccountPickerSheet";
@@ -1041,7 +1041,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "${colors.surface2}",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
   },
@@ -1065,7 +1065,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: "rgba(255,255,255,0.05)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: "${colors.line}",
   },
   splitAmount: {
     flexDirection: "row",
@@ -1112,8 +1112,8 @@ const styles = StyleSheet.create({
     height: 34,
     borderRadius: 2,
     marginLeft: 5,
-    backgroundColor: "#A394FF",
-    shadowColor: "#A394FF",
+    backgroundColor: "${colors.seriesViolet}",
+    shadowColor: "${colors.seriesViolet}",
     shadowOpacity: 0.9,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 0 },

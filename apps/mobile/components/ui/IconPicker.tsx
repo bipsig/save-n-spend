@@ -6,7 +6,7 @@ import { haptics } from "@/lib/haptics";
 import { iconLabel } from "@/lib/iconLabel";
 import { PICKER_ICONS } from "@/lib/icons";
 import type { IconName } from "@/lib/icons";
-import { spacing } from "@/theme";
+import { spacing, colors, withAlpha } from "@/theme";
 
 type Props = {
   value: IconName;
@@ -98,10 +98,10 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.07)",
   },
   cellOn: {
-    backgroundColor: "rgba(139,123,255,0.2)",
+    backgroundColor: withAlpha(colors.brandLight, 0.2),
     borderWidth: 1.5,
-    borderColor: "#A394FF",
-    shadowColor: "#8B7BFF",
+    borderColor: colors.seriesViolet,
+    shadowColor: colors.brandLight,
     shadowOpacity: 0.4,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 0 },

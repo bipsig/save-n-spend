@@ -8,6 +8,7 @@ import { chartA11y } from "@/lib/chartSummary";
 import { pairedSummary } from "@/lib/chartSummaries";
 import { useScrubTick } from "@/lib/useScrubTick";
 import { incomeColor, expenseColor } from "@/theme/charts";
+import { colors } from "@/theme";
 
 type Props = {
   data: { income: number; expense: number }[];
@@ -56,7 +57,7 @@ const PairedColumns = ({ data, labels, activeIndex, onScrub, height = 96 }: Prop
         {w > 0 && (
           <Svg width={w} height={height}>
             {active !== null && (
-              <Rect x={slotW * active} y={0} width={slotW} height={chartH} rx={6} fill="rgba(255,255,255,0.06)" />
+              <Rect x={slotW * active} y={0} width={slotW} height={chartH} rx={6} fill={colors.surface2} />
             )}
             {data.map((d, i) => {
               const center = slotW * i + slotW / 2;
@@ -69,7 +70,7 @@ const PairedColumns = ({ data, labels, activeIndex, onScrub, height = 96 }: Prop
                 </G>
               );
             })}
-            <Line x1={0} y1={chartH} x2={w} y2={chartH} stroke="rgba(255,255,255,0.14)" strokeWidth={1} />
+            <Line x1={0} y1={chartH} x2={w} y2={chartH} stroke={colors.glassBorder} strokeWidth={1} />
           </Svg>
         )}
         {active !== null && (

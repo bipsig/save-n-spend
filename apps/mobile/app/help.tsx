@@ -9,7 +9,7 @@ import { haptics } from "@/lib/haptics";
 import type { IconName } from "@/lib/icons";
 import type { ChipTint } from "@/theme/gradients";
 import { screenTitles } from "@/data/menu";
-import { spacing } from "@/theme";
+import { spacing, colors } from "@/theme";
 
 type Faq = {
   question: string;
@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
   },
   divider: {
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.06)",
+    borderTopColor: colors.surface2,
   },
   question: {
     flexDirection: "row",

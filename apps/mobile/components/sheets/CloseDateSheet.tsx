@@ -8,7 +8,7 @@ import { AppText } from "@/components/ui/AppText";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { formatCalendar } from "@/lib/format/date";
 import { inRange, monthGrid, monthOfDay, monthTitle, movesBetween, shiftMonth, type CloseRange } from "@/lib/tripClose";
-import { colors, spacing } from "@/theme";
+import { colors, spacing, withAlpha } from "@/theme";
 import { errorText } from "@/lib/apiError";
 import { useFormError } from "@/lib/useFormError";
 import SheetFooter from "./SheetFooter";
@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
   week: { flexDirection: "row", gap: 4 },
   head: { flex: 1, textAlign: "center" },
   cell: { flex: 1, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  spent: { backgroundColor: "rgba(45,212,191,0.10)" },
+  spent: { backgroundColor: withAlpha(colors.teal, 0.1) },
   selected: { backgroundColor: colors.primary },
   dot: { position: "absolute", bottom: 5, width: 4, height: 4, borderRadius: 2, backgroundColor: colors.teal },
   dotOn: { backgroundColor: colors.ink },

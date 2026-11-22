@@ -31,7 +31,7 @@ import { dayHeaderLabel, monthHeaderLabel } from "@/lib/activityHeaders";
 import { dayKey, monthKeyOf, useAppZone } from "@/lib/zone";
 import { useOutbox } from "@/store/outbox";
 import { useVisible } from "@/lib/undo";
-import { colors, radius, spacing } from "@/theme";
+import { colors, radius, spacing, withAlpha } from "@/theme";
 import { signTone } from "@/lib/signTone";
 import { screenView } from "@/lib/screenStates";
 import Money from "@/components/ui/Money";
@@ -532,13 +532,13 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: colors.surface2,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: colors.line,
   },
   filterBtnActive: {
-    borderColor: "rgba(163,148,255,0.45)",
-    backgroundColor: "rgba(139,123,255,0.14)",
+    borderColor: withAlpha(colors.seriesViolet, 0.45),
+    backgroundColor: withAlpha(colors.brandLight, 0.14),
   },
   filterBadge: {
     position: "absolute",

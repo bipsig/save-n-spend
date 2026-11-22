@@ -20,7 +20,7 @@ import {
 import { useRequestLog } from "@/store/requestLog";
 import { useSettings } from "@/store/settings";
 import { toast } from "@/store/toast";
-import { colors, spacing } from "@/theme";
+import { colors, spacing, withAlpha } from "@/theme";
 
 // Settings → Diagnostics, switched on by tapping "You're on" in What's new seven times. A developer's view of
 // what the app has been doing: today's summary, filters, then every call in plain words —
@@ -195,8 +195,8 @@ const styles = StyleSheet.create({
   dot: { width: 9, height: 9, borderRadius: 5, marginTop: 6 },
   tlText: { flex: 1, gap: 4 },
   box: { gap: 3, padding: 8, borderRadius: 12, borderWidth: 1 },
-  boxWarn: { backgroundColor: "rgba(255,177,92,0.08)", borderColor: "rgba(255,177,92,0.25)" },
-  boxBad: { backgroundColor: "rgba(255,107,116,0.08)", borderColor: "rgba(255,107,116,0.25)" },
+  boxWarn: { backgroundColor: withAlpha(colors.warning, 0.08), borderColor: withAlpha(colors.warning, 0.25) },
+  boxBad: { backgroundColor: withAlpha(colors.danger, 0.08), borderColor: withAlpha(colors.danger, 0.25) },
   ref: { letterSpacing: 1 },
   actions: { gap: spacing.xs },
 });

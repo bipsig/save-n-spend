@@ -11,7 +11,7 @@ import { useCategoryById, useCategoryLabel } from "@/lib/categories";
 import { budgetPace } from "@/lib/budgets";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
-import { spacing } from "@/theme";
+import { spacing, colors, withAlpha } from "@/theme";
 import formatMoney, { formatRemaining, usePrivacyMask } from "@/lib/money";
 import { count } from "@/lib/format/count";
 
@@ -113,7 +113,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   overCard: {
-    borderColor: "rgba(255,107,116,0.35)", // spec — red-tinted border when over
+    borderColor: withAlpha(colors.danger, 0.35), // spec — red-tinted border when over
   },
   header: {
     flexDirection: "row",

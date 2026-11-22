@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, View } from "react-native";
 import type { CashFlowDay, CashFlowItemKind } from "@save-n-spend/types";
 import { AppText } from "@/components/ui/AppText";
 import { haptics } from "@/lib/haptics";
-import { colors } from "@/theme";
+import { colors, withAlpha } from "@/theme";
 
 type Props = {
   /** `YYYY-MM` of the month shown. */
@@ -129,7 +129,7 @@ const styles = StyleSheet.create({
   },
   dayToday: {
     borderWidth: 1,
-    borderColor: "rgba(155,140,255,0.6)",
+    borderColor: withAlpha(colors.primary, 0.6),
   },
   daySelected: {
     backgroundColor: colors.accentSoft,

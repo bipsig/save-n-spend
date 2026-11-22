@@ -41,7 +41,7 @@ import { useSession } from "@/store/session";
 import { AUTO_LOCK_DELAYS, autoLockLabel, useSettings, type AutoLockSeconds } from "@/store/settings";
 import { APP_VERSION, useWhatsNewState } from "@/store/whatsNew";
 import { toast } from "@/store/toast";
-import { spacing } from "@/theme";
+import { spacing, colors, withAlpha } from "@/theme";
 import type { BillReminderLead } from "@save-n-spend/types";
 import LogoutSheet from "@/components/sheets/LogoutSheet";
 
@@ -610,7 +610,7 @@ const styles = StyleSheet.create({
   },
   dangerCard: {
     marginTop: spacing.md,
-    borderColor: "rgba(255,107,116,0.28)",
+    borderColor: withAlpha(colors.danger, 0.28),
   },
 });
 

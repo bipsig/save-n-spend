@@ -2,6 +2,7 @@ import { StyleSheet, View } from "react-native";
 import { AppText } from "../ui/AppText";
 import Icon from "../ui/Icon";
 import PressableScale from "../ui/PressableScale";
+import { colors, withAlpha } from "@/theme";
 
 type Props = {
   /** "August" (month) or "last week" (week) — already the right shape to drop into
@@ -42,7 +43,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 16,
     borderRadius: 20,
-    backgroundColor: "rgba(155,140,255,0.16)",
+    backgroundColor: withAlpha(colors.primary, 0.16),
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.16)",
   },

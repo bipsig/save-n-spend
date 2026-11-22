@@ -4,6 +4,7 @@ import { useAccountStore } from "@/store/accounts";
 import { useApiQuery } from "@/lib/query/useApiQuery";
 import { useTripNameStore } from "@/store/tripNames";
 import { appZone, calendarToday } from "@/lib/zone";
+import { tripGradients } from "@/theme/gradients";
 
 /** The Insights breakdown's slice for all trip spending — mirrors the API's TRIPS_SLICE_ID. */
 export const TRIPS_SLICE_ID = "trips";
@@ -127,14 +128,7 @@ export const pickerToTripDay = (picked: Date): string =>
   new Date(Date.UTC(picked.getFullYear(), picked.getMonth(), picked.getDate())).toISOString();
 
 /** The card band colours, keyed by the trip's `color`. */
-export const TRIP_GRADIENTS: Record<string, [string, string]> = {
-  teal: ["#14b8a6", "#6d5cf6"],
-  sunset: ["#f59e0b", "#e24a55"],
-  ocean: ["#3b82f6", "#7b68ee"],
-  forest: ["#10b981", "#3b82f6"],
-  rose: ["#ec4899", "#8b5cf6"],
-  sand: ["#eab308", "#f97316"],
-};
+export const TRIP_GRADIENTS = tripGradients;
 
 export const TRIP_EMOJIS = ["🧳", "🏖", "🌴", "🏔", "🏙", "🏞", "✈️", "🚗", "⛺", "🎉", "🛕", "🌊"];
 
