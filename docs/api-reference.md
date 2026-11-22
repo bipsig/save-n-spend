@@ -236,8 +236,9 @@ whose `message` is the first issue's message (see [Errors](#errors)).
 
 ### POST /auth/register
 
-Creates a user and returns **the user document**. It does **not** return an
-access token. To obtain a token, call `POST /auth/login` afterwards.
+Creates a user and returns **the user document plus `accessToken`** (2.8.8 on; the
+same token `POST /auth/login` gives). The apps up to 2.8.8 ignore the body and
+sign in from Welcome.
 
 | Field | Type | Constraints |
 |---|---|---|
@@ -251,12 +252,12 @@ Registration runs in one database transaction and does four things:
 | Step | Result |
 |---|---|
 | Creates the user | `authProvider: "local"`, `currency: "INR"`. |
-| Creates a default account | Named `Cash`, type `cash`, `balance` and `startingBalance` both `0`. No `icon` or `color` is set on it. |
+| Creates a default account | Named `Cash`, type `cash`, `balance` and `startingBalance` both `0`, with the cash type's icon and colour (`payments`, `info`; 2.8.8 on, from the model's per-type defaults). |
 | Seeds the default categories | The tree in `apps/api/src/data/defaultCategories.ts`, parents first. Children inherit their parent's `kind`. |
 | Sets `prefs.defaultAccount` | Points at the new `Cash` account. |
 
 **Response** — `201`, message `User registered`. `data` is the user, shaped
-like `IUser` in `packages/types`. `password`, `resetToken`, `resetTokenExpiry`
+like `IUser` in `packages/types`, plus `accessToken`. `password`, `resetToken`, `resetTokenExpiry`
 and `totpSecret` are stripped from every user response by the model's `toJSON`,
 and `__v`, `pushToken`, `googleId`, `totpEnabled`, `authProvider` and
 `deactivatedAt` by `utils/dto.ts`.
@@ -1895,6 +1896,7 @@ from the user document (default `INR`).
 | `previousTripExpenses` | integer | 2.8.4. The trip part of `previousExpenses`, so a change in spending can compare everyday with everyday. |
 | `categories` | `ReviewCategorySlice[]` | Top 5 of the insights `byCategory` breakdown (so the single `Trips` slice can appear). `pct` is the whole-number share of the breakdown's total (all slices, Trips included, uncategorised spend left out). From 2.8.4 every slice but Trips also carries `share`: its share of everyday spending to one decimal, computed over every slice (not only the five sent) and uncategorised spend, exactly as on [Insights](#get-insights). |
 | `uncategorised` | `{ total, share }` | 2.8.4. Everyday spending in the period with no category, and its share. With it the everyday slices' `share` add up to 100.0 (when all of them are in the top five). |
+| `other` | `{ total, share, count } \| null` | 2.8.8. Every slice after the fifth as one row: their total, their `share` summed, and how many. With it and `uncategorised` the shares add up to 100.0. `null` with five slices or fewer. |
 | `biggestExpense` | object \| null | `{ title, amount, occurredAt }`, everyday spending only (`tripId` empty). |
 | `timeline` | `ReviewMoment[]` | Dated, sorted ascending, short on purpose. See below. |
 | `habits` | object | `streakAtEnd` (streak ending on the period's last day), `activeDays` (days with any non-adjustment transaction), `totalDays`, `noSpendDays` (`totalDays - activeDays`). |
@@ -2237,8 +2239,9 @@ Within one instant the order is `added`, then `in`/`out`, then `update`.
 Returns the holding's raw transactions, newest first by `occurredAt`: every
 transaction where the account is `account` or `toAccount`, which includes
 contributions, redemptions, **and value updates**. The ordinary
-`GET /transactions` list hides adjustments, which is why this exists. Capped at
-the latest 200; there is no pagination.
+`GET /transactions` list hides adjustments, which is why this exists. Every row
+(2.8.8 on; before, the latest 200), because the app sums them for what's invested.
+There is no pagination.
 
 The response is an array of transaction documents, not a shaped payload, message
 `Investment history fetched`.
@@ -2316,9 +2319,9 @@ In both modes:
 corrections in `keep` mode are not counted.
 
 **Warning**
-This is irreversible. Unlike [PATCH /investments/{id}/basis](#patch-investmentsidbasis)
-it also works on an **archived** holding, since its lookup does not filter on
-`isArchived`.
+This is irreversible. Like [PATCH /investments/{id}/basis](#patch-investmentsidbasis),
+it refuses an **archived** holding with `404` `not_found` (2.8.8 on; no screen shows
+one, and nothing unarchives it).
 
 ## Trips
 
@@ -2484,8 +2487,8 @@ Creates a trip. `201`, message `Trip created`.
 | `members` | string[] | Required, at most 30 ids. Each must be one of the caller's non-archived person accounts, else `400` `invalid_reference`, issue path `members.<n>`. Duplicates are collapsed. May be empty. |
 | `budget` | integer \| null | Optional. Paise, at least 0. |
 
-The response data is the stored trip document, minus `userId` and `__v` (as
-every reply, `utils/dto.ts`): the `Trip` fields plus `updatedAt`.
+The response data is the trip in the list's shape (`ITrip`) plus `updatedAt`
+(2.8.8 on; before, the stored document, which also carried `plan`).
 
 ### GET /trips/{id}
 
@@ -2530,14 +2533,15 @@ Plan rows are bookkeeping and never appear in `entries`.
 ### PATCH /trips/{id}
 
 Same fields and limits as `POST /trips`, all optional, unknown fields rejected.
-`200`, message `Trip updated`, with the stored trip document.
+`200`, message `Trip updated`, with the trip as `POST /trips` answers it.
 
 - The end may not precede the start, comparing the sent value against the stored
   other date.
 - A person cannot be removed from `members` if they are the payer of, or in the
   shares of, any expense, or are the account on any transaction of the trip:
   `409` `conflict`, `Someone you're removing is already in this trip's expenses`.
-- Allowed on a closed trip.
+- Refused on a closed trip (2.8.8 on): `409` `conflict`, `This trip is closed.
+  Reopen it to make changes`. The close date has its own route.
 
 A malformed, missing or another user's trip id is a `404` `not_found`, `That
 trip doesn't exist any more`, on every route below; a malformed or foreign
@@ -2550,7 +2554,8 @@ make changes`.
 Deletes the trip and undoes everything: every transaction on it (expense rows,
 settle-ups, let-gos, plan rows) is reverted and removed, then the expenses and
 the trip. Balances end as if the trip was never logged. `200`, `data: null`,
-message `Trip deleted`. Allowed on a closed trip.
+message `Trip deleted`. Refused on a closed trip (2.8.8 on) with the same `409` as
+`PATCH`; reopen it first.
 
 ### POST /trips/{id}/expenses
 
@@ -2892,7 +2897,7 @@ Try again in an hour`, and it sends the standard `RateLimit-*` headers. The requ
 | `confirm` | `true` | Required, literal `true`. The server half of the destructive-action guard, alongside the app's hold-to-confirm. |
 | `version` | `1` | Required. |
 | `exportedAt` | string | Required. ISO datetime. |
-| `preferences` | object | Required: `currency` (string), `timeZone` (string), `notifications` (object), optional `defaultAccount` (24-hex ID or `null`). Extra keys are kept. |
+| `preferences` | object | Required: `currency` (`"INR"` only, 2.8.8 on; the app is INR-only and every backup says so), `timeZone` (string), `notifications` (object), optional `defaultAccount` (24-hex ID or `null`). Extra keys are kept. |
 | `accounts`, `categories`, `transactions`, `budgets`, `bills`, `goals` | array | Required. Each element is a loose object that must carry a 24-hex `_id`. |
 | `trips`, `tripExpenses` | array | Optional, so a backup from before trips still restores. |
 | `goalContributionLogs` | array | Optional. Present: it replaces the caller's logs. Absent (any backup made before 2.8.0): the caller's logs are left as they are. |
@@ -3166,9 +3171,9 @@ These are real behaviours found while documenting, not changes made.
    included.
 5. **Fixed in 2.8.0: `GET /investments/{id}/history` checks the account.** A
    malformed, missing, foreign or non-holding id is `404`; an archived holding
-   still answers. It silently caps at 200 rows.
-6. **`DELETE /investments/{id}` ignores `isArchived`; `PATCH .../basis` requires it
-   be false.** An archived holding can be deleted but not re-based.
+   still answers. Fixed in 2.8.8: it no longer caps at 200 rows.
+6. **Fixed in 2.8.8: `DELETE /investments/{id}` refuses an archived holding** with
+   `404`, as `PATCH .../basis` does.
 7. **`lastUpdatedAt` counts any adjustment**, including a plain balance
    reconciliation, not only deliberate value updates. The history treats them
    all as value updates too.
