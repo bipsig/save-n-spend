@@ -2,7 +2,7 @@ import { Request, Response } from "express"
 import type { Valid } from "../middleware/validate";
 import { dashboardHealthSchemas, dashboardInsightsSchemas, dashboardSummarySchemas } from "../schemas/dashboardSchema"
 import Transaction from "../models/Transaction";
-import Goal from "../models/Goal";
+import Goal, { LIVE_GOAL } from "../models/Goal";
 import * as reply from "../utils/response";
 import Account from "../models/Account";
 import mongoose from "mongoose";
@@ -213,7 +213,7 @@ export const getDashboardInsights = async (req: Request, res: Response): Promise
   const daysElapsed = partsInZone(now, zone).day;
 
   const [goals, expenseDays, weekdayRows, first] = await Promise.all([
-    Goal.find({ userId }).select("name target saved createdAt").lean(),
+    Goal.find({ userId, ...LIVE_GOAL }).select("name target saved createdAt").lean(),
     // Also carries `total` per day — feeds both the no-spend-day count and the
     // pace-vs-average chart's current-month series below, one query for both. `everyday` is
     // the same sum without trip spending, for the `everyday` twins below.

@@ -305,9 +305,28 @@ stays exactly as it was, indefinitely.
 
 The reasoning: the overwhelmingly common reason to tap that button is "I'm done
 with this app for now", and years of a person's spending history is not
-recoverable from anywhere else. Every other `DELETE` in this API already archives
-rather than erases, so this makes the account itself consistent with the rest of
-it instead of being the one endpoint that behaved differently.
+recoverable from anywhere else, so the account is archived, like the records
+history points at.
+
+### What a DELETE does: archive what history points at
+
+The rule since 2.8.7 (gaps row 159): a record that other records still name is
+**archived** (`isArchived: true`), hidden from its list and from every write, and
+kept so the history that points at it reads right. Everything else is erased.
+
+| Archived | Why |
+|---|---|
+| Accounts | Transactions, bills and trips point at them. |
+| Categories (with their children) | Transactions, budgets, bills and trip expenses are filed under them. |
+| Goals | Contribution logs point at them; Review names the goal money went to. |
+| Your user account (`deactivatedAt`) | See above. |
+
+Erased: transactions, bills, budgets, trips (with their expenses and rows),
+trip expenses (with their rows) and investments (`?mode=keep|undo`). An archived
+account, category or goal can't be chosen for anything new (`requireCategory`,
+`requireLiveAccounts`, `LIVE_GOAL`); an edit that keeps an archived category stays
+allowed. On the phone every delete waits out a five-second undo first
+(docs/mobile-patterns.md, "Delete and undo").
 
 Three places make it coherent, and all three are needed:
 

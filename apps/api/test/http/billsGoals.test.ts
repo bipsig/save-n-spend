@@ -180,6 +180,20 @@ test("goal deadline null is stored as null, not 1970", async () => {
     assert.equal(listed.deadline ?? null, null);
 });
 
+test("deleting a goal archives it: gone from the list and every write, kept for its contributions (row 159)", async () => {
+    const g = await goal(1_000_000);
+    await send("POST", `/goals/${g._id}/contribute`, { amount: 100_000 });
+    const r = await send("DELETE", `/goals/${g._id}`);
+    assert.deepEqual([r.status, r.json.data], [200, null]);
+    assert.equal(((await send("GET", "/goals")).json.data as { _id: string }[]).some((x) => x._id === g._id), false);
+    failed(await send("DELETE", `/goals/${g._id}`), 404, "not_found");
+    failed(await send("PATCH", `/goals/${g._id}`, { name: "x" }), 404, "not_found");
+    failed(await send("POST", `/goals/${g._id}/contribute`, { amount: 1 }), 404, "not_found");
+    const backup = (await send("GET", "/backup")).json.data as { goals: { _id: string; isArchived?: boolean }[]; goalContributionLogs: { goalId: string }[] };
+    assert.equal(backup.goals.find((x) => x._id === g._id)?.isArchived, true);
+    assert.ok(backup.goalContributionLogs.some((l) => l.goalId === g._id));
+});
+
 test("goal paths and bodies", async () => {
     for (const id of ["abc", MISSING]) {
         failed(await send("POST", `/goals/${id}/contribute`, { amount: 1 }), 404, "not_found", "That goal doesn't exist any more");

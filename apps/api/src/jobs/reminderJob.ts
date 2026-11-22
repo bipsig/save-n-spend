@@ -2,7 +2,7 @@ import cron from "node-cron";
 import mongoose from "mongoose";
 import Account from "../models/Account";
 import Bill from "../models/Bill";
-import Goal from "../models/Goal";
+import Goal, { LIVE_GOAL } from "../models/Goal";
 import Transaction from "../models/Transaction";
 import User from "../models/User";
 import { billState, daysUntilDue } from "../services/billService";
@@ -176,6 +176,7 @@ const remindGoalDeadlines = async (user: ReminderUser, zone: string, now: Date):
 
     const goals = await Goal.find({
         userId: user._id,
+        ...LIVE_GOAL,
         deadline: { $exists: true, $ne: null },
     }).lean();
 

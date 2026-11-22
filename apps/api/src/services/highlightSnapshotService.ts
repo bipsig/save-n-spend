@@ -3,7 +3,7 @@ import Account from "../models/Account";
 import Bill from "../models/Bill";
 import { rowsFor, type TripRule } from "./tripEntries";
 import Category from "../models/Category";
-import Goal from "../models/Goal";
+import Goal, { LIVE_GOAL } from "../models/Goal";
 import Transaction from "../models/Transaction";
 import { budgetProgress } from "./budgetService";
 import { healthScore } from "./healthService";
@@ -99,7 +99,7 @@ export const buildSnapshot = async (
         budgetProgress(oid, zone, label),
         budgetProgress(oid, zone, prevLabel),
         Bill.find({ userId: oid }).select("name amount account dueDate lastPaidAt status recurring frequency pausedAt").lean(),
-        Goal.find({ userId: oid }).select("name target saved deadline createdAt").lean(),
+        Goal.find({ userId: oid, ...LIVE_GOAL }).select("name target saved deadline createdAt").lean(),
         healthScore(oid, zone, now, rule),
         // Four months of income/expense in one pass: month totals for the savings
         // rate, per-category spend for the pace comparisons. Transfers and

@@ -1325,9 +1325,10 @@ doesn't exist any more`.
 
 ### DELETE /goals/{id}
 
-Returns `200` with `data: null` (`Goal deleted`), or `404` `not_found`. Past
-contribution logs are kept; a review that still references them names the goal
-`Goal`.
+Returns `200` with `data: null` (`Goal deleted`), or `404` `not_found`. Since
+2.8.7 the goal is archived (`isArchived: true`), not erased: `GET /goals`, edits,
+contributions, Health, highlights and reminders no longer see it, and Review still
+names it beside its contributions. A second `DELETE` answers `404`.
 
 ### POST /goals/{id}/contribute
 

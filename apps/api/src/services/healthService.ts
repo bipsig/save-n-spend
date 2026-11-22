@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import Account from "../models/Account";
 import Bill, { type IBill } from "../models/Bill";
 import Category from "../models/Category";
-import Goal, { type IGoal } from "../models/Goal";
+import Goal, { LIVE_GOAL, type IGoal } from "../models/Goal";
 import Transaction from "../models/Transaction";
 import { billState } from "./billService";
 import { liquidBalance } from "./accountGroups";
@@ -415,7 +415,7 @@ export const healthScore = async (
             { $group: { _id: "$type", total: { $sum: "$balance" } } },
         ]),
         Bill.find({ userId: oid }, { name: 1, dueDate: 1, lastPaidAt: 1, status: 1, recurring: 1, frequency: 1, pausedAt: 1 }).lean(),
-        Goal.find({ userId: oid }, { name: 1, target: 1, saved: 1, deadline: 1, createdAt: 1 }).lean(),
+        Goal.find({ userId: oid, ...LIVE_GOAL }, { name: 1, target: 1, saved: 1, deadline: 1, createdAt: 1 }).lean(),
         budgetProgress(oid, zone),
         // Only so the budgets hint can name the category it is about.
         Category.find({ userId: oid }, { name: 1 }).lean(),

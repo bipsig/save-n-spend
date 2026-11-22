@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import Goal from "../models/Goal";
+import Goal, { LIVE_GOAL } from "../models/Goal";
 import GoalContributionLog from "../models/GoalContributionLog";
 import type { Valid } from "../middleware/validate";
 import { createGoalSchemas, updateGoalSchemas, goalIdSchemas, contributeGoalSchemas } from "../schemas/goalSchema";
@@ -11,7 +11,7 @@ import { toDTO, toDTOs } from "../utils/dto";
 import * as reply from "../utils/response";
 
 export const listGoals = async (req: Request, res: Response): Promise<void> => {
-    const goals = await Goal.find({ userId: req.user?.userId }).sort({ createdAt: 1 });
+    const goals = await Goal.find({ userId: req.user?.userId, ...LIVE_GOAL }).sort({ createdAt: 1 });
     reply.ok(res, toDTOs(goals), "Goals fetched");
 }
 
@@ -31,7 +31,7 @@ export const updateGoal = async (req: Request, res: Response): Promise<void> => 
     const { params: { id }, body } = req.valid as Valid<typeof updateGoalSchemas>;
 
     const goal = await Goal.findOneAndUpdate(
-        { _id: id, userId: req.user?.userId },
+        { _id: id, userId: req.user?.userId, ...LIVE_GOAL },
         body,
         { new: true }
     );
@@ -46,10 +46,11 @@ export const updateGoal = async (req: Request, res: Response): Promise<void> => 
 export const deleteGoal = async (req: Request, res: Response): Promise<void> => {
     const { params: { id } } = req.valid as Valid<typeof goalIdSchemas>;
 
-    const goal = await Goal.findOneAndDelete({
-        _id: id,
-        userId: req.user?.userId
-    });
+    // Archived, not erased: Review still names the goal its contributions went to.
+    const goal = await Goal.findOneAndUpdate(
+        { _id: id, userId: req.user?.userId, ...LIVE_GOAL },
+        { $set: { isArchived: true } },
+    );
 
     if (!goal) {
         throw AppError.notFound(notFound("goal"));
@@ -67,7 +68,7 @@ export const contributeGoal = async (req: Request, res: Response): Promise<void>
         // other. It returns the goal as it was: the milestone check and the log both need
         // what THIS contribution changed, not merely the total now.
         const before = await Goal.findOneAndUpdate(
-            { _id: id, userId },
+            { _id: id, userId, ...LIVE_GOAL },
             [{ $set: { saved: { $min: ["$target", { $add: ["$saved", amount] }] } } }],
             { session, new: false },
         ).lean();
