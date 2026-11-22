@@ -1,4 +1,4 @@
-import { ActivityIndicator, FlatList, StyleSheet, View } from "react-native";
+import { FlatList, StyleSheet, View } from "react-native";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
@@ -19,6 +19,7 @@ import PressableScale from "@/components/ui/PressableScale";
 import SegmentedControl from "@/components/ui/SegmentedControl";
 import PeriodNav from "@/components/ui/PeriodNav";
 import Fab from "@/components/ui/Fab";
+import ListEnd from "@/components/ui/ListEnd";
 import EmptyState from "@/components/states/EmptyState";
 import ErrorState from "@/components/states/ErrorState";
 import SkeletonState from "@/components/states/SkeletonState";
@@ -429,7 +430,7 @@ const ActivityScreen = () => {
             </>
           }
           ListFooterComponent={
-            feed.loadingMore ? <ActivityIndicator color={colors.primary} style={styles.footer} /> : null
+            <ListEnd hasMore={feed.hasMore} loadingMore={feed.loadingMore} pagesLoaded={feed.pagesLoaded} failed={!!feed.error && feed.data !== null} onRetry={feed.loadMore} />
           }
           ListEmptyComponent={
             !states.hasData ? (
@@ -556,9 +557,6 @@ const styles = StyleSheet.create({
   },
   filterBadgeText: {
     lineHeight: 12,
-  },
-  footer: {
-    paddingVertical: spacing.lg,
   },
   summary: {
     gap: 12, // spec .hero gap × device scale

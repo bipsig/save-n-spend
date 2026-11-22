@@ -1,4 +1,6 @@
-import { ScrollView, StyleSheet, View } from "react-native";
+import { useRef } from "react";
+import { ScrollView, StyleSheet, View, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
+import { nearEnd } from "@/lib/listEnd";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import GlowBackground from "./GlowBackground";
@@ -33,6 +35,9 @@ type Props = {
   refreshing?: boolean;
   /** Rendered above the scroll content, pinned to the screen (e.g. the FAB). */
   floating?: React.ReactNode;
+  /** A paged list in the scaffold's own scroll: called as the scroll nears the bottom, and when
+   *  the content is shorter than the screen (lib/listEnd). The caller ignores it at the end. */
+  onEndReached?: () => void;
   children: React.ReactNode;
 };
 
@@ -51,10 +56,12 @@ const ScreenScaffold = ({
   onRefresh = states?.refetch,
   refreshing = false,
   floating,
+  onEndReached,
   children,
 }: Props) => {
   const { top, bottom } = useSafeAreaInsets();
   const refreshControl = useScreenRefresh(scroll ? onRefresh : undefined, refreshing);
+  const viewport = useRef(0);
 
   return (
     // Full-bleed dark ground + glow — no padding here, so the glow reaches the
@@ -83,6 +90,12 @@ const ScreenScaffold = ({
             keyboardDismissMode="on-drag"
             keyboardShouldPersistTaps="handled"
             refreshControl={refreshControl}
+            {...(onEndReached && {
+              scrollEventThrottle: 200,
+              onScroll: (e: NativeSyntheticEvent<NativeScrollEvent>) => { if (nearEnd(e.nativeEvent)) onEndReached(); },
+              onContentSizeChange: (_w: number, h: number) => { if (viewport.current > 0 && h <= viewport.current * 2) onEndReached(); },
+              onLayout: (e: LayoutChangeEvent) => { viewport.current = e.nativeEvent.layout.height; },
+            })}
           >
             {children}
           </ScrollView>

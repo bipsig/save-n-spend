@@ -99,6 +99,8 @@ export type ApiPages<Item> = ApiQuery<Item[]> & {
   total: number;
   hasMore: boolean;
   loadingMore: boolean;
+  /** Pages on hand, for the end-of-list line (lib/listEnd). */
+  pagesLoaded: number;
   loadMore: () => void;
 };
 
@@ -147,6 +149,7 @@ export const useApiPages = <Item,>(
     total: pages?.[0]?.data.total ?? 0,
     hasMore: !!hasNextPage,
     loadingMore: query.isFetchingNextPage,
+    pagesLoaded: pages?.length ?? 0,
     loadMore,
     loading: pages === undefined && (query.isPending || busy),
     refreshing: pages !== undefined && busy,

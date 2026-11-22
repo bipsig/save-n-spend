@@ -5,7 +5,7 @@ import Animated, { LinearTransition } from "react-native-reanimated";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import Card from "@/components/data/Card";
 import NotificationRow from "@/components/rows/NotificationRow";
-import Button from "@/components/ui/Button";
+import ListEnd from "@/components/ui/ListEnd";
 import EmptyState from "@/components/states/EmptyState";
 import ScreenStates from "@/components/states/ScreenStates";
 import SkeletonState from "@/components/states/SkeletonState";
@@ -27,6 +27,7 @@ const NotificationsScreen = () => {
   const loading = useNotifications((s) => s.loading);
   const loadingMore = useNotifications((s) => s.loadingMore);
   const hasNextPage = useNotifications((s) => s.hasNextPage);
+  const page = useNotifications((s) => s.page);
   const error = useNotifications((s) => s.error);
   const fetchedAt = useNotifications((s) => s.fetchedAt);
   const load = useNotifications((s) => s.load);
@@ -80,7 +81,7 @@ const NotificationsScreen = () => {
   );
 
   return (
-    <ScreenScaffold {...header} states={state}>
+    <ScreenScaffold {...header} states={state} onEndReached={() => void useNotifications.getState().loadMore()}>
       <ScreenStates state={state} skeleton={skeleton}>
         {items.length === 0 ? (
           <EmptyState
@@ -105,17 +106,7 @@ const NotificationsScreen = () => {
         )}
       </ScreenStates>
 
-      {/* A button rather than infinite scroll: the list is a log people read the top of,
-          and loading older pages should be something they ask for. */}
-      {hasNextPage && (
-        <Button
-          label="Load older"
-          variant="secondary"
-          size="sm"
-          loading={loadingMore}
-          onPress={() => void useNotifications.getState().loadMore()}
-        />
-      )}
+      {items.length > 0 && <ListEnd hasMore={hasNextPage} loadingMore={loadingMore} pagesLoaded={page} />}
     </ScreenScaffold>
   );
 };

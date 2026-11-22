@@ -3,7 +3,7 @@ import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import HighlightCard from "@/components/data/HighlightCard";
 import HighlightHistoryRow from "@/components/data/HighlightHistoryRow";
 import SectionHeader from "@/components/ui/SectionHeader";
-import Button from "@/components/ui/Button";
+import ListEnd from "@/components/ui/ListEnd";
 import { AppText } from "@/components/ui/AppText";
 import EmptyState from "@/components/states/EmptyState";
 import ErrorState from "@/components/states/ErrorState";
@@ -37,6 +37,7 @@ const AssistantScreen = () => {
   const {
     items: history, totalDocs, loadingMore: historyLoadingMore,
     hasMore: historyHasMore, error: historyError, refetch: refetchHistory, loadMore: loadMoreHistory,
+    pagesLoaded: historyPages,
   } = historyQuery;
   const state = mergeScreenStates(liveState, { ...historyQuery, hasData: historyQuery.data != null });
 
@@ -87,7 +88,7 @@ const AssistantScreen = () => {
   };
 
   return (
-    <ScreenScaffold title="Highlights" back states={state}>
+    <ScreenScaffold title="Highlights" back states={state} onEndReached={loadMoreHistory}>
       <ScreenStates state={liveState} skeleton={skeleton}>{liveBody}</ScreenStates>
 
       {/* The permanent record. Unaffected by anything above — a dismissed card, a quiet
@@ -101,16 +102,11 @@ const AssistantScreen = () => {
           {history.map((entry) => (
             <HighlightHistoryRow key={entry.key} entry={entry} />
           ))}
-          {historyError ? (
-            <ErrorState message={historyError} onRetry={history.length > 0 ? loadMoreHistory : refetchHistory} />
-          ) : historyHasMore ? (
-            <Button
-              label={historyLoadingMore ? "Loading…" : "Load more"}
-              variant="ghost"
-              loading={historyLoadingMore}
-              onPress={loadMoreHistory}
-            />
-          ) : null}
+          {historyError && history.length === 0 ? (
+            <ErrorState message={historyError} onRetry={refetchHistory} />
+          ) : (
+            <ListEnd hasMore={historyHasMore} loadingMore={historyLoadingMore} pagesLoaded={historyPages} failed={!!historyError} onRetry={loadMoreHistory} />
+          )}
         </View>
       )}
     </ScreenScaffold>

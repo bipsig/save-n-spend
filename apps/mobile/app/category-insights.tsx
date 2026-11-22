@@ -11,9 +11,9 @@ import TransactionRow from "@/components/rows/TransactionRow";
 import TransactionDetailSheet from "@/components/sheets/TransactionDetailSheet";
 import SegmentedControl from "@/components/ui/SegmentedControl";
 import PeriodNav from "@/components/ui/PeriodNav";
-import Button from "@/components/ui/Button";
 import { AppText } from "@/components/ui/AppText";
 import Caps from "@/components/ui/Caps";
+import ListEnd from "@/components/ui/ListEnd";
 import EmptyState from "@/components/states/EmptyState";
 import ErrorState from "@/components/states/ErrorState";
 import ScreenStates from "@/components/states/ScreenStates";
@@ -204,14 +204,7 @@ const CategoryInsightsScreen = () => {
               {visibleItems.map((txn) => (
                 <TransactionRow key={txn._id} transaction={txn} onPress={() => openDetail(txn)} />
               ))}
-              {feed.hasMore && (
-                <Button
-                  label="Load more"
-                  variant="secondary"
-                  loading={feed.loadingMore}
-                  onPress={feed.loadMore}
-                />
-              )}
+              <ListEnd hasMore={feed.hasMore} loadingMore={feed.loadingMore} pagesLoaded={feed.pagesLoaded} failed={!!feed.error} onRetry={feed.loadMore} />
             </View>
           )}
         </View>
@@ -227,6 +220,7 @@ const CategoryInsightsScreen = () => {
       // parent's roll-up.
       subtitle={data?.parentName ? `in ${data.parentName}` : undefined}
       states={state}
+      onEndReached={feed.loadMore}
     >
       <SegmentedControl segments={SEGMENTS} value={period} onChange={changePeriod} />
       <PeriodNav
