@@ -1,4 +1,5 @@
 import { formatAmount, formatPercent } from "../utils/money";
+import { duePhrase } from "../utils/duePhrase";
 import { isSpendable } from "./accountGroups";
 import type { GoalPace } from "./goalPace";
 
@@ -186,14 +187,6 @@ const projectToMonthEnd = (spent: number, snap: Snapshot): number =>
 const perDay = (spent: number, snap: Snapshot): number => Math.round(spent / snap.daysElapsed);
 
 const days = (n: number): string => (n === 1 ? "1 day" : `${n} days`);
-
-/** "overdue by 2 days" / "due today" / "due tomorrow" / "due in 5 days". */
-const duePhrase = (daysUntilDue: number): string => {
-    if (daysUntilDue < 0) return `overdue by ${days(-daysUntilDue)}`;
-    if (daysUntilDue === 0) return "due today";
-    if (daysUntilDue === 1) return "due tomorrow";
-    return `due in ${days(daysUntilDue)}`;
-};
 
 const pct = formatPercent;
 

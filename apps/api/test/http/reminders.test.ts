@@ -81,12 +81,12 @@ test("18:15: bills, goal deadlines, recurring and yesterday's digest; not yet th
     const by = Object.fromEntries(rows.map((r) => [r.title, r]));
     assert.deepEqual(rows.map((r) => r.title).sort(), [
         "31 May in review", "Car is due in 4 days", "Fest is due today", "Netflix looks like a monthly payment",
-        "Phone is overdue", "Rent due in 2 days", "SIP · invest in 1 day", "Water is due today",
+        "Phone is overdue", "Rent due in 2 days", "SIP · due tomorrow", "Water is due today",
     ]);
-    assert.deepEqual([by["Phone is overdue"].type, by["Phone is overdue"].body, by["Phone is overdue"].dedupeKey], ["billOverdue", "₹200.00 was due 3 days ago.", `bill:${ids.Phone}:overdue:2026-05-29`]);
+    assert.deepEqual([by["Phone is overdue"].type, by["Phone is overdue"].body, by["Phone is overdue"].dedupeKey], ["billOverdue", "₹200.00, overdue by 3 days.", `bill:${ids.Phone}:overdue:2026-05-29`]);
     assert.deepEqual([by["Water is due today"].body, by["Water is due today"].dedupeKey], ["₹200.00 due today.", `bill:${ids.Water}:today:2026-06-01`]);
     assert.deepEqual([by["Rent due in 2 days"].body, by["Rent due in 2 days"].dedupeKey], ["₹200.00 due on 3 Jun.", `bill:${ids.Rent}:due:2026-06-03`]);
-    assert.equal(by["SIP · invest in 1 day"].body, "₹200.00 to invest on 2 Jun.");
+    assert.equal(by["SIP · due tomorrow"].body, "₹200.00 to invest on 2 Jun.");
     assert.deepEqual([by["Car is due in 4 days"].type, by["Car is due in 4 days"].body, by["Car is due in 4 days"].dedupeKey], ["goalDeadline", "₹4,000.00 still to go.", `goal:${ids.Car}:deadline:2026-06-05`]);
     assert.equal(by["Netflix looks like a monthly payment"].body, "Turn it into a bill to get reminded before it's due.");
     assert.deepEqual([by["31 May in review"].body, by["31 May in review"].dedupeKey], ["Spent ₹100.00, earned ₹50.00 — ₹50.00 more than you earned. 2 transactions.", "daily:2026-05-31"]);

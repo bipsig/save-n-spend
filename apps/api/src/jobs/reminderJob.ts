@@ -24,6 +24,7 @@ import {
     startOfWeekInZone,
 } from "../utils/timezone";
 import { shortDay } from "../utils/dateLabel";
+import { duePhrase } from "../utils/duePhrase";
 
 // The scheduled half of notifications: the nudges nobody's action triggers — a bill due on
 // Friday, a goal deadline next week, yesterday's spending, last month's wrap-up.
@@ -139,7 +140,7 @@ const remindBills = async (user: ReminderUser, zone: string, now: Date): Promise
             await notify(user as NotifiableUser, {
                 type: "billOverdue",
                 title: sip ? `${bill.name} — SIP overdue` : `${bill.name} is overdue`,
-                body: sip ? `${amount} was due to invest ${plural(-days, "day")} ago.` : `${amount} was due ${plural(-days, "day")} ago.`,
+                body: sip ? `${amount} to invest, ${duePhrase(days)}.` : `${amount}, ${duePhrase(days)}.`,
                 dedupeKey: `bill:${String(bill._id)}:overdue:${due}`,
                 link: { screen: "bills", id: String(bill._id) },
             });
@@ -161,7 +162,7 @@ const remindBills = async (user: ReminderUser, zone: string, now: Date): Promise
         if (days <= lead) {
             await notify(user as NotifiableUser, {
                 type: "billReminder",
-                title: sip ? `${bill.name} · invest in ${plural(days, "day")}` : `${bill.name} due in ${plural(days, "day")}`,
+                title: sip ? `${bill.name} · ${duePhrase(days)}` : `${bill.name} ${duePhrase(days)}`,
                 body: sip ? `${amount} to invest on ${dateLabel(bill.dueDate, zone)}.` : `${amount} due on ${dateLabel(bill.dueDate, zone)}.`,
                 dedupeKey: `bill:${String(bill._id)}:due:${due}`,
                 link: { screen: "bills", id: String(bill._id) },
@@ -190,9 +191,7 @@ const remindGoalDeadlines = async (user: ReminderUser, zone: string, now: Date):
 
         await notify(user as NotifiableUser, {
             type: "goalDeadline",
-            title: days === 0
-                ? `${goal.name} is due today`
-                : `${goal.name} is due in ${plural(days, "day")}`,
+            title: `${goal.name} is ${duePhrase(days)}`,
             body: `${short} still to go.`,
             dedupeKey: `goal:${String(goal._id)}:deadline:${dayKeyInZone(goal.deadline, zone)}`,
             link: { screen: "goals", id: String(goal._id) },

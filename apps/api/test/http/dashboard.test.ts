@@ -343,7 +343,7 @@ test("health: every pillar failing, with its hint, and the focus on the heaviest
         hint: "₹12,000.00 on cards is eating most of your buffer. Clearing it lifts this faster than saving more does." });
     // Rent 10 days late, 1 of 2: 50 − 10.
     assert.deepEqual(by.bills, { key: "bills", label: "Bills", score: 40, weight: 20, value: "1 of 2 late", verdict: "Watch",
-        hint: "Rent is 10 days overdue. This is the quickest thing on the list to fix." });
+        hint: "Rent is overdue by 10 days. This is the quickest thing on the list to fix." });
     // 150,000 against 20/30 of 100,000.
     assert.deepEqual(by.budgets, { key: "budgets", label: "Budgets", score: 0, weight: 15, value: "1 of 1 over", verdict: "Off track",
         hint: `${foodName} is running at 225.0% of its pace for this point in the month. Either the limit is wrong or the spending is — both are worth knowing.` });
@@ -376,7 +376,7 @@ test("health: a failing pillar caps the total at 79 however strong the rest", as
     // The weighted average is 80; the 50-day-late bill holds the headline under Excellent.
     assert.deepEqual([d.score, d.band, d.rating], [79, "good", "Good"]);
     assert.equal(d.focus.key, "bills");
-    assert.match(d.focus.hint, /^Insurance is 50 days overdue/);
+    assert.match(d.focus.hint, /^Insurance is overdue by 50 days/);
 });
 
 test("health: a mid-range saver gets the target hint; a thin buffer without card debt gets the floor hint", async () => {
@@ -510,7 +510,7 @@ test("bills and health share one bill state: a one-off paid last month is settle
     assert.equal(listed[0].dueDate, "2026-04-12T06:30:00.000Z");
     const by = Object.fromEntries(((await u.send("GET", "/dashboard/health")).json.data.pillars as { key: string }[]).map((p) => [p.key, p]));
     assert.deepEqual(by.bills, { key: "bills", label: "Bills", score: 0, weight: 20, value: "1 of 1 late", verdict: "Off track",
-        hint: "Rent is 69 days overdue. This is the quickest thing on the list to fix." });
+        hint: "Rent is overdue by 69 days. This is the quickest thing on the list to fix." });
     const flow = (await u.send("GET", "/cash-flow")).json.data as { days: { date: string; items: { name: string; overdue?: boolean }[] }[] };
     assert.deepEqual(flow.days[0].items.filter((i) => i.name === "Rent"), [{ kind: "bill", name: "Rent", amount: 50_000, billId: rent, overdue: true }]);
     assert.ok(flow.days.every((d) => d.items.every((i) => i.name !== "Insurance")));

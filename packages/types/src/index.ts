@@ -1018,3 +1018,18 @@ export interface ApiErrorBody {
  *  2.7.x app sends one-letter names for people, bills, goals and trips. */
 export const NAME_MIN = 1
 export const NAME_MAX = 60
+
+// ---- Shared copy -----------------------------------------------------------------------------
+// For the app; the API mirrors it in utils/duePhrase.ts (see "API errors" above for why), and a
+// test there checks the two say the same.
+
+/** When something is due, in whole zone-local days (negative is late): "overdue by 3 days",
+ *  "due today", "due tomorrow", "due in 3 days". Lower case; capitalise it at a line start. */
+export const duePhrase = (days: number): string => {
+  const n = Math.abs(days)
+  const unit = n === 1 ? 'day' : 'days'
+  if (days < 0) return `overdue by ${n} ${unit}`
+  if (days === 0) return 'due today'
+  if (days === 1) return 'due tomorrow'
+  return `due in ${n} ${unit}`
+}

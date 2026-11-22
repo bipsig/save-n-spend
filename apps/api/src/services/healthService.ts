@@ -10,6 +10,7 @@ import { goalPace } from "./goalPace";
 import { budgetProgress } from "./budgetService";
 import { rowsFor, type TripRule } from "./tripEntries";
 import { formatAmount, formatPercent } from "../utils/money";
+import { duePhrase } from "../utils/duePhrase";
 import { partsInZone, startOfDayInZone, startOfMonthInZone, addMonthsInZone, addDaysInZone } from "../utils/timezone";
 import { shortMonthYear } from "../utils/dateLabel";
 
@@ -230,7 +231,7 @@ const billsPillar = (all: BillFacts[], now: Date, zone: string): Pillar | null =
         verdict: verdictFor(score),
         hint: score >= PAR || !worstBill
             ? undefined
-            : `${worstBill.name} is ${worst} ${worst === 1 ? "day" : "days"} overdue${overdue.length > 1 ? `, and ${overdue.length - 1} other ${overdue.length === 2 ? "bill is" : "bills are"} late too` : ""}. This is the quickest thing on the list to fix.`,
+            : `${worstBill.name} is ${duePhrase(-worst)}${overdue.length > 1 ? `, and ${overdue.length - 1} other ${overdue.length === 2 ? "bill is" : "bills are"} late too` : ""}. This is the quickest thing on the list to fix.`,
     };
 };
 
