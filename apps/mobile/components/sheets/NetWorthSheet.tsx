@@ -68,11 +68,12 @@ const NetWorthSheet = forwardRef<BottomSheetModal, Props>(({ netWorth, trend }, 
               summary={chartSummary({
                 title: "Net worth",
                 masked,
-                parts: [`${formatMoneyExact(netWorth)} now`, `${trendUp ? "up" : "down"} from ${formatMoneyExact(trend![0].total)} ${trend![0].label}`],
+                parts: [`${formatMoneyExact(netWorth)} now`, `${trendUp ? "up" : "down"} from ${formatMoneyExact(trend![0].total)} at the end of ${trend![0].label}`],
               })}
             />
+            {/* Since 2.8.6 each point is a month's closing figure, named for that month. */}
             <AppText size="xs" color="inkDim">
-              {trendUp ? "Up" : "Down"} from {formatMoney(trend![0].total)} {trend![0].label}.
+              {trendUp ? "Up" : "Down"} from {formatMoney(trend![0].total)} at the end of {trend![0].label}.
             </AppText>
           </>
         ) : (
