@@ -117,3 +117,15 @@ test("change-password: a wrong current password is 400 wrong_password; the same 
     assert.equal((await api.send("POST", "/auth/login", { email: other.email, password: PASSWORD })).status, 200);
     api.resetLimits();
 });
+
+test("restore's limit (gaps row 139): anonymous requests don't spend it; the sixth in the hour is 429 and says so", async () => {
+    api.resetLimits();
+    const u = await api.user("restore-limit");
+    for (let i = 0; i < 8; i++) failed(await api.send("POST", "/backup/restore", { confirm: true }), 401, "unauthenticated");
+    for (let i = 0; i < 5; i++) failed(await u.send("POST", "/backup/restore", { confirm: true }), 400, "invalid_input");
+    const limited = await u.send("POST", "/backup/restore", { confirm: true });
+    failed(limited, 429, "rate_limited", { message: "Too many restores. Try again in an hour" });
+    const wait = Number(limited.headers.get("Retry-After"));
+    assert.ok(wait > 3_500 && wait <= 3_600, `Retry-After ${wait}`);
+    api.resetLimits();
+});
