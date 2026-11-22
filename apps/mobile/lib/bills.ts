@@ -22,7 +22,7 @@ const isFuturePeriod = (dueDate: string, frequency?: BillFrequency): boolean => 
 // current period or overdue — never once it has been pushed into a future
 // period (which is exactly what paying or skipping does).
 export const isActionable = (bill: IBill): boolean => {
-  if (bill.status === "paid") return false;
+  if (bill.status === "paid" || bill.pausedAt) return false;
   if (bill.recurring && isFuturePeriod(bill.dueDate, bill.frequency)) return false;
   return true;
 };

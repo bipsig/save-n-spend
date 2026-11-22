@@ -160,6 +160,9 @@ export interface IBill {
   /** When set, this bill is a recurring contribution (a SIP): marking it paid moves money
    *  into this investment account as a transfer, not an expense. */
   toInvestment?: string | null
+  /** Set (2.8.6 on) when the holding a SIP pays into was archived: shown as paused, not due
+   *  or payable until the bill points at another holding. */
+  pausedAt?: string | null
   dueDate: string        // ISO date string
   status: BillStatus
   lastPaidAt?: string | null

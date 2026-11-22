@@ -39,7 +39,9 @@ const BillRow = ({ bill, onPress, onEdit, onDelete }: Props) => {
   const scheduled = bill.status === "pending" && !isActionable(bill);
 
   const dueLabel = formatDueLabel(bill.dueDate, bill.status, bill.lastPaidAt);
-  const meta = isSip
+  const meta = bill.pausedAt
+    ? "Paused · its holding was deleted, pick another"
+    : isSip
     ? [dueLabel, investment?.name ?? "SIP", bill.frequency].filter(Boolean).join(" · ")
     : bill.recurring && bill.frequency ? `${dueLabel} · ${bill.frequency}` : dueLabel;
 

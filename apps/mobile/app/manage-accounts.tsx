@@ -16,6 +16,8 @@ import DragList from "@/components/ui/DragList";
 import EmptyState from "@/components/states/EmptyState";
 import ScreenStates from "@/components/states/ScreenStates";
 import { ACCOUNT_GROUPS, archiveAccount, reorderAccounts, useAccounts } from "@/lib/accounts";
+import { archiveNotice } from "@/lib/archiveNotice";
+import { useBills } from "@/lib/bills";
 import { mergeSectionOrder } from "@/lib/accountOrder";
 import formatMoney, { formatBalance, usePrivacyMask } from "@/lib/money";
 import { screenTitles } from "@/data/menu";
@@ -42,6 +44,7 @@ const TYPE_LABELS: Record<AccountType, string> = {
 const ManageAccountsScreen = () => {
   usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
   const accounts = useAccounts();
+  const { items: bills } = useBills();
   const defaultAccountId = useSession((s) => s.user?.prefs.defaultAccount);
 
   const [editing, setEditing] = useState<IAccount | null>(null);
@@ -116,9 +119,7 @@ const ManageAccountsScreen = () => {
     void reorderAccounts(whole).catch((err) => toast.fromError(err, "Couldn't save that order"));
   };
 
-  const deleteBody = pendingDelete
-    ? `It disappears from your pickers, and its ${formatMoney(pendingDelete.balance)} stops counting toward your totals. Transactions already recorded against it keep their history.`
-    : "";
+  const deleteBody = pendingDelete ? archiveNotice(pendingDelete, bills, formatMoney) : "";
 
   return (
     <ScreenScaffold
