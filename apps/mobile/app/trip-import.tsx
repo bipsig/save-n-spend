@@ -32,6 +32,7 @@ import { formatCalendar } from "@/lib/format/date";
 import { formatSpan } from "@/lib/format/period";
 import { toast } from "@/store/toast";
 import { colors, spacing } from "@/theme";
+import { errorText } from "@/lib/apiError";
 
 type Choice = { include: boolean; category: string | null; account: string | null; parts: Part[] | null };
 
@@ -96,7 +97,7 @@ const TripImportScreen = () => {
     }
     catch (err) {
       haptics.error();
-      setError(err instanceof Error ? err.message : "Couldn't read that file");
+      setError(errorText(err, "Couldn't read that file"));
     }
     finally {
       setBusy(false);
@@ -122,7 +123,7 @@ const TripImportScreen = () => {
     }
     catch (err) {
       haptics.error();
-      setError(err instanceof Error ? err.message : "Couldn't read that file");
+      setError(errorText(err, "Couldn't read that file"));
     }
     finally {
       setBusy(false);
@@ -154,7 +155,7 @@ const TripImportScreen = () => {
     }
     catch (err) {
       haptics.error();
-      setError(err instanceof Error ? err.message : "Couldn't import");
+      setError(errorText(err, "Couldn't import"));
     }
     finally {
       setBusy(false);

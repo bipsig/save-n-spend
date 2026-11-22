@@ -26,7 +26,7 @@ import { count } from "@/lib/format/count";
 import { haptics } from "@/lib/haptics";
 import { fetchGoal, updateGoal } from "@/lib/goals";
 import { post } from "@/lib/api";
-import { splitIssues } from "@/lib/apiError";
+import { splitIssues, errorText } from "@/lib/apiError";
 import { useIdempotencyKey } from "@/lib/useIdempotencyKey";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { toast } from "@/store/toast";
@@ -146,7 +146,7 @@ const AddGoal = () => {
         setDeadline(goal.deadline ? new Date(goal.deadline) : null);
       }
       catch (err) {
-        if (!cancelled) setLoadError(err instanceof Error ? err.message : "Couldn't load the goal");
+        if (!cancelled) setLoadError(errorText(err, "Couldn't load the goal"));
       }
       finally {
         if (!cancelled) setLoading(false);

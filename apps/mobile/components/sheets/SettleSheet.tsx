@@ -18,6 +18,7 @@ import { holderFor } from "@/lib/idempotency";
 import { toast } from "@/store/toast";
 import { spacing } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
+import { errorText } from "@/lib/apiError";
 
 type Props = {
   tripId: string;
@@ -74,7 +75,7 @@ const SettleSheet = forwardRef<BottomSheetModal, Props>(({ tripId, member, onSav
     }
     catch (err) {
       haptics.error();
-      setError(err instanceof Error ? err.message : "Couldn't record it");
+      setError(errorText(err, "Couldn't record it"));
     }
     finally {
       setBusy(false);

@@ -17,6 +17,7 @@ import { changePassword } from "@/lib/profile";
 import { toast } from "@/store/toast";
 import { spacing } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
+import { errorText } from "@/lib/apiError";
 
 const schema = z
   .object({
@@ -80,7 +81,7 @@ const ChangePasswordSheet = forwardRef<BottomSheetModal, { onChanged?: () => voi
     }
     catch (err) {
       haptics.error();
-      setError(err instanceof Error ? err.message : "Couldn't change your password. Try again.");
+      setError(errorText(err, "Couldn't change your password. Try again."));
     }
   });
 

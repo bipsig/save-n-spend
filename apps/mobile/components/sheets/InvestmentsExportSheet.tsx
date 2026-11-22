@@ -24,6 +24,7 @@ import { count } from "@/lib/format/count";
 import { toast } from "@/store/toast";
 import { useConnectivity } from "@/store/connectivity";
 import { colors, spacing } from "@/theme";
+import { errorText } from "@/lib/apiError";
 
 export type InvestmentsExportHandle = { present: () => void; dismiss: () => void };
 
@@ -54,7 +55,7 @@ const InvestmentsExportSheet = forwardRef<InvestmentsExportHandle, Props>(({ hol
       setReport(await fetchInvestmentReport());
     }
     catch (err) {
-      setMessage({ text: err instanceof Error ? err.message : "Couldn't load your investments.", tone: "danger" });
+      setMessage({ text: errorText(err, "Couldn't load your investments."), tone: "danger" });
     }
     finally {
       setLoading(false);
@@ -124,7 +125,7 @@ const InvestmentsExportSheet = forwardRef<InvestmentsExportHandle, Props>(({ hol
     }
     catch (err) {
       haptics.error();
-      setMessage({ text: err instanceof Error ? err.message : "Couldn't export. Try again.", tone: "danger" });
+      setMessage({ text: errorText(err, "Couldn't export. Try again."), tone: "danger" });
     }
     finally {
       setBusy(false);

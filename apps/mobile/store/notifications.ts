@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { INotification, Paginated } from "@save-n-spend/types";
 import { get, getFetched, patch, post } from "@/lib/api";
+import { errorText } from "@/lib/apiError";
 
 /** A page of the feed, plus the badge count over the whole collection. */
 type NotificationFeed = Paginated<INotification> & { unread: number };
@@ -58,7 +59,7 @@ export const useNotifications = create<NotificationState>((set, getState) => ({
     catch (err) {
       set({
         loading: false,
-        error: err instanceof Error ? err.message : "Couldn't load notifications",
+        error: errorText(err, "Couldn't load notifications"),
       });
     }
   },

@@ -19,6 +19,7 @@ import { toast } from "@/store/toast";
 import { useConnectivity } from "@/store/connectivity";
 import { spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
+import { errorText } from "@/lib/apiError";
 
 type Props = {
   /** What is being exported. Transactions can be a spreadsheet or a document; insights is a
@@ -110,7 +111,7 @@ const ExportSheet = forwardRef<BottomSheetModal, Props>(({ kind = "transactions"
     } catch (err) {
       haptics.error();
       setMessage({
-        text: err instanceof Error ? err.message : "Couldn't export. Try again.",
+        text: errorText(err, "Couldn't export. Try again."),
         tone: "danger",
       });
     } finally {

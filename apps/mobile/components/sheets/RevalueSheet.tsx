@@ -14,6 +14,7 @@ import { toast } from "@/store/toast";
 import { spacing } from "@/theme";
 import { signTone } from "@/lib/signTone";
 import { useOnlineGate } from "@/lib/onlineGate";
+import { errorText } from "@/lib/apiError";
 
 /** What each row needs to frame a revaluation as investment growth, not an account reset. */
 export type RevalueHolding = {
@@ -100,7 +101,7 @@ const RevalueSheet = forwardRef<BottomSheetModal, Props>(({ holdings, onSaved },
     }
     catch (err) {
       haptics.error();
-      setError(err instanceof Error ? err.message : "Couldn't update. Try again.");
+      setError(errorText(err, "Couldn't update. Try again."));
     }
     finally {
       setBusy(false);

@@ -27,6 +27,7 @@ import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { colors, spacing } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
+import { errorText } from "@/lib/apiError";
 
 type Props = {
   tripId: string;
@@ -181,7 +182,7 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
     }
     catch (err) {
       haptics.error();
-      setError(err instanceof Error ? err.message : "Couldn't save it");
+      setError(errorText(err, "Couldn't save it"));
     }
     finally {
       setBusy(false);

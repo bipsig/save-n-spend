@@ -36,7 +36,7 @@ import AccountPickerSheet from "@/components/sheets/AccountPickerSheet";
 import RevalueSheet from "@/components/sheets/RevalueSheet";
 import { useInvestments } from "@/lib/investments";
 import { ApiError, get, getFetched, patch, post } from "@/lib/api";
-import { splitIssues } from "@/lib/apiError";
+import { splitIssues, errorText } from "@/lib/apiError";
 import { useIdempotencyKey } from "@/lib/useIdempotencyKey";
 import { holderFor } from "@/lib/idempotency";
 import { useOnlineGate } from "@/lib/onlineGate";
@@ -194,7 +194,7 @@ const AddTransaction = () => {
         haptics.error();
         setEditLoad({
           notFound: err instanceof ApiError && err.status === 404,
-          message: err instanceof Error ? err.message : "Couldn't load transaction",
+          message: errorText(err, "Couldn't load transaction"),
         });
       }
     })();
@@ -215,7 +215,7 @@ const AddTransaction = () => {
       }
       catch (err) {
         haptics.error();
-        setSubmitError(err instanceof Error ? err.message : "Couldn't load that transaction");
+        setSubmitError(errorText(err, "Couldn't load that transaction"));
       }
     })();
   }, [repeatId, reset])

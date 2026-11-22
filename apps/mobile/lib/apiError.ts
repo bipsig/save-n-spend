@@ -130,7 +130,7 @@ export const splitIssues = <F extends string>(
   fields: Record<string, F>,
   fallback: string,
 ): { byField: Partial<Record<F, string>>; rest: string | null } => {
-  if (!(err instanceof ApiError)) return { byField: {}, rest: err instanceof Error ? err.message : fallback };
+  if (!(err instanceof ApiError)) return { byField: {}, rest: errorText(err, fallback) };
   if (err.issues.length === 0) return { byField: {}, rest: err.message };
 
   const byField: Partial<Record<F, string>> = {};
@@ -145,3 +145,7 @@ export const splitIssues = <F extends string>(
   const reason = left[0].message;
   return { byField, rest: err.requestId ? `${reason} · Ref ${err.requestId}` : reason };
 };
+
+/** The sentence to show for a caught value: its message, or `fallback` when it has none. */
+export const errorText = (err: unknown, fallback: string): string =>
+  err instanceof Error && err.message ? err.message : fallback;

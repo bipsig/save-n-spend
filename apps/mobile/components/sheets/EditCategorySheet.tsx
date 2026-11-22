@@ -14,6 +14,7 @@ import type { ColorToken } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { editWithUndo, previousValues } from "@/lib/undo";
 import { useCategoryStore } from "@/store/categories";
+import { errorText } from "@/lib/apiError";
 
 type Props = {
   /** The category being edited, or `null` to create a new one. */
@@ -122,7 +123,7 @@ const EditCategorySheet = forwardRef<BottomSheetModal, Props>(({ category, paren
     }
     catch (err) {
       haptics.error();
-      setError(err instanceof Error ? err.message : "Couldn't save the category. Try again.");
+      setError(errorText(err, "Couldn't save the category. Try again."));
     }
     finally {
       setBusy(false);

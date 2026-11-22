@@ -67,7 +67,7 @@ const Input = ({
         {rightSlot ? <View style={styles.rightSlot}>{rightSlot}</View> : null}
       </View>
 
-      {error && <AppText size="xs" color="danger">{error}</AppText>}
+      {error && <AppText size="xs" weight="bold" color="danger">{error}</AppText>}
     </View>
   )
 }

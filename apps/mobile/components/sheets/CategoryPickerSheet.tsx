@@ -23,6 +23,7 @@ import { haptics } from "@/lib/haptics";
 import type { IconName } from "@/lib/icons";
 import { colors, radius, spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
+import { errorText } from "@/lib/apiError";
 
 // Fixed height, so the sheet reads as nested over Add Transaction / Budgets instead of
 // growing to near-full-height.
@@ -218,7 +219,7 @@ const CategoryPickerSheet = forwardRef<BottomSheetModal, Props>(({ kind, exclude
     }
     catch (err) {
       haptics.error();
-      setError(err instanceof Error ? err.message : "Couldn't create the category");
+      setError(errorText(err, "Couldn't create the category"));
     }
     finally {
       setSaving(false);

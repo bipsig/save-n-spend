@@ -15,6 +15,7 @@ import { useSession } from "@/store/session";
 import { toast } from "@/store/toast";
 import { spacing } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
+import { errorText } from "@/lib/apiError";
 
 const schema = z.object({
   name: z.string().trim().min(2, "Give us at least two characters").max(60),
@@ -63,7 +64,7 @@ const EditProfileSheet = forwardRef<BottomSheetModal, { onSaved?: () => void }>(
       // field, and the reason belongs beside it, not in a banner that expires. The
       // buzz is what makes it noticeable without a banner.
       haptics.error();
-      setError(err instanceof Error ? err.message : "Couldn't save your profile. Try again.");
+      setError(errorText(err, "Couldn't save your profile. Try again."));
     }
   });
 

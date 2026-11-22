@@ -21,6 +21,7 @@ import type { AccountType, IAccount } from "@save-n-spend/types";
 import type { ColorToken } from "@/theme";
 import { colors, radius, spacing } from "@/theme";
 import { KEYBOARD_DONE_ID } from "@/components/ui/KeyboardDoneBar";
+import { errorText } from "@/lib/apiError";
 
 /** Past this many rows, finding one by eye stops working and the list gets a search box. */
 const SEARCH_FROM = 8;
@@ -135,7 +136,7 @@ const AccountPickerSheet = forwardRef<BottomSheetModal, Props>((
     }
     catch (err) {
       haptics.error();
-      setCreateError(err instanceof Error ? err.message : "Couldn't add them");
+      setCreateError(errorText(err, "Couldn't add them"));
     }
     finally {
       setCreatingBusy(false);

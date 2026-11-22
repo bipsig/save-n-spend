@@ -23,6 +23,7 @@ import { spacing } from "@/theme";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { formatDueLabel, rollDueDate, formatFullDate } from "@/lib/date";
 import { useOnlineGate } from "@/lib/onlineGate";
+import { errorText } from "@/lib/apiError";
 
 type Props = {
   bill: IBill | null;
@@ -97,7 +98,7 @@ const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
       // Kept in the sheet: the failure has to be read next to the effects it was
       // meant to cause, and the sheet stays open so they're still on screen.
       haptics.error();
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      setError(errorText(err, "Something went wrong"));
     }
     finally {
       setBusy(null);

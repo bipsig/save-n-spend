@@ -30,6 +30,7 @@ import { useOnlineGate } from "@/lib/onlineGate";
 import { editUndoAllowed, editWithUndo, previousValues } from "@/lib/undo";
 import { useAccountStore } from "@/store/accounts";
 import { ACCOUNT_TYPE_LABEL } from "@/lib/accountLabels";
+import { errorText } from "@/lib/apiError";
 
 type Props = {
   /** The account being edited, or `null` to create a new one. */
@@ -273,7 +274,7 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
     }
     catch (err) {
       haptics.error();
-      setError(err instanceof Error ? err.message : "Couldn't save the account. Try again.");
+      setError(errorText(err, "Couldn't save the account. Try again."));
     }
     finally {
       setBusy(false);

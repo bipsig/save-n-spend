@@ -24,6 +24,7 @@ import { useTripNameStore } from "@/store/tripNames";
 import { toast } from "@/store/toast";
 import { colors, spacing } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
+import { errorText } from "@/lib/apiError";
 
 type Props = {
   /** The trip being edited, or null for a new one. */
@@ -91,7 +92,7 @@ const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDelete
       setNewPerson("");
     }
     catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't add them");
+      setError(errorText(err, "Couldn't add them"));
     }
   };
 
@@ -134,7 +135,7 @@ const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDelete
     }
     catch (err) {
       haptics.error();
-      setError(err instanceof Error ? err.message : "Couldn't save the trip");
+      setError(errorText(err, "Couldn't save the trip"));
     }
     finally {
       setBusy(false);

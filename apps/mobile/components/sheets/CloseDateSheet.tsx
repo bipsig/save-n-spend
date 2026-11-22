@@ -10,6 +10,7 @@ import { formatCalendar } from "@/lib/format/date";
 import { haptics } from "@/lib/haptics";
 import { inRange, monthGrid, monthOfDay, monthTitle, movesBetween, shiftMonth, type CloseRange } from "@/lib/tripClose";
 import { colors, spacing } from "@/theme";
+import { errorText } from "@/lib/apiError";
 
 type Props = {
   tripName: string;
@@ -55,7 +56,7 @@ const CloseDateSheet = forwardRef<BottomSheetModal, Props>(({ tripName, amount, 
     }
     catch (err) {
       haptics.error();
-      setError(err instanceof Error ? err.message : "Couldn't save that. Try again.");
+      setError(errorText(err, "Couldn't save that. Try again."));
     }
     finally {
       setBusy(false);

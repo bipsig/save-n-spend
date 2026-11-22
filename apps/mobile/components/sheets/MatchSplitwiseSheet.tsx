@@ -14,6 +14,7 @@ import { holderFor } from "@/lib/idempotency";
 import { toast } from "@/store/toast";
 import { colors, spacing } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
+import { errorText } from "@/lib/apiError";
 
 type Props = {
   tripId: string;
@@ -80,7 +81,7 @@ const MatchSplitwiseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, membe
     }
     catch (err) {
       haptics.error();
-      setError(err instanceof Error ? err.message : "Couldn't save that");
+      setError(errorText(err, "Couldn't save that"));
     }
     finally {
       setBusy(false);

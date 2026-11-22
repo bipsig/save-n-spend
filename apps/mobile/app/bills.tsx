@@ -32,6 +32,7 @@ import { deleteTarget, deleteWithUndo, useVisible } from "@/lib/undo";
 import { holderFor } from "@/lib/idempotency";
 import { radius, spacing } from "@/theme";
 import Money from "@/components/ui/Money";
+import { errorText } from "@/lib/apiError";
 
 type SectionProps = {
   label: string;
@@ -123,7 +124,7 @@ const BillsScreen = () => {
       toast.info(`Won't suggest ${pattern.title} again`);
     }
     catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't dismiss that");
+      toast.error(errorText(err, "Couldn't dismiss that"));
     }
   };
 

@@ -11,6 +11,7 @@ import { haptics } from "@/lib/haptics";
 import { searchZones, shortlistZones } from "@/lib/timezones";
 import { deviceZone } from "@/lib/zone";
 import { colors, radius, spacing } from "@/theme";
+import { errorText } from "@/lib/apiError";
 
 // Fixed height, like the category picker: the list is long, and a sheet that grows to
 // fit it would open at a different height depending on what was typed last.
@@ -66,7 +67,7 @@ const TimeZoneSheet = forwardRef<BottomSheetModal, Props>(({ value, onPick }, re
       // Kept in the sheet rather than toasted: the sheet stays open on failure and
       // the reason belongs beside the row that refused.
       haptics.error();
-      setError(err instanceof Error ? err.message : "Couldn't save that time zone. Try again.");
+      setError(errorText(err, "Couldn't save that time zone. Try again."));
       setPending(null);
     }
   };

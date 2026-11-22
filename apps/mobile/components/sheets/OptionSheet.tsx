@@ -8,6 +8,7 @@ import Icon from "@/components/ui/Icon";
 import { haptics } from "@/lib/haptics";
 import type { IconName } from "@/lib/icons";
 import { spacing } from "@/theme";
+import { errorText } from "@/lib/apiError";
 
 export type Option = { value: number; label: string };
 
@@ -58,7 +59,7 @@ const OptionSheet = forwardRef<BottomSheetModal, Props>((
       // the reason belongs beside the option that refused. The buzz is what makes it
       // noticeable — the chip just goes back to looking unpicked otherwise.
       haptics.error();
-      setError(err instanceof Error ? err.message : "Couldn't save that. Try again.");
+      setError(errorText(err, "Couldn't save that. Try again."));
       setPending(null);
     }
   };

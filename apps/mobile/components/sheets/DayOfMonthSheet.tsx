@@ -6,6 +6,7 @@ import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
 import { haptics } from "@/lib/haptics";
 import { colors, spacing } from "@/theme";
+import { errorText } from "@/lib/apiError";
 
 type Props = {
   value: number;
@@ -41,7 +42,7 @@ const DayOfMonthSheet = forwardRef<BottomSheetModal, Props>(({ value, onPick }, 
     }
     catch (err) {
       haptics.error();
-      setError(err instanceof Error ? err.message : "Couldn't save that. Try again.");
+      setError(errorText(err, "Couldn't save that. Try again."));
       setPending(null);
     }
   };

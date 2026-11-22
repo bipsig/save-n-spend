@@ -10,6 +10,7 @@ import { haptics } from "@/lib/haptics";
 import { onlineGate, useOnlineGate } from "@/lib/onlineGate";
 import type { IconName } from "@/lib/icons";
 import { spacing } from "@/theme";
+import { errorText } from "@/lib/apiError";
 
 type Props = {
   icon: IconName;
@@ -64,7 +65,7 @@ const ConfirmSheet = forwardRef<BottomSheetModal, Props>((
       // destructive, so if it didn't happen they need to know before they walk away
       // believing it did. The buzz arrives before the sentence can be read.
       haptics.error();
-      setError(err instanceof Error ? err.message : "That didn't work. Try again.");
+      setError(errorText(err, "That didn't work. Try again."));
     }
     finally {
       setBusy(false);

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   ApiError, OFFLINE_MESSAGE, UNREADABLE_MESSAGE, WAKING_MESSAGE,
-  errorFromResponse, offlineError, parseRetryAfter, readSuccessBody, splitIssues,
+  errorFromResponse, errorText, offlineError, parseRetryAfter, readSuccessBody, splitIssues,
 } from "./apiError";
 
 // Run from apps/api: node --require ts-node/register --test ../mobile/lib/apiError.test.ts
@@ -133,4 +133,11 @@ test("splitIssues: no issues, another error, or not an error at all", () => {
   // A path that only shares a prefix with a field doesn't match it.
   const near = errorFromResponse(400, envelope({ issues: [{ path: "amountX", message: "Odd" }] }), {}, null);
   assert.deepEqual(splitIssues(near, { amount: "amount" } as const, "fallback"), { byField: {}, rest: "Odd" });
+});
+
+test("errorText: the caught message, or the fallback when there is none", () => {
+  assert.equal(errorText(new Error("That trip is closed"), "Couldn't save it"), "That trip is closed");
+  assert.equal(errorText(new Error(""), "Couldn't save it"), "Couldn't save it");
+  assert.equal(errorText("nope", "Couldn't save it"), "Couldn't save it");
+  assert.equal(errorText(undefined, "Couldn't save it"), "Couldn't save it");
 });
