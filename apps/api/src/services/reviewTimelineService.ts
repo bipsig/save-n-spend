@@ -10,6 +10,7 @@ import { bestWorstWeek } from "./reviewMath";
 import { getTrend } from "../controllers/insightsController";
 import { formatAmount } from "../utils/money";
 import type { ReviewMoment } from "@save-n-spend/types";
+import { everydayMatch, rowsFor, type TripRule } from "./tripEntries";
 
 // Assembles whatever of these is real for the period into a dated, sorted list — some
 // periods will have only two or three moments, which is expected: this only ever reports
@@ -32,6 +33,7 @@ export const buildTimeline = async (
     end: Date,
     saved: number,
     req: Request,
+    rule?: TripRule,
 ): Promise<ReviewMoment[]> => {
     const oid = new mongoose.Types.ObjectId(userId);
     const moments: ReviewMoment[] = [];
@@ -40,7 +42,7 @@ export const buildTimeline = async (
         Transaction.aggregate([
             // Everyday only, the same expense as the review's own `biggestExpense` (D21): trip
             // spending is the review's Trips line.
-            { $match: { userId: oid, type: "expense", tripId: null, occurredAt: { $gte: start, $lt: end } } },
+            ...rowsFor(rule, everydayMatch(rule, { userId: oid, type: "expense", occurredAt: { $gte: start, $lt: end } })),
             { $sort: { amount: -1 } },
             { $limit: 1 },
             { $project: { title: 1, amount: 1, occurredAt: 1 } },
@@ -102,7 +104,7 @@ export const buildTimeline = async (
     // everyday spending only: "₹X spent" means spending without trips (D21). Not run for a
     // week: there's nothing to sub-divide a single week into.
     if (period === "month") {
-        const daily = await getTrend(start, end, "month", zone, req, { everyday: true });
+        const daily = await getTrend(start, end, "month", zone, req, { everyday: true, rule });
         const standout = bestWorstWeek(daily);
         if (standout) {
             moments.push({

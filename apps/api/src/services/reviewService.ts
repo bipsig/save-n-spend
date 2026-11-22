@@ -15,12 +15,13 @@ import { wholeDays } from "./highlightSnapshotMath";
 import { addDaysInZone, partsInZone } from "../utils/timezone";
 import { formatAmount, formatPercent } from "../utils/money";
 import type { ReviewPayload } from "@save-n-spend/types";
+import { everydayMatch, rowsFor, type TripRule } from "./tripEntries";
 
 const FLOW_TYPES = ["income", "expense"];
 
-const flowTotals = async (oid: mongoose.Types.ObjectId, start: Date, end: Date) => {
+const flowTotals = async (oid: mongoose.Types.ObjectId, start: Date, end: Date, rule?: TripRule) => {
     const rows = await Transaction.aggregate<{ _id: string; total: number; trips: number }>([
-        { $match: { userId: oid, type: { $in: FLOW_TYPES }, occurredAt: { $gte: start, $lt: end } } },
+        ...rowsFor(rule, { userId: oid, type: { $in: FLOW_TYPES }, occurredAt: { $gte: start, $lt: end } }),
         { $group: { _id: "$type", total: { $sum: "$amount" }, trips: { $sum: { $cond: [{ $gt: ["$tripId", null] }, "$amount", 0] } } } },
     ]);
     const income = rows.find((r) => r._id === "income")?.total ?? 0;
@@ -49,15 +50,14 @@ const streakAsOf = async (oid: mongoose.Types.ObjectId, zone: string, periodEnd:
     return currentStreak(new Set(dayRows.map((r) => r._id)), new Date(periodEnd.getTime() - 1), zone);
 };
 
-const activeDayCount = async (oid: mongoose.Types.ObjectId, zone: string, start: Date, end: Date): Promise<number> => {
+/** Under 2.8.6 a trip's own days don't count; its close day does, as one expense. */
+const activeDayCount = async (oid: mongoose.Types.ObjectId, zone: string, start: Date, end: Date, rule?: TripRule): Promise<number> => {
     const rows = await Transaction.aggregate<{ _id: string }>([
-        {
-            $match: {
-                userId: oid,
-                type: { $nin: ["positiveAdjustment", "negativeAdjustment"] },
-                occurredAt: { $gte: start, $lt: end },
-            },
-        },
+        ...rowsFor(rule, {
+            userId: oid,
+            type: { $nin: ["positiveAdjustment", "negativeAdjustment"] },
+            occurredAt: { $gte: start, $lt: end },
+        }),
         { $group: { _id: { $dateToString: { date: "$occurredAt", format: "%Y-%m-%d", timezone: zone } } } },
     ]);
     return rows.length;
@@ -96,25 +96,27 @@ export const buildReview = async (
     period: "week" | "month",
     offset: number,
     req: Request,
+    rule?: TripRule,
 ): Promise<ReviewPayload> => {
     const oid = new mongoose.Types.ObjectId(userId);
     const { currentStartDate: start, currentEndDate: end, previousStartDate, previousEndDate } = parsePeriod(period, offset, zone);
 
     const [current, previous, breakdown, biggestExpenseRows, firstTxn, accountsTotal, activeDays, streakAtEnd] = await Promise.all([
-        flowTotals(oid, start, end),
-        flowTotals(oid, previousStartDate, previousEndDate),
-        getCategoryBreakDown(start, end, req),
+        flowTotals(oid, start, end, rule),
+        flowTotals(oid, previousStartDate, previousEndDate, rule),
+        getCategoryBreakDown(start, end, req, rule),
         Transaction.aggregate([
             // Everyday spending only: a trip is one Trips line in the review's categories, and
-            // its AirBnB isn't the period's biggest purchase in the sense this answers.
-            { $match: { userId: oid, type: "expense", tripId: null, occurredAt: { $gte: start, $lt: end } } },
+            // its AirBnB isn't the period's biggest purchase in the sense this answers. Under
+            // 2.8.6 a closed trip is one expense and can be the biggest.
+            ...rowsFor(rule, everydayMatch(rule, { userId: oid, type: "expense", occurredAt: { $gte: start, $lt: end } })),
             { $sort: { amount: -1 } },
             { $limit: 1 },
             { $project: { title: 1, amount: 1, occurredAt: 1 } },
         ]),
         Transaction.findOne({ userId: oid }).sort({ occurredAt: 1 }).select("occurredAt").lean(),
         Account.aggregate([{ $match: { userId: oid, isArchived: false } }, { $group: { _id: null, total: { $sum: "$balance" } } }]),
-        activeDayCount(oid, zone, start, end),
+        activeDayCount(oid, zone, start, end, rule),
         streakAsOf(oid, zone, end),
     ]);
 
@@ -200,7 +202,7 @@ export const buildReview = async (
         };
     }
 
-    const timeline = await buildTimeline(userId, zone, currency, period, start, end, saved, req);
+    const timeline = await buildTimeline(userId, zone, currency, period, start, end, saved, req, rule);
 
     return {
         period,

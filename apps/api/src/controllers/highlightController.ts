@@ -7,7 +7,8 @@ import { buildSnapshot, computeCurrentStreak } from "../services/highlightSnapsh
 import { runHighlightRules, rankHighlightRules, buildLoggingStreakHighlight, type Highlight } from "../services/highlightRules";
 import { normalizeZone, startOfDayInZone } from "../utils/timezone";
 import type { Valid } from "../middleware/validate";
-import { highlightHistorySchemas } from "../schemas/highlightSchema";
+import { highlightHistorySchemas, highlightsSchemas } from "../schemas/highlightSchema";
+import { tripRule } from "../services/tripEntries";
 import { toDTOs } from "../utils/dto";
 import { paginate } from "../utils/paginate";
 import * as reply from "../utils/response";
@@ -99,7 +100,8 @@ export const getHighlights = async (req: Request, res: Response): Promise<void> 
         return;
     }
 
-    const snapshot = await buildSnapshot(userId, zone, currency, now, first.occurredAt, streakDays);
+    const trips = (req.valid as Valid<typeof highlightsSchemas> | undefined)?.query.trips;
+    const snapshot = await buildSnapshot(userId, zone, currency, now, first.occurredAt, streakDays, tripRule(trips, zone));
     // Every rule that fired gets a permanent record, not just the four shown live — see
     // logHighlights. `runHighlightRules` (used for the actual response) is just this same
     // ranking, capped.

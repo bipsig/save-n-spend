@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import Account from "../models/Account";
 import Bill from "../models/Bill";
+import { rowsFor, type TripRule } from "./tripEntries";
 import Category from "../models/Category";
 import Goal from "../models/Goal";
 import Transaction from "../models/Transaction";
@@ -83,6 +84,7 @@ export const buildSnapshot = async (
     now: Date,
     firstTxnAt: Date,
     streakDays: number,
+    rule?: TripRule,
 ): Promise<Snapshot> => {
     const oid = new mongoose.Types.ObjectId(String(userId));
 
@@ -102,14 +104,14 @@ export const buildSnapshot = async (
         // Four months of income/expense in one pass: month totals for the savings
         // rate, per-category spend for the pace comparisons. Transfers and
         // adjustments are excluded exactly as insights excludes them.
+        // Under `trips=entries` the totals count each closed trip on its close day; the
+        // per-category spend below never holds trips either way.
         Transaction.aggregate<{ totals: TotalsGroup[]; spend: SpendGroup[] }>([
-            {
-                $match: {
-                    userId: oid,
-                    type: { $in: ["income", "expense"] },
-                    occurredAt: { $gte: windowStart, $lt: next },
-                },
-            },
+            ...rowsFor(rule, {
+                userId: oid,
+                type: { $in: ["income", "expense"] },
+                occurredAt: { $gte: windowStart, $lt: next },
+            }),
             {
                 $facet: {
                     totals: [

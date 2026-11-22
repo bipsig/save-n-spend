@@ -6,8 +6,6 @@ import Category from "../models/Category";
 import Transaction from "../models/Transaction";
 import Trip from "../models/Trip";
 
-/** The breakdown's one slice for all trip spending — not a real category id. */
-export const TRIPS_SLICE_ID = "trips";
 import mongoose from "mongoose";
 import Account from "../models/Account";
 import {
@@ -28,6 +26,10 @@ import { resolveZone } from "../utils/userZone";
 import { AppError } from "../utils/AppError";
 import { notFound } from "../utils/messages";
 import { oneDecimalShares } from "../services/shareMath";
+import { rowsFor, tripRule, TRIPS_CATEGORY, TRIPS_NAME, type TripRule } from "../services/tripEntries";
+
+/** The breakdown's one slice for all trip spending — not a real category id. */
+export const TRIPS_SLICE_ID = TRIPS_CATEGORY;
 
 // GET /insights?period=week|month|year
 //
@@ -37,30 +39,32 @@ import { oneDecimalShares } from "../services/shareMath";
 
 export const getInsights = async (req: Request, res: Response): Promise<void> => {
 
-    const { query: { period, offset } } = req.valid as Valid<typeof insightsSchemas>;
+    const { query: { period, offset, trips } } = req.valid as Valid<typeof insightsSchemas>;
     const zone = await resolveZone(req);
+    const rule = tripRule(trips, zone);
 
     const { currentStartDate, currentEndDate, previousStartDate, previousEndDate } = parsePeriod(period, offset, zone);
 
-    const trend = await getTrend(currentStartDate, currentEndDate, period, zone, req, { tripPart: true });
+    const trend = await getTrend(currentStartDate, currentEndDate, period, zone, req, { tripPart: true, rule });
     // Not stopped early — that period is over. The client compares the two by bucket index,
     // which is what makes a 28-day February line up against a 31-day January.
-    const previousTrend = await getTrend(previousStartDate, previousEndDate, period, zone, req, { tripPart: true });
-    const incomeVsExpense = await getIncomeVsExpense(currentStartDate, currentEndDate, period, zone, req);
-    const { slices: byCategory, uncategorised } = await getCategoryBreakDown(currentStartDate, currentEndDate, req);
-    const { slices: previousByCategory } = await getCategoryBreakDown(previousStartDate, previousEndDate, req);
+    const previousTrend = await getTrend(previousStartDate, previousEndDate, period, zone, req, { tripPart: true, rule });
+    const incomeVsExpense = await getIncomeVsExpense(currentStartDate, currentEndDate, period, zone, req, rule);
+    const { slices: byCategory, uncategorised } = await getCategoryBreakDown(currentStartDate, currentEndDate, req, rule);
+    const { slices: previousByCategory } = await getCategoryBreakDown(previousStartDate, previousEndDate, req, rule);
     const categoryCompare = buildCategoryCompare(byCategory, previousByCategory);
-    const byAccount = await getAccountBreakDown(currentStartDate, currentEndDate, req);
-    const averageCurrent = await getAverageSpend(currentStartDate, currentEndDate, zone, req);
-    const averagePrevious = await getAverageSpend(previousStartDate, previousEndDate, zone, req);
+    const byAccount = await getAccountBreakDown(currentStartDate, currentEndDate, req, rule);
+    const averageCurrent = await getAverageSpend(currentStartDate, currentEndDate, zone, req, rule);
+    const averagePrevious = await getAverageSpend(previousStartDate, previousEndDate, zone, req, rule);
     const topCategory = await getTopCategory(byCategory);
-    const txnCount = await Transaction.countDocuments({
-        userId: req.user?.userId,
-        type: { $in: ["expense", "income"] },
-        occurredAt: { $gte: currentStartDate, $lt: currentEndDate }
-    })
+    const counted = { userId: new mongoose.Types.ObjectId(req.user!.userId), type: { $in: ["expense", "income"] }, occurredAt: { $gte: currentStartDate, $lt: currentEndDate } };
+    const txnCount = await Transaction.countDocuments(counted);
+    // One trip = one transaction: everyday rows plus the trips closed in the period.
+    const entryCount = rule.entries
+        ? (await Transaction.aggregate<{ n: number }>([...rowsFor(rule, counted), { $count: "n" }]))[0]?.n ?? 0
+        : undefined;
 
-    reply.ok(res, { period, timeZone: zone, periodStart: currentStartDate, periodEnd: currentEndDate, trend, previousTrend, incomeVsExpense, byCategory, uncategorised, categoryCompare, byAccount, avgDailySpendCurrent: averageCurrent.all, avgDailySpendPrevious: averagePrevious.all, avgDailyEverydaySpendCurrent: averageCurrent.everyday, avgDailyEverydaySpendPrevious: averagePrevious.everyday, topCategory, txnCount }, "Insights fetched");
+    reply.ok(res, { period, timeZone: zone, periodStart: currentStartDate, periodEnd: currentEndDate, trend, previousTrend, incomeVsExpense, byCategory, uncategorised, categoryCompare, byAccount, avgDailySpendCurrent: averageCurrent.all, avgDailySpendPrevious: averagePrevious.all, avgDailyEverydaySpendCurrent: averageCurrent.everyday, avgDailyEverydaySpendPrevious: averagePrevious.everyday, topCategory, txnCount, ...(entryCount !== undefined ? { entryCount } : {}) }, "Insights fetched");
 }
 
 /**
@@ -71,7 +75,7 @@ export const getInsights = async (req: Request, res: Response): Promise<void> =>
  * `children` is the split behind it.
  */
 export const getCategoryInsights = async (req: Request, res: Response): Promise<void> => {
-    const { params: { id: categoryId }, query: { period, offset } } = req.valid as Valid<typeof categoryInsightsSchemas>;
+    const { params: { id: categoryId }, query: { period, offset, trips } } = req.valid as Valid<typeof categoryInsightsSchemas>;
     const zone = await resolveZone(req);
 
     const { currentStartDate, currentEndDate, previousStartDate, previousEndDate } = parsePeriod(period, offset, zone);
@@ -130,14 +134,14 @@ export const getCategoryInsights = async (req: Request, res: Response): Promise<
         }))
         .sort((a, b) => b.total - a.total);
 
+    // Under `trips=entries`, `shareOfSpend` is over all spending with each closed trip as one
+    // entry, the base the breakdown's shares use; the category's own figures never hold trips.
     const allSpend = await Transaction.aggregate([
-        {
-            $match: {
-                userId: new mongoose.Types.ObjectId(req.user!.userId),
-                type: "expense",
-                occurredAt: { $gte: currentStartDate, $lt: currentEndDate }
-            }
-        },
+        ...rowsFor(tripRule(trips, zone), {
+            userId: new mongoose.Types.ObjectId(req.user!.userId),
+            type: "expense",
+            occurredAt: { $gte: currentStartDate, $lt: currentEndDate }
+        }),
         { $group: { _id: null, total: { $sum: "$amount" }, everyday: { $sum: { $cond: [{ $gt: ["$tripId", null] }, 0, "$amount"] } } } }
     ]);
 
@@ -233,7 +237,10 @@ type CategorySlice = {
     total: number,
     /** Share of everyday spending, one decimal. On everyday slices only, not on Trips. */
     share?: number,
-    children?: CategorySlice[]
+    children?: CategorySlice[],
+    /** On a trip under Trips (`trips=entries`): its close day and emoji. */
+    closedOn?: string,
+    emoji?: string
 }
 
 export type CategoryBreakdown = {
@@ -254,7 +261,7 @@ export type CategoryBreakdown = {
  * Archived categories are included in the name lookup on purpose: spend filed under one before
  * it was archived still needs something to be called.
  */
-export const getCategoryBreakDown = async (startTime: Date, endTime: Date, req: Request): Promise<CategoryBreakdown> => {
+export const getCategoryBreakDown = async (startTime: Date, endTime: Date, req: Request, rule?: TripRule): Promise<CategoryBreakdown> => {
     const categories = await Category.find({
         userId: req.user?.userId
     })
@@ -272,10 +279,16 @@ export const getCategoryBreakDown = async (startTime: Date, endTime: Date, req: 
             { $match: { userId: uid, type: "expense", tripId: null, occurredAt: { $gte: startTime, $lt: endTime } } },
             { $group: { _id: "$category", total: { $sum: "$amount" } } },
         ]),
-        Transaction.aggregate<{ _id: mongoose.Types.ObjectId; total: number }>([
-            { $match: { userId: uid, type: "expense", tripId: { $ne: null }, occurredAt: { $gte: startTime, $lt: endTime } } },
-            { $group: { _id: "$tripId", total: { $sum: "$amount" } } },
-        ]),
+        // 2.8.6: the trips closed in the window, each its one entry; 2.8.5: trip shares by day spent.
+        rule?.entries
+            ? Transaction.aggregate<{ _id: mongoose.Types.ObjectId; total: number; name: string; emoji?: string; closedOn: string }>([
+                ...rowsFor(rule, { userId: uid, type: "expense", category: TRIPS_CATEGORY, occurredAt: { $gte: startTime, $lt: endTime } }),
+                { $project: { _id: "$tripId", total: "$amount", name: "$title", emoji: 1, closedOn: 1 } },
+            ])
+            : Transaction.aggregate<{ _id: mongoose.Types.ObjectId; total: number; name?: string; emoji?: string; closedOn?: string }>([
+                { $match: { userId: uid, type: "expense", tripId: { $ne: null }, occurredAt: { $gte: startTime, $lt: endTime } } },
+                { $group: { _id: "$tripId", total: { $sum: "$amount" } } },
+            ]),
     ]);
 
     // Keyed by the top-level id in both: `rolled` is the figure the row shows, `split` is
@@ -314,6 +327,27 @@ export const getCategoryBreakDown = async (startTime: Date, endTime: Date, req: 
     result.sort((a, b) => b.total - a.total);
     const everyday = categorySpend.reduce((sum, row) => sum + row.total, 0);
     const uncategorisedTotal = categorySpend.find((row) => !row._id)?.total ?? 0;
+
+    if (rule?.entries) {
+        // Trips is a category like the rest: ranked by size, its share over all spending, the
+        // shares rounded together so they add to 100.0. It expands to the trips, not their contents.
+        const tripsTotal = tripSpend.reduce((sum, t) => sum + t.total, 0);
+        if (tripSpend.length) {
+            result.push({
+                categoryId: TRIPS_CATEGORY,
+                name: TRIPS_NAME,
+                total: tripsTotal,
+                children: tripSpend
+                    .map((t) => ({ categoryId: String(t._id), name: t.name ?? "Trip", total: t.total, ...(t.emoji ? { emoji: t.emoji } : {}), ...(t.closedOn ? { closedOn: t.closedOn } : {}) }))
+                    .sort((a, b) => b.total - a.total),
+            });
+        }
+        result.sort((a, b) => b.total - a.total);
+        const shares = oneDecimalShares([...result.map((s) => s.total), uncategorisedTotal], everyday + tripsTotal);
+        result.forEach((s, i) => { s.share = shares[i]; });
+        return { slices: result, uncategorised: { total: uncategorisedTotal, share: shares[result.length] } };
+    }
+
     const shares = oneDecimalShares([...result.map((s) => s.total), uncategorisedTotal], everyday);
     result.forEach((s, i) => { s.share = shares[i]; });
     const uncategorised = { total: uncategorisedTotal, share: shares[result.length] };
@@ -367,15 +401,13 @@ const buildCategoryCompare = (current: CategorySlice[], previous: CategorySlice[
     return rows;
 }
 
-const getAccountBreakDown = async (startTime: Date, endTime: Date, req: Request) => {
+const getAccountBreakDown = async (startTime: Date, endTime: Date, req: Request, rule?: TripRule) => {
     const accountSpend = await Transaction.aggregate([
-        {
-            $match: {
-                userId: new mongoose.Types.ObjectId(req.user!.userId),
-                type: "expense",
-                occurredAt: { $gte: startTime, $lt: endTime }
-            }
-        },
+        ...rowsFor(rule, {
+            userId: new mongoose.Types.ObjectId(req.user!.userId),
+            type: "expense",
+            occurredAt: { $gte: startTime, $lt: endTime }
+        }),
         {
             $group: {
                 _id: "$account",
@@ -399,6 +431,11 @@ const getAccountBreakDown = async (startTime: Date, endTime: Date, req: Request)
     let byFriends = 0;
 
     for (const account of accountSpend) {
+        // 2.8.6: closed trips have no one account; together they are one Trips slice.
+        if (account._id === null) {
+            result.push({ accountId: TRIPS_CATEGORY, name: TRIPS_NAME, total: account.total });
+            continue;
+        }
         const doc = accounts.find((a) => a._id.toString() === account._id.toString());
         if (doc?.type === "person") {
             byFriends += account.total;
@@ -424,15 +461,13 @@ const daysBetweenInZone = (from: Date, to: Date, zone: string): number => {
     return Math.round((b - a) / 86_400_000);
 }
 
-const getAverageSpend = async (startTime: Date, endTime: Date, zone: string, req: Request) => {
+const getAverageSpend = async (startTime: Date, endTime: Date, zone: string, req: Request, rule?: TripRule) => {
     const totalSpend = await Transaction.aggregate([
-        {
-            $match: {
-                userId: new mongoose.Types.ObjectId(req.user!.userId),
-                type: "expense",
-                occurredAt: { $gte: startTime, $lt: endTime }
-            }
-        },
+        ...rowsFor(rule, {
+            userId: new mongoose.Types.ObjectId(req.user!.userId),
+            type: "expense",
+            occurredAt: { $gte: startTime, $lt: endTime }
+        }),
         {
             $group: {
                 _id: null,
@@ -470,7 +505,7 @@ const getTopCategory = (byCategory: { name?: string; total: number }[]) => {
     return topCategory;
 }
 
-const getIncomeVsExpense = async (startTime: Date, endTime: Date, period: string, zone: string, req: Request) => {
+const getIncomeVsExpense = async (startTime: Date, endTime: Date, period: string, zone: string, req: Request, rule?: TripRule) => {
 
     // The 6 unit-starts, oldest -> newest (newest = the current period start).
     const buckets: Date[] = [];
@@ -489,13 +524,11 @@ const getIncomeVsExpense = async (startTime: Date, endTime: Date, period: string
     if (unit === "week") truncSpec.startOfWeek = "monday";
 
     const rows = await Transaction.aggregate([
-        {
-            $match: {
-                userId: new mongoose.Types.ObjectId(req.user!.userId),
-                type: { $in: ["expense", "income"] },
-                occurredAt: { $gte: buckets[0], $lt: endTime }
-            }
-        },
+        ...rowsFor(rule, {
+            userId: new mongoose.Types.ObjectId(req.user!.userId),
+            type: { $in: ["expense", "income"] },
+            occurredAt: { $gte: buckets[0], $lt: endTime }
+        }),
         {
             $group: {
                 _id: { $dateTrunc: truncSpec },
@@ -545,21 +578,21 @@ export const getTrend = async (
     period: string,
     zone: string,
     req: Request,
-    { categoryIds, everyday = false, tripPart = false }: { categoryIds?: mongoose.Types.ObjectId[]; everyday?: boolean; tripPart?: boolean } = {}
+    { categoryIds, everyday = false, tripPart = false, rule }: { categoryIds?: mongoose.Types.ObjectId[]; everyday?: boolean; tripPart?: boolean; rule?: TripRule } = {}
 ) => {
     const granularity = granularityFor(period);
     const format = granularity === "month" ? "%Y-%m" : granularity === "hour" ? "%Y-%m-%dT%H" : "%Y-%m-%d";
 
+    // Under 2.8.6 a trip is one ordinary expense, so `everyday` no longer leaves it out; a
+    // category's own trend never holds Trips either way.
     const rows = await Transaction.aggregate([
-        {
-            $match: {
-                userId: new mongoose.Types.ObjectId(req.user!.userId),
-                type: "expense",
-                ...(categoryIds ? { category: { $in: categoryIds } } : {}),
-                ...(categoryIds || everyday ? { tripId: null } : {}),
-                occurredAt: { $gte: startTime, $lt: endTime }
-            }
-        },
+        ...rowsFor(rule, {
+            userId: new mongoose.Types.ObjectId(req.user!.userId),
+            type: "expense",
+            ...(categoryIds ? { category: { $in: categoryIds } } : {}),
+            ...(categoryIds || (everyday && !rule?.entries) ? { tripId: null } : {}),
+            occurredAt: { $gte: startTime, $lt: endTime }
+        }),
         {
             $group: {
                 // Grouped straight into the calendar key the client reads, so no instant

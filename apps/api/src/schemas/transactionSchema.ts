@@ -9,8 +9,8 @@ const OBJECT_ID = /^[a-f0-9]{24}$/i;
 const moment = z.string().refine((v) => !Number.isNaN(new Date(v).getTime()), "Date isn't a valid date");
 
 /** The list filters' comma-separated ids (the filter sheet multi-selects). Empty stays allowed. */
-const idList = (label: string, things: string) => z.string().refine(
-    (v) => v.split(",").filter(Boolean).every((id) => OBJECT_ID.test(id)),
+const idList = (label: string, things: string, extra?: string) => z.string().refine(
+    (v) => v.split(",").filter(Boolean).every((id) => OBJECT_ID.test(id) || id === extra),
     { message: invalidReference(label, things), params: { code: "invalid_reference" } },
 );
 
@@ -78,7 +78,8 @@ const idParams = z.object({ id: objectId("Transaction") });
 const filterFields = {
     startDate: calendarDay.optional(),
     endDate: calendarDay.optional(),
-    category: idList("A category in the filter", "categories").optional(),
+    // `trips` is the built-in Trips category: with `trips=entries` it picks the closed trips.
+    category: idList("A category in the filter", "categories", "trips").optional(),
     account: idList("An account in the filter", "accounts").optional(),
     type: z.enum(["expense", "income", "transfer"]).optional(),
     // Capped because the term becomes a `$regex` the database has to run against every
@@ -87,8 +88,9 @@ const filterFields = {
     // far more than any transaction title is worth searching for.
     search: z.string().trim().max(80).optional(),
     // Trip rows live in their own view: "exclude" is the everyday list, "only" the trips one.
-    // Unset means everything — what an export, a ledger, needs.
-    trips: z.enum(["exclude", "only"]).optional(),
+    // Unset means everything — what an export, a ledger, needs. "entries" (2.8.6) is everyday
+    // rows plus one row per closed trip on its close day, and none of a trip's own rows.
+    trips: z.enum(["exclude", "only", "entries"]).optional(),
 };
 const bothDates = { message: "Pick both a start and an end date", path: ["endDate"] };
 

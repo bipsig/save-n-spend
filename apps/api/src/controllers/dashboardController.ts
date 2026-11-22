@@ -1,6 +1,6 @@
 import { Request, Response } from "express"
 import type { Valid } from "../middleware/validate";
-import { dashboardSummarySchemas } from "../schemas/dashboardSchema"
+import { dashboardInsightsSchemas, dashboardSummarySchemas } from "../schemas/dashboardSchema"
 import Transaction from "../models/Transaction";
 import Goal from "../models/Goal";
 import * as reply from "../utils/response";
@@ -15,16 +15,32 @@ import { goalPace } from "../services/goalPace";
 import { computeCurrentStreak } from "../services/highlightSnapshotService";
 import { netWorthTrend } from "../services/netWorthHistoryService";
 import { averageByDayOfMonth } from "../services/paceMath";
+import { netWorthAtBoundaries } from "../services/netWorthHistoryService";
+import { everydayMatch, rowsFor, tripRule, type TripRule } from "../services/tripEntries";
+import { addYearsInZone, startOfYearInZone, startOfDayInZone } from "../utils/timezone";
+
+/** Income and spending between two instants (either open-ended when null); `tripExpenses` is
+ *  the trip part of `expenses`. */
+const flowSums = async (rule: TripRule, userId: mongoose.Types.ObjectId, from: Date | null, to: Date | null) => {
+  const occurredAt = { ...(from ? { $gte: from } : {}), ...(to ? { $lt: to } : {}) };
+  const rows = await Transaction.aggregate<{ _id: string; total: number; trips: number }>([
+    ...rowsFor(rule, { userId, type: { $in: ["income", "expense"] }, ...(from || to ? { occurredAt } : {}) }),
+    { $group: { _id: "$type", total: { $sum: "$amount" }, trips: { $sum: { $cond: [{ $gt: ["$tripId", null] }, "$amount", 0] } } } },
+  ]);
+  const expense = rows.find((r) => r._id === "expense");
+  return { income: rows.find((r) => r._id === "income")?.total ?? 0, expenses: expense?.total ?? 0, tripExpenses: expense?.trips ?? 0 };
+};
 
 const expenseRow = (row: { title?: unknown; amount?: unknown; occurredAt?: unknown } | undefined) =>
   row ? { title: row.title as string, amount: row.amount as number, occurredAt: row.occurredAt as Date } : null;
 
 export const getDashboardSummary = async (req: Request, res: Response): Promise<void> => {
 
-  const { query: { month, since } } = req.valid as Valid<typeof dashboardSummarySchemas>;
+  const { query: { month, since, period, trips } } = req.valid as Valid<typeof dashboardSummarySchemas>;
   const zone = await resolveZone(req);
   const now = new Date();
   const userId = new mongoose.Types.ObjectId(req.user!.userId);
+  const rule = tripRule(trips, zone);
 
   // Shared with GET /budgets rather than cut here: the dashboard's "this month" and a
   // budget's month are the same month by definition, and two implementations drift.
@@ -43,13 +59,7 @@ export const getDashboardSummary = async (req: Request, res: Response): Promise<
   const [currentStreak, monthlySums, netWorth, weekSums, biggestExpense, biggestEverydayExpense, sinceLastOpened, first] = await Promise.all([
     computeCurrentStreak(req.user!.userId, zone, now),
     Transaction.aggregate([
-      {
-        $match: {
-          userId,
-          type: { $in: ["income", "expense"] },
-          occurredAt: { $gte: start, $lt: next }
-        }
-      },
+      ...rowsFor(rule, { userId, type: { $in: ["income", "expense"] }, occurredAt: { $gte: start, $lt: next } }),
       { $group: flowGroup }
     ]),
     Account.aggregate([
@@ -59,33 +69,28 @@ export const getDashboardSummary = async (req: Request, res: Response): Promise<
     // This week, not this month — a tighter feedback loop than the monthly figures
     // above, which barely move day to day.
     Transaction.aggregate([
-      {
-        $match: {
-          userId,
-          type: { $in: ["income", "expense"] },
-          occurredAt: { $gte: weekStart, $lt: weekEnd }
-        }
-      },
+      ...rowsFor(rule, { userId, type: { $in: ["income", "expense"] }, occurredAt: { $gte: weekStart, $lt: weekEnd } }),
       { $group: flowGroup }
     ]),
     // Symmetric with `monthlySums` above — same match, sorted and capped at one instead
     // of grouped, so the single expense that moved the month's number most can be named.
     Transaction.aggregate([
-      { $match: { userId, type: "expense", occurredAt: { $gte: start, $lt: next } } },
+      ...rowsFor(rule, { userId, type: "expense", occurredAt: { $gte: start, $lt: next } }),
       { $sort: { amount: -1 } },
       { $limit: 1 },
       { $project: { title: 1, amount: 1, occurredAt: 1 } }
     ]),
     // The same, everyday spending only (D21): the 2.8.1 field above may name a trip share.
+    // Under 2.8.6 a closed trip is an ordinary expense and may be the biggest.
     Transaction.aggregate([
-      { $match: { userId, type: "expense", tripId: null, occurredAt: { $gte: start, $lt: next } } },
+      ...rowsFor(rule, everydayMatch(rule, { userId, type: "expense", occurredAt: { $gte: start, $lt: next } })),
       { $sort: { amount: -1 } },
       { $limit: 1 },
       { $project: { title: 1, amount: 1, occurredAt: 1 } }
     ]),
     since
       ? Transaction.aggregate([
-        { $match: { userId, type: "expense", occurredAt: { $gte: new Date(since) } } },
+        ...rowsFor(rule, { userId, type: "expense", occurredAt: { $gte: new Date(since) } }),
         { $group: { _id: null, count: { $sum: 1 }, total: { $sum: "$amount" }, trips: { $sum: { $cond: [{ $gt: ["$tripId", null] }, "$amount", 0] } } } }
       ])
       : Promise.resolve(null),
@@ -100,6 +105,34 @@ export const getDashboardSummary = async (req: Request, res: Response): Promise<
   const weekTripExpense = weekSums.find((res) => res._id === "expense")?.trips ?? 0;
   const currentNetWorth = netWorth[0]?.total ?? 0;
 
+  // Home's Month / Year / All time switch (2.8.6), only when asked for: without `period` the
+  // body is the 2.8.5 one. The four tiles' figures cover the period; the rest stays on this month.
+  let periodFields: Record<string, unknown> = {};
+  let periodTotals = { income, expenses, tripExpenses };
+  if (period) {
+    const firstAt = first?.occurredAt ? new Date(first.occurredAt) : null;
+    const window = period === "month"
+      ? { from: start, to: next, prevFrom: addMonthsInZone(start, zone, -1) }
+      : period === "year"
+        ? { from: startOfYearInZone(now, zone), to: addYearsInZone(startOfYearInZone(now, zone), zone, 1), prevFrom: addYearsInZone(startOfYearInZone(now, zone), zone, -1) }
+        : { from: null, to: null, prevFrom: null };
+    const totals = period === "month" ? { income, expenses, tripExpenses } : await flowSums(rule, userId, window.from, window.to);
+    // Nothing to compare with when the records start inside this period.
+    const hasPrevious = window.from && window.prevFrom && firstAt && firstAt < window.from;
+    const previous = hasPrevious ? await flowSums(rule, userId, window.prevFrom, window.from) : null;
+    const [atStart] = window.from && firstAt
+      ? await netWorthAtBoundaries(userId, zone, currentNetWorth, firstAt, [window.from])
+      : [null];
+    periodTotals = totals;
+    periodFields = {
+      period,
+      periodStart: window.from ? window.from.toISOString() : firstAt ? startOfDayInZone(firstAt, zone).toISOString() : null,
+      firstRecordAt: firstAt ? firstAt.toISOString() : null,
+      previous: previous ? { ...previous, savings: previous.income - previous.expenses } : null,
+      netWorthAtStart: atStart ?? null,
+    };
+  }
+
   // A brand-new account with no transactions yet has no history to reconstruct — a
   // single "now" point, same as the service's own floor for a young one.
   const { points: trend, monthlyFlow } = first
@@ -112,10 +145,11 @@ export const getDashboardSummary = async (req: Request, res: Response): Promise<
 
   const response = {
     month: label,
-    income,
-    expenses,
-    tripExpenses,
-    savings: income - expenses,
+    income: periodTotals.income,
+    expenses: periodTotals.expenses,
+    tripExpenses: periodTotals.tripExpenses,
+    savings: periodTotals.income - periodTotals.expenses,
+    ...periodFields,
     netWorth: currentNetWorth,
     netWorthTrend: trend,
     flowTrend,
@@ -168,6 +202,9 @@ const dayKey = (instant: Date, zone: string): string => {
  */
 export const getDashboardInsights = async (req: Request, res: Response): Promise<void> => {
   const zone = await resolveZone(req);
+  // Under `trips=entries` the "all" series hold each closed trip on its close day (no-spend
+  // days, heatmap, pace); `everyday` is then the same with no trip at all.
+  const rule = tripRule((req.valid as Valid<typeof dashboardInsightsSchemas> | undefined)?.query.trips, zone);
   const now = new Date();
   const userId = new mongoose.Types.ObjectId(req.user!.userId);
   const { start, next } = monthRange(zone);
@@ -179,11 +216,11 @@ export const getDashboardInsights = async (req: Request, res: Response): Promise
     // pace-vs-average chart's current-month series below, one query for both. `everyday` is
     // the same sum without trip spending, for the `everyday` twins below.
     Transaction.aggregate<DaySums<string>>([
-      { $match: { userId, type: "expense", occurredAt: { $gte: start, $lt: next } } },
+      ...rowsFor(rule, { userId, type: "expense", occurredAt: { $gte: start, $lt: next } }),
       { $group: { _id: { $dateToString: { date: "$occurredAt", format: "%Y-%m-%d", timezone: zone } }, total: { $sum: "$amount" }, everyday: { $sum: { $cond: [{ $gt: ["$tripId", null] }, 0, "$amount"] } } } }
     ]),
     Transaction.aggregate<DaySums<number>>([
-      { $match: { userId, type: "expense", occurredAt: { $gte: start, $lt: next } } },
+      ...rowsFor(rule, { userId, type: "expense", occurredAt: { $gte: start, $lt: next } }),
       { $group: { _id: { $dayOfWeek: { date: "$occurredAt", timezone: zone } }, total: { $sum: "$amount" }, everyday: { $sum: { $cond: [{ $gt: ["$tripId", null] }, 0, "$amount"] } } } }
     ]),
     Transaction.findOne({ userId }).sort({ occurredAt: 1 }).select("occurredAt").lean()
@@ -246,7 +283,7 @@ export const getDashboardInsights = async (req: Request, res: Response): Promise
     }
 
     const referenceRows = await Transaction.aggregate<DaySums<number>>([
-      { $match: { userId, type: "expense", occurredAt: { $gte: referenceMonthStarts[0], $lt: start } } },
+      ...rowsFor(rule, { userId, type: "expense", occurredAt: { $gte: referenceMonthStarts[0], $lt: start } }),
       { $group: { _id: { $dayOfMonth: { date: "$occurredAt", timezone: zone } }, total: { $sum: "$amount" }, everyday: { $sum: { $cond: [{ $gt: ["$tripId", null] }, 0, "$amount"] } } } }
     ]);
     const referenceMonths = referenceMonthStarts.map((s) => ({ daysInMonth: wholeDays(s, addMonthsInZone(s, zone, 1), zone) }));

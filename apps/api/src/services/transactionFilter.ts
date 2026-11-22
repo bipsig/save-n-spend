@@ -3,6 +3,11 @@ import Category from "../models/Category";
 import { dayBoundsFromKeyInZone } from "../utils/timezone";
 import { resolveZone } from "../utils/userZone";
 
+/** The built-in Trips category's id in filters and on trip rows (see tripEntries). */
+export const TRIPS_CATEGORY = "trips";
+/** Whether the category filter picks the built-in Trips. */
+export const picksTrips = (filters: TransactionFilters): boolean => !!filters.category?.split(",").includes(TRIPS_CATEGORY);
+
 /** What Activity narrows by. The list and the summary read the same filter from here, so the
  *  card's totals are always over the rows beneath it. */
 export type TransactionFilters = {
@@ -14,7 +19,7 @@ export type TransactionFilters = {
     account?: string;
     type?: "expense" | "income" | "transfer";
     search?: string;
-    trips?: "exclude" | "only";
+    trips?: "exclude" | "only" | "entries";
 };
 
 // Neutralise every regex metacharacter so a search term can only ever match itself.
@@ -40,7 +45,7 @@ export const transactionFilter = (
         filter.$or = [{ account: { $in: accountIds } }, { toAccount: { $in: accountIds } }];
     }
     if (categoryIds) {
-        filter.category = { $in: categoryIds };
+        filter.category = { $in: categoryIds.filter((id) => id !== TRIPS_CATEGORY) };
     }
     if (type) {
         filter.type = type;
@@ -89,7 +94,7 @@ export const resolveTransactionFilter = async (req: Request, filters: Transactio
     if (filters.category) {
         // Each selected id can be a parent or a child; only parents have children to add.
         // Archived children are kept: their rows are still in the list.
-        const picked = filters.category.split(",").filter(Boolean);
+        const picked = filters.category.split(",").filter((id) => id && id !== TRIPS_CATEGORY);
         const children = await Category.find({ parent: { $in: picked }, userId }, { _id: 1 });
         categoryIds = [...picked, ...children.map((child) => child._id.toString())];
     }

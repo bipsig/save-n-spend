@@ -45,6 +45,10 @@ export const name = (label: string) =>
 
 export const timeZone = z.string().refine(isValidZone, "That time zone isn't recognised");
 
+/** `trips=entries` asks for the 2.8.6 rule: each closed trip is one expense in Trips on its
+ *  close day (services/tripEntries). Absent, a read keeps its 2.8.5 meaning. */
+export const tripRuleParam = z.enum(["entries"]).optional();
+
 /** Query paging. Query values arrive as text, hence the coercion. */
 export const page = z.coerce.number().int().positive().default(1);
 export const limit = (max: number, fallback = 20) => z.coerce.number().int().positive().max(max).default(fallback);

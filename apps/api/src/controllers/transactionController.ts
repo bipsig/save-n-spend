@@ -12,11 +12,14 @@ import { applyEffects, changes, editedFields, requireLiveAccounts, resplit } fro
 import { requireCategory } from "../services/ownership";
 import { checkBudgetAlerts } from "../services/budgetAlertService";
 import * as reply from "../utils/response";
-import { resolveTransactionFilter, summaryTotals, type SummaryGroup } from "../services/transactionFilter";
+import { picksTrips, resolveTransactionFilter, summaryTotals, TRIPS_CATEGORY, type SummaryGroup, type TransactionFilters } from "../services/transactionFilter";
+import { entryStages } from "../services/tripEntries";
+import { resolveZone } from "../utils/userZone";
+import type { PipelineStage } from "mongoose";
 import { inTransaction } from "../utils/inTransaction";
 import { conflict, notFound } from "../utils/messages";
 import { toDTO, toDTOs } from "../utils/dto";
-import { paginate } from "../utils/paginate";
+import { pageOf, paginate } from "../utils/paginate";
 
 const TRIP_ROW = conflict("This is part of a trip expense", "Change it from the trip");
 const SPLIT_ROW = conflict("This expense is part of a split", "Remove it from the split first");
@@ -129,10 +132,63 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
 export const filterTransactions = async (req: Request, res: Response): Promise<void> => {
     const { page, limit, ...filters } = (req.valid as Valid<typeof listTransactionsRequest>).query;
 
+    if (filters.trips === "entries") {
+        reply.ok(res, await entriesPage(req, filters, page, limit), "Transactions fetched");
+        return;
+    }
     const found = await paginate(Transaction, await resolveTransactionFilter(req, filters), { page, limit, sort: { occurredAt: -1 } });
 
     reply.ok(res, { ...found, items: toDTOs(found.items) }, "Transactions fetched");
 }
+
+/** The filter as `aggregate` needs it (cast as `find` would), with the Trips category added
+ *  back when it was picked. */
+const entriesMatch = async (req: Request, filters: TransactionFilters) => {
+    const match = Transaction.find().cast(Transaction, await resolveTransactionFilter(req, filters)) as Record<string, unknown>;
+    if (picksTrips(filters)) {
+        const picked = (match.category as { $in?: unknown[] } | undefined)?.$in ?? [];
+        match.category = { $in: [...picked, TRIPS_CATEGORY] };
+    }
+    return match;
+};
+
+/** `trips=entries`: everyday rows and one row per closed trip, newest first, paged on the
+ *  server. Everyday rows come back exactly as the other lists send them; a trip row is
+ *  `kind: "trip"` with its share, close day and dates, and `_id` "trip-<id>". */
+const entriesPage = async (req: Request, filters: TransactionFilters, page: number, limit: number) => {
+    const zone = await resolveZone(req);
+    const [found] = await Transaction.aggregate<{ items: Record<string, unknown>[]; total: { n: number }[] }>([
+        ...entryStages(await entriesMatch(req, filters), zone, filters.search),
+        { $sort: { occurredAt: -1, _id: 1 } },
+        { $facet: { items: [{ $skip: (page - 1) * limit }, { $limit: limit }, { $project: { kind: 1, amount: 1, title: 1, emoji: 1, occurredAt: 1, closedOn: 1, startDate: 1, endDate: 1, tripId: 1, insideMatches: 1 } }], total: [{ $count: "n" }] } },
+    ]);
+    const rows = found?.items ?? [];
+    const ids = rows.filter((r) => r.kind !== "trip").map((r) => r._id);
+    const docs = new Map((await Transaction.find({ _id: { $in: ids } })).map((d) => [String(d._id), d]));
+    const items = rows.flatMap((r) => {
+        if (r.kind === "trip") {
+            return [{
+                _id: `trip-${String(r.tripId)}`,
+                kind: "trip",
+                tripId: String(r.tripId),
+                type: "expense",
+                amount: r.amount,
+                title: r.title,
+                emoji: r.emoji ?? null,
+                category: TRIPS_CATEGORY,
+                account: null,
+                occurredAt: r.occurredAt,
+                closedOn: r.closedOn,
+                startDate: r.startDate,
+                endDate: r.endDate,
+                ...(filters.search ? { insideMatches: r.insideMatches ?? 0 } : {}),
+            }];
+        }
+        const doc = docs.get(String(r._id));
+        return doc ? [toDTO(doc)] : [];
+    });
+    return pageOf(items, page, limit, found?.total[0]?.n ?? 0);
+};
 
 // The list's own filter, so the card sits on exactly the rows beneath it. `trips` is applied
 // after the sums rather than in the match: the trip line and savings count the trip rows the
@@ -141,11 +197,15 @@ export const getTransactionSummary = async (req: Request, res: Response): Promis
     const { trips, ...filters } = (req.valid as Valid<typeof transactionSummaryRequest>).query;
 
     // `aggregate` doesn't cast the way `find` does; this casts the filter exactly as the list's query would.
-    const match = Transaction.find().cast(Transaction, await resolveTransactionFilter(req, filters));
+    // Under `trips=entries` the rows are the list's: everyday rows and each closed trip once.
+    const flows = { type: { $in: ["income", "expense"] } };
+    const source = trips === "entries"
+        ? [...entryStages(await entriesMatch(req, { ...filters, trips }), await resolveZone(req), filters.search), { $match: flows }]
+        : [{ $match: { $and: [Transaction.find().cast(Transaction, await resolveTransactionFilter(req, filters)), flows] } }];
     const sums = await Transaction.aggregate<SummaryGroup>([
-        { $match: { $and: [match, { type: { $in: ["income", "expense"] } }] } },
+        ...source,
         { $group: { _id: { type: "$type", trip: { $gt: ["$tripId", null] } }, total: { $sum: "$amount" } } }
-    ]);
+    ] as PipelineStage[]);
 
     reply.ok(res, summaryTotals(sums, trips), "Transaction summary fetched");
 }
