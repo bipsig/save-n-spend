@@ -669,7 +669,7 @@ Writes the order of one sibling set: each ID's position in `ids` becomes its
 | Success | `200`, message `Categories reordered`, `data: { reordered: <count> }`. |
 | An ID appears twice | `400` `invalid_input`, `The same category was listed twice`. |
 | An ID is malformed | `400` `invalid_reference`, `A category in the list isn't one of your categories any more. Pick another`, issue path `ids.<n>`. |
-| An ID is not a live category of the caller's | `400` `invalid_reference`, `Some of those categories no longer exist`, **with no `issues`** (the one `invalid_reference` that names no field; accounts' reorder does). |
+| An ID is not a live category of the caller's | `400` `invalid_reference`, `A category in the list isn't one of your categories any more. Pick another`, issue path `ids` (since 2.8.7; accounts' reorder answers the same way). |
 
 **Note**
 The server does not check that the IDs form one sibling set, or that they are
@@ -3024,7 +3024,7 @@ These are verified against the code and have **not** been fixed. They are listed
 10. **Fixed in 2.8.0: `POST /accounts` refuses `investmentKind`, `currentValue`, `investedSince` and `investedHow` on any other `type`** (`400`, `… is only for investments`).
 11. **Bulk convert skips ineligible IDs silently** and returns only a count, so a caller cannot tell which IDs were skipped.
 12. **`GET /transactions` cannot return adjustments.** `type` allows only `expense`, `income` and `transfer`, yet the old reference said to pass `type` to see them, and the controller comment says exports still carry them. The mobile export omits them too, so a CSV or PDF ledger does not add up to account balances after a sync.
-13. **`PATCH /categories/reorder` names no field on a foreign or missing id.** It is the one `invalid_reference` answer without `issues` (`Some of those categories no longer exist`); accounts' reorder carries the path.
+13. **Fixed in 2.8.7: `PATCH /categories/reorder` names `ids` on a foreign or missing id**, as accounts' reorder does.
 
 ### Planning, insights and operations
 

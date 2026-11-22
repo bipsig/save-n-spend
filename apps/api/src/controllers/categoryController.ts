@@ -183,7 +183,7 @@ export const reorderCategories = async (req: Request, res: Response): Promise<vo
     });
 
     if (owned !== ids.length) {
-        throw new AppError(400, "Some of those categories no longer exist", { code: "invalid_reference" });
+        throw AppError.invalidReference("ids", "A category in the list", "categories");
     }
 
     await Category.bulkWrite(ids.map((id, index) => ({

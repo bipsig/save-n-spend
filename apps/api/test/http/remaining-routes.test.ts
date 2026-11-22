@@ -47,10 +47,10 @@ test("GET /categories/:id: a top-level and a sub-category of yours; archived, an
     failed(await me.send("GET", `/categories/${new ObjectId().toHexString()}`), 404, "not_found");
 });
 
-test("PATCH /categories/reorder: a missing or foreign id is invalid_reference with no issues (accounts' reorder names the field)", async () => {
+test("PATCH /categories/reorder: a missing or foreign id is invalid_reference naming ids, as accounts' reorder does", async () => {
     const theirs = await other.category("expense");
     const r = await me.send("PATCH", "/categories/reorder", { ids: [await me.category("expense"), theirs] });
-    assert.deepEqual([r.status, r.json.code, r.json.message, r.json.issues], [400, "invalid_reference", "Some of those categories no longer exist", undefined]);
+    failed(r, 400, "invalid_reference", { path: "ids", message: "A category in the list isn't one of your categories any more. Pick another" });
     const bad = await me.send("PATCH", "/categories/reorder", { ids: ["not-an-id"] });
     failed(bad, 400, "invalid_reference", { path: "ids.0" });
 });
