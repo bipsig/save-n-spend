@@ -12,7 +12,8 @@ import Icon from "../ui/Icon";
 import type { IconName } from "@/lib/icons";
 import { formatInstant } from "@/lib/format/date";
 import { formatPct } from "@/lib/format/pct";
-import { goalPace } from "@/lib/goals";
+import { goalPace } from "@/lib/goalPace";
+import { appZone } from "@/lib/zone";
 
 type Props = {
   goal: IGoal
@@ -33,7 +34,7 @@ const GoalCard = ({ goal, onPress, onEdit, onDelete }: Props) => {
   const color = (goal.color ?? "accent") as ColorToken;
   const percent = Math.min((goal.saved / goal.target) * 100, 100);
   const achieved = goal.saved >= goal.target;
-  const pace = achieved ? null : goalPace(goal);
+  const pace = achieved ? null : goalPace(goal, new Date(), appZone());
   const paceLabel = pace?.projectedDate ? formatInstant(pace.projectedDate, "monthLong") : null;
 
   return (
