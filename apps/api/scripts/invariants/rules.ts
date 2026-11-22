@@ -18,7 +18,7 @@ export type TxnDoc = {
 export type CategoryDoc = { _id: Id; userId: Id; name: string; kind: string; parent?: Id | null; isArchived?: boolean };
 export type GoalDoc = { _id: Id; userId: Id; name?: string; target: number; saved: number; createdAt?: Date | string };
 export type GoalLogDoc = { goalId: Id; amount: number };
-export type BillDoc = { _id: Id; userId: Id; name?: string; account?: Id | null; category?: Id | null; toInvestment?: Id | null };
+export type BillDoc = { _id: Id; userId: Id; name?: string; account?: Id | null; category?: Id | null; toInvestment?: Id | null; pausedAt?: Date | null };
 export type BudgetDoc = { _id: Id; userId: Id; category: Id; month: string };
 export type TripDoc = { _id: Id; userId: Id; name?: string; members: Id[]; status: string; closedAt?: Date | string | null };
 export type TripExpenseDoc = {
@@ -152,7 +152,8 @@ export const checkUser = (d: UserData): Problem[] => {
         }
     }
     for (const b of d.bills) {
-        for (const [label, why] of [["account", ownAccount(b.account, false)], ["investment", ownAccount(b.toInvestment, false)], ["category", ownCategory(b.category, false)]] as const) {
+        // A SIP paused when its holding was archived (gaps row 6) may keep pointing at it.
+        for (const [label, why] of [["account", ownAccount(b.account, false)], ["investment", ownAccount(b.toInvestment, !!b.pausedAt)], ["category", ownCategory(b.category, false)]] as const) {
             if (why) add("I6", `bill "${b.name}" ${short(b._id)}: its ${label} is ${why}`);
         }
     }

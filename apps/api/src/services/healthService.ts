@@ -29,7 +29,7 @@ const MS_PER_DAY = 86_400_000;
 type PillarKey = "savings" | "buffer" | "bills" | "budgets" | "goals";
 
 // Only what each pillar actually reads, so callers can pass `.lean()` results.
-type BillFacts = Pick<IBill, "name" | "dueDate" | "lastPaidAt" | "status" | "recurring" | "frequency">;
+type BillFacts = Pick<IBill, "name" | "dueDate" | "lastPaidAt" | "status" | "recurring" | "frequency" | "pausedAt">;
 type GoalFacts = Pick<IGoal, "name" | "target" | "saved" | "deadline" | "createdAt">;
 type BudgetFacts = { budget: { limit: number; category: mongoose.Types.ObjectId }; spent: number };
 
@@ -204,7 +204,7 @@ const bufferPillar = (
  */
 const billsPillar = (all: BillFacts[], now: Date, zone: string): Pillar | null => {
     // A one-off paid in an earlier month is history, as on the bills screen.
-    const bills = all.map((bill) => ({ bill, state: billState(bill, now, zone) })).filter(({ state }) => state.listed);
+    const bills = all.map((bill) => ({ bill, state: billState(bill, now, zone) })).filter(({ state }) => state.listed && !state.paused);
     if (bills.length === 0) return null;
 
     const overdue = bills.filter(({ state }) => state.status === "overdue");
@@ -412,7 +412,7 @@ export const healthScore = async (
             { $match: { userId: oid, isArchived: false } },
             { $group: { _id: "$type", total: { $sum: "$balance" } } },
         ]),
-        Bill.find({ userId: oid }, { name: 1, dueDate: 1, lastPaidAt: 1, status: 1, recurring: 1, frequency: 1 }).lean(),
+        Bill.find({ userId: oid }, { name: 1, dueDate: 1, lastPaidAt: 1, status: 1, recurring: 1, frequency: 1, pausedAt: 1 }).lean(),
         Goal.find({ userId: oid }, { name: 1, target: 1, saved: 1, deadline: 1, createdAt: 1 }).lean(),
         budgetProgress(oid, zone),
         // Only so the budgets hint can name the category it is about.

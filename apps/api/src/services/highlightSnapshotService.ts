@@ -96,7 +96,7 @@ export const buildSnapshot = async (
         Category.find({ userId: oid }).select("name parent").lean(),
         budgetProgress(oid, zone, label),
         budgetProgress(oid, zone, prevLabel),
-        Bill.find({ userId: oid }).select("name amount account dueDate lastPaidAt status recurring frequency").lean(),
+        Bill.find({ userId: oid }).select("name amount account dueDate lastPaidAt status recurring frequency pausedAt").lean(),
         Goal.find({ userId: oid }).select("name target saved deadline createdAt").lean(),
         healthScore(oid, zone, now),
         // Four months of income/expense in one pass: month totals for the savings
@@ -162,7 +162,7 @@ export const buildSnapshot = async (
         .map((bill) => ({ bill, state: billState(bill, now, zone) }))
         // A paid one-off has nothing to warn about. A recurring bill always has a next due
         // date, and one left in a past period is overdue even if a later month was paid.
-        .filter(({ bill, state }) => bill.recurring || !state.settled)
+        .filter(({ bill, state }) => !state.paused && (bill.recurring || !state.settled))
         .map(({ bill, state }) => ({
             name: bill.name,
             amount: bill.amount,

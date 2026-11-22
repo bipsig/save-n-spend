@@ -7,9 +7,8 @@ import { getInvestments, getInvestmentHistory, getInvestmentTrend, getInvestment
 import Account from "../models/Account";
 import Transaction from "../models/Transaction";
 import { deleteInvestmentRequest, holdingIdRequest, investmentBasisRequest } from "../schemas/accountSchema";
-import Bill from "../models/Bill";
-import User from "../models/User";
 import { applyEffects } from "../services/transactionService";
+import { detachAccount } from "../services/accountDetach";
 import { inTransaction } from "../utils/inTransaction";
 import { notFound } from "../utils/messages";
 import { toDTO, toDTOs } from "../utils/dto";
@@ -133,9 +132,7 @@ export const deleteInvestment = async (req: Request, res: Response): Promise<voi
             removedTransactions += 1;
         }
 
-        const removedBills = (await Bill.deleteMany({ userId, toInvestment: account._id }, { session })).deletedCount ?? 0;
-        await Bill.updateMany({ userId, account: account._id }, { $unset: { account: 1 } }, { session });
-        await User.updateOne({ _id: userId, "prefs.defaultAccount": account._id }, { $set: { "prefs.defaultAccount": null } }, { session });
+        const removedBills = await detachAccount(userId, account._id, "delete", session);
         await account.deleteOne({ session });
         return { removedTransactions, removedBills };
     });

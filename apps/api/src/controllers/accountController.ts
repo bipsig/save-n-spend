@@ -7,6 +7,7 @@ import * as reply from "../utils/response";
 import { inTransaction } from "../utils/inTransaction";
 import { conflict, notFound } from "../utils/messages";
 import { toDTO, toDTOs } from "../utils/dto";
+import { detachAccount } from "../services/accountDetach";
 import { accountIdRequest, createAccountRequest, reorderAccountsRequest, syncAccountBalanceRequest, updateAccountRequest } from "../schemas/accountSchema";
 
 const missing = () => AppError.notFound(notFound("account"));
@@ -191,15 +192,20 @@ export const syncAccountBalance = async (req: Request, res: Response): Promise<v
     reply.ok(res, toDTO(account), matched ? "Balance confirmed" : "Balance updated");
 }
 
+// Allowed with money still in it (decision 3a, 22 Nov): the app's confirm names the amount.
 export const archiveAccount = async (req: Request, res: Response): Promise<void> => {
     const { id } = (req.valid as Valid<typeof accountIdRequest>).params;
+    const userId = req.user!.userId;
 
-    const archived = await Account.findOneAndUpdate(
-        { _id: id, userId: req.user?.userId, isArchived: false },
-        { $set: { isArchived: true } },
-    );
-
-    if (!archived) throw missing();
+    await inTransaction(async (session) => {
+        const archived = await Account.findOneAndUpdate(
+            { _id: id, userId, isArchived: false },
+            { $set: { isArchived: true } },
+            { session },
+        );
+        if (!archived) throw missing();
+        await detachAccount(userId, archived._id, "archive", session);
+    });
 
     reply.ok(res, null, "Account archived");
 }

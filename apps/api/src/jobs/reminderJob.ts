@@ -132,7 +132,9 @@ const remindBills = async (user: ReminderUser, zone: string, now: Date): Promise
     const bills = await Bill.find({ userId: user._id, status: { $ne: "paid" } }).lean();
 
     for (const bill of bills) {
-        const days = billState(bill, now, zone).daysUntilDue;
+        const state = billState(bill, now, zone);
+        if (state.paused) continue;
+        const days = state.daysUntilDue;
         const amount = formatAmount(bill.amount, user.currency);
         // Keyed by the DUE DATE, not by today: one nudge per occasion, and a recurring
         // bill's next period is a new key without any state to reset.

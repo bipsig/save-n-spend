@@ -31,7 +31,7 @@ export const isFuturePeriod = (dueDate: Date, now: Date, zone: string, frequency
         ? partsInZone(dueDate, zone).year > partsInZone(now, zone).year
         : monthOrdinal(dueDate, zone) > monthOrdinal(now, zone);
 
-export type BillStateInput = Pick<IBill, "dueDate" | "lastPaidAt" | "status" | "recurring" | "frequency">;
+export type BillStateInput = Pick<IBill, "dueDate" | "lastPaidAt" | "status" | "recurring" | "frequency"> & { pausedAt?: Date | null };
 
 export type BillState = {
     /** Nothing to pay before the next period: a paid one-off, or a recurring bill whose due
@@ -43,6 +43,8 @@ export type BillState = {
     daysUntilDue: number;
     /** Whether the bills list still shows it: a one-off paid in an earlier period is history. */
     listed: boolean;
+    /** A SIP whose holding was archived: listed, but never due, late or payable. */
+    paused: boolean;
 };
 
 /**
@@ -52,13 +54,15 @@ export type BillState = {
  * overdue (gaps row 10). A one-off is settled once paid, in any later month too (row 9).
  */
 export const billState = (bill: BillStateInput, now: Date, zone: string): BillState => {
-    const days = daysUntilDue(bill.dueDate, now, zone);
+    const daysUntil = daysUntilDue(bill.dueDate, now, zone);
     const paidThisPeriod = !!bill.lastPaidAt && isSamePeriod(bill.lastPaidAt, now, zone, bill.recurring ? bill.frequency : undefined);
-    if (bill.status === "paid") return { settled: true, status: "paid", daysUntilDue: days, listed: paidThisPeriod };
+    const at = { daysUntilDue: daysUntil, paused: false };
+    if (bill.status === "paid") return { ...at, settled: true, status: "paid", listed: paidThisPeriod };
+    if (bill.pausedAt) return { ...at, settled: true, status: "pending", listed: true, paused: true };
     if (bill.recurring && isFuturePeriod(bill.dueDate, now, zone, bill.frequency)) {
-        return { settled: true, status: paidThisPeriod ? "paid" : "pending", daysUntilDue: days, listed: true };
+        return { ...at, settled: true, status: paidThisPeriod ? "paid" : "pending", listed: true };
     }
-    return { settled: false, status: days < 0 ? "overdue" : "pending", daysUntilDue: days, listed: true };
+    return { ...at, settled: false, status: daysUntil < 0 ? "overdue" : "pending", listed: true };
 };
 
 /**

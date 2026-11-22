@@ -24,7 +24,12 @@ describe("billState", () => {
 
     it("a one-off paid last month is settled, not overdue (gaps row 9), and drops off the list", () => {
         const s = billState(bill({ dueDate: new Date("2026-10-10T00:00:00Z"), lastPaidAt: new Date("2026-10-09T00:00:00Z"), status: "paid" }), now, ZONE);
-        assert.deepEqual(s, { settled: true, status: "paid", daysUntilDue: -43, listed: false });
+        assert.deepEqual(s, { settled: true, status: "paid", daysUntilDue: -43, listed: false, paused: false });
+    });
+
+    it("a SIP paused when its holding was archived is listed but never late (gaps row 6)", () => {
+        const s = billState(bill({ recurring: true, frequency: "monthly", dueDate: new Date("2026-09-11T18:30:00Z"), pausedAt: new Date("2026-11-01T00:00:00Z") }), now, ZONE);
+        assert.deepEqual([s.paused, s.settled, s.status, s.listed], [true, true, "pending", true]);
     });
 
     it("a one-off paid this month is listed as paid", () => {

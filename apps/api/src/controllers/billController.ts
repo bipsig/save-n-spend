@@ -21,6 +21,7 @@ import { toDTO, toDTOs } from "../utils/dto";
 // screen does.
 
 const ALREADY_PAID = conflict("This bill is already paid for this period");
+const HOLDING_GONE = conflict("This bill's holding isn't there any more", "Edit the bill to pick another");
 
 /** Each reference the body names must be one of the user's live records of the right kind.
  *  An edit that keeps the bill's category (the sheet sends it back) is not re-checked, so a
@@ -89,7 +90,9 @@ export const updateBill = async (req: Request, res: Response): Promise<void> => 
     rejectProblems(billProblems({ ...existing, ...body }));
     await checkReferences(userId, body, existing);
 
-    const bill = await Bill.findOneAndUpdate({ _id: id, userId }, body, { new: true });
+    // Pointing a paused SIP at a live holding (checked above), or making it a plain bill, resumes it.
+    const resume = existing.pausedAt && "toInvestment" in body && String(body.toInvestment ?? "") !== String(existing.toInvestment ?? "");
+    const bill = await Bill.findOneAndUpdate({ _id: id, userId }, { ...body, ...(resume ? { pausedAt: null } : {}) }, { new: true });
 
     if (!bill) {
         throw AppError.notFound(notFound("bill"));
@@ -146,9 +149,9 @@ export const markBillPaid = async (req: Request, res: Response): Promise<void> =
 
     const zone = await resolveZone(req);
 
-    if (billState(seen, new Date(), zone).settled) {
-        throw AppError.conflict(ALREADY_PAID);
-    }
+    const state = billState(seen, new Date(), zone);
+    if (state.paused) throw AppError.conflict(HOLDING_GONE);
+    if (state.settled) throw AppError.conflict(ALREADY_PAID);
 
     const settledBill = await inTransaction(async (session) => {
         const account = await accountToCharge(userId, chosenAccount, seen.account, session);
@@ -159,9 +162,7 @@ export const markBillPaid = async (req: Request, res: Response): Promise<void> =
         let investmentId: unknown = null;
         if (seen.toInvestment) {
             const investment = await Account.findOne({ _id: seen.toInvestment, userId, type: "investment", isArchived: false }).session(session);
-            if (!investment) {
-                throw AppError.conflict(conflict("This bill's holding isn't there any more", "Edit the bill to pick another"));
-            }
+            if (!investment) throw AppError.conflict(HOLDING_GONE);
             investmentId = investment._id;
         }
 
@@ -228,6 +229,7 @@ export const skipBill = async (req: Request, res: Response): Promise<void> => {
     if (!seen.recurring) {
         throw AppError.conflict(conflict("Only recurring bills can be skipped"));
     }
+    if (seen.pausedAt) throw AppError.conflict(HOLDING_GONE);
 
     const zone = await resolveZone(req);
 

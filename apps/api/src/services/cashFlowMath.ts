@@ -27,6 +27,7 @@ export type ProjectionBill = {
     recurring: boolean;
     frequency?: "monthly" | "yearly";
     toInvestment?: string | null;
+    pausedAt?: Date | null;
 };
 
 export type ProjectionIncome = {
@@ -70,6 +71,7 @@ export const projectCashFlow = (input: {
         // Only a one-off is ever stored as paid; a recurring bill's due date rolls forward.
         if (bill.status === "paid") continue;
         const state = billState({ ...bill, lastPaidAt: null }, now, zone);
+        if (state.paused) continue;
         const base: CashFlowItem = {
             kind: bill.toInvestment ? "sip" : "bill",
             name: bill.name,

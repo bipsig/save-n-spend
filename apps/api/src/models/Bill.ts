@@ -9,6 +9,9 @@ export interface IBill extends Document {
     // When set, this is a recurring contribution (a SIP): marking it paid moves money into
     // this investment account as a transfer, not an expense. See billController.markBillPaid.
     toInvestment?: mongoose.Types.ObjectId;
+    /** Set when the holding a SIP pays into is archived: no reminders, no warnings and no
+     *  payment until the bill is pointed at another holding (gaps row 6). */
+    pausedAt?: Date | null;
     dueDate: Date;
     lastPaidAt: Date | null;
     status: "pending" | "paid";
@@ -24,6 +27,7 @@ const BillSchema = new Schema<IBill>({
     category: { type: Schema.Types.ObjectId, ref: "Category", default: null },
     account: { type: Schema.Types.ObjectId, ref: "Account" },
     toInvestment: { type: Schema.Types.ObjectId, ref: "Account" },
+    pausedAt: { type: Date, default: null },
     dueDate: { type: Date, required: true },
     lastPaidAt: { type: Date, default: null },
     status: { type: String, enum: ["pending", "paid"], default: "pending" },

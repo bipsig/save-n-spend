@@ -15,7 +15,7 @@ export const getCashFlow = async (userId: string, zone: string, now: Date = new 
 
     const [accounts, bills, { patterns, billFacts }] = await Promise.all([
         Account.find({ userId: oid, isArchived: false, type: { $in: LIQUID_TYPES } }).select("balance").lean(),
-        Bill.find({ userId: oid }).select("name amount dueDate status recurring frequency toInvestment").lean(),
+        Bill.find({ userId: oid }).select("name amount dueDate status recurring frequency toInvestment pausedAt").lean(),
         loadRecurringPatterns(oid, zone, now),
     ]);
 
@@ -39,6 +39,7 @@ export const getCashFlow = async (userId: string, zone: string, now: Date = new 
             recurring: b.recurring,
             frequency: b.frequency,
             toInvestment: b.toInvestment ? String(b.toInvestment) : null,
+            pausedAt: b.pausedAt ?? null,
         })),
         income: patterns
             .filter((p) => p.kind === "income")

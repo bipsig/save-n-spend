@@ -366,3 +366,43 @@ test("races: one create key ×3 at once is one account; archive ×2 at once; a s
     if (late.status === 201) assert.equal(await balanceOf(api, doomed), 9_000);
     else { failed(late, 400, "invalid_reference"); assert.equal(await balanceOf(api, doomed), 10_000); }
 });
+
+test("archive detaches the account (gaps row 6): no longer the default, off its bills, its SIPs paused until pointed elsewhere", async () => {
+    const u = await api.user("archive-detach");
+    const bank = await u.account("Detach bank", { startingBalance: 50_000 });
+    const spare = await u.account("Detach spare", { startingBalance: 50_000 });
+    const fund = await u.account("Detach fund", { type: "investment", startingBalance: 10_000 });
+    const fund2 = await u.account("Detach fund 2", { type: "investment", startingBalance: 0 });
+    assert.equal((await u.send("PATCH", "/users/me", { prefs: { defaultAccount: bank } })).status, 200);
+    const day = new Date(Date.now() - 86_400_000).toISOString();
+    const rent = await u.send("POST", "/bills", { name: "Rent", amount: 1_000, dueDate: day, recurring: true, frequency: "monthly", account: bank });
+    const sip = await u.send("POST", "/bills", { name: "Index SIP", amount: 1_000, dueDate: day, recurring: true, frequency: "monthly", toInvestment: fund, category: null });
+    assert.deepEqual([rent.status, sip.status], [201, 201]);
+
+    // Money left in it does not block (decision 3a).
+    assert.equal((await u.send("DELETE", `/accounts/${bank}`)).status, 200);
+    assert.equal((await u.send("DELETE", `/accounts/${fund}`)).status, 200);
+    assert.equal((await u.send("GET", "/auth/me")).json.data.prefs.defaultAccount ?? null, null);
+    const bills = await api.ro.col("bills").find<{ _id: ObjectId; account?: ObjectId; toInvestment?: ObjectId; pausedAt: Date | null }>({ userId: new ObjectId(u.id) });
+    const byName = (id: string) => bills.find((b) => String(b._id) === id)!;
+    assert.equal(byName(rent.json.data._id).account, undefined);
+    assert.equal(String(byName(sip.json.data._id).toInvestment), fund);
+    assert.ok(byName(sip.json.data._id).pausedAt instanceof Date);
+
+    // Rent asks for an account now that it has none and there's no default; the SIP is paused.
+    const pay = await u.send("POST", `/bills/${rent.json.data._id}/pay`, {});
+    assert.deepEqual([pay.status, pay.json.message], [400, "Pick an account to pay this bill from"]);
+    assert.equal((await u.send("POST", `/bills/${rent.json.data._id}/pay`, { account: spare })).status, 200);
+    const sipPay = await u.send("POST", `/bills/${sip.json.data._id}/pay`, { account: spare });
+    assert.deepEqual([sipPay.status, sipPay.json.message], [409, "This bill's holding isn't there any more. Edit the bill to pick another"]);
+    assert.equal((await u.send("POST", `/bills/${sip.json.data._id}/skip`)).status, 409);
+    const listed = ((await u.send("GET", "/bills")).json.data as { _id: string; status: string; pausedAt: string | null }[]).find((b) => b._id === sip.json.data._id)!;
+    assert.equal(listed.status, "pending");
+    assert.equal(typeof listed.pausedAt, "string");
+
+    // Pointed at another holding, it is live again and pays into it.
+    assert.equal((await u.send("PATCH", `/bills/${sip.json.data._id}`, { toInvestment: fund2 })).status, 200);
+    assert.equal((await u.send("POST", `/bills/${sip.json.data._id}/pay`, { account: spare })).status, 200);
+    assert.equal((await stored(fund2)).balance, 1_000);
+    assert.deepEqual((await api.problems()).filter((p) => p.email === u.email), []);
+});
