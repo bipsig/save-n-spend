@@ -6,7 +6,7 @@ import Goal from "../models/Goal";
 import Transaction from "../models/Transaction";
 import { budgetProgress } from "./budgetService";
 import { healthScore } from "./healthService";
-import { daysUntilDue, isSettledForPeriod } from "./billService";
+import { billState } from "./billService";
 import { addDaysInZone } from "../utils/timezone";
 import { currentStreak, STREAK_LOOKBACK_DAYS } from "./streakMath";
 import { getRecurringSuggestions, keysSignature } from "./recurringService";
@@ -159,14 +159,14 @@ export const buildSnapshot = async (
         }));
 
     const billFacts: BillFact[] = bills
-        // Settled bills have nothing to warn about. A recurring bill is never marked
-        // paid — its evidence is lastPaidAt in the current period, same as the bills
-        // screen reads it.
-        .filter((bill) => (bill.recurring ? !isSettledForPeriod(bill, now, zone) : bill.status !== "paid"))
-        .map((bill) => ({
+        .map((bill) => ({ bill, state: billState(bill, now, zone) }))
+        // A paid one-off has nothing to warn about. A recurring bill always has a next due
+        // date, and one left in a past period is overdue even if a later month was paid.
+        .filter(({ bill, state }) => bill.recurring || !state.settled)
+        .map(({ bill, state }) => ({
             name: bill.name,
             amount: bill.amount,
-            daysUntilDue: daysUntilDue(bill.dueDate, now, zone),
+            daysUntilDue: state.daysUntilDue,
             accountId: bill.account ? String(bill.account) : null,
         }));
 

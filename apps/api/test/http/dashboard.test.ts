@@ -486,3 +486,33 @@ test("insights: under 5 days in, no counts; under 14, no heatmap; under a month 
     setClock("2026-04-09T06:30:00Z");
     assert.deepEqual((await u.send("GET", "/dashboard/insights")).json.data.forYou, { goalWatch: null, noSpendDays: 8, weekdayHeatmap: null });
 });
+
+test("bills and health share one bill state: a one-off paid last month is settled, a bill paid once while months behind stays late (gaps rows 9, 10)", async () => {
+    const u = await api.user("bill-state");
+    setClock("2026-05-10T06:30:00Z");
+    const b = await u.account("Bank", { startingBalance: 10_000_000 });
+    await txn(u, "income", 1_000_000, b, "2026-04-01T06:30:00Z");
+    const bill = async (name: string, dueDate: string, recurring: boolean) => {
+        const r = await u.send("POST", "/bills", { name, amount: 50_000, dueDate, recurring, ...(recurring ? { frequency: "monthly" } : {}) });
+        assert.equal(r.status, 201, r.text);
+        return r.json.data._id as string;
+    };
+    const insurance = await bill("Insurance", "2026-05-12T06:30:00Z", false);
+    const rent = await bill("Rent", "2026-03-12T06:30:00Z", true);
+    assert.equal((await u.send("POST", `/bills/${insurance}/pay`, { account: b })).status, 200);
+
+    setClock("2026-06-20T06:30:00Z");
+    assert.equal((await u.send("POST", `/bills/${rent}/pay`, { account: b })).status, 200);
+    const listed = (await u.send("GET", "/bills")).json.data as { _id: string; status: string; dueDate: string }[];
+    // Insurance was paid in May: history, not "late". Rent moved one month, to 12 April.
+    assert.deepEqual(listed.map((x) => [x._id, x.status]), [[rent, "overdue"]]);
+    assert.equal(listed[0].dueDate, "2026-04-12T06:30:00.000Z");
+    const by = Object.fromEntries(((await u.send("GET", "/dashboard/health")).json.data.pillars as { key: string }[]).map((p) => [p.key, p]));
+    assert.deepEqual(by.bills, { key: "bills", label: "Bills", score: 0, weight: 20, value: "1 of 1 late", verdict: "Off track",
+        hint: "Rent is 69 days overdue. This is the quickest thing on the list to fix." });
+    const flow = (await u.send("GET", "/cash-flow")).json.data as { days: { date: string; items: { name: string; overdue?: boolean }[] }[] };
+    assert.deepEqual(flow.days[0].items.filter((i) => i.name === "Rent"), [{ kind: "bill", name: "Rent", amount: 50_000, billId: rent, overdue: true }]);
+    assert.ok(flow.days.every((d) => d.items.every((i) => i.name !== "Insurance")));
+    // Paying again is still allowed: April is not settled.
+    assert.equal((await u.send("POST", `/bills/${rent}/pay`, { account: b })).status, 200);
+});

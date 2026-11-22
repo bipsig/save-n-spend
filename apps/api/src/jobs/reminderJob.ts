@@ -5,7 +5,7 @@ import Bill from "../models/Bill";
 import Goal from "../models/Goal";
 import Transaction from "../models/Transaction";
 import User from "../models/User";
-import { daysUntilDue, isSettledForPeriod } from "../services/billService";
+import { billState, daysUntilDue } from "../services/billService";
 import { getRecurringSuggestions, keysSignature } from "../services/recurringService";
 import { notify, wantsNotification, type NotifiableUser } from "../services/notificationService";
 import { summaryTotals, type SummaryGroup } from "../services/transactionFilter";
@@ -127,14 +127,12 @@ export const flowLine = (flows: PeriodFlows, currency?: string): string => {
 };
 
 const remindBills = async (user: ReminderUser, zone: string, now: Date): Promise<void> => {
-    // A recurring bill is never `status: "paid"` — its due date rolls forward instead — so
-    // the settled-this-period check below is what stops a paid bill being nudged again.
+    // A paid one-off has nothing left to remind. A recurring bill's due date rolls forward when
+    // paid, so its nudges follow the next due date, and one still in a past period is overdue.
     const bills = await Bill.find({ userId: user._id, status: { $ne: "paid" } }).lean();
 
     for (const bill of bills) {
-        if (isSettledForPeriod(bill, now, zone)) continue;
-
-        const days = daysUntilDue(bill.dueDate, now, zone);
+        const days = billState(bill, now, zone).daysUntilDue;
         const amount = formatAmount(bill.amount, user.currency);
         // Keyed by the DUE DATE, not by today: one nudge per occasion, and a recurring
         // bill's next period is a new key without any state to reset.

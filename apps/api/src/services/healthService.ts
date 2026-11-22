@@ -4,7 +4,7 @@ import Bill, { type IBill } from "../models/Bill";
 import Category from "../models/Category";
 import Goal, { type IGoal } from "../models/Goal";
 import Transaction from "../models/Transaction";
-import { daysUntilDue, isSettledForPeriod } from "./billService";
+import { billState } from "./billService";
 import { budgetProgress } from "./budgetService";
 import { formatAmount, formatPercent } from "../utils/money";
 import { partsInZone, startOfDayInZone, startOfMonthInZone, addMonthsInZone, addDaysInZone } from "../utils/timezone";
@@ -29,7 +29,7 @@ const MS_PER_DAY = 86_400_000;
 type PillarKey = "savings" | "buffer" | "bills" | "budgets" | "goals";
 
 // Only what each pillar actually reads, so callers can pass `.lean()` results.
-type BillFacts = Pick<IBill, "name" | "dueDate" | "lastPaidAt" | "frequency">;
+type BillFacts = Pick<IBill, "name" | "dueDate" | "lastPaidAt" | "status" | "recurring" | "frequency">;
 type GoalFacts = Pick<IGoal, "name" | "target" | "saved" | "deadline" | "createdAt">;
 type BudgetFacts = { budget: { limit: number; category: mongoose.Types.ObjectId }; spent: number };
 
@@ -202,21 +202,21 @@ const bufferPillar = (
  * a penalty for the worst one, capped at a month. Amount is not weighted in — the money
  * consequence already shows up in the buffer.
  */
-const billsPillar = (bills: BillFacts[], now: Date, zone: string): Pillar | null => {
+const billsPillar = (all: BillFacts[], now: Date, zone: string): Pillar | null => {
+    // A one-off paid in an earlier month is history, as on the bills screen.
+    const bills = all.map((bill) => ({ bill, state: billState(bill, now, zone) })).filter(({ state }) => state.listed);
     if (bills.length === 0) return null;
 
-    const overdue = bills.filter(
-        (bill) => !isSettledForPeriod(bill, now, zone) && daysUntilDue(bill.dueDate, now, zone) < 0,
-    );
+    const overdue = bills.filter(({ state }) => state.status === "overdue");
 
-    const daysLate = overdue.map((bill) => -daysUntilDue(bill.dueDate, now, zone));
+    const daysLate = overdue.map(({ state }) => -state.daysUntilDue);
     const worst = daysLate.length > 0 ? Math.max(...daysLate) : 0;
 
     const punctuality = 100 * (1 - overdue.length / bills.length);
     const staleness = Math.min(30, worst);
     const score = points(punctuality - staleness);
 
-    const worstBill = overdue[daysLate.indexOf(worst)];
+    const worstBill = overdue[daysLate.indexOf(worst)]?.bill;
 
     return {
         key: "bills",
@@ -412,7 +412,7 @@ export const healthScore = async (
             { $match: { userId: oid, isArchived: false } },
             { $group: { _id: "$type", total: { $sum: "$balance" } } },
         ]),
-        Bill.find({ userId: oid }, { name: 1, dueDate: 1, lastPaidAt: 1, frequency: 1 }).lean(),
+        Bill.find({ userId: oid }, { name: 1, dueDate: 1, lastPaidAt: 1, status: 1, recurring: 1, frequency: 1 }).lean(),
         Goal.find({ userId: oid }, { name: 1, target: 1, saved: 1, deadline: 1, createdAt: 1 }).lean(),
         budgetProgress(oid, zone),
         // Only so the budgets hint can name the category it is about.

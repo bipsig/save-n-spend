@@ -140,6 +140,19 @@ test("switched off, closed, or still morning where they are: nothing", async () 
     assert.deepEqual(await titles(digestsOff), ["Overdue is overdue"]);
 });
 
+test("a recurring bill paid once while three months behind is still nudged as overdue (gaps row 10)", async () => {
+    setClock("2026-06-01T06:00:00Z");
+    const u = await api.user("rem-behind");
+    const bank = await u.account("Bank", { startingBalance: 1_000_000 });
+    const r = await u.send("POST", "/bills", { name: "Gym", amount: 1_000, dueDate: "2026-03-12T06:30:00Z", recurring: true, frequency: "monthly" });
+    assert.equal(r.status, 201, r.text);
+    assert.equal((await u.send("POST", `/bills/${r.json.data._id}/pay`, { account: bank })).status, 200);
+    resetClock();
+
+    await runReminders(AT_1815);
+    assert.deepEqual(await titles(u), ["Gym is overdue"]);
+});
+
 test("the flow line: everyday spending, trips in their own clause, put aside counting both", () => {
     assert.equal(
         flowLine({ income: 1_20_000_00, expense: 86_090_20, tripExpense: 6_450_00, count: 3 }),

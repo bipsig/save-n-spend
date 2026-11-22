@@ -31,18 +31,35 @@ export const isFuturePeriod = (dueDate: Date, now: Date, zone: string, frequency
         ? partsInZone(dueDate, zone).year > partsInZone(now, zone).year
         : monthOrdinal(dueDate, zone) > monthOrdinal(now, zone);
 
+export type BillStateInput = Pick<IBill, "dueDate" | "lastPaidAt" | "status" | "recurring" | "frequency">;
+
+export type BillState = {
+    /** Nothing to pay before the next period: a paid one-off, or a recurring bill whose due
+     *  date has rolled into a future period. */
+    settled: boolean;
+    /** What the bills list shows. A settled recurring bill reads "paid" only in the period
+     *  it was paid in; otherwise it is the next occurrence, "pending". */
+    status: "paid" | "pending" | "overdue";
+    daysUntilDue: number;
+    /** Whether the bills list still shows it: a one-off paid in an earlier period is history. */
+    listed: boolean;
+};
+
 /**
- * Whether this bill has already been settled for the period it is currently due in.
- *
- * A recurring bill is never marked paid — its due date rolls forward instead — so the
- * only evidence that this month's electricity is dealt with is `lastPaidAt` falling in
- * the same period as now.
+ * The one reading of a bill's state, shared by the bills list, health, reminders, highlights
+ * and cash flow. A recurring bill is settled only when its due date is in a future period:
+ * paying one month of a bill three months behind moves the due date one month, so it stays
+ * overdue (gaps row 10). A one-off is settled once paid, in any later month too (row 9).
  */
-export const isSettledForPeriod = (
-    bill: Pick<IBill, "lastPaidAt" | "frequency">,
-    now: Date,
-    zone: string,
-): boolean => !!bill.lastPaidAt && isSamePeriod(bill.lastPaidAt, now, zone, bill.frequency);
+export const billState = (bill: BillStateInput, now: Date, zone: string): BillState => {
+    const days = daysUntilDue(bill.dueDate, now, zone);
+    const paidThisPeriod = !!bill.lastPaidAt && isSamePeriod(bill.lastPaidAt, now, zone, bill.recurring ? bill.frequency : undefined);
+    if (bill.status === "paid") return { settled: true, status: "paid", daysUntilDue: days, listed: paidThisPeriod };
+    if (bill.recurring && isFuturePeriod(bill.dueDate, now, zone, bill.frequency)) {
+        return { settled: true, status: paidThisPeriod ? "paid" : "pending", daysUntilDue: days, listed: true };
+    }
+    return { settled: false, status: days < 0 ? "overdue" : "pending", daysUntilDue: days, listed: true };
+};
 
 /**
  * Whole zone-local days from today until the bill is due: 0 = today, negative = late.

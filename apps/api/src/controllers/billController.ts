@@ -10,9 +10,8 @@ import Account from "../models/Account";
 import Transaction from "../models/Transaction";
 import { applyEffects } from "../services/transactionService";
 import User from "../models/User";
-import { startOfDayInZone } from "../utils/timezone";
 import { resolveZone } from "../utils/userZone";
-import { advanceDueDate, isFuturePeriod, isSettledForPeriod } from "../services/billService";
+import { advanceDueDate, billState, isFuturePeriod } from "../services/billService";
 import { inTransaction } from "../utils/inTransaction";
 import { conflict, notFound } from "../utils/messages";
 import { toDTO, toDTOs } from "../utils/dto";
@@ -50,19 +49,10 @@ export const listBills = async (req: Request, res: Response): Promise<void> => {
 
     const zone = await resolveZone(req);
     const now = new Date();
-    const startOfToday = startOfDayInZone(now, zone);
 
     const result = bills.flatMap((bill) => {
-        if (isSettledForPeriod(bill, now, zone)) {
-            return [{ ...bill, status: "paid" }];
-        }
-
-        if (bill.status === "paid") {
-            return [];
-        }
-
-        const derived = bill.dueDate < startOfToday ? "overdue" : "pending";
-        return [{ ...bill, status: derived }];
+        const state = billState(bill, now, zone);
+        return state.listed ? [{ ...bill, status: state.status }] : [];
     });
 
     // Filtered on the status shown, not the stored one: a recurring bill is never stored as
@@ -151,13 +141,9 @@ export const markBillPaid = async (req: Request, res: Response): Promise<void> =
         throw AppError.notFound(notFound("bill"));
     }
 
-    if (seen.status === "paid") {
-        throw AppError.conflict(ALREADY_PAID);
-    }
-
     const zone = await resolveZone(req);
 
-    if (seen.recurring && isFuturePeriod(seen.dueDate, new Date(), zone, seen.frequency)) {
+    if (billState(seen, new Date(), zone).settled) {
         throw AppError.conflict(ALREADY_PAID);
     }
 

@@ -7,6 +7,7 @@ import {
     startOfDayInZone,
     startOfMonthInZone,
 } from "../utils/timezone";
+import { billState } from "./billService";
 
 // The day-by-day projection behind the cash-flow calendar. Pure, so it can be tested:
 // the service gathers today's liquid balance, the bills, the expected income and the
@@ -66,7 +67,9 @@ export const projectCashFlow = (input: {
     };
 
     for (const bill of input.bills) {
+        // Only a one-off is ever stored as paid; a recurring bill's due date rolls forward.
         if (bill.status === "paid") continue;
+        const state = billState({ ...bill, lastPaidAt: null }, now, zone);
         const base: CashFlowItem = {
             kind: bill.toInvestment ? "sip" : "bill",
             name: bill.name,
@@ -75,7 +78,7 @@ export const projectCashFlow = (input: {
         };
         let due = bill.dueDate;
         // Already past due and unpaid: it still has to be paid, so it lands today.
-        if (dayKeyInZone(due, zone) < todayKey) {
+        if (state.status === "overdue") {
             place(todayKey, { ...base, overdue: true });
             if (!bill.recurring) continue;
             due = bill.frequency === "yearly" ? addYearsInZone(due, zone, 1) : addMonthsInZone(due, zone, 1);
