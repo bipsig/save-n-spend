@@ -10,6 +10,7 @@ import { inTransaction } from "../utils/inTransaction";
 import { notFound } from "../utils/messages";
 import { toDTO } from "../utils/dto";
 import * as reply from "../utils/response";
+import { changedSince, ifMatch, unchangedFilter } from "../utils/precondition";
 
 export const listBudgets = async (req: Request, res: Response): Promise<void> => {
     const { query: { month } } = req.valid as Valid<typeof listBudgetsSchemas>;
@@ -45,14 +46,13 @@ export const createBudget = async (req: Request, res: Response): Promise<void> =
 
 export const updateBudget = async (req: Request, res: Response): Promise<void> => {
     const { params: { id }, body } = req.valid as Valid<typeof updateBudgetSchemas>;
+    const since = ifMatch(req);
+    const mine = { _id: id, userId: req.user?.userId };
 
-    const budget = await Budget.findOneAndUpdate(
-        { _id: id, userId: req.user?.userId },
-        { limit: body.limit },
-        { new: true }
-    );
+    const budget = await Budget.findOneAndUpdate({ ...mine, ...unchangedFilter(since) }, { limit: body.limit }, { new: true });
 
     if (!budget) {
+        if (since && await Budget.exists(mine)) throw changedSince();
         throw AppError.notFound(notFound("budget"));
     }
 

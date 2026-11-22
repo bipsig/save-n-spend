@@ -20,6 +20,7 @@ import {
 import type {
     ITrip as TripDTO, ITripExpense as TripExpenseDTO, TripDetailPayload, TripPlan, TripEntry, TripListItem, TripsPayload, TripTotals,
 } from "@save-n-spend/types";
+import { changedSince, requireUnchanged, unchangedFilter } from "../utils/precondition";
 
 // Trips on top of the ordinary ledger. A trip expense is written as the transactions
 // tripLedger plans, all tagged with the trip (and the expense that made them), inside one
@@ -249,11 +250,12 @@ export const addTripExpense = (userId: string, tripId: string, body: TripExpense
         return insertExpense(session, userId, trip, await checkExpense(userId, trip, body, session));
     });
 
-export const updateTripExpense = (userId: string, tripId: string, expenseId: string, body: TripExpenseBody) =>
+export const updateTripExpense = (userId: string, tripId: string, expenseId: string, body: TripExpenseBody, since: Date | null = null) =>
     inTransaction(async (session) => {
         const trip = await claimTrip(userId, tripId, session);
         requireOpen(trip);
         const doc = await findExpense(userId, trip, expenseId, session);
+        requireUnchanged(doc, since);
         return replaceExpense(session, userId, trip, doc, await checkExpense(userId, trip, body, session, here, undefined, doc.category));
     });
 
@@ -289,9 +291,10 @@ export const createTrip = async (userId: string, body: TripBody) => {
 };
 
 /** Allowed on a closed trip, as before (gaps row 190 is a decision still open). */
-export const updateTrip = (userId: string, tripId: string, body: Partial<TripBody>) =>
+export const updateTrip = (userId: string, tripId: string, body: Partial<TripBody>, since: Date | null = null) =>
     inTransaction(async (session) => {
         const trip = await loadTrip(userId, tripId, session);
+        requireUnchanged(trip, since);
         const start = body.startDate ?? trip.startDate;
         const end = body.endDate ?? trip.endDate;
         if (end < start) throw invalidInput(body.endDate ? "endDate" : "startDate", END_BEFORE_START);
@@ -450,13 +453,15 @@ const lastExpenseDay = async (userId: string, tripId: Oid, zone: string, session
 
 /** Moves a closed trip's one entry to another day without reopening it (the one change a
  *  closed trip allows). */
-export const changeCloseDate = async (userId: string, tripId: string, closedOn: string, zone: string) => {
+export const changeCloseDate = async (userId: string, tripId: string, closedOn: string, zone: string, since: Date | null = null) => {
     const trip = await Trip.findOne({ _id: tripId, userId });
     if (!trip) throw tripNotFound();
     if (trip.status !== "closed") throw AppError.conflict(NOT_CLOSED);
+    requireUnchanged(trip, since);
     checkCloseDay(closedOn, closeRange(trip, new Date(), zone));
-    const saved = await Trip.findOneAndUpdate({ _id: tripId, userId, status: "closed" }, { $set: { closedOn } });
-    if (!saved) throw AppError.conflict(NOT_CLOSED);
+    const saved = await Trip.findOneAndUpdate({ _id: tripId, userId, status: "closed", ...unchangedFilter(since) }, { $set: { closedOn } }, { new: true });
+    if (!saved) throw since ? changedSince() : AppError.conflict(NOT_CLOSED);
+    return saved;
 };
 
 // ---- Matching Splitwise's simplified debts ---------------------------------------------------

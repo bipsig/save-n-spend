@@ -8,6 +8,7 @@ import { toDTO, toDTOs } from "../utils/dto";
 import * as reply from "../utils/response";
 import { Request, Response } from "express"
 import { TRIPS_NAME } from "../services/tripEntries";
+import { ifMatch, requireUnchanged } from "../utils/precondition";
 
 /** The rule scripts/buildCategoryIndex.ts builds its unique index on: one live category per
  *  kind, parent and name, names compared without case. The app-side check below is stricter
@@ -128,6 +129,7 @@ export const getCategory = async (req: Request, res: Response): Promise<void> =>
 export const updateCategory = async (req: Request, res: Response): Promise<void> => {
     const { params: { id }, body } = req.valid as Valid<typeof updateCategorySchemas>;
     const userId = req.user!.userId;
+    const since = ifMatch(req);
 
     const category = await Category.findOne({
         _id: id,
@@ -138,6 +140,7 @@ export const updateCategory = async (req: Request, res: Response): Promise<void>
     if (!category) {
         throw AppError.notFound(notFound("category"));
     }
+    requireUnchanged(category, since);
 
     if (body.name && isReservedName(body.name) && !isReservedName(category.name)) throw reservedName();
     if (body.name && await sameNameExists(userId, body.name, id)) {

@@ -32,6 +32,8 @@ export const MESSAGES = {
     idempotencyInProgress: "This is still being saved. Wait a moment and try again",
     idempotencyMismatch: "This doesn't match what was sent before. Please update the app",
     alreadySaved: "This was already saved",
+    /** An `If-Match` PATCH (the app's "Undo" after an edit) on a record written since. */
+    changedSince: "This changed after you saved it, so it wasn't undone",
 } as const;
 
 /**

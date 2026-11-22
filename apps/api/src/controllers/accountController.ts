@@ -9,6 +9,7 @@ import { conflict, notFound } from "../utils/messages";
 import { toDTO, toDTOs } from "../utils/dto";
 import { detachAccount } from "../services/accountDetach";
 import { accountIdRequest, createAccountRequest, reorderAccountsRequest, syncAccountBalanceRequest, updateAccountRequest } from "../schemas/accountSchema";
+import { ifMatch, requireUnchanged } from "../utils/precondition";
 
 const missing = () => AppError.notFound(notFound("account"));
 
@@ -104,6 +105,7 @@ export const getAccount = async (req: Request, res: Response): Promise<void> => 
 
 export const updateAccount = async (req: Request, res: Response): Promise<void> => {
     const { params: { id }, body } = req.valid as Valid<typeof updateAccountRequest>;
+    const since = ifMatch(req);
 
     const account = await Account.findOne({
         _id: id,
@@ -112,6 +114,7 @@ export const updateAccount = async (req: Request, res: Response): Promise<void> 
     });
 
     if (!account) throw missing();
+    requireUnchanged(account, since);
 
     // A holding's balance is its value, not starting balance + rows (it can carry an opening
     // gain) and can't go below zero; a person's is what they owe, and trips and splits only

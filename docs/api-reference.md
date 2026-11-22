@@ -19,6 +19,7 @@ Every monetary field is an **integer number of paise**. See
 
 - [Common request headers](#common-request-headers)
 - [Idempotency-Key](#idempotency-key)
+- [If-Match](#if-match)
 - [Pages](#pages)
 - [Errors](#errors)
 - [Auth](#auth)
@@ -51,6 +52,7 @@ Every monetary field is an **integer number of paise**. See
 | `Authorization` | `Bearer <token>` | Yes, except on `/auth/register`, `/auth/login` and `/diagnostics/client-errors`. |
 | `Content-Type` | `application/json` | Yes, on requests with a body. |
 | `Idempotency-Key` | 1–255 characters, `A–Z a–z 0–9 _ -` | No. On the writes listed under [Idempotency-Key](#idempotency-key). |
+| `If-Match` | An ISO instant, the record's `updatedAt` (ETag quotes allowed) | No. On the edits listed under [If-Match](#if-match). |
 
 **Note**
 Every `POST`, `PATCH` and `PUT` body is checked before the handler runs
@@ -107,6 +109,24 @@ without the header.
 `POST /categories`, `POST /budgets`, `POST /bills`, `POST /bills/{id}/skip`,
 `POST /goals`, `POST /trips`. Any other route ignores the header. Each of these
 writes inside a transaction, so its record is marked committed in the same commit.
+
+## If-Match
+
+2.8.7. "Write this only if the record is still as I last saw it." The app sends it on
+**Undo** after an edit: the previous values, with the `updatedAt` its save got back. Optional;
+without it every route below behaves as before (2.8.5 and older never send it).
+
+Routes: `PATCH /transactions/{id}`, `PATCH /goals/{id}`, `PATCH /bills/{id}`,
+`PATCH /budgets/{id}`, `PATCH /categories/{id}`, `PATCH /accounts/{id}`, `PATCH /trips/{id}`,
+`PATCH /trips/{id}/expenses/{expenseId}`, `PATCH /trips/{id}/close-date`. Any other route ignores
+the header.
+
+| Case | Response |
+|---|---|
+| The record's `updatedAt` equals the header | The edit is applied, as without the header. |
+| The record was written since (any write bumps `updatedAt`: an edit, a contribution, a trip expense, a balance move) | `409` `conflict`, `This changed after you saved it, so it wasn't undone`. Nothing is written. |
+| The header isn't one ISO instant | `400` `invalid_input`, issue path `If-Match`. |
+| The record is missing or someone else's | `404` `not_found`, as without the header. |
 
 ## Pages
 
@@ -2666,8 +2686,9 @@ the trip are still allowed.
 
 2.8.6. Moves a **closed** trip's one entry to another day without reopening it: the one change
 a closed trip allows besides settle and plan. Body `.strict()`: `{ closedOn: "YYYY-MM-DD" }`,
-the same range as close (trip start day to today, in your zone). `200`, `data: null`, message
-`Close date saved`. `409` `conflict` `This trip isn't closed` on an open trip; another user's or
+the same range as close (trip start day to today, in your zone). `200`, message
+`Close date saved`, `data`: the trip as stored (since 2.8.7, for its `updatedAt`; `null` before).
+Takes [If-Match](#if-match). `409` `conflict` `This trip isn't closed` on an open trip; another user's or
 an unknown trip is `404`. Idempotent: sending the same day twice changes nothing more.
 
 ### POST /trips/{id}/reopen

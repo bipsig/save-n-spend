@@ -9,6 +9,7 @@ import { inTransaction } from "../utils/inTransaction";
 import { notFound } from "../utils/messages";
 import { toDTO, toDTOs } from "../utils/dto";
 import * as reply from "../utils/response";
+import { changedSince, ifMatch, unchangedFilter } from "../utils/precondition";
 
 export const listGoals = async (req: Request, res: Response): Promise<void> => {
     const goals = await Goal.find({ userId: req.user?.userId, ...LIVE_GOAL }).sort({ createdAt: 1 });
@@ -29,14 +30,13 @@ export const createGoal = async (req: Request, res: Response): Promise<void> => 
 
 export const updateGoal = async (req: Request, res: Response): Promise<void> => {
     const { params: { id }, body } = req.valid as Valid<typeof updateGoalSchemas>;
+    const since = ifMatch(req);
+    const mine = { _id: id, userId: req.user?.userId, ...LIVE_GOAL };
 
-    const goal = await Goal.findOneAndUpdate(
-        { _id: id, userId: req.user?.userId, ...LIVE_GOAL },
-        body,
-        { new: true }
-    );
+    const goal = await Goal.findOneAndUpdate({ ...mine, ...unchangedFilter(since) }, body, { new: true });
 
     if (!goal) {
+        if (since && await Goal.exists(mine)) throw changedSince();
         throw AppError.notFound(notFound("goal"));
     }
 

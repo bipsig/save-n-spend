@@ -20,6 +20,7 @@ import { inTransaction } from "../utils/inTransaction";
 import { conflict, notFound } from "../utils/messages";
 import { toDTO, toDTOs } from "../utils/dto";
 import { pageOf, paginate } from "../utils/paginate";
+import { ifMatch, requireUnchanged } from "../utils/precondition";
 
 const TRIP_ROW = conflict("This is part of a trip expense", "Change it from the trip");
 const SPLIT_ROW = conflict("This expense is part of a split", "Remove it from the split first");
@@ -286,10 +287,12 @@ export const getTransaction = async (req: Request, res: Response): Promise<void>
 export const updateTransaction = async (req: Request, res: Response): Promise<void> => {
     const { params: { id }, body: patch } = req.valid as Valid<typeof updateTransactionRequest>;
     const userId = req.user!.userId;
+    const since = ifMatch(req);
 
     const updated = await inTransaction(async (session) => {
         const row = await Transaction.findOne({ _id: id, userId }).session(session);
         if (!row) throw missing();
+        requireUnchanged(row, since);
         // Part of a trip expense (a share, or what a friend owes on it): changing it here would
         // leave the rest of that expense disagreeing. The trip rewrites all of them together.
         if (row.tripExpenseId) throw AppError.conflict(TRIP_ROW);

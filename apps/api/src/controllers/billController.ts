@@ -15,6 +15,7 @@ import { advanceDueDate, billState, isFuturePeriod } from "../services/billServi
 import { inTransaction } from "../utils/inTransaction";
 import { conflict, notFound } from "../utils/messages";
 import { toDTO, toDTOs } from "../utils/dto";
+import { changedSince, ifMatch, requireUnchanged, unchangedFilter } from "../utils/precondition";
 
 // The zone-local period arithmetic these handlers run on lives in services/billService,
 // because the reminder job has to reach exactly the same verdict about a bill as this
@@ -82,19 +83,22 @@ export const updateBill = async (req: Request, res: Response): Promise<void> => 
     const { params: { id }, body } = req.valid as Valid<typeof updateBillSchemas>;
     const userId = req.user!.userId;
 
+    const since = ifMatch(req);
     const existing = await Bill.findOne({ _id: id, userId }).lean();
     if (!existing) {
         throw AppError.notFound(notFound("bill"));
     }
+    requireUnchanged(existing, since);
 
     rejectProblems(billProblems({ ...existing, ...body }));
     await checkReferences(userId, body, existing);
 
     // Pointing a paused SIP at a live holding (checked above), or making it a plain bill, resumes it.
     const resume = existing.pausedAt && "toInvestment" in body && String(body.toInvestment ?? "") !== String(existing.toInvestment ?? "");
-    const bill = await Bill.findOneAndUpdate({ _id: id, userId }, { ...body, ...(resume ? { pausedAt: null } : {}) }, { new: true });
+    const bill = await Bill.findOneAndUpdate({ _id: id, userId, ...unchangedFilter(since) }, { ...body, ...(resume ? { pausedAt: null } : {}) }, { new: true });
 
     if (!bill) {
+        if (since && await Bill.exists({ _id: id, userId })) throw changedSince();
         throw AppError.notFound(notFound("bill"));
     }
 
