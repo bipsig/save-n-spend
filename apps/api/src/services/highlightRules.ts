@@ -1,4 +1,5 @@
 import { formatAmount, formatPercent } from "../utils/money";
+import { isSpendable } from "./accountGroups";
 
 // The highlight rules — the deterministic half of the "assistant". See docs/insights-engine.md.
 //
@@ -275,7 +276,7 @@ const budgetComfortable: Rule = {
 const billVsBalance: Rule = {
     id: "bill_vs_balance",
     run: (snap) => {
-        const spendable = snap.accounts.filter((a) => a.type !== "credit_card");
+        const spendable = snap.accounts.filter((a) => isSpendable(a.type));
         if (spendable.length === 0) return null;
         const richest = spendable.reduce((a, b) => (b.balance > a.balance ? b : a));
 

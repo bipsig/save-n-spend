@@ -2,19 +2,17 @@ import mongoose from "mongoose";
 import Account from "../models/Account";
 import Bill from "../models/Bill";
 import { projectCashFlow } from "./cashFlowMath";
+import { liquidBalance } from "./accountGroups";
 import { loadRecurringPatterns, typicalDailySpend } from "./recurringService";
 import { matchesBill } from "./recurringMath";
 import type { CashFlowPayload } from "@save-n-spend/types";
 
-/** Money you can actually spend from. Investments, people and credit cards are left out —
- *  a card's balance is debt, and neither a holding nor a friend pays the rent. */
-const LIQUID_TYPES = ["bank", "cash", "wallet"];
 
 export const getCashFlow = async (userId: string, zone: string, now: Date = new Date()): Promise<CashFlowPayload> => {
     const oid = new mongoose.Types.ObjectId(userId);
 
     const [accounts, bills, { patterns, billFacts }] = await Promise.all([
-        Account.find({ userId: oid, isArchived: false, type: { $in: LIQUID_TYPES } }).select("balance").lean(),
+        Account.find({ userId: oid, isArchived: false }).select("type balance").lean(),
         Bill.find({ userId: oid }).select("name amount dueDate status recurring frequency toInvestment pausedAt").lean(),
         loadRecurringPatterns(oid, zone, now),
     ]);
@@ -28,7 +26,7 @@ export const getCashFlow = async (userId: string, zone: string, now: Date = new 
     return projectCashFlow({
         now,
         zone,
-        startBalance: accounts.reduce((sum, a) => sum + a.balance, 0),
+        startBalance: liquidBalance(accounts),
         dailySpend,
         bills: bills.map((b) => ({
             id: String(b._id),

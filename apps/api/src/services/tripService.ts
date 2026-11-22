@@ -9,6 +9,7 @@ import { inTransaction } from "../utils/inTransaction";
 import { MESSAGES, conflict, notFound } from "../utils/messages";
 import { applyEffects, getEffectOf, type Movable } from "./transactionService";
 import { categoryQuery, keepsCategory, requireCategory } from "./ownership";
+import { OWN_TYPES } from "./accountGroups";
 import { dayKeyInZone } from "../utils/timezone";
 import {
     expensesSignature, isReroute, memberBalances, myShareOf, planLedger, planLetGo, planReroute, planSettlement,
@@ -31,8 +32,6 @@ import type {
 type Oid = mongoose.Types.ObjectId;
 const oid = (id: string | Oid) => new mongoose.Types.ObjectId(String(id));
 
-/** Accounts money can come out of or go into for a trip: yours, not a person or a holding. */
-const OWN_TYPES = ["bank", "cash", "wallet", "credit_card"];
 
 export const TRIP_CLOSED = conflict("This trip is closed", "Reopen it to make changes");
 const ALREADY_CLOSED = conflict("This trip is already closed");

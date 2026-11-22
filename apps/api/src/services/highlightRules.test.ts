@@ -163,6 +163,20 @@ describe("bill_vs_balance", () => {
         assert.ok(hit.title.includes("Cash"));
     });
 
+    it("never counts a holding or a friend as spendable (gaps row 7)", () => {
+        const out = runHighlightRules(snap({
+            accounts: [
+                { accountId: "bank", name: "HDFC", type: "bank", balance: 1_07_300_00 },
+                { accountId: "fund", name: "Index fund", type: "investment", balance: 2_00_000_00 },
+                { accountId: "ravi", name: "Ravi", type: "person", balance: 3_00_000_00 },
+            ],
+            bills: [{ name: "Deposit", amount: 1_50_000_00, daysUntilDue: 2, accountId: null }],
+        }));
+        const hit = byRule(out, "bill_vs_balance");
+        assert.ok(hit);
+        assert.equal(hit.title, "Deposit is due in 2 days and HDFC is ₹42,700.00 short");
+    });
+
     it("ignores bills beyond the week and bills the money covers", () => {
         const out = runHighlightRules(snap({
             accounts: [{ accountId: "a", name: "Bank", type: "bank", balance: 500_000 }],

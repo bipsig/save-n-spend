@@ -5,6 +5,7 @@ import Category from "../models/Category";
 import Goal, { type IGoal } from "../models/Goal";
 import Transaction from "../models/Transaction";
 import { billState } from "./billService";
+import { liquidBalance } from "./accountGroups";
 import { budgetProgress } from "./budgetService";
 import { formatAmount, formatPercent } from "../utils/money";
 import { partsInZone, startOfDayInZone, startOfMonthInZone, addMonthsInZone, addDaysInZone } from "../utils/timezone";
@@ -424,7 +425,7 @@ export const healthScore = async (
     const tripExpenses = flows.find((row) => row._id === "expense")?.trips ?? 0;
 
     const balanceOf = (type: string): number => balances.find((row) => row._id === type)?.total ?? 0;
-    const liquid = balanceOf("bank") + balanceOf("cash") + balanceOf("wallet");
+    const liquid = liquidBalance(balances.map((row) => ({ type: row._id, balance: row.total })));
     // A card's balance goes negative as it is used, so debt is the negative part. An
     // overpaid card is not spendable cash, so a positive balance contributes nothing.
     const cardDebt = Math.max(0, -balanceOf("credit_card"));
