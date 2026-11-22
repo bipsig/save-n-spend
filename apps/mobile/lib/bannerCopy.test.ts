@@ -28,15 +28,15 @@ test("bill due soon keeps its date with privacy on", () => {
   assert.equal(n.when, "due");
   assert.deepEqual(compose(n, open), { title: "Internet due in 3 days", body: `${rs(999_00)} due on 18 Nov.` });
   assert.deepEqual(compose(n, hidden), { title: "Internet due in 3 days", body: "Due on 18 Nov." });
-  assert.equal(compose(bill({ days: 1 }), hidden).title, "Rent due in 1 day");
+  assert.equal(compose(bill({ days: 1 }), hidden).title, "Rent due tomorrow");
 });
 
 test("bill overdue keeps how late it is with privacy on", () => {
   const n = bill({ name: "Credit card", amount: 12_000_00, days: -2 });
   assert.equal(n.when, "overdue");
-  assert.deepEqual(compose(n, open), { title: "Credit card is overdue", body: `${rs(12_000_00)} was due 2 days ago.` });
-  assert.deepEqual(compose(n, hidden), { title: "Credit card is overdue", body: "Was due 2 days ago." });
-  assert.equal(compose(bill({ days: -1 }), hidden).body, "Was due 1 day ago.");
+  assert.deepEqual(compose(n, open), { title: "Credit card is overdue", body: `${rs(12_000_00)}, overdue by 2 days.` });
+  assert.deepEqual(compose(n, hidden), { title: "Credit card is overdue", body: "Overdue by 2 days." });
+  assert.equal(compose(bill({ days: -1 }), hidden).body, "Overdue by 1 day.");
 });
 
 test("a bill outside its lead window says nothing", () => {
@@ -45,10 +45,10 @@ test("a bill outside its lead window says nothing", () => {
 
 test("SIP bills read as investing and keep their date or days late with privacy on", () => {
   const cases = [
-    { days: -2, title: "Index fund — SIP overdue", body: `${rs(5_000_00)} was due to invest 2 days ago.`, hidden: "Was due to invest 2 days ago." },
-    { days: -1, title: "Index fund — SIP overdue", body: `${rs(5_000_00)} was due to invest 1 day ago.`, hidden: "Was due to invest 1 day ago." },
+    { days: -2, title: "Index fund — SIP overdue", body: `${rs(5_000_00)} to invest, overdue by 2 days.`, hidden: "To invest, overdue by 2 days." },
+    { days: -1, title: "Index fund — SIP overdue", body: `${rs(5_000_00)} to invest, overdue by 1 day.`, hidden: "To invest, overdue by 1 day." },
     { days: 0, title: "Time to invest — Index fund", body: `${rs(5_000_00)} to invest today.`, hidden: "To invest today." },
-    { days: 2, title: "Index fund · invest in 2 days", body: `${rs(5_000_00)} to invest on 18 Nov.`, hidden: "To invest on 18 Nov." },
+    { days: 2, title: "Index fund · due in 2 days", body: `${rs(5_000_00)} to invest on 18 Nov.`, hidden: "To invest on 18 Nov." },
   ];
   for (const c of cases) {
     const n = bill({ name: "Index fund", amount: 5_000_00, sip: true, days: c.days });
@@ -62,6 +62,15 @@ test("goal deadline is title-only with privacy on", () => {
   assert.deepEqual(compose(today, open), { title: "Goa trip is due today", body: `${rs(20_000_00)} still to go.` });
   assert.deepEqual(compose(today, hidden), { title: "Goa trip is due today" });
   assert.deepEqual(compose(copy.goalDeadlineNotice("Goa trip", 3, 1), hidden), { title: "Goa trip is due in 3 days" });
+  assert.deepEqual(compose(copy.goalDeadlineNotice("Goa trip", 1, 1), hidden), { title: "Goa trip is due tomorrow" });
+});
+
+test("banners say when a bill is due in the bell's words (gaps row 153)", async () => {
+  const { duePhrase } = await import("../../api/src/utils/duePhrase");
+  for (const d of [-3, -1, 1, 2]) {
+    const n = bill({ name: "Rent", amount: 100, days: d, lead: 5 });
+    assert.ok(compose(n, open).title.includes(duePhrase(d)) || compose(n, open).body!.includes(duePhrase(d)), `days ${d}`);
+  }
 });
 
 test("goal milestone keeps the percentage and drops the amounts", () => {

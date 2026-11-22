@@ -1,4 +1,4 @@
-import type { BillStatus, BillFrequency } from "@save-n-spend/types";
+import { duePhrase, type BillStatus, type BillFrequency } from "@save-n-spend/types";
 import {
   appZone,
   calendarDate,
@@ -6,7 +6,7 @@ import {
   calendarToday,
   startOfCalendarDay,
 } from "@/lib/zone";
-import { formatInstant } from "@/lib/format/date";
+import { capitalise, formatInstant } from "@/lib/format/date";
 
 // Every label here names a DAY, and a day only exists inside a zone — so they all read the
 // account's zone, not the device's (see lib/zone), and "Today" means the day the server
@@ -30,13 +30,7 @@ export const formatDueLabel = (dueDate: string, status: BillStatus, paidAt?: str
   // Whole calendar days — the same count the server calls this bill overdue by.
   const diffDays = calendarDaysBetween(calendarToday(zone), calendarDate(new Date(dueDate), zone));
 
-  if (diffDays < 0) {
-    const overdue = Math.abs(diffDays);
-    return `Overdue by ${overdue} ${overdue === 1 ? "day" : "days"}`;
-  }
-  if (diffDays === 0) return "Due today";
-  if (diffDays === 1) return "Due tomorrow";
-  return `Due in ${diffDays} days`;
+  return capitalise(duePhrase(diffDays));
 };
 
 // Roll a recurring bill's due date forward one cycle — the client's rehearsal of what the

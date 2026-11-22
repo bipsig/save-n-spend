@@ -1,4 +1,7 @@
+import { duePhrase } from "@save-n-spend/types";
 import { formatMoneyExact } from "@/lib/money";
+
+const upperFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 // The words of every local banner, kept apart from the scheduling in lib/localNotifications.ts
 // so each one can be checked under node with privacy mode on and off (bannerCopy.test.ts).
@@ -92,11 +95,11 @@ export const billNotice = (
   },
 ): (Notice & { when: BillWhen }) | null => {
   const money = formatMoneyExact(amount);
+  const due = duePhrase(days);
   if (days < 0) {
-    const ago = plural(-days, "day");
     return sip
-      ? { when: "overdue", title: `${name} — SIP overdue`, body: `${money} was due to invest ${ago} ago.`, privateBody: `Was due to invest ${ago} ago.` }
-      : { when: "overdue", title: `${name} is overdue`, body: `${money} was due ${ago} ago.`, privateBody: `Was due ${ago} ago.` };
+      ? { when: "overdue", title: `${name} — SIP overdue`, body: `${money} to invest, ${due}.`, privateBody: `To invest, ${due}.` }
+      : { when: "overdue", title: `${name} is overdue`, body: `${money}, ${due}.`, privateBody: `${upperFirst(due)}.` };
   }
   if (days === 0) {
     return sip
@@ -104,15 +107,14 @@ export const billNotice = (
       : { when: "today", title: `${name} is due today`, body: `${money} due today.`, privateBody: null };
   }
   if (days > lead) return null;
-  const inDays = plural(days, "day");
   return sip
-    ? { when: "due", title: `${name} · invest in ${inDays}`, body: `${money} to invest on ${on}.`, privateBody: `To invest on ${on}.` }
-    : { when: "due", title: `${name} due in ${inDays}`, body: `${money} due on ${on}.`, privateBody: `Due on ${on}.` };
+    ? { when: "due", title: `${name} · ${due}`, body: `${money} to invest on ${on}.`, privateBody: `To invest on ${on}.` }
+    : { when: "due", title: `${name} ${due}`, body: `${money} due on ${on}.`, privateBody: `Due on ${on}.` };
 };
 
 /** `remaining` is paise. */
 export const goalDeadlineNotice = (name: string, days: number, remaining: number): Notice => ({
-  title: days === 0 ? `${name} is due today` : `${name} is due in ${plural(days, "day")}`,
+  title: `${name} is ${duePhrase(days)}`,
   body: `${formatMoneyExact(remaining)} still to go.`,
   privateBody: null,
 });
