@@ -172,6 +172,17 @@ test("review and Home's daily series count Goa once, on its close day", async ()
     assert.equal(home.pace.current.find((p: { date: string }) => p.date === "2026-04-10").amount, 0);
 });
 
+test("health: savings count Goa once and Ooty nowhere; the buffer stays on everyday spending", async () => {
+    setClock(NOW);
+    const savingsOf = (h: { pillars: { key: string; value: string }[] }) => h.pillars.find((p) => p.key === "savings")?.value;
+    const rule = (await me.send("GET", "/dashboard/health?trips=entries")).json.data;
+    const plain = (await me.send("GET", "/dashboard/health")).json.data;
+    // Income ₹12,000.00 in the 90 days. Rule: spent 4,33,333 + Goa 66,667 paise. 2.8.5: plus Ooty's open 50,000.
+    assert.equal(savingsOf(rule), "58.3%");
+    assert.equal(savingsOf(plain), "54.2%");
+    assert.equal(rule.runwayMonths, plain.runwayMonths);
+});
+
 test("close date: range checked, changed without reopening, cleared by reopening", async () => {
     setClock(NOW);
     failed(await me.send("PATCH", `/trips/${ooty}/close-date`, { closedOn: "2026-04-12" }), 409, "conflict");

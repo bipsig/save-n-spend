@@ -8,6 +8,7 @@ import { billState } from "./billService";
 import { liquidBalance } from "./accountGroups";
 import { goalPace } from "./goalPace";
 import { budgetProgress } from "./budgetService";
+import { rowsFor, type TripRule } from "./tripEntries";
 import { formatAmount, formatPercent } from "../utils/money";
 import { partsInZone, startOfDayInZone, startOfMonthInZone, addMonthsInZone, addDaysInZone } from "../utils/timezone";
 
@@ -368,6 +369,7 @@ export const healthScore = async (
     userId: string | mongoose.Types.ObjectId,
     zone: string,
     now: Date = new Date(),
+    rule?: TripRule,
 ): Promise<HealthScore> => {
     const oid = new mongoose.Types.ObjectId(String(userId));
 
@@ -396,14 +398,16 @@ export const healthScore = async (
         // `transfer` and the adjustments are excluded: moving money between your own
         // accounts is not income or spending, and a correction is bookkeeping. Both still
         // move `Account.balance`, so they reach the buffer pillar.
+        // Under `trips=entries` a closed trip is one expense on its close day, which sits at
+        // that day's end, so the window runs to the end of today; open trips count nowhere.
         Transaction.aggregate<{ _id: string; total: number; trips: number }>([
-            {
-                $match: {
-                    userId: oid,
-                    type: { $in: ["income", "expense"] },
-                    occurredAt: { $gte: windowStart, $lte: now },
-                },
-            },
+            ...rowsFor(rule, {
+                userId: oid,
+                type: { $in: ["income", "expense"] },
+                occurredAt: rule?.entries
+                    ? { $gte: windowStart, $lt: addDaysInZone(startOfDayInZone(now, zone), zone, 1) }
+                    : { $gte: windowStart, $lte: now },
+            }),
             { $group: { _id: "$type", total: { $sum: "$amount" }, trips: { $sum: { $cond: [{ $gt: ["$tripId", null] }, "$amount", 0] } } } },
         ]),
         Account.aggregate<{ _id: string; total: number }>([
@@ -431,12 +435,15 @@ export const healthScore = async (
         categories.map((row) => [String(row._id), row.name]),
     );
 
+    // Everyday spending under both rules, the base budgets and Safe to spend use: the rows
+    // without a trip are the same rows either way.
     const buffer = bufferPillar(liquid, cardDebt, expenses - tripExpenses);
 
     // Heaviest first, so a pillar never changes position. The dashboard shows the first
     // three that apply; the full list is on the detail screen.
     const pillars = [
-        savingsPillar(income, expenses, tripExpenses),
+        // Under 2.8.6 a trip is an ordinary expense, so the hint needs no "including trips".
+        savingsPillar(income, expenses, rule?.entries ? 0 : tripExpenses),
         buffer.pillar,
         billsPillar(bills, now, zone),
         budgetsPillar(budgets.items, categoryNames, now, zone),

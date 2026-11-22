@@ -14,3 +14,4 @@ export const dashboardSummarySchemas = {
 };
 
 export const dashboardInsightsSchemas = { query: z.object({ trips: tripRuleParam }) };
+export const dashboardHealthSchemas = { query: z.object({ trips: tripRuleParam }) };

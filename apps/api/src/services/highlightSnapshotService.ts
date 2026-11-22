@@ -100,7 +100,7 @@ export const buildSnapshot = async (
         budgetProgress(oid, zone, prevLabel),
         Bill.find({ userId: oid }).select("name amount account dueDate lastPaidAt status recurring frequency pausedAt").lean(),
         Goal.find({ userId: oid }).select("name target saved deadline createdAt").lean(),
-        healthScore(oid, zone, now),
+        healthScore(oid, zone, now, rule),
         // Four months of income/expense in one pass: month totals for the savings
         // rate, per-category spend for the pace comparisons. Transfers and
         // adjustments are excluded exactly as insights excludes them.

@@ -1,6 +1,6 @@
 import { Request, Response } from "express"
 import type { Valid } from "../middleware/validate";
-import { dashboardInsightsSchemas, dashboardSummarySchemas } from "../schemas/dashboardSchema"
+import { dashboardHealthSchemas, dashboardInsightsSchemas, dashboardSummarySchemas } from "../schemas/dashboardSchema"
 import Transaction from "../models/Transaction";
 import Goal from "../models/Goal";
 import * as reply from "../utils/response";
@@ -168,12 +168,14 @@ export const getDashboardSummary = async (req: Request, res: Response): Promise<
 }
 
 /**
- * The financial health score. Takes no parameters on purpose — unlike the summary it is
- * always "as of now", measured over a trailing window rather than a named month, so
- * there is nothing for a caller to choose. See services/healthService.
+ * The financial health score. No window to choose — unlike the summary it is always "as of
+ * now", over a trailing window rather than a named month; `trips=entries` only picks the
+ * 2.8.6 trips rule. See services/healthService.
  */
 export const getHealthScore = async (req: Request, res: Response): Promise<void> => {
-  const score = await healthScore(req.user!.userId, await resolveZone(req));
+  const zone = await resolveZone(req);
+  const trips = (req.valid as Valid<typeof dashboardHealthSchemas> | undefined)?.query.trips;
+  const score = await healthScore(req.user!.userId, zone, new Date(), tripRule(trips, zone));
 
   reply.ok(res, score, "Health score fetched");
 }
