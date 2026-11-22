@@ -1,5 +1,5 @@
 import { z } from "./z";
-import { calendarDay, lenientDate as day, money, objectId, positiveMoney } from "./fields";
+import { NAME_MAX, NAME_MIN, calendarDay, lenientDate as day, money, objectId, positiveMoney } from "./fields";
 import { TRIP_SETTLE_DIRECTIONS } from "../constants";
 
 
@@ -11,7 +11,7 @@ const expenseIds = z.object({ id: objectId("Trip"), expenseId: objectId("Expense
 const SERVER_KEY = /^(sw|plan):/;
 
 const trip = {
-    name: z.string().trim().min(1, "Give the trip a name").max(60),
+    name: z.string().trim().min(NAME_MIN, "Give the trip a name").max(NAME_MAX, `The trip's name can be at most ${NAME_MAX} characters`),
     emoji: z.string().max(8).optional(),
     color: z.string().max(20).optional(),
     startDate: day,

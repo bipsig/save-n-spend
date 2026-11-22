@@ -58,8 +58,9 @@ test("every body the 2.6.0 app sends is accepted", () => {
     ok(markAllNotificationsReadSchemas.body, {});
     ok(dismissRecurringSchemas.body, { key: "netflix|64900" });
     ok(listBillsSchemas.query, {});
-    // Bills never had a name limit, so a long stored name still saves.
-    ok(updateBillSchemas.body, { name: "x".repeat(100) });
+    // One NAME_MAX for every name since 2.8.8 (gaps row 193); no stored bill name on dev is near it.
+    ok(updateBillSchemas.body, { name: "x".repeat(60) });
+    assert.equal(updateBillSchemas.body.safeParse({ name: "x".repeat(61) }).success, false);
 });
 
 test("unknown body fields are refused with the update-the-app sentence", () => {

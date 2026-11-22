@@ -1,12 +1,11 @@
 import { z } from "./z";
-import { money, objectId } from "./fields";
+import { money, name as nameField, objectId } from "./fields";
 
 import { ACCOUNT_TYPES, INVESTED_HOW } from "../constants";
 
-// shortcut: no length cap (fields.ts's `name()` caps at 60), because people added from a
-// Splitwise import carry full names and the edit sheet sends the name back on every save.
-// Cap it once a check of stored names says nothing is longer.
-const name = z.string().trim().min(1, "Name can't be empty");
+// Capped at NAME_MAX since 2.8.8 (gaps row 193): no stored name on dev was longer than 46, and
+// the app's forms cap at the same number since 2.8.7.
+const name = nameField("Name");
 
 /** A day the money started going in: anything `new Date()` reads (the app sends
  *  `toISOString()`), and not in the future. */

@@ -1,10 +1,8 @@
 import { z } from "./z";
-import { objectId } from "./fields";
+import { name, objectId } from "./fields";
 import { CATEGORY_KINDS } from "../constants";
 
-// No maximum length: categories never had one on the server, and stored names aren't checked
-// against one.
-const categoryName = z.string().trim().min(1, "Name can't be empty");
+const categoryName = name("Name");
 
 const categoryId = z.object({ id: objectId("Category") });
 

@@ -84,3 +84,22 @@ test("every field message follows the style rules", () => {
     ];
     for (const [s, input] of cases) for (const i of fail(s, input)) assert.deepEqual(styleProblems(i.message), [], i.message);
 });
+
+test("every name a person types takes 1 to NAME_MAX characters (gaps row 193)", async () => {
+    const { createAccountRequest } = await import("./accountSchema");
+    const { createCategorySchemas } = await import("./categorySchema");
+    const { createBillSchemas } = await import("./billSchema");
+    const { createTripSchemas } = await import("./tripSchema");
+    const bodies: [z.ZodType, Record<string, unknown>][] = [
+        [createAccountRequest.body, { type: "person", startingBalance: 0 }],
+        [createCategorySchemas.body, { kind: "expense" }],
+        [createBillSchemas.body, { amount: 100, dueDate: "2026-12-01T00:00:00.000Z" }],
+        [createTripSchemas.body, { startDate: "2026-12-01T00:00:00.000Z", endDate: "2026-12-02T00:00:00.000Z", members: [] }],
+    ];
+    for (const [schema, rest] of bodies) {
+        assert.equal(schema.safeParse({ ...rest, name: "A" }).success, true, JSON.stringify(schema.safeParse({ ...rest, name: "A" }).error?.issues));
+        assert.equal(schema.safeParse({ ...rest, name: "x".repeat(NAME_MAX) }).success, true);
+        const long = schema.safeParse({ ...rest, name: "x".repeat(NAME_MAX + 1) });
+        assert.deepEqual(long.error?.issues.map((i) => i.path.join(".")), ["name"]);
+    }
+});

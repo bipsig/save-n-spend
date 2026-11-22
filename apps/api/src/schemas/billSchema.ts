@@ -1,5 +1,5 @@
 import { z } from "./z";
-import { lenientDate as day, objectId, positiveMoney } from "./fields";
+import { lenientDate as day, name, objectId, positiveMoney } from "./fields";
 import { BILL_FREQUENCIES } from "../constants";
 
 const frequency = z.enum(BILL_FREQUENCIES);
@@ -9,8 +9,7 @@ export const billProblems = (bill: { recurring?: boolean | null; frequency?: str
     bill.recurring && !bill.frequency ? [{ path: "frequency", message: "Pick how often this bill repeats" }] : [];
 
 const fields = {
-    // No maximum: bills never had one, and stored names may be longer than `name()` allows.
-    name: z.string({ error: (i) => (i.input === undefined ? "Name is required" : "Name must be text") }).trim().min(1, "Name can't be empty"),
+    name: name("Name"),
     amount: positiveMoney,
     category: objectId("Category", "categories").nullable().optional(),
     account: objectId("Account", "accounts").optional(),
