@@ -6,7 +6,7 @@ import Icon from "../ui/Icon";
 import PressableScale from "../ui/PressableScale";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { count } from "@/lib/format/count";
-import { formatInstant } from "@/lib/format/date";
+import { relativeTime } from "@/lib/format/date";
 
 type Props = {
   previousOpenedAt: string;
@@ -21,11 +21,12 @@ type Props = {
 const SinceLastOpenedCard = ({ previousOpenedAt, transactions, spent }: Props) => {
   usePrivacyMask(); // subscribe: the amount below reads formatMoney() directly
 
-  const since = formatInstant(previousOpenedAt, "relativeDay");
+  // On its own at the right, so it reads "Today" like every row (gaps row 155).
+  const when = relativeTime(previousOpenedAt, { style: "day" });
   const body = transactions === 0
-    ? `Nothing logged since ${since}`
+    ? "Nothing logged since then"
     : `${count(transactions, "transaction")} · ${formatMoney(spent)} spent`;
-  const label = `Since ${since}: ${body}. Opens Activity.`;
+  const label = `Since you last opened, ${when}: ${body}. Opens Activity.`;
 
   return (
     <PressableScale
@@ -37,9 +38,10 @@ const SinceLastOpenedCard = ({ previousOpenedAt, transactions, spent }: Props) =
       <Card style={styles.card}>
         <View style={styles.row}>
           <Icon name="clock" size={14} color="inkDim" />
-          <AppText size="sm" weight="semibold" color="inkSecondary">
-            Since {since}
+          <AppText size="sm" weight="semibold" color="inkSecondary" style={styles.grow}>
+            Since you last opened
           </AppText>
+          <AppText size="xs" weight="bold" color="inkDim">{when}</AppText>
         </View>
         <AppText size="sm" weight="bold">
           {body}
@@ -59,6 +61,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+  },
+  grow: {
+    flex: 1,
   },
 });
 

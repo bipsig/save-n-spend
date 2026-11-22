@@ -9,7 +9,7 @@ import { fake } from "../test/node";
 const session = { user: { prefs: { timeZone: "Asia/Kolkata" } } };
 fake("@/store/session", { useSession: { getState: () => session } });
 
-const { formatInstant, formatCalendar, formatClock, localCalendar, capitalise, MONTHS } =
+const { formatInstant, formatCalendar, formatClock, localCalendar, capitalise, daysAgoLabel, relativeTime, MONTHS } =
   require("./format/date") as typeof import("./format/date");
 const { formatSpan, relativePeriod } = require("./format/period") as typeof import("./format/period");
 
@@ -88,13 +88,22 @@ test("relative days for bills and relative times for lists", () => {
   assert.equal(formatInstant("2026-11-17T03:00:00Z", "relativeDay"), "tomorrow");
   assert.equal(formatInstant("2026-11-12T03:00:00Z", "relativeDay"), "12 Nov");
 
-  assert.equal(formatInstant(NOON_IST - 20_000, "relative"), "just now");
-  assert.equal(formatInstant(NOON_IST - 12 * 60_000, "relative"), "12 min ago");
-  assert.equal(formatInstant(NOON_IST - 3 * 3_600_000, "relative"), "3 h ago");
-  assert.equal(formatInstant("2026-11-15T14:00:00Z", "relative"), "yesterday");
-  assert.equal(formatInstant("2026-11-13T06:30:00Z", "relative"), "3 days ago");
-  assert.equal(formatInstant("2026-11-09T06:30:00Z", "relative"), "9 Nov");
-  assert.equal(capitalise(formatInstant("2026-11-15T14:00:00Z", "relative")), "Yesterday");
+  assert.equal(capitalise(formatInstant("2026-11-15T03:00:00Z", "relativeDay")), "Yesterday");
+});
+
+test("relativeTime: one shape for feeds and since-when labels, capitalised, in the account zone (gaps row 155)", () => {
+  assert.equal(relativeTime(NOON_IST - 20_000), "Just now");
+  assert.equal(relativeTime(NOON_IST - 12 * 60_000), "12m ago");
+  assert.equal(relativeTime(NOON_IST - 3 * 3_600_000), "3h ago");
+  assert.equal(relativeTime("2026-11-15T14:00:00Z"), "Yesterday");
+  assert.equal(relativeTime("2026-11-13T06:30:00Z"), "3 days ago");
+  assert.equal(relativeTime("2026-11-09T06:30:00Z"), "9 Nov");
+  assert.equal(relativeTime(NOON_IST - 3 * 3_600_000, { style: "day" }), "Today");
+  assert.equal(relativeTime("2026-11-15T14:00:00Z", { style: "day" }), "Yesterday");
+  assert.equal(relativeTime("2026-11-09T06:30:00Z", { style: "day" }), "9 Nov");
+  // 00:30 on the 16th in India is still the 15th in UTC: the account's day decides.
+  assert.equal(relativeTime("2026-11-15T19:00:00Z", { style: "day" }), "Today");
+  assert.deepEqual([0, 1, 6, 7].map(daysAgoLabel), ["Today", "Yesterday", "6 days ago", null]);
 });
 
 test("spans: one month once, across months both, across years both years", () => {

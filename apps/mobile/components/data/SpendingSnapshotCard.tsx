@@ -7,6 +7,7 @@ import { foldCategories } from "@/lib/insights";
 import { categoryShares } from "@/lib/everydaySpend";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { count } from "@/lib/format/count";
+import { daysAgoLabel } from "@/lib/format/date";
 import { formatPct } from "@/lib/format/pct";
 import type { InsightsCategorySlice, UncategorisedSpend } from "@save-n-spend/types";
 import { colors } from "@/theme";
@@ -63,7 +64,7 @@ const SpendingSnapshotCard = ({ byCategory, uncategorised, biggestExpense, onPre
         {biggestExpense && (
           <AppText size="xs" color="inkDim" style={styles.biggest}>
             Biggest expense: <AppText size="xs" weight="bold" color="ink">{formatMoney(biggestExpense.amount)}</AppText>
-            {` · ${biggestExpense.title} · ${biggestExpense.daysAgo === 0 ? "today" : `${count(biggestExpense.daysAgo, "day")} ago`}`}
+            {` · ${biggestExpense.title} · ${daysAgoLabel(biggestExpense.daysAgo) ?? `${count(biggestExpense.daysAgo, "day")} ago`}`}
           </AppText>
         )}
       </Card>

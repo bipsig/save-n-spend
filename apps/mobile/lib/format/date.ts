@@ -31,12 +31,12 @@ export type DayShape = "day" | "dayYear" | "dayLong" | "weekday" | "month" | "mo
  * Instants also take:
  * - `time`: "3:58 pm"
  * - `dayTime`: rows: "Today, 3:58 pm", "Yesterday, 9:12 am", else the `day` shape
- * - `relativeDay`: "today", "yesterday", "tomorrow", else the `day` shape (bills: "Paid today")
- * - `relative`: "just now", "12 min ago", "3 h ago", "yesterday", "3 days ago", else `day`
+ * - `relativeDay`: "today", "yesterday", "tomorrow", else the `day` shape, lower case for the
+ *   middle of a sentence (bills: "Paid today")
  *
- * Relative shapes are lower case; `capitalise` them at the start of a line.
+ * A label that stands on its own ("12m ago", "Yesterday") is `relativeTime` below.
  */
-export type InstantShape = DayShape | "time" | "dayTime" | "relativeDay" | "relative";
+export type InstantShape = DayShape | "time" | "dayTime" | "relativeDay";
 
 export type Instant = string | number | Date;
 
@@ -95,16 +95,33 @@ export const formatInstant = (at: Instant, shape: InstantShape = "day", zone = a
       if (daysAgo === 1) return "yesterday";
       if (daysAgo === -1) return "tomorrow";
       return shapeDay(cal, "day", zone);
-    case "relative": {
-      const minutes = Math.floor((Date.now() - instant.getTime()) / 60_000);
-      if (minutes < 1) return "just now";
-      if (minutes < 60) return `${minutes} min ago`;
-      if (daysAgo === 0) return `${Math.floor(minutes / 60)} h ago`;
-      if (daysAgo === 1) return "yesterday";
-      if (daysAgo < 7) return `${daysAgo} days ago`;
-      return shapeDay(cal, "day", zone);
-    }
     default:
       return shapeDay(cal, shape, zone);
   }
+};
+
+/** "Today", "Yesterday", "3 days ago", from whole days back; past a week, null. */
+export const daysAgoLabel = (daysAgo: number): string | null => {
+  if (daysAgo <= 0) return "Today";
+  if (daysAgo === 1) return "Yesterday";
+  if (daysAgo < 7) return `${daysAgo} days ago`;
+  return null;
+};
+
+/**
+ * How long ago, as a label on its own, in the account zone (gaps row 155):
+ * - `time` (feeds, logs): "Just now", "12m ago", "3h ago", "Yesterday", "3 days ago", else "12 Mar"
+ * - `day` (since when): "Today", "Yesterday", "3 days ago", else "12 Mar"
+ */
+export const relativeTime = (at: Instant, { style = "time", zone = appZone() }: { style?: "time" | "day"; zone?: string } = {}): string => {
+  const instant = at instanceof Date ? at : new Date(at);
+  const cal = calendarDate(instant, zone);
+  const daysAgo = calendarDaysBetween(cal, calendarToday(zone));
+  if (style === "time" && daysAgo === 0) {
+    const minutes = Math.max(0, Math.floor((Date.now() - instant.getTime()) / 60_000));
+    if (minutes < 1) return "Just now";
+    if (minutes < 60) return `${minutes}m ago`;
+    return `${Math.floor(minutes / 60)}h ago`;
+  }
+  return daysAgoLabel(daysAgo) ?? shapeDay(cal, "day", zone);
 };

@@ -5,7 +5,7 @@ import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
 import MaskedText, { useMaskedLabel } from "@/components/ui/MaskedText";
 import { LOOK } from "@/lib/notifications";
-import { capitalise, formatInstant } from "@/lib/format/date";
+import { relativeTime } from "@/lib/format/date";
 import { colors, spacing } from "@/theme";
 
 type Props = {
@@ -19,7 +19,7 @@ type Props = {
 const NotificationRow = ({ notification, first = false, onPress }: Props) => {
   const look = LOOK[notification.type];
   const unread = !notification.readAt;
-  const time = capitalise(formatInstant(notification.createdAt, "relative"));
+  const time = relativeTime(notification.createdAt);
   const say = useMaskedLabel();
 
   return (

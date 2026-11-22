@@ -1,7 +1,8 @@
 // Turns log rows into what the Diagnostics screen shows: plain-words labels ("Couldn't save a
 // bill"), the today summary, filters, and time groups. Pure, so the screen stays layout-only.
 
-import { formatInstant } from "@/lib/format/date";
+import { formatInstant, relativeTime } from "@/lib/format/date";
+import { appZone, calendarToday, startOfCalendarDay } from "@/lib/zone";
 
 export type LogKind = "ok" | "rejected" | "failed" | "noReply" | "appError" | "notification";
 
@@ -135,10 +136,10 @@ export const applyFilter = (rows: DiagRow[], filter: DiagFilter): DiagRow[] => {
   return rows;
 };
 
+/** Midnight where the account is, not on the phone's clock (gaps row 155). */
 const startOfToday = () => {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
+  const zone = appZone();
+  return startOfCalendarDay(calendarToday(zone), zone).getTime();
 };
 
 /** Today's calls: how many, how many failed, the typical (median) time, and the slowest. */
@@ -158,23 +159,12 @@ export const summarise = (rows: DiagRow[]) => {
   };
 };
 
-/** "Just now" · "12 min ago" · "Earlier today" · "Yesterday" · "25 Sep". Rows arrive newest
- *  first, so groups come out in order. */
+/** Grouped under the app's one relative label ("Just now" · "12m ago" · "3h ago" · "Yesterday" ·
+ *  "25 Sep"). Rows arrive newest first, so groups come out in order. */
 export const groupByTime = (rows: DiagRow[]): { label: string; rows: DiagRow[] }[] => {
-  const now = Date.now();
-  const today = startOfToday();
-  const labelFor = (iso: string): string => {
-    const t = new Date(iso).getTime();
-    const mins = Math.floor((now - t) / 60_000);
-    if (mins < 2) return "Just now";
-    if (mins < 60) return `${Math.floor(mins / 5) * 5 || mins} min ago`;
-    if (t >= today) return "Earlier today";
-    if (t >= today - 86_400_000) return "Yesterday";
-    return formatInstant(iso, "day");
-  };
   const groups: { label: string; rows: DiagRow[] }[] = [];
   for (const row of rows) {
-    const label = labelFor(row.at);
+    const label = relativeTime(row.at);
     const last = groups[groups.length - 1];
     if (last && last.label === label) last.rows.push(row);
     else groups.push({ label, rows: [row] });
