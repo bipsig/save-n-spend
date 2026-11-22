@@ -125,7 +125,20 @@ export interface ITransaction {
   // Set only by an offline-queued create, so the mobile feed can dedupe its synthetic
   // pending row against this same transaction once it lands from the server.
   clientId?: string | null
+  /** `"trip"` on a closed trip's one row in a `trips=entries` list: `_id` is "trip-<id>",
+   *  `tripId` the trip, `category` "trips", no account, `amount` your share. */
+  kind?: 'trip'
+  /** Trip rows: the close day (`YYYY-MM-DD`), the trip's emoji and dates. */
+  closedOn?: string
+  emoji?: string | null
+  startDate?: string
+  endDate?: string
+  /** Trip rows in a search: how many of the trip's own expenses matched. */
+  insideMatches?: number
 }
+
+/** The built-in Trips category's id on trip rows, slices and filters (not a Category id). */
+export const TRIPS_CATEGORY_ID = 'trips'
 
 // One title a user has actually typed before, ranked by how often — the raw material for
 // the add-transaction form's autosuggest. `category` is the one it was most recently filed
@@ -523,7 +536,19 @@ export interface DashboardSummary {
    *  moment and now. Absent (not zero) when there's nothing to compare against yet.
    *  `spent` includes trips; `tripSpent` is the trip part of it. */
   sinceLastOpened?: { transactions: number; spent: number; tripSpent: number }
+  /** Sent when the request names `period` (2.8.6): `income`, `expenses`, `tripExpenses` and
+   *  `savings` then cover it; everything else stays on this month or now. */
+  period?: HomePeriod
+  /** ISO start of the period (All time: the first record's day). */
+  periodStart?: string | null
+  firstRecordAt?: string | null
+  /** The period before, for the change lines. Null for All time, or when records start inside the period. */
+  previous?: { income: number; expenses: number; tripExpenses: number; savings: number } | null
+  /** Net worth at the period's start, when the history reaches it. */
+  netWorthAtStart?: number | null
 }
+
+export type HomePeriod = 'month' | 'year' | 'all'
 
 // GET /dashboard/insights — the "For You" carousel's genuinely-new slides. Kept off
 // DashboardSummary: these are ranked/omit-shaped and chart-series-shaped, not scalars.
@@ -655,6 +680,9 @@ export interface InsightsCategorySlice {
    * governs and what the donut has to add up to.
    */
   children?: InsightsCategorySlice[]
+  /** A trip under Trips (`trips=entries`): its close day and emoji. */
+  closedOn?: string
+  emoji?: string
 }
 
 /** One category's spend this period against the one before — the period-over-period card. */
@@ -701,6 +729,8 @@ export interface InsightsSummary {
   avgDailyEverydaySpendPrevious: number  // paise/day, trips left out, prior period
   topCategory: string | null       // biggest category name this period
   txnCount: number                 // non-transfer count, current window
+  /** `trips=entries`: everyday income/expense rows plus one per trip closed in the window. */
+  entryCount?: number
 }
 
 /**
@@ -788,8 +818,11 @@ export interface ReviewCategorySlice {
   total: number        // paise
   pct: number          // 0-100 whole, share of the sum of every slice (Trips included)
   /** Share of everyday spending, 0–100 to one decimal, over every slice (not just the five
-   *  sent) and uncategorised spend. Absent on the Trips slice. */
+   *  sent) and uncategorised spend. Absent on the Trips slice. With `trips=entries`: share of
+   *  all spending, Trips included. */
   share?: number
+  /** `trips=entries`, on Trips only: the trips closed in the period (see InsightsCategorySlice). */
+  children?: InsightsCategorySlice[]
 }
 
 /** Everyday spending filed under no category, and its one-decimal share of everyday spending. */
