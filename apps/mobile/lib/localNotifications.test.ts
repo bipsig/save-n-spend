@@ -23,6 +23,7 @@ const world = (summary: Record<string, number> = { income: 0, expenses: 6_350_00
   const stored = new Map<string, unknown>();
   const bills: Partial<IBill>[] = [
     { _id: "b1", name: "Rent", amount: 28_000_00, dueDate: "2026-11-16T06:30:00.000Z", status: "pending", recurring: true, frequency: "monthly" },
+    { _id: "b2", name: "Index SIP", amount: 5_000_00, dueDate: "2026-11-16T06:30:00.000Z", status: "pending", recurring: true, frequency: "monthly", toInvestment: "a9", pausedAt: "2026-11-10T06:30:00.000Z" },
   ];
   const goals: Partial<IGoal>[] = [
     { _id: "g1", name: "Goa trip", saved: 10_000_00, target: 30_000_00, deadline: "2026-11-19T06:30:00.000Z" },
@@ -101,6 +102,8 @@ test("privacy off: banners carry their amounts and the owed nudge", async () => 
     data: { link: { screen: "bills", id: "b1" } },
   });
   assert.equal(last(w.scheduled, "goal:g1:deadline:2026-11-19")?.content.body, `${w.rs(20_000_00)} still to go.`);
+  // As the reminder job: a SIP paused by archiving its holding is never reminded of (gaps row 6).
+  assert.equal(w.scheduled.some((r) => r.identifier.startsWith("bill:b2:")), false);
 });
 
 test("digests: everyday spending with a trips clause from a 2.8.4 summary, and a trip-only day still gets one", async () => {

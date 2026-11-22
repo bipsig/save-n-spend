@@ -72,11 +72,13 @@ export const groupBills = (items: IBill[]): BillGroups => ({
   paid: items.filter((b) => b.status === "paid"),
 });
 
+// A paused SIP is never due, so it isn't outstanding.
 export const outstandingTotal = (items: IBill[]) => {
-  const outstanding = items.filter((b) => b.status === "overdue" || b.status === "pending");
+  const live = items.filter((b) => !b.pausedAt);
+  const outstanding = live.filter((b) => b.status === "overdue" || b.status === "pending");
   const total = outstanding.reduce((sum, b) => sum + b.amount, 0);
-  const pending = items.filter((b) => b.status === "pending").length;
-  const overdue = items.filter((b) => b.status === "overdue").length;
+  const pending = live.filter((b) => b.status === "pending").length;
+  const overdue = live.filter((b) => b.status === "overdue").length;
   return { total, pending, overdue };
 };
 

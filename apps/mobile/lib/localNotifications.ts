@@ -339,7 +339,7 @@ const scheduleBillReminders = async (
   for (const bill of bills) {
     // As the reminder job: a paid one-off is done; a recurring bill is reminded of by its due
     // date, which paying rolls forward, so "paid" on its row doesn't silence the next one.
-    if (bill.status === "paid" && !bill.recurring) continue;
+    if ((bill.status === "paid" && !bill.recurring) || bill.pausedAt) continue;
 
     const due = new Date(bill.dueDate);
     const days = daysUntilDue(due, now, zone);
