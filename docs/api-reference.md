@@ -31,6 +31,7 @@ Every monetary field is an **integer number of paise**. See
 - [Goals](#goals)
 - [Notifications](#notifications)
 - [Recurring suggestions](#recurring-suggestions)
+- [Trips rule (2.8.6, `trips=entries`)](#trips-rule-286-tripsentries)
 - [Dashboard](#dashboard)
 - [Insights](#insights)
 - [Highlights](#highlights)
@@ -620,6 +621,7 @@ Rules, checked in this order:
 
 | Rule | Failure |
 |---|---|
+| 2.8.6: "Trips" (trimmed, any case) is the built-in category's name and is reserved. | `400` `invalid_input`, issue path `name`, `Trips is a built-in category`. |
 | Names are unique per user, case-insensitively, across all live categories — whatever the `kind` or `parent`. A row shows only its bare name, so a repeat reads as ambiguous. | `409` `duplicate`, `You already have a category with that name`. |
 | `parent` must be a live category of the caller's. | `400` `invalid_reference`, `Parent category isn't one of your categories any more. Pick another`. |
 | Categories are one level deep: a category has an optional `parent`, and a sub-category cannot itself be a parent. | `400` `invalid_input`, `Categories can only be 2 levels deep`. |
@@ -647,7 +649,7 @@ The body is `.strict()`. All fields optional.
 
 | Field | Type | Constraints |
 |---|---|---|
-| `name` | string | Non-empty, trimmed. Subject to the same case-insensitive uniqueness rule as creation, ignoring the category itself: `409` `duplicate`, `You already have a category with that name`. |
+| `name` | string | Non-empty, trimmed. Subject to the same case-insensitive uniqueness rule as creation, ignoring the category itself: `409` `duplicate`, `You already have a category with that name`. 2.8.6: renaming to "Trips" is `400` `invalid_input` `Trips is a built-in category`, unless the category is already called that. |
 | `icon` | string | |
 | `color` | string | |
 
@@ -839,13 +841,22 @@ It cannot be set by `PATCH`.
 |---|---|---|---|
 | `startDate` | `YYYY-MM-DD` | — | Start of the range, inclusive. |
 | `endDate` | `YYYY-MM-DD` | — | End of the range, inclusive. |
-| `category` | string | — | Category ID, or several separated by commas. A parent ID also matches its children. |
+| `category` | string | — | Category ID, or several separated by commas. A parent ID also matches its children. 2.8.6: `trips` (the built-in Trips) picks the closed trips' rows under `trips=entries`. |
 | `account` | string | — | Account ID, or several separated by commas. Matches a transaction whose `account` **or** `toAccount` is one of them, so a transfer into an account is included. |
 | `type` | enum | — | `expense` \| `income` \| `transfer`. |
 | `search` | string | — | Free-text, case-insensitive match on the title. Trimmed, at most 80 chars. Regex-escaped, so `(` is a literal bracket rather than a 500 and `(a+)+b` can't be handed to the database as a backtracking bomb. |
-| `trips` | enum | — | `exclude` \| `only`. See below. Unset returns trip rows and everyday rows together. |
+| `trips` | enum | — | `exclude` \| `only` \| `entries` (2.8.6). See below. Unset returns trip rows and everyday rows together. |
 | `page` | integer | `1` | 1-based page number. |
 | `limit` | integer | `20` | Page size. Maximum 100. |
+
+**2.8.6: `trips=entries`.** Everyday rows (no `tripId`) plus one row per closed trip on its
+close day, newest first and paged on the server like any other list. Everyday rows are
+exactly what the other values send. A trip row is
+`{ _id: "trip-<tripId>", kind: "trip", tripId, type: "expense", amount, title, emoji, category: "trips", account: null, occurredAt, closedOn, startDate, endDate }`,
+plus `insideMatches` (how many of the trip's own expense titles matched) when `search` is set;
+`search` matches the trip's name or any of its expense titles. `type=expense` keeps trip rows,
+`income`/`transfer` hide them; any `account` filter hides them; `category` hides them unless it
+includes `trips`. Open trips have no row. See [Trips rule](#trips-rule-286-tripsentries).
 
 **Important**
 `startDate` and `endDate` must be supplied together. Sending one without the
@@ -887,7 +898,7 @@ and adjustments never are.
 | `account` | string | — | As on the list: matches `account` or `toAccount`. The transfers it adds to the list add nothing here. |
 | `type` | enum | — | `expense` \| `income` \| `transfer`. With `transfer` every figure is `0`. |
 | `search` | string | — | As on the list. |
-| `trips` | enum | — | `exclude` \| `only`. Narrows `income` and `expenses`, not `savings`. |
+| `trips` | enum | — | `exclude` \| `only`. Narrows `income` and `expenses`, not `savings`. `entries` (2.8.6): every figure over the `trips=entries` list's rows, so `expenses` and `savings` hold each closed trip once and `tripExpenses` is that part. |
 
 The list and the summary build their filter in one place
 (`services/transactionFilter.ts`), so the card's figures add up to the rows
@@ -1468,6 +1479,37 @@ not checked against current suggestions. Returns `200` with `data: null`
 device, and it also removes an income pattern from the
 [cash flow](#cash-flow) projection. There is no endpoint to undo it.
 
+## Trips rule (2.8.6, `trips=entries`)
+
+From 2.8.6 a closed trip is **one expense** in the built-in category **Trips**, dated on its
+**close day** (`closedOn`), with your whole share as its amount. An open trip counts nowhere,
+and none of a trip's own rows (shares, friend-share transfers, settle-ups, let-gos, plan rows)
+count anywhere but the trip page. A read asks for this with `trips=entries`; without it every
+read keeps its 2.8.5 meaning and body, so the 2.8.5 app is unaffected.
+
+| Read | With `trips=entries` |
+|---|---|
+| [`GET /transactions`](#get-transactions), [`/transactions/summary`](#get-transactionssummary) | Everyday rows plus one row per closed trip (see the list's trip row), paged on the server; the summary sums the same rows. |
+| [`GET /dashboard/summary`](#get-dashboardsummary) | Month and week totals, biggest expense, `sinceLastOpened` and the `period` figures. `flowTrend`'s earlier months stay on the 2.8.5 rule. |
+| [`GET /dashboard/health`](#get-dashboardhealth) | Savings rate over the window; the buffer stays on everyday spending under both rules. |
+| [`GET /dashboard/insights`](#get-dashboardinsights) | `forYou` and `pace` hold each trip on its close day; `everyday` leaves trips out. |
+| [`GET /insights`](#get-insights) | Every total, trend and average; Trips is a ranked `byCategory` slice with a `share`; `byAccount` gets one Trips slice; adds `entryCount`. |
+| [`GET /insights/category/{id}`](#get-insightscategoryid) | `shareOfSpend` is over all spending with each trip once; the category's own figures never hold trips. |
+| [`GET /reviews`](#get-reviews) | Totals, categories (Trips ranked, with `children`), biggest expense, active days, timeline. |
+| [`GET /highlights`](#get-highlights) | Month totals for the savings rules; per-category spend never holds trips. |
+
+Mechanics (`services/tripEntries.ts`): each closed trip with a share above zero becomes a row
+`{ type: "expense", amount: <your share>, category: "trips", account: null, tripId, kind: "trip" }`
+whose `occurredAt` is the last millisecond of `closedOn` in your zone, so it falls in that
+day, week, month and year and sorts first in its day. `closedOn` falls back to the day of
+`closedAt` in your zone for trips closed before 2.8.6, so nothing needs migrating.
+
+Never on the rule, by decision: budgets, Safe to spend inputs, recurring suggestions,
+quick-log title suggestions, category insights' own totals, cash flow, streaks.
+
+The server's digests (daily, weekly, monthly push) follow the rule for everyone: "Spent"
+includes each closed trip once, with no trips clause, and "Most went to" can be Trips.
+
 ## Dashboard
 
 | Method | Path | Description |
@@ -1482,6 +1524,8 @@ device, and it also removes an income pattern from the
 |---|---|---|---|
 | `month` | `YYYY-MM` | Current month in the caller's zone | Which month the monthly figures cover. |
 | `since` | string | — | Optional ISO 8601 datetime: the moment the app was last opened. Adds `sinceLastOpened`. |
+| `period` | enum | — | 2.8.6. `month` \| `year` \| `all`: Home's switch. `income`, `expenses`, `tripExpenses` and `savings` then cover this month, this year, or everything since the first record, and the period fields below are added. Without it the body is the 2.8.5 one. |
+| `trips` | enum | — | 2.8.6. `entries`: the [trips rule](#trips-rule-286-tripsentries). |
 
 Returns the aggregate the home screen renders in one request, rather than having
 the client fan out across resources. `data` is `DashboardSummary`.
@@ -1502,6 +1546,11 @@ the client fan out across resources. `data` is `DashboardSummary`.
 | `biggestExpense` | object \| null | `{ title, amount, occurredAt }` — the single largest expense in the month, trips included. `null` when the month has no expenses. |
 | `biggestEverydayExpense` | object \| null | 2.8.4. The same, everyday spending only (no `tripId`), so it never names a trip share. `null` when the month has no everyday expenses. |
 | `sinceLastOpened` | object? | `{ transactions, spent, tripSpent }` — count and paise of **expense** transactions at or after `since`; `spent` includes trips, `tripSpent` (2.8.4) is the trip part of it. Absent (not zero) when `since` was not sent. |
+| `period` | enum? | 2.8.6, only with `period`. Echo. |
+| `periodStart` | string \| null | ISO instant the period starts (All time: the first record's day start in your zone). |
+| `firstRecordAt` | string \| null | ISO instant of your earliest transaction. |
+| `previous` | object \| null | `{ income, expenses, tripExpenses, savings }` for the whole period before (last month, last year). `null` for All time, and when your records start inside this period. |
+| `netWorthAtStart` | integer \| null | Paise. Net worth at `periodStart` (same reconstruction as [Net-worth history](#net-worth-history)); `null` for All time or when the history doesn't reach it. |
 
 Only `income` and `expense` rows reach the totals. Transfers and the two
 adjustment types are excluded, so a balance correction never reads as income or
@@ -1530,6 +1579,10 @@ still includes trips, so the 2.8.1 app shows what it showed), and the new
 spending with a "Plus ₹X on trips" line. Savings and net worth always include
 trips. Budgets, pace, recurring and cash flow already leave trips out.
 
+2.8.6 replaces this for the 2.8.6 app: with `trips=entries` every total includes each closed
+trip once on its close day and there is no trips line. See
+[Trips rule](#trips-rule-286-tripsentries). Without the parameter this section still holds.
+
 **Warning**
 A malformed `month` or `since` is a `400` `invalid_input`. UNVERIFIED: `since` uses `z.iso.datetime()`, which in zod v4 accepts
 the UTC `Z` form by default and rejects numeric offsets; this was read, not
@@ -1543,7 +1596,11 @@ history that still ends at the current month.
 
 ### GET /dashboard/health
 
-Takes no parameters. The financial health score, always as of now: unlike the
+Takes one optional parameter, `trips=entries` (2.8.6): the [trips rule](#trips-rule-286-tripsentries)
+for the savings rate (each closed trip once in the window, its "including trips" hint wording
+dropped; the window then runs to the end of today so a trip closed today counts). The
+emergency buffer is measured on everyday spending under both rules, the same rows budgets and
+Safe to spend use. The financial health score, always as of now: unlike the
 summary it describes a trailing 90-day window rather than a named month, so
 there is nothing for a caller to choose. That difference in span is also why it
 is a separate request and not a field on `/dashboard/summary`. `data` is
@@ -1604,7 +1661,8 @@ weights, the curves and the confidence gate.
 
 ### GET /dashboard/insights
 
-Takes no parameters. The "For You" carousel's genuinely-new slides plus the
+Takes one optional parameter, `trips=entries` (2.8.6): `forYou` and `pace` then hold each
+closed trip on its close day. The "For You" carousel's genuinely-new slides plus the
 pace-versus-average chart, always for the current zone-local month. Kept off
 `/dashboard/summary` because these figures are ranked, omit-shaped or
 series-shaped, not scalars. `data` is `DashboardInsights`.
@@ -1670,6 +1728,9 @@ A positive `offset` is rejected with a 400. See
 | `avgDailyEverydaySpendCurrent`, `avgDailyEverydaySpendPrevious` | integer | 2.8.4. The same averages without trip spending, for the projection. Rounded separately, so not exactly `avgDailySpend* - trips ÷ days`. |
 | `topCategory` | string \| null | Name of the biggest `byCategory` slice, skipping a category named `Others`. |
 | `txnCount` | integer | Count of `income` and `expense` transactions in the window. |
+| `entryCount` | integer? | 2.8.6, only with `trips=entries`: everyday `income` and `expense` rows plus one per trip closed in the window (open trips none). The 2.8.6 app's Transactions tile. |
+
+With `trips=entries` (2.8.6, see [Trips rule](#trips-rule-286-tripsentries)) every figure above holds each closed trip once on its close day and no trip's own rows. Trips is then a ranked `byCategory` slice `{ categoryId: "trips", name: "Trips", total, share, children }` whose children are the trips closed in the window, each `{ categoryId: <tripId>, name, total, emoji, closedOn }`; all shares are over everyday spending plus Trips and add to 100.0 with `uncategorised`. `byAccount` gets one `{ accountId: "trips", name: "Trips" }` slice and no "Paid by friends". The parameter is accepted by `GET /insights/category/{id}` too, where it only changes `shareOfSpend`.
 
 **Important**
 `byCategory` excludes trip spending from the real categories and adds **one**
@@ -1728,7 +1789,7 @@ rules. There is no LLM. See [The rules](insights-engine.md#the-rules) and
 
 ### GET /highlights
 
-Takes no parameters. `data` is `HighlightsPayload`.
+Takes one optional parameter, `trips=entries` (2.8.6): the savings rules then read month totals under the [trips rule](#trips-rule-286-tripsentries). `data` is `HighlightsPayload`.
 
 | Field | Type | Description |
 |---|---|---|
@@ -1795,6 +1856,7 @@ The path is plural: `/reviews`, not `/review`.
 |---|---|---|---|
 | `period` | enum | `month` | `week` \| `month`. `day` and `year` are rejected. |
 | `offset` | integer | `-1` | Whole periods back. Must be `-1` or lower: `0` (the running period) is rejected with a 400. |
+| `trips` | enum | — | 2.8.6. `entries`: the [trips rule](#trips-rule-286-tripsentries). Trips is then ranked among `categories` with a `share` of all spending and `children` (the trips closed in the period, as on Insights); `biggestExpense` may be a trip; active days count the close day, not the trip's own days. |
 
 `data` is `ReviewPayload`. The window is cut with the same `parsePeriod` as
 [Insights](#insights), in the caller's zone, and the currency for the copy comes
@@ -2345,6 +2407,7 @@ amounts are the same request with different numbers; a share of `0` is allowed.
 | `budget` | integer \| null | Paise. `null` for none. |
 | `status` | `active` \| `closed` | |
 | `closedAt` | ISO string \| null | |
+| `closedOn` | `YYYY-MM-DD` \| null | 2.8.6. The day a closed trip counts on, as one expense in Trips, in your zone; for a trip closed before 2.8.6 it is the day of `closedAt`. `null` while open. |
 | `createdAt` | ISO string | |
 
 **`TripTotals`**, all paise:
@@ -2583,6 +2646,7 @@ the trip is `400` `invalid_reference`, issue path `letGo.<n>`.
 | Field | Type | Constraints |
 |---|---|---|
 | `letGo` | string[] | Optional, default `[]`, at most 30 person ids. People whose leftover balance is **let go** instead of kept. |
+| `closedOn` | `YYYY-MM-DD` | 2.8.6. Optional. The day the trip counts on. Default: the day of the trip's last expense, kept between the trip's start day and today (today when it has no expenses). A day before the start day is `400` `invalid_input` `Pick a day from the trip's start`; after today, `Pick a day up to today` (issue path `closedOn`). |
 
 For each id in `letGo`, using that person's trip balance (plan rows included):
 
@@ -2597,10 +2661,18 @@ Let-gos appear in `entries` as `letGo`. After closing, adding, editing, and
 deleting expenses, and importing, are refused; settle, plan, edit, and delete of
 the trip are still allowed.
 
+### PATCH /trips/{id}/close-date
+
+2.8.6. Moves a **closed** trip's one entry to another day without reopening it: the one change
+a closed trip allows besides settle and plan. Body `.strict()`: `{ closedOn: "YYYY-MM-DD" }`,
+the same range as close (trip start day to today, in your zone). `200`, `data: null`, message
+`Close date saved`. `409` `conflict` `This trip isn't closed` on an open trip; another user's or
+an unknown trip is `404`. Idempotent: sending the same day twice changes nothing more.
+
 ### POST /trips/{id}/reopen
 
-Sets `status` back to `active` and clears `closedAt`. `200`, `data: null`,
-message `Trip reopened`.
+Sets `status` back to `active` and clears `closedAt` and `closedOn` (2.8.6: its entry in Trips
+goes until it is closed again). `200`, `data: null`, message `Trip reopened`.
 
 **Known issue**
 Reopening does **not** undo let-gos, and it is not an error on a trip that is
@@ -2997,6 +3069,11 @@ row. The second 2.8.4 pass covers the rest: `biggestEverydayExpense`,
 lightest week, the Health buffer and the `catch_all_heavy` highlight now use
 everyday spending outright (server-composed text and scores). `byAccount` keeps
 trips on purpose: a trip share is money that left that account.
+
+2.8.6 adds one rule behind `trips=entries` (see [Trips rule](#trips-rule-286-tripsentries)):
+each closed trip is one expense on its close day in every total that reads it, Trips is a
+ranked category, and the shares add to 100.0. The inconsistencies above remain only for
+requests without the parameter, which the 2.8.5 app sends.
 
 **3. Adjustment rows.** `positiveAdjustment` and `negativeAdjustment` are
 excluded from every income, expense and spend figure here (they match

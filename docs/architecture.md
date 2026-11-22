@@ -776,9 +776,22 @@ the person accounts. They net to zero, so your bank and net worth never move.
 
 ### Where trip rows are counted
 
-This is what the code does today. Trip rows are real money and always move
-balances and net worth; the difference is whether a screen's *spending* figures
-include them.
+**2.8.6: the trips rule.** The 2.8.6 app reads every total with `trips=entries`
+(see [API reference → Trips rule](api-reference.md#trips-rule-286-tripsentries)): a closed
+trip is one expense in the built-in category Trips (`"trips"`, not a Category id) on its
+close day `Trip.closedOn`, with your whole share; open trips count nowhere; none of a trip's
+own rows count outside the trip page. One aggregation stage does this for every read,
+`entryStages` in `services/tripEntries.ts`: everyday rows plus a `$unionWith` that builds one
+synthetic expense row per closed trip, dated at the end of its close day in the user's zone.
+`closedOn` is set when the trip is closed (default: its last expense day), changed with
+`PATCH /trips/:id/close-date`, cleared on reopen, and read from `closedAt` in the user's zone
+for trips closed before 2.8.6. Budgets, Safe to spend, recurring, Quick Log suggestions,
+category insights' own figures, cash flow and streaks stay as below. The Health buffer stays
+on everyday spending. The server's digests follow the rule for everyone.
+
+The table below is the meaning **without** `trips=entries`, which the 2.8.5 app still gets
+unchanged. Trip rows are real money and always move balances and net worth; the difference
+is whether a screen's *spending* figures include them.
 
 | Surface | Trip rows |
 |---|---|
@@ -906,10 +919,11 @@ or PDF; opened from Activity and Settings) or `kind="insights"` (PDF only; opene
 from Insights); `InvestmentsExportSheet.tsx` is the Investments one (the hub, and
 a holding's page with its scope fixed).
 
-- **Transactions** walk `GET /transactions` 100 rows at a time with `trips=exclude`,
-  matching the Activity screen. The statement therefore leaves out trip rows, and
-  because the default listing also hides balance adjustments, those are left out
-  too; a ledger exported this way will not add up to the account balances.
+- **Transactions** walk `GET /transactions` 100 rows at a time with `trips=entries`
+  (2.8.6), matching the Activity screen: everyday rows plus one Expense row in Trips per
+  closed trip on its close day (no time, no account, note "Trip <dates> · your share"), so
+  the file's Expenses and Net equal the screens'. A trip's own rows and balance adjustments
+  are left out, so a ledger exported this way will not add up to the account balances.
 - **Insights** reuses the summary already on screen when the picked window is the
   one being viewed; otherwise it fetches it.
 - **Investments** fetches `/investments/report` once. Scope (portfolio or one
@@ -927,9 +941,11 @@ a holding's page with its scope fixed).
 
 `packages/types/src/index.ts` is a single file of types and interfaces, imported
 with `import type` by both applications. It ships as TypeScript source and **must
-hold no runtime values**: a constant exported from it would break the compiled
-API. That is why the Trips slice id `"trips"` is defined twice, as `TRIPS_SLICE_ID`
-in `controllers/insightsController.ts` and in `apps/mobile/lib/trips.ts`.
+hold no runtime values the API imports**: a constant the API loaded from it would break the
+compiled API. That is why the built-in Trips id `"trips"` is defined on the API side in
+`services/transactionFilter.ts` (`TRIPS_CATEGORY`, re-exported by `services/tripEntries.ts`;
+`TRIPS_SLICE_ID` in `controllers/insightsController.ts` is the same value), while the app reads
+`TRIPS_CATEGORY_ID` from the types package.
 
 | Area | Types |
 |---|---|

@@ -110,9 +110,8 @@ export const useBudgets = (month?: string) => {
 `loadMore()`. A later page with no signal and nothing saved ends the list instead of
 blanking it, and `refetch()` goes back to page one.
 
-List hooks still return `items` instead of `data`, `useHighlights` its own fields, and
-`useTripMatches` the bare value, so screens did not change in 2.8.3 phase 1; phase 2 moves
-screens onto the shape.
+List hooks still return `items` instead of `data` and `useHighlights` its own fields, so
+screens did not change in 2.8.3 phase 1; phase 2 moves screens onto the shape.
 
 The rules (`lib/query/core.ts`, tested in `lib/fetchLayer.test.ts`):
 
@@ -626,6 +625,31 @@ Distinguish a live period from a closed one in the copy, not just the data. The
 Budget screen writes the remainder as "unspent" instead of "left" and swaps **Days left**
 and **Daily limit** for **Days** and **A day** once the month has ended, because a
 pace target is meaningless for a month that is already over.
+
+## Read totals under the trips rule
+
+From 2.8.6 every read that sums spending sends `trips=entries`: `lib/dashboard.ts`
+(summary and dashboard insights), `lib/health.ts`, `lib/insights.ts`, `lib/insightsExport.ts`,
+`lib/reviews.ts`, `lib/highlights.ts`, `lib/transactionQuery.ts` (Activity's list and card),
+`lib/transactions.ts` (Home's Recent), `lib/export.ts` and `lib/localNotifications.ts`. The
+server then counts each closed trip once, as an expense in the built-in category Trips on its
+close day, so the phone adds and subtracts nothing: show the server's figure. A new read that
+sums spending sends the parameter too.
+
+- **Trips is a category.** It ranks among the categories by size with its own share
+  (`lib/everydaySpend.ts` `categoryShares`, `reviewRows`), in the fixed `tripsColor` teal
+  (`theme/charts.ts`), outside the ranked palette. Its row expands in place to the trips
+  (`components/data/TripsList.tsx`); a trip opens `trip-detail`. Test it with `isTrips(id)`
+  (`TRIPS_CATEGORY_ID` from the types package).
+- **Trip rows** in a list have `kind: "trip"`; `TransactionRow` draws them as one entry with
+  the trip's emoji and close day and opens the trip page. They have no account, so never
+  look one up for them.
+- **Counts** use `entryCount ?? txnCount` (one trip = one transaction).
+- **Close day.** `components/sheets/CloseDateSheet.tsx` picks it for closing (wrap-up) and for
+  changing it (trip page); the range and default live in `lib/tripClose.ts`.
+- **Open trips** count nowhere; Home shows each as an `OpenTripCard` with its running share.
+- Don't add a "Plus ₹X on trips" line or a "with trips" label: every total already includes
+  Trips.
 
 ## Show an amount
 
