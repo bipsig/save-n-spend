@@ -94,3 +94,10 @@ test("2.8.4: the new trip and share fields, D24 history and Q3 sentences are all
         ["data.tripExpenses", true],
     ]);
 });
+
+test("2.8.6 row 26: the dashboard's net worth month labels may move; other labels may not", () => {
+    const at = (request: string, label: string) => snap({ [request]: ok({ netWorthTrend: [{ label, total: 3 }] }) });
+    const allowed = (request: string) => compareSnapshots(at(request, "Nov 2026"), at(request, "Oct 2026")).map((d) => [d.path, !!d.allowed]);
+    assert.deepEqual(allowed("GET /dashboard/summary"), [["data.netWorthTrend.0.label", true]]);
+    assert.deepEqual(allowed("GET /investments/trend"), [["data.netWorthTrend.0.label", false]]);
+});

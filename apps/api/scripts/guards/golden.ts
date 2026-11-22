@@ -58,6 +58,7 @@ export const AGREED = {
         [/^GET \/dashboard\/health data\.(pillars\.\d+\.(value|hint)|focus\.hint)$/, "2.8.4 Q3 wording; D21 buffer on everyday spending"],
         [/^GET \/dashboard\/health data\.(score|band|rating|runwayMonths|pillars\.\d+\.(score|verdict)|focus\.(key|label))$/, "2.8.4 D21: the buffer is measured on everyday spending"],
         [/^GET \/highlights data\.highlights\.\d+\.(title|body)$/, "2.8.4 Q3: exact paise, one decimal"],
+        [/^GET \/dashboard\/summary(\?.*)? data\.netWorthTrend\.\d+\.label$/, "2.8.6 row 26: each point is named for the month that closed"],
     ] as [RegExp, string][],
     /** R2 (B5): paged lists answer {items, page, limit, hasNextPage, total}. */
     paged: /^GET \/(transactions|highlights\/history|notifications)(\?|$)/,
