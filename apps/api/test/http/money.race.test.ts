@@ -151,18 +151,19 @@ test("redemptions ×2 at once from a holding worth less than both never take it 
     await noDrift(bank, fund);
 });
 
-test("an archived category of the user's own is still accepted on create and on an edit that changes it", async () => {
+// 2.8.6 (gaps row 18) reverses R1's "archived is accepted": a new row, or an edit that picks
+// it, is refused with a 400 the outbox keeps as a failed item the user can re-file.
+test("an archived category of the user's own is refused on create and on an edit that picks it", async () => {
     const bank = await acc("archived-cat bank");
     const made = await send("POST", "/categories", { name: `Old ${randomUUID().slice(0, 8)}`, kind: "expense" });
     assert.equal(made.status, 201, made.json?.message);
     const old = made.json.data._id as string;
     assert.equal((await send("DELETE", `/categories/${old}`)).status, 200);
     const created = await send("POST", "/transactions", { type: "expense", amount: 1_000, account: bank, category: old, title: "queued before the archive", occurredAt: new Date().toISOString(), clientId: `w1-${randomUUID()}` });
-    assert.equal(created.status, 201, created.json?.message);
+    assert.deepEqual([created.status, created.json.code], [400, "invalid_reference"]);
     const other = await expense(bank, 2_000);
     const edited = await send("PATCH", `/transactions/${other._id}`, { category: old });
-    assert.equal(edited.status, 200, edited.json?.message);
-    assert.equal(edited.json.data.category, old);
+    assert.deepEqual([edited.status, edited.json.code], [400, "invalid_reference"]);
     await noDrift(bank);
 });
 
