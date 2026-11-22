@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 import { BottomSheetModal, BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { useForm } from "react-hook-form";
@@ -9,7 +9,6 @@ import { AppText } from "@/components/ui/AppText";
 import Avatar from "@/components/ui/Avatar";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
-import { haptics } from "@/lib/haptics";
 import { initialsOf, updateProfile } from "@/lib/profile";
 import { useSession } from "@/store/session";
 import { toast } from "@/store/toast";
@@ -17,7 +16,7 @@ import { spacing } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { errorText } from "@/lib/apiError";
 import { useFormError } from "@/lib/useFormError";
-import FormError from "@/components/ui/FormError";
+import SheetFooter from "./SheetFooter";
 
 const schema = z.object({
   name: z.string().trim().min(2, "Give us at least two characters").max(60),
@@ -77,7 +76,7 @@ const EditProfileSheet = forwardRef<BottomSheetModal, { onSaved?: () => void }>(
         setValue("name", user?.name ?? "");
         clearError();
       }}
-      footer={<Button label="Save profile" icon={gate.icon} hint={gate.hint} loading={isSubmitting} disabled={!gate.allowed} onPress={submit} />}
+      footer={<SheetFooter error={error}><Button label="Save profile" icon={gate.icon} hint={gate.hint} loading={isSubmitting} disabled={!gate.allowed} onPress={submit} /></SheetFooter>}
     >
       {/* Live identity preview — the initials update as the name is typed. */}
       <View style={styles.identity}>
@@ -105,8 +104,6 @@ const EditProfileSheet = forwardRef<BottomSheetModal, { onSaved?: () => void }>(
       <AppText size="xs" color="inkDim">
         Your email is how you sign in, so it can&apos;t be changed here.
       </AppText>
-
-      <FormError message={error} />
     </AppSheet>
   );
 });

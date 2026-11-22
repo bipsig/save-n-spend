@@ -7,12 +7,11 @@ import Icon from "@/components/ui/Icon";
 import { AppText } from "@/components/ui/AppText";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { formatCalendar } from "@/lib/format/date";
-import { haptics } from "@/lib/haptics";
 import { inRange, monthGrid, monthOfDay, monthTitle, movesBetween, shiftMonth, type CloseRange } from "@/lib/tripClose";
 import { colors, spacing } from "@/theme";
 import { errorText } from "@/lib/apiError";
 import { useFormError } from "@/lib/useFormError";
-import FormError from "@/components/ui/FormError";
+import SheetFooter from "./SheetFooter";
 
 type Props = {
   tripName: string;
@@ -75,7 +74,7 @@ const CloseDateSheet = forwardRef<BottomSheetModal, Props>(({ tripName, amount, 
     <AppSheet
       ref={innerRef}
       onDismiss={reset}
-      footer={<Button label={mode === "close" ? "Close trip" : "Save date"} loading={busy} onPress={confirm} />}
+      footer={<SheetFooter error={error}><Button label={mode === "close" ? "Close trip" : "Save date"} loading={busy} onPress={confirm} /></SheetFooter>}
     >
       <AppText size="md" weight="black">{mode === "close" ? `Close ${tripName}` : "Change close date"}</AppText>
       <View style={styles.field}>
@@ -130,7 +129,6 @@ const CloseDateSheet = forwardRef<BottomSheetModal, Props>(({ tripName, amount, 
       <AppText size="xs" color="inkDim" style={styles.lh}>
         {helper} Pick any day from the trip's start ({formatCalendar(range.first)}) to today. Dots mark days with trip expenses.
       </AppText>
-      <FormError message={error} />
     </AppSheet>
   );
 });

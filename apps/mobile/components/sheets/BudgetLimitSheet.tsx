@@ -30,7 +30,7 @@ import type { ColorToken } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { editWithUndo } from "@/lib/undo";
 import { useFormError } from "@/lib/useFormError";
-import FormError from "@/components/ui/FormError";
+import SheetFooter from "./SheetFooter";
 
 type Props = {
   month: string;
@@ -207,7 +207,18 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
 
   return (
     <>
-    <AppSheet ref={innerRef} onDismiss={resetForm}>
+    <AppSheet
+      ref={innerRef}
+      onDismiss={resetForm}
+      footer={
+        <SheetFooter error={error}>
+          <Button label={saveGate.label} icon={saveGate.icon} hint={saveGate.hint} onPress={handleSubmit(onSave)} loading={saving} disabled={!saveGate.allowed || !isValid || needsCategory} />
+          {isEdit && (
+            <Button label={removeGate.label} icon={removeGate.icon} hint={removeGate.hint} variant="dangerGhost" onPress={onRemove} disabled={!removeGate.allowed} />
+          )}
+        </SheetFooter>
+      }
+    >
       {isEdit ? (
         <View style={styles.identity}>{identity}</View>
       ) : (
@@ -263,12 +274,6 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
         <AppText size="xs" weight="bold" color="danger">
           {errors.limit.message}
         </AppText>
-      )}
-      <FormError message={error} />
-
-      <Button label={saveGate.label} icon={saveGate.icon} hint={saveGate.hint} onPress={handleSubmit(onSave)} loading={saving} disabled={!saveGate.allowed || !isValid || needsCategory} />
-      {isEdit && (
-        <Button label={removeGate.label} icon={removeGate.icon} hint={removeGate.hint} variant="dangerGhost" onPress={onRemove} disabled={!removeGate.allowed} />
       )}
     </AppSheet>
     <ConfirmSheet

@@ -399,6 +399,19 @@ const limitRef = useRef<BottomSheetModal>(null);
 | `footer` | A CTA pinned in its own opaque bar above the keyboard and the home indicator. The body pads itself by the measured height, so scrolled content passes cleanly behind it. Export sheets put their button here. |
 | `scrollResetKey` | Change it to send the body back to the top when a sheet swaps its content in place. |
 
+**Where the CTA goes** (gaps row 119): a sheet with an input, or a `scrollable` one, puts its
+primary CTA, any secondary action and its form error in `footer`, through
+`<SheetFooter error={error}>…</SheetFooter>`. A sheet with neither (`ConfirmSheet`,
+`OptionSheet`, the pickers) may keep its buttons in the body.
+
+**Where an error goes** (gaps row 118): a field's own problem sits under that field
+(`Input error=`, `FieldRow error=`, `FieldError`), and so does a server issue that names the
+field (`splitIssues`). Anything else is the form error, in `SheetFooter` above the CTA. All of
+them read xs bold danger. A failed submit buzzes once, through `useFormError().fail`; a
+failure a toast reports has the toast's own buzz. `errorText(err, fallback)` turns a caught
+value into the sentence. Multi-field forms validate with react-hook-form and a zod schema, so
+every field problem shows at once.
+
 Three rules apply, and each exists because breaking it produced a real bug.
 
 ### Expose your own ref, not AppSheet's caller ref

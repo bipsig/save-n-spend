@@ -6,7 +6,6 @@ import { AppText } from "@/components/ui/AppText";
 import Button from "@/components/ui/Button";
 import Icon from "@/components/ui/Icon";
 import { syncAccountBalance } from "@/lib/accounts";
-import { haptics } from "@/lib/haptics";
 import { holderFor } from "@/lib/idempotency";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { count } from "@/lib/format/count";
@@ -16,7 +15,7 @@ import { signTone } from "@/lib/signTone";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { errorText } from "@/lib/apiError";
 import { useFormError } from "@/lib/useFormError";
-import FormError from "@/components/ui/FormError";
+import SheetFooter from "./SheetFooter";
 
 /** What each row needs to frame a revaluation as investment growth, not an account reset. */
 export type RevalueHolding = {
@@ -113,7 +112,7 @@ const RevalueSheet = forwardRef<BottomSheetModal, Props>(({ holdings, onSaved },
       ref={innerRef}
       scrollable
       onDismiss={reset}
-      footer={<Button label="Save values" icon={gate.icon} hint={gate.hint} loading={busy} disabled={!gate.allowed} onPress={save} />}
+      footer={<SheetFooter error={error}><Button label="Save values" icon={gate.icon} hint={gate.hint} loading={busy} disabled={!gate.allowed} onPress={save} /></SheetFooter>}
     >
       <View style={styles.identity}>
         <Icon name="investments" size={24} containerSize={52} container="square" gradient="green" />
@@ -162,7 +161,6 @@ const RevalueSheet = forwardRef<BottomSheetModal, Props>(({ holdings, onSaved },
         Leave one blank to skip it. You can update anytime, not just today.
       </AppText>
 
-      <FormError message={error} />
     </AppSheet>
   );
 });

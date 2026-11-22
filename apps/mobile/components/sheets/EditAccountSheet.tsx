@@ -18,7 +18,6 @@ import DateField from "@/components/ui/DateField";
 import { createAccount, syncAccountBalance, updateAccount } from "@/lib/accounts";
 import { formatTxnDate, startOfToday } from "@/lib/date";
 import { updateInvestmentBasis, type InvestmentBasis } from "@/lib/investments";
-import { haptics } from "@/lib/haptics";
 import type { IconName } from "@/lib/icons";
 import formatMoney, { formatBalance, usePrivacyMask } from "@/lib/money";
 import { formatPct } from "@/lib/format/pct";
@@ -32,7 +31,7 @@ import { useAccountStore } from "@/store/accounts";
 import { ACCOUNT_TYPE_LABEL } from "@/lib/accountLabels";
 import { errorText } from "@/lib/apiError";
 import { useFormError } from "@/lib/useFormError";
-import FormError from "@/components/ui/FormError";
+import SheetFooter from "./SheetFooter";
 
 type Props = {
   /** The account being edited, or `null` to create a new one. */
@@ -285,14 +284,16 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
       snapPoints={["82%"]}
       onDismiss={resetForm}
       footer={
-        <Button
-          label={editing ? "Save changes" : "Create account"}
-          icon={gate.icon}
-          hint={gate.hint}
-          loading={busy}
-          disabled={!gate.allowed}
-          onPress={save}
-        />
+        <SheetFooter error={error}>
+          <Button
+            label={editing ? "Save changes" : "Create account"}
+            icon={gate.icon}
+            hint={gate.hint}
+            loading={busy}
+            disabled={!gate.allowed}
+            onPress={save}
+          />
+        </SheetFooter>
       }
     >
       <View style={styles.identity}>
@@ -517,8 +518,6 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
         <Caps>Colour</Caps>
         <ColorPicker value={color} onChange={setColor} />
       </View>
-
-      <FormError message={error} />
     </AppSheet>
   );
 });

@@ -27,7 +27,7 @@ import { spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { useFormError } from "@/lib/useFormError";
-import FormError from "@/components/ui/FormError";
+import SheetFooter from "./SheetFooter";
 
 type Props = {
   goal: IGoal | null;
@@ -130,7 +130,27 @@ const ContributeSheet = forwardRef<BottomSheetModal, Props>(({ goal, onChanged }
   };
 
   return (
-    <AppSheet ref={innerRef} onDismiss={() => { reset(); clearError(); }}>
+    <AppSheet
+      ref={innerRef}
+      onDismiss={() => { reset(); clearError(); }}
+      footer={goal ? (
+        <SheetFooter error={error}>
+          {/* Spec: live CTA — the amount AND the resulting % */}
+          <Button
+            label={
+              isValid && entered > 0
+                ? `Add ${formatMoney(entered)} · goal reaches ${formatPct(projectedPct)}`
+                : "Add money"
+            }
+            icon={gate.icon}
+            hint={gate.hint}
+            onPress={handleSubmit(onSubmit)}
+            loading={submitting}
+            disabled={!isValid || !gate.allowed}
+          />
+        </SheetFooter>
+      ) : undefined}
+    >
       {goal && (
         <>
           {/* Spec .centerid — the card's identity repeated so context never drops */}
@@ -208,21 +228,6 @@ const ContributeSheet = forwardRef<BottomSheetModal, Props>(({ goal, onChanged }
             )}
           />
 
-          <FormError message={error} />
-
-          {/* Spec: live CTA — the amount AND the resulting % */}
-          <Button
-            label={
-              isValid && entered > 0
-                ? `Add ${formatMoney(entered)} · goal reaches ${formatPct(projectedPct)}`
-                : "Add money"
-            }
-            icon={gate.icon}
-            hint={gate.hint}
-            onPress={handleSubmit(onSubmit)}
-            loading={submitting}
-            disabled={!isValid || !gate.allowed}
-          />
         </>
       )}
     </AppSheet>

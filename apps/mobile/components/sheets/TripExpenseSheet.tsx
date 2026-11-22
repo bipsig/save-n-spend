@@ -29,7 +29,7 @@ import { colors, spacing } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { errorText } from "@/lib/apiError";
 import { useFormError } from "@/lib/useFormError";
-import FormError from "@/components/ui/FormError";
+import SheetFooter from "./SheetFooter";
 
 type Props = {
   tripId: string;
@@ -199,7 +199,7 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
         scrollable
         snapPoints={["92%"]}
         onDismiss={resetForm}
-        footer={<Button label={expense ? "Save changes" : "Add expense"} icon={gate.icon} hint={gate.hint} loading={busy} disabled={!gate.allowed} onPress={save} />}
+        footer={<SheetFooter error={error}><Button label={expense ? "Save changes" : "Add expense"} icon={gate.icon} hint={gate.hint} loading={busy} disabled={!gate.allowed} onPress={save} /></SheetFooter>}
       >
         <AppText size="md" weight="black">{expense ? "Edit expense" : "Add expense"}</AppText>
 
@@ -287,7 +287,6 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
         )}
         {effect && <AppText size="xs" color="inkDim" style={styles.center}>{effect}</AppText>}
 
-        <FormError message={error} />
         {expense && <Button label="Delete expense" variant="dangerGhost" icon={gate.icon ?? "delete"} hint={gate.hint} disabled={!gate.allowed} onPress={() => deleteRef.current?.present()} />}
       </AppSheet>
 

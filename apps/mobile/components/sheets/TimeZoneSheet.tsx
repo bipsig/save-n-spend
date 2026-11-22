@@ -13,7 +13,7 @@ import { deviceZone } from "@/lib/zone";
 import { colors, radius, spacing } from "@/theme";
 import { errorText } from "@/lib/apiError";
 import { useFormError } from "@/lib/useFormError";
-import FormError from "@/components/ui/FormError";
+import SheetFooter from "./SheetFooter";
 
 // Fixed height, like the category picker: the list is long, and a sheet that grows to
 // fit it would open at a different height depending on what was typed last.
@@ -113,7 +113,7 @@ const TimeZoneSheet = forwardRef<BottomSheetModal, Props>(({ value, onPick }, re
     // Keyed on the search term, so each new set of results starts at the top. Typing
     // into a scrolled shortlist otherwise leaves you looking at the middle of a list
     // that is now three entries long.
-    <AppSheet ref={innerRef} onDismiss={reset} scrollable snapPoints={SNAP_POINTS} scrollResetKey={search.trim()}>
+    <AppSheet ref={innerRef} onDismiss={reset} scrollable snapPoints={SNAP_POINTS} scrollResetKey={search.trim()} footer={error ? <SheetFooter error={error}>{null}</SheetFooter> : undefined}>
       <View style={styles.identity}>
         <Icon name="clock" size={24} containerSize={52} container="square" gradient="accent" />
         <View style={styles.identityText}>
@@ -165,7 +165,6 @@ const TimeZoneSheet = forwardRef<BottomSheetModal, Props>(({ value, onPick }, re
         )}
       </View>
 
-      <FormError message={error} />
     </AppSheet>
   );
 });

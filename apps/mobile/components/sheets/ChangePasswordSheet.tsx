@@ -1,6 +1,5 @@
 import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { BottomSheetModal, BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -18,7 +17,7 @@ import { toast } from "@/store/toast";
 import { spacing } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { errorText } from "@/lib/apiError";
-import FormError from "@/components/ui/FormError";
+import SheetFooter from "./SheetFooter";
 
 const schema = z
   .object({
@@ -103,7 +102,7 @@ const ChangePasswordSheet = forwardRef<BottomSheetModal, { onChanged?: () => voi
       ref={innerRef}
       onDismiss={clear}
       scrollable
-      footer={<Button label="Change password" icon={gate.icon} hint={gate.hint} loading={isSubmitting} disabled={!gate.allowed} onPress={submit} />}
+      footer={<SheetFooter error={error}><Button label="Change password" icon={gate.icon} hint={gate.hint} loading={isSubmitting} disabled={!gate.allowed} onPress={submit} /></SheetFooter>}
     >
       <View style={styles.identity}>
         <Icon name="lock" size={24} containerSize={52} container="square" gradient="violet" />
@@ -174,12 +173,6 @@ const ChangePasswordSheet = forwardRef<BottomSheetModal, { onChanged?: () => voi
           />
         )}
       />
-
-      {error && (
-        <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)}>
-          <FormError message={error} />
-        </Animated.View>
-      )}
     </AppSheet>
   );
 });

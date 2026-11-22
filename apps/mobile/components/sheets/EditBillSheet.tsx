@@ -37,6 +37,9 @@ import { colors, spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { editWithUndo, previousValues } from "@/lib/undo";
+import SheetFooter from "./SheetFooter";
+import FieldError from "@/components/ui/FieldError";
+import { useFormError } from "@/lib/useFormError";
 
 /** The lead time the "remind me" switch stands for. 0 is how the server says "don't". */
 const REMIND_DAYS = 3;
@@ -137,7 +140,7 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, draft, onChan
 
   const editing = bill !== null;
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { error, fail, clear: clearError } = useFormError();
 
   const {
     control,
@@ -159,7 +162,7 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, draft, onChan
   // so this effect wouldn't fire to put the values back.
   useEffect(() => {
     reset(defaults(bill, draft));
-    setError(null);
+    clearError();
   }, [bill, draft, reset]);
 
   const category = useCategoryById(watch("category"));
@@ -188,7 +191,7 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, draft, onChan
     };
 
     setSubmitting(true);
-    setError(null);
+    clearError();
     try {
       const idem = holderFor("bill:new");
       const saved = bill
@@ -214,7 +217,7 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, draft, onChan
         `Couldn't ${editing ? "save" : "add"} the bill`,
       );
       for (const [field, message] of Object.entries(byField) as [keyof FormValues, string][]) setFieldError(field, { message });
-      setError(rest);
+      fail(rest);
     }
     finally {
       setSubmitting(false);
@@ -223,7 +226,22 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, draft, onChan
 
   return (
     <>
-    <AppSheet ref={innerRef} onDismiss={() => { reset(defaults(bill, draft)); setError(null); }}>
+    <AppSheet
+      ref={innerRef}
+      onDismiss={() => { reset(defaults(bill, draft)); clearError(); }}
+      footer={
+        <SheetFooter error={error}>
+          <Button
+            label={editing ? "Save Changes" : "Add Bill"}
+            icon={gate.icon}
+            hint={gate.hint}
+            onPress={handleSubmit(onSubmit)}
+            loading={submitting}
+            disabled={!isValid || !gate.allowed}
+          />
+        </SheetFooter>
+      }
+    >
       <View style={styles.header}>
         <AppText size="md" weight="black">
           {editing ? "Edit Bill" : "Add Bill"}
@@ -251,6 +269,7 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, draft, onChan
             />
           )}
         />
+        <FieldError message={errors.name?.message} />
       </View>
 
       <View style={styles.field}>
@@ -262,6 +281,7 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, draft, onChan
             <AmountHeroInput value={value} onChangeText={onChange} onBlur={onBlur} />
           )}
         />
+        <FieldError message={errors.amount?.message} />
       </View>
 
       {/* No floor while editing: an existing bill's due date is often already past,
@@ -372,20 +392,7 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, draft, onChan
         )}
       />
 
-      {(errors.name || errors.amount || errors.category || errors.toInvestment || error) && (
-        <AppText size="xs" weight="bold" color="danger">
-          {errors.name?.message ?? errors.amount?.message ?? errors.category?.message ?? errors.toInvestment?.message ?? error}
-        </AppText>
-      )}
-
-      <Button
-        label={editing ? "Save Changes" : "Add Bill"}
-        icon={gate.icon}
-        hint={gate.hint}
-        onPress={handleSubmit(onSubmit)}
-        loading={submitting}
-        disabled={!isValid || !gate.allowed}
-      />
+      <FieldError message={errors.category?.message ?? errors.toInvestment?.message} />
     </AppSheet>
 
     <CategoryPickerSheet

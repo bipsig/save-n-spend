@@ -11,6 +11,7 @@ import PressableScale from "@/components/ui/PressableScale";
 import { useCategoryStore } from "@/store/categories";
 import formatMoney, { parseMoney, paiseToInput, usePrivacyMask } from "@/lib/money";
 import { spacing } from "@/theme";
+import SheetFooter from "./SheetFooter";
 
 export type Part = { title: string; category: string | null; cost: number };
 
@@ -49,7 +50,30 @@ const BreakdownSheet = forwardRef<BottomSheetModal, Props>(({ row, initial, onSa
 
   return (
     <>
-      <AppSheet ref={innerRef} scrollable onDismiss={resetForm}>
+      <AppSheet
+        ref={innerRef}
+        scrollable
+        onDismiss={resetForm}
+        footer={
+          <SheetFooter>
+            <View style={styles.status}>
+              <AppText size="xs" weight="bold" color={left === 0 ? "success" : "warning"} style={styles.grow}>
+                {left === 0 ? "Adds up ✓" : left > 0 ? `${formatMoney(left)} still to assign` : `${formatMoney(-left)} too much`}
+              </AppText>
+              <Button label="Add a part" icon="add" variant="ghost" size="sm" onPress={() => setParts((ps) => [...ps, { title: "", category: null, amount: "" }])} />
+            </View>
+            <Button
+              label="Use these parts"
+              disabled={left !== 0}
+              onPress={() => {
+                onSave(parts.map((p) => ({ title: p.title.trim() || (row?.title ?? ""), category: p.category, cost: parseMoney(p.amount) || 0 })).filter((p) => p.cost > 0));
+                innerRef.current?.dismiss();
+              }}
+            />
+            <Button label="Keep it as one" variant="ghost" onPress={() => { onSave(null); innerRef.current?.dismiss(); }} />
+          </SheetFooter>
+        }
+      >
         <AppText size="md" weight="black">Break down {row?.title}</AppText>
         <AppText size="xs" color="inkDim">{formatMoney(row?.cost ?? 0)} in all. Each part is split the same way as the whole.</AppText>
         {parts.map((p, i) => {
@@ -73,19 +97,6 @@ const BreakdownSheet = forwardRef<BottomSheetModal, Props>(({ row, initial, onSa
             </View>
           );
         })}
-        <Button label="Add a part" icon="add" variant="ghost" onPress={() => setParts((ps) => [...ps, { title: "", category: null, amount: "" }])} />
-        <AppText size="xs" weight="bold" color={left === 0 ? "success" : "warning"}>
-          {left === 0 ? "Adds up ✓" : left > 0 ? `${formatMoney(left)} still to assign` : `${formatMoney(-left)} too much`}
-        </AppText>
-        <Button
-          label="Use these parts"
-          disabled={left !== 0}
-          onPress={() => {
-            onSave(parts.map((p) => ({ title: p.title.trim() || (row?.title ?? ""), category: p.category, cost: parseMoney(p.amount) || 0 })).filter((p) => p.cost > 0));
-            innerRef.current?.dismiss();
-          }}
-        />
-        <Button label="Keep it as one" variant="ghost" onPress={() => { onSave(null); innerRef.current?.dismiss(); }} />
       </AppSheet>
       <CategoryPickerSheet ref={pickerRef} kind="expense" onPick={(id) => { if (picking !== null) set(picking, { category: id }); }} />
     </>
@@ -99,6 +110,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   grow: { flex: 1 },
   amount: { width: 96 },
+  status: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   catChip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.13)", flex: 1 },
 });
 

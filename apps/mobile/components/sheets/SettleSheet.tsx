@@ -11,7 +11,6 @@ import Button from "@/components/ui/Button";
 import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
 import { useAccountById, useDefaultAccount } from "@/lib/accounts";
-import { haptics } from "@/lib/haptics";
 import formatMoney, { parseMoney, paiseToInput, usePrivacyMask } from "@/lib/money";
 import { settleTrip } from "@/lib/trips";
 import { holderFor } from "@/lib/idempotency";
@@ -20,7 +19,7 @@ import { spacing } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { errorText } from "@/lib/apiError";
 import { useFormError } from "@/lib/useFormError";
-import FormError from "@/components/ui/FormError";
+import SheetFooter from "./SheetFooter";
 
 type Props = {
   tripId: string;
@@ -85,7 +84,15 @@ const SettleSheet = forwardRef<BottomSheetModal, Props>(({ tripId, member, onSav
 
   return (
     <>
-      <AppSheet ref={innerRef} onDismiss={resetForm}>
+      <AppSheet
+        ref={innerRef}
+        onDismiss={resetForm}
+        footer={member ? (
+          <SheetFooter error={error}>
+            <Button label={theyOwe ? "Record payment received" : "Record payment"} icon={gate.icon} hint={gate.hint} loading={busy} disabled={!gate.allowed} onPress={save} />
+          </SheetFooter>
+        ) : undefined}
+      >
         {member && (
           <>
             <AppText size="md" weight="black">{theyOwe ? `${member.name} pays you back` : `You pay ${member.name} back`}</AppText>
@@ -111,8 +118,6 @@ const SettleSheet = forwardRef<BottomSheetModal, Props>(({ tripId, member, onSav
               <AppText size="xs" color="inkDim">{formatMoney(owed - value)} will still be open.</AppText>
             )}
             <AppText size="xs" color="inkDim">Settling up isn't spending or income — it only moves money between you.</AppText>
-            <FormError message={error} />
-            <Button label={theyOwe ? "Record payment received" : "Record payment"} icon={gate.icon} hint={gate.hint} loading={busy} disabled={!gate.allowed} onPress={save} />
           </>
         )}
       </AppSheet>
