@@ -135,7 +135,10 @@ test("switched off, closed, or still morning where they are: nothing", async () 
 
     // 20:30 in Kolkata is 11:00 in New York.
     await runReminders(AT_2030);
-    assert.deepEqual([await titles(off), await titles(closed), await titles(ny)], [[], [], []]);
+    assert.deepEqual([await titles(closed), await titles(ny)], [[], []]);
+    // Switched off silences push only; the bell still gets the reminder (gaps row 17, decision 1a).
+    assert.deepEqual(await titles(off), ["Overdue is overdue"]);
+    assert.ok((await feed(off)).every((r) => r.pushedAt === null));
     // Bill reminders have no switch of their own.
     assert.deepEqual(await titles(digestsOff), ["Overdue is overdue"]);
 });

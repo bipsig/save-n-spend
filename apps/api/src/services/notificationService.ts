@@ -28,15 +28,15 @@ export type NotifiableUser = {
 };
 
 /**
- * Which switch in Settings governs which kind. Bill reminders have none of their own —
- * their setting is the lead time — so they answer to the primary switch alone.
+ * Which switch in Settings governs which kind, for the bell and push alike. The primary
+ * switch is not one of them: it silences push only (decision 1a, gaps row 17), so the bell
+ * keeps every reminder. Bill reminders have no switch of their own; their setting is the
+ * lead time.
  *
  * Exported so a caller can ask before doing the work of composing one: `notify` checks
  * this too, but by then the budgets have been aggregated.
  */
 export const wantsNotification = (prefs: Partial<INotificationPrefs> | undefined, type: NotificationType): boolean => {
-    if (prefs?.enabled === false) return false;
-
     switch (type) {
         case "budgetWarning":
         case "budgetExceeded":
@@ -92,6 +92,10 @@ export const notify = async (user: NotifiableUser, input: NotifyInput): Promise<
             dedupeKey: input.dedupeKey,
         });
 
+        if (user.prefs?.notifications?.enabled === false) {
+            outcome("sent to the in-app feed (notifications switched off, so no push)");
+            return true;
+        }
         if (!user.pushToken) {
             outcome("sent to the in-app feed (no push token on this account)");
             return true;

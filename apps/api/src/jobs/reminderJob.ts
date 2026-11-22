@@ -351,17 +351,15 @@ const remindRecurring = async (user: ReminderUser, zone: string, now: Date): Pro
 };
 
 /**
- * One pass over every user who hasn't switched notifications off. `now` is a parameter so a
+ * One pass over every live user, notifications switched off included: that switch silences
+ * push only, and the bell still gets the rows (gaps row 17). `now` is a parameter so a
  * script or test can drive this at an arbitrary instant — nothing inside reads the clock. A full
  * scan is fine at this size; the shape to move to is a query per zone-offset bucket.
  */
 export const runReminders = async (now: Date = new Date()): Promise<void> => {
     // `deactivatedAt: null` matches a live account and one written before the field existed.
     // A deleted account must stop hearing from us even though its data is still there.
-    const users = await User.find({
-            "prefs.notifications.enabled": { $ne: false },
-            deactivatedAt: null
-        })
+    const users = await User.find({ deactivatedAt: null })
         .select("currency pushToken prefs.timeZone prefs.notifications")
         .lean();
 

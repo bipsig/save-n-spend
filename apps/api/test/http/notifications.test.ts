@@ -101,7 +101,7 @@ test("budget alerts: 80% then over, once each, pushed with the unread badge; a p
     assert.equal(pushesTo(token).length, 2);
 });
 
-test("budget alerts: a sub-category's own limit; switched off, nothing; no token, in-app only", async () => {
+test("budget alerts: a sub-category's own limit; its own switch off, nothing; notifications off, the bell only; no token, in-app only", async () => {
     setClock(NOW);
     const u = await api.user("notify-sub");
     const b = await u.account("Bank", { startingBalance: 1_000_000 });
@@ -117,12 +117,10 @@ test("budget alerts: a sub-category's own limit; switched off, nothing; no token
     assert.equal((await u.send("PATCH", "/users/me", { prefs: { notifications: { budgetAlerts: false } } })).status, 200);
     await spend(u, 20_000, electronics, NOW, b);
     assert.equal((await stored(u)).length, 1);
+    // Gaps row 17, decision 1a: notifications off silences push and banners, not the bell.
     assert.equal((await u.send("PATCH", "/users/me", { prefs: { notifications: { budgetAlerts: true, enabled: false } } })).status, 200);
-    await spend(u, 20_000, electronics, NOW, b);
-    assert.equal((await stored(u)).length, 1);
-    assert.equal((await u.send("PATCH", "/users/me", { prefs: { notifications: { enabled: true } } })).status, 200);
     await spend(u, 1_000, electronics, NOW, b);
-    assert.deepEqual((await stored(u)).map((r) => r.title), ["Clothing is at 90.0%", "Electronics is over budget"]);
+    assert.deepEqual((await stored(u)).map((r) => [r.title, r.pushedAt]), [["Clothing is at 90.0%", null], ["Electronics is over budget", null]]);
 });
 
 test("budget alerts: the warning's percentage is floored to a tenth, so it never reads 100.0% short of the limit", async () => {
@@ -204,11 +202,11 @@ test("feed: read-all clears only your own; it isn't keyed, so a key is ignored a
 
 // ---- The notifier and the push transport -----------------------------------------------------
 
-test("wantsNotification: the primary switch silences all; digests and the revalue nudge are opt-in", () => {
+test("wantsNotification: the primary switch is not one of them (it gates push only); digests and the revalue nudge are opt-in", () => {
     const types = ["billReminder", "billOverdue", "budgetWarning", "budgetExceeded", "goalMilestone", "goalDeadline", "dailySummary", "weeklySummary", "monthlySummary", "revalueInvestments", "recurringFound"] as const;
     const on = (prefs: Parameters<typeof wantsNotification>[0]) => types.filter((t) => wantsNotification(prefs, t));
     assert.deepEqual(on(undefined), ["billReminder", "billOverdue", "budgetWarning", "budgetExceeded", "goalMilestone", "goalDeadline", "monthlySummary", "recurringFound"]);
-    assert.deepEqual(on({ enabled: false, dailySummary: true }), []);
+    assert.deepEqual(on({ enabled: false, dailySummary: true }), on({ dailySummary: true }));
     assert.deepEqual(on({ budgetAlerts: false, goalMilestones: false, monthlySummary: false, dailySummary: true, weeklySummary: true, investmentReminder: true }),
         ["billReminder", "billOverdue", "dailySummary", "weeklySummary", "revalueInvestments", "recurringFound"]);
 });
@@ -222,9 +220,12 @@ test("notify: once per key; no token is in-app only; a bad row fails quietly", a
     assert.equal(await notifyUserId(u.id, { ...input, dedupeKey: "other", title: "" }), false, "a title is required");
     assert.equal(await notifyUserId(new ObjectId().toHexString(), input), false, "no such user");
     assert.equal(await quiet(() => notifyUserId("not-an-id", input)), false, "a bad id");
-    assert.equal(await notify({ _id: u.id, prefs: { notifications: { enabled: false } } }, { ...input, dedupeKey: "off" }), false);
+    // Switched off: the row is written, never pushed, even with a token.
+    const token = pushToken();
+    assert.equal(await notify({ _id: u.id, pushToken: token, prefs: { notifications: { enabled: false } } }, { ...input, dedupeKey: "off" }), true);
+    assert.equal(pushesTo(token).length, 0);
     const rows = await stored(u);
-    assert.deepEqual(rows.map((r) => [r.dedupeKey, r.pushedAt]), [["bill:x:due:2026-04-18", null]]);
+    assert.deepEqual(rows.map((r) => [r.dedupeKey, r.pushedAt]), [["bill:x:due:2026-04-18", null], ["off", null]]);
 });
 
 test("push: Expo refusing a dead token forgets it; another refusal or a throw keeps it; neither fails the notification", async () => {
