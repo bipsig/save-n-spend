@@ -35,6 +35,7 @@ import { useTripNameStore } from "@/store/tripNames";
 import { useOutbox } from "@/store/outbox";
 import { usePendingDeletes } from "@/store/pendingDeletes";
 import { useLastOpened } from "@/store/lastOpened";
+import { useSeen } from "@/store/seen";
 import { useRequestLog } from "@/store/requestLog";
 import { APP_VERSION, useWhatsNew } from "@/store/whatsNew";
 import { installGlobalErrorHandler, setCurrentScreen } from "@/lib/errorReporting";
@@ -189,6 +190,7 @@ const RootLayout = () => {
       if (userId) {
         void useOutbox.getState().load(userId).then(() => useOutbox.getState().drain());
         void useLastOpened.getState().hydrate(userId);
+        void useSeen.getState().hydrate(userId);
       }
     }
     else if (status === "guest") {
@@ -197,6 +199,7 @@ const RootLayout = () => {
       useNotifications.getState().reset();
       useTitleSuggestionStore.getState().reset();
       useTripNameStore.getState().reset();
+      useSeen.getState().reset();
       // Financial data must not survive a sign-out or an account switch on this phone —
       // but the outbox FILE is deliberately untouched by this: see lib/outbox.ts.
       void offlineCache.clearAll();

@@ -16,7 +16,7 @@ export const periodKey = (period: ReviewPeriod, offset: number): string | undefi
   rangeBounds(period, offset).startDate;
 
 /** The period that just closed — offset -1, relative to today. What the auto-surface
- *  banner compares against `settings.lastReviewedPeriod`. */
+ *  banner compares against `useSeen`'s `lastReviewedPeriod`. */
 export const currentPeriodKey = (period: ReviewPeriod): string | undefined =>
   periodKey(period, -1);
 

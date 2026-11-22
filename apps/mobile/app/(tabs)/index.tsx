@@ -53,6 +53,7 @@ import { useSettings } from "@/store/settings";
 import { useAccountStore } from "@/store/accounts";
 import { useOutbox } from "@/store/outbox";
 import { useLastOpened } from "@/store/lastOpened";
+import { useSeen } from "@/store/seen";
 import EmergencyFundCard from "@/components/data/EmergencyFundCard";
 import SinceLastOpenedCard from "@/components/data/SinceLastOpenedCard";
 import WeekPulseRow from "@/components/data/WeekPulseRow";
@@ -86,6 +87,7 @@ const HomeScreen = () => {
   const previousOpenedAt = useLastOpened((s) => s.previousOpenedAt);
   // The four tiles' Month / Year / All time, kept across launches.
   const homePeriod = useSettings((s) => s.homePeriod);
+  const updateSettings = useSettings((s) => s.update);
   const summaryQuery = useDashboardSummary(previousOpenedAt, homePeriod);
   const dashboardSummary = summaryQuery.data;
 
@@ -183,11 +185,13 @@ const HomeScreen = () => {
     useAccountStore.getState().load().catch(() => {}),
   ]);
 
-  const dismissedBy = useSettings((s) => s.getStartedDismissed);
-  const settingsHydrated = useSettings((s) => s.hydrated);
-  const updateSettings = useSettings((s) => s.update);
-  const netWorthMilestoneSeen = useSettings((s) => s.netWorthMilestoneSeen);
-  const lastReviewedPeriod = useSettings((s) => s.lastReviewedPeriod);
+  // This account's own seen values (store/seen); nothing below decides or marks anything
+  // until they are read, or a stored value would be overwritten by the defaults.
+  const seenReady = useSeen((s) => !!userId && s.userId === userId);
+  const getStartedDismissed = useSeen((s) => s.getStartedDismissed);
+  const updateSeen = useSeen((s) => s.update);
+  const netWorthMilestoneSeen = useSeen((s) => s.netWorthMilestoneSeen);
+  const lastReviewedPeriod = useSeen((s) => s.lastReviewedPeriod);
 
   const progress = progressOf(buildSteps({ transactions, accounts, budgets, bills, goals }));
 
@@ -203,14 +207,11 @@ const HomeScreen = () => {
 
   const showGetStarted =
     listsReady &&
-    settingsHydrated &&
+    seenReady &&
     !progress.allDone &&
-    !(userId && dismissedBy.includes(userId));
+    !getStartedDismissed;
 
-  const dismissGetStarted = () => {
-    if (!userId) return;
-    updateSettings({ getStartedDismissed: [...dismissedBy, userId] });
-  };
+  const dismissGetStarted = () => updateSeen({ getStartedDismissed: true });
 
   // A step routes to the screen that owns it, each of which already opens on its own empty
   // state with the matching CTA — so the checklist never has to drive a sheet from here.
@@ -250,23 +251,24 @@ const HomeScreen = () => {
   // Null with fewer than 2 trend points — nothing to compare against yet, same as the
   // sparkline's own floor.
   const netWorthTrend = dashboardSummary?.netWorthTrend;
-  const netWorthMilestone = netWorthTrend && netWorthTrend.length >= 2
+  const netWorthMilestone = seenReady && netWorthTrend && netWorthTrend.length >= 2
     ? milestoneCrossed(netWorthTrend[netWorthTrend.length - 2].total, netWorthTrend[netWorthTrend.length - 1].total, netWorthMilestoneSeen)
     : null;
 
   // Marked "seen" the moment it's shown, not only if tapped — a celebration that
   // reappears every reload because it was never acknowledged would stop feeling rare.
   useEffect(() => {
-    if (netWorthMilestone !== null) updateSettings({ netWorthMilestoneSeen: netWorthMilestone });
-  }, [netWorthMilestone, updateSettings]);
+    if (netWorthMilestone !== null) updateSeen({ netWorthMilestoneSeen: netWorthMilestone });
+  }, [netWorthMilestone, updateSeen]);
 
   // The period that just closed, week and month independently — a new month is also a
   // new week, so both can be unseen at once; month wins that day (see
   // ReviewReadyBanner's own doc comment). Never more than one banner shown at a time.
   const closedMonthKey = currentPeriodKey("month");
   const closedWeekKey = currentPeriodKey("week");
-  const reviewBanner =
-    closedMonthKey && closedMonthKey !== lastReviewedPeriod.month
+  const reviewBanner = !seenReady
+    ? null
+    : closedMonthKey && closedMonthKey !== lastReviewedPeriod.month
       ? { period: "month" as const, key: closedMonthKey }
       : closedWeekKey && closedWeekKey !== lastReviewedPeriod.week
         ? { period: "week" as const, key: closedWeekKey }
@@ -275,7 +277,7 @@ const HomeScreen = () => {
   // Same "seen the moment it's shown" convention as the net-worth milestone above.
   useEffect(() => {
     if (reviewBanner) {
-      updateSettings({ lastReviewedPeriod: { ...lastReviewedPeriod, [reviewBanner.period]: reviewBanner.key } });
+      updateSeen({ lastReviewedPeriod: { ...lastReviewedPeriod, [reviewBanner.period]: reviewBanner.key } });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reviewBanner?.period, reviewBanner?.key]);

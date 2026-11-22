@@ -4,7 +4,7 @@
 // Every step's `done` is DERIVED from data the app already loads, never stored: a
 // persisted flag can disagree with reality (delete your only budget and it would still
 // congratulate you), and derivation is self-correcting. The one exception is dismissal,
-// a preference in `store/settings` (`getStartedDismissed`).
+// kept per account in `store/seen` (`getStartedDismissed`).
 import type { IAccount } from '@save-n-spend/types';
 import type { IconName } from '@/lib/icons';
 import type { ChipTint } from '@/theme';

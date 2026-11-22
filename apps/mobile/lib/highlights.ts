@@ -3,7 +3,8 @@ import type { HighlightScreen, HighlightSeverity, HighlightsPayload } from "@sav
 import type { ColorToken } from "@/theme";
 import type { IconName } from "@/lib/icons";
 import { useApiQuery } from "@/lib/query/useApiQuery";
-import { readJson, writeJson } from "./deviceStore";
+import { adoptLegacy, perUser, SEEN_KEYS } from "@/lib/perUser";
+import { useSession } from "@/store/session";
 
 // The client half of Highlights. Like lib/health, everything judged is judged
 // server-side — ranking, thresholds, copy — and everything here is presentation:
@@ -63,13 +64,14 @@ export const SCREEN_LABEL: Record<HighlightScreen, string> = {
 };
 
 // Dismissals.
-// Device-local, like privacy mode and the app lock: which cards THIS phone has waved
-// away is not an account fact, and keeping it off the server keeps the whole feature
-// read-only there. A dismissal expires after a week — a card that still fires then
+// On the phone, per account (decision 16): which cards were waved away here stays off the
+// server, which keeps the whole feature read-only there. A dismissal expires after a week — a card that still fires then
 // has stayed true for a week, which is exactly when it has earned a second look.
 // Month keys also roll the suppression naturally: a new month is a new key.
 
-const DISMISSED_KEY = "sns.dismissedHighlights";
+// Per account since 2.8.8 (lib/perUser, gaps row 185); before, one map for the phone.
+const LEGACY_DISMISSED_KEY = "sns.dismissedHighlights";
+const dismissedStore = perUser<DismissedMap>(SEEN_KEYS.highlights);
 const DISMISS_FOR_MS = 7 * 24 * 60 * 60 * 1000;
 
 type DismissedMap = Record<string, number>; // highlight key → when it was waved away
@@ -82,24 +84,26 @@ export const useHighlights = () => {
   // Null until read. Read again with each new answer, so a card waved away on another
   // screen stays hidden here; until the first read no card shows, so a freshly opened
   // screen never flashes one dismissed yesterday.
+  const userId = useSession((s) => s.user?._id ?? null);
   const [dismissed, setDismissed] = useState<DismissedMap | null>(null);
   useEffect(() => {
+    if (!userId) return;
     let live = true;
-    void readJson<DismissedMap>(DISMISSED_KEY).then((stored) => {
+    void adoptLegacy<DismissedMap>(SEEN_KEYS.highlights, userId, LEGACY_DISMISSED_KEY).then((stored) => {
       if (live) setDismissed(prune(stored ?? {}, Date.now()));
     });
     return () => { live = false; };
-  }, [fetchedAt]);
+  }, [fetchedAt, userId]);
 
   const dismiss = useCallback((key: string) => {
     setDismissed((prev) => {
       // Pruned on every write, so the blob never accumulates a history of expired
       // keys from months of use.
       const nextMap = prune({ ...(prev ?? {}), [key]: Date.now() }, Date.now());
-      void writeJson(DISMISSED_KEY, nextMap);
+      if (userId) void dismissedStore.write(userId, nextMap);
       return nextMap;
     });
-  }, []);
+  }, [userId]);
 
   const highlights = dismissed ? (data?.highlights ?? []).filter((h) => !(h.key in dismissed)) : [];
 

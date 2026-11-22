@@ -27,3 +27,12 @@ export const writeJson = async (key: string, value: unknown): Promise<void> => {
     // worth interrupting the interaction the user just performed.
   }
 };
+
+export const removeKey = async (key: string): Promise<void> => {
+  try {
+    await SecureStore.deleteItemAsync(key);
+  }
+  catch {
+    // Already gone, or the keychain is locked: either way nothing more to do.
+  }
+};

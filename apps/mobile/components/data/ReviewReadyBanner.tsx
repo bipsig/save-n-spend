@@ -11,7 +11,7 @@ type Props = {
   onPress: () => void;
 };
 
-// Shown once per closed period (see store/settings's lastReviewedPeriod) — visually the
+// Shown once per closed period (see store/seen's lastReviewedPeriod) — visually the
 // same banner as NetWorthMilestoneBanner, a nudge rather than a popup, matching this
 // app's own convention of never interrupting with a modal.
 const ReviewReadyBanner = ({ label, onPress }: Props) => {

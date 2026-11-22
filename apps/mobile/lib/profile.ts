@@ -4,6 +4,7 @@ import { deviceZone } from "@/lib/zone";
 import { useSession } from "@/store/session";
 import { usePendingDeletes } from "@/store/pendingDeletes";
 import { detachPush } from "@/lib/push";
+import { clearPerUser } from "@/lib/perUser";
 
 // The account-level half of Settings. Every write returns the whole updated user,
 // which goes straight back into the session store — so a preference changed here
@@ -52,6 +53,9 @@ export const logOut = async ({ deleteAccount = false }: { deleteAccount?: boolea
   await usePendingDeletes.getState().flushAll().catch(() => {});
   await detachPush().catch(() => {});
   if (deleteAccount) await del<null>("/users/me");
+  // What this phone kept as seen for the account (gaps row 185) goes with it.
+  const userId = useSession.getState().user?._id;
+  if (userId) await clearPerUser(userId).catch(() => {});
   await useSession.getState().signOut();
 };
 

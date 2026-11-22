@@ -24,22 +24,8 @@ export interface DeviceSettings {
   /** Require Face ID / fingerprint when the app comes to the foreground. */
   appLock: boolean;
   autoLockSeconds: AutoLockSeconds;
-  /**
-   * Ids of the users who waved away the Get started checklist on THIS phone. A list, not a
-   * boolean, because the flag is device-local but the checklist is per-account: two people
-   * on one phone must not inherit each other's dismissal.
-   */
-  getStartedDismissed: string[];
-  /** Paise. The highest net-worth milestone already celebrated on this phone — so the
-   *  same crossing doesn't show twice. Device-local like the rest of this store; a
-   *  reinstall or a second device re-showing one already seen is an acceptable cost for
-   *  a card that's purely celebratory and never acted on. */
-  netWorthMilestoneSeen: number;
-  /** The most recent week/month `periodKey` the ReviewReadyBanner has already shown, so
-   *  it nudges once per closed period rather than every time the dashboard loads.
-   *  Marked seen the moment it's SHOWN, not only if tapped — same convention as
-   *  `netWorthMilestoneSeen`. */
-  lastReviewedPeriod: { week: string | null; month: string | null };
+  // What Home has shown an account (Get started, the net-worth milestone, the review
+  // banner) is per account since 2.8.8: store/seen.
   /** Settings → Diagnostics shown (the recent-requests log). Off by default and hidden: it's a
    *  developer's view, switched on by tapping the version number seven times. */
   diagnostics: boolean;
@@ -51,9 +37,6 @@ const DEFAULTS: DeviceSettings = {
   privacyMode: false,
   appLock: false,
   autoLockSeconds: 60,
-  getStartedDismissed: [],
-  netWorthMilestoneSeen: 0,
-  lastReviewedPeriod: { week: null, month: null },
   diagnostics: false,
   homePeriod: "month",
 };
@@ -96,8 +79,8 @@ export const useSettings = create<SettingsState>((set, get) => ({
   // written, keeping the stored shape identical to the state's.
   update: (patch) => {
     set(patch);
-    const { privacyMode, appLock, autoLockSeconds, getStartedDismissed, netWorthMilestoneSeen, lastReviewedPeriod, homePeriod } = get();
-    void writeJson(STORAGE_KEY, { privacyMode, appLock, autoLockSeconds, getStartedDismissed, netWorthMilestoneSeen, lastReviewedPeriod, homePeriod });
+    const { privacyMode, appLock, autoLockSeconds, homePeriod } = get();
+    void writeJson(STORAGE_KEY, { privacyMode, appLock, autoLockSeconds, homePeriod });
     // Switching privacy mode ON must not leave a peek running — it would mask nothing.
     if (patch.privacyMode !== undefined) get().hide();
   },

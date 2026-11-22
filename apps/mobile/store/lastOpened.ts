@@ -1,13 +1,24 @@
-// Device-local, like privacy mode and the Get-started dismissal: "since you last opened
-// the app" is about this phone's own session history, not an account fact. Keyed by user
-// id (a map, not a single timestamp) for the same reason `getStartedDismissed` is a list —
-// two people sharing one phone must not inherit each other's "last opened".
+// When this account last opened the app on this phone: "since you last opened" is about this
+// phone's own visits, not an account fact. Per account (lib/perUser, gaps row 185), so two
+// people sharing one phone don't inherit each other's.
 import { create } from "zustand";
 import { readJson, writeJson } from "@/lib/deviceStore";
+import { perUser, SEEN_KEYS } from "@/lib/perUser";
 
-const STORAGE_KEY = "sns.lastOpenedAt";
+const lastOpened = perUser<string>(SEEN_KEYS.lastOpened);
 
-type LastOpenedMap = Record<string, string>; // userId -> ISO timestamp
+/** Where 2.8.7 and older kept it: one map for the phone, user id → ISO timestamp. */
+const LEGACY_KEY = "sns.lastOpenedAt";
+
+const readOwn = async (userId: string): Promise<string | null> => {
+  const own = await lastOpened.read(userId);
+  if (own) return own;
+  const map = await readJson<Record<string, string>>(LEGACY_KEY);
+  if (!map?.[userId]) return null;
+  const { [userId]: legacy, ...others } = map;
+  await writeJson(LEGACY_KEY, others);
+  return legacy;
+};
 
 interface LastOpenedState {
   /** The PREVIOUS session's open time for this user — read once at hydrate and held for
@@ -24,8 +35,8 @@ export const useLastOpened = create<LastOpenedState>((set) => ({
   hydrated: false,
 
   hydrate: async (userId) => {
-    const stored = await readJson<LastOpenedMap>(STORAGE_KEY);
-    set({ previousOpenedAt: stored?.[userId] ?? null, hydrated: true });
-    void writeJson(STORAGE_KEY, { ...stored, [userId]: new Date().toISOString() });
+    const previous = await readOwn(userId);
+    set({ previousOpenedAt: previous, hydrated: true });
+    void lastOpened.write(userId, new Date().toISOString());
   },
 }));
