@@ -14,7 +14,6 @@ import Chip from "@/components/ui/Chip";
 import DateField from "@/components/ui/DateField";
 import Icon from "@/components/ui/Icon";
 import Input from "@/components/ui/Input";
-import PressableScale from "@/components/ui/PressableScale";
 import { useAccountById, useDefaultAccount } from "@/lib/accounts";
 import { useCategoryById } from "@/lib/categories";
 import { haptics } from "@/lib/haptics";
@@ -33,6 +32,7 @@ import SheetFooter from "./SheetFooter";
 import FieldError from "@/components/ui/FieldError";
 import { tripExpenseFormSchema } from "@/lib/formSchemas";
 import { useSchemaForm } from "@/lib/useSchemaForm";
+import FieldRow from "@/components/ui/FieldRow";
 
 type Props = {
   tripId: string;
@@ -216,14 +216,14 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
           <View style={styles.grow}><DateField label="When" value={date} onChange={setDate} maximumDate={new Date()} /></View>
         </View>
 
-        <PressableScale style={styles.selRow} onPress={() => categoryRef.current?.present()} scaleTo={0.98} accessibilityLabel={`Category, ${categoryDoc?.name ?? "none yet"}`} accessibilityHint="Picks the category">
-          <Icon name={(categoryDoc?.icon ?? "category") as IconName} size={16} containerSize={32} containerRadius={10} container="square" gradient={(categoryDoc?.color ?? "accent") as ColorToken} />
-          <View style={styles.grow}>
-            <Caps>Category</Caps>
-            <AppText size="sm" weight="semibold" color={categoryDoc ? "ink" : "inkDim"}>{categoryDoc?.name ?? "Choose a category"}</AppText>
-          </View>
-          <Icon name="chevronRight" size={20} color="inkDim" />
-        </PressableScale>
+        <FieldRow
+          label="Category"
+          value={categoryDoc?.name}
+          placeholder="Choose a category"
+          chip={{ icon: (categoryDoc?.icon ?? "category") as IconName, gradient: (categoryDoc?.color ?? "accent") as ColorToken }}
+          onPress={() => categoryRef.current?.present()}
+          accessibilityHint="Picks the category"
+        />
 
         <Caps>Who paid</Caps>
         <View style={styles.avatars}>
@@ -240,16 +240,16 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
           })}
         </View>
         {payer === ME && (
-          <PressableScale style={styles.selRow} onPress={() => accountRef.current?.present()} scaleTo={0.98} accessibilityLabel={`Paid from, ${fromAccount?.name ?? "no account yet"}`} accessibilityHint="Picks the account">
-            <Icon name="wallet" size={18} color="inkDim" />
-            <View style={styles.grow}>
-              <Caps>Paid from</Caps>
-              <AppText size="sm" weight="semibold">{fromAccount?.name ?? "Choose an account"}</AppText>
-            </View>
-            <Icon name="chevronRight" size={20} color="inkDim" />
-          </PressableScale>
+          <FieldRow
+            label="Paid from"
+            value={fromAccount?.name}
+            placeholder="Choose an account"
+            icon="wallet"
+            onPress={() => accountRef.current?.present()}
+            accessibilityHint="Picks the account"
+            error={fieldError("paidFrom")}
+          />
         )}
-        <FieldError message={fieldError("paidFrom")} />
 
         <View style={styles.splitHead}>
           <Caps>Split between</Caps>
@@ -329,7 +329,6 @@ TripExpenseSheet.displayName = "TripExpenseSheet";
 const styles = StyleSheet.create({
   pair: { flexDirection: "row", gap: spacing.sm },
   grow: { flex: 1 },
-  selRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.13)" },
   avatars: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
   avatarCol: { alignItems: "center", gap: 4, width: 58 },
   avatarRing: { borderRadius: 24, padding: 2 },

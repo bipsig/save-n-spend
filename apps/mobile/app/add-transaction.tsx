@@ -9,7 +9,6 @@ import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
-import Caps from "@/components/ui/Caps";
 import CategoryName from "@/components/ui/CategoryName";
 import DateField from "@/components/ui/DateField";
 import ErrorState from "@/components/states/ErrorState";
@@ -47,6 +46,7 @@ import { useOutbox } from "@/store/outbox";
 import type { ITransaction } from "@save-n-spend/types";
 import { editUndoAllowed, editWithUndo, previousValues } from "@/lib/undo";
 import FormError from "@/components/ui/FormError";
+import FieldRow from "@/components/ui/FieldRow";
 
 const schema = z.object({
   title: z.string(),
@@ -743,37 +743,17 @@ const AddTransaction = () => {
               exiting={FadeOut.duration(120)}
               style={styles.field}
             >
-              <PressableScale
-                style={styles.selRow}
+              <FieldRow
+                label="Category"
+                // Inline breadcrumb: the row already has a label, so the parent shares the
+                // value line — "Fuel" has to show it lands in Transportation.
+                value={<CategoryName categoryId={watch("category")} size="sm" weight="semibold" inline placeholder="Choose a category" />}
+                valueText={selectedCategory ? selectedCategoryLabel.path : "Choose a category"}
+                chip={{ icon: (selectedCategory?.icon ?? "add") as IconName, gradient: (selectedCategory?.color ?? "accent") as ColorToken }}
                 onPress={() => categoryRef.current?.present()}
-                scaleTo={0.98}
-                accessibilityLabel={`Category, ${selectedCategory ? selectedCategoryLabel.path : "Choose a category"}`}
-              >
-                <Icon
-                  name={(selectedCategory?.icon ?? "add") as IconName}
-                  size={17}
-                  containerSize={34}
-                  containerRadius={11}
-                  container="square"
-                  gradient={(selectedCategory?.color ?? "accent") as ColorToken}
-                />
-                <View style={styles.selText}>
-                  <Caps>Category</Caps>
-                  {/* Inline breadcrumb: the row already has a label, so the parent shares
-                      the value line — "Fuel" has to show it lands in Transportation. */}
-                  <CategoryName
-                    categoryId={watch("category")}
-                    size="sm"
-                    weight="semibold"
-                    inline
-                    placeholder="Choose a category"
-                  />
-                </View>
-                <Icon name="chevronRight" size={20} color="inkDim" />
-              </PressableScale>
-              {errors.category && (
-                <AppText size="xs" weight="bold" color="danger">{errors.category.message}</AppText>
-              )}
+                accessibilityHint="Picks the category"
+                error={errors.category?.message}
+              />
             </Animated.View>
           )}
 
@@ -781,13 +761,14 @@ const AddTransaction = () => {
               editable in edit mode — it would need cross-account balance reconciliation. */}
           {!isEdit && !isMoveType && (
             <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)}>
-              <PressableScale style={styles.selRow} onPress={() => accountRef.current?.present()} scaleTo={0.98} accessibilityLabel={`Paid from, ${account?.name ?? "Select account"}`}>
-                <Icon name="wallet" size={18} color="inkDim" />
-                <AppText size="sm" weight="bold" style={styles.selValue}>
-                  {account?.name ?? "Select account"}
-                </AppText>
-                <Icon name="chevronRight" size={20} color="inkDim" />
-              </PressableScale>
+              <FieldRow
+                value={account?.name}
+                placeholder="Select account"
+                icon="wallet"
+                onPress={() => accountRef.current?.present()}
+                accessibilityLabel={`Paid from, ${account?.name ?? "Select account"}`}
+                accessibilityHint="Picks the account"
+              />
             </Animated.View>
           )}
 
@@ -795,19 +776,15 @@ const AddTransaction = () => {
               split is still possible below in Activity, just not from here. */}
           {!isEdit && type === "expense" && (
             <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)} style={styles.stack}>
-              <PressableScale
-                style={[styles.selRow, !splitOpen && styles.selRowDim]}
+              <FieldRow
+                value={owedTotal > 0 ? `Split · ${formatMoney(owedTotal)} owed to you` : "Split with people"}
+                icon="person"
                 onPress={toggleSplit}
-                scaleTo={0.98}
-                accessibilityState={{ expanded: splitOpen }}
+                chevron={splitOpen ? "down" : "right"}
+                dim={!splitOpen}
+                expanded={splitOpen}
                 accessibilityLabel={owedTotal > 0 ? `Split, ${formatMoney(owedTotal)} owed to you` : "Split with people"}
-              >
-                <Icon name="person" size={18} color="inkDim" />
-                <AppText size="sm" weight="semibold" color={splitOpen ? "ink" : "inkDim"} style={styles.selValue}>
-                  {owedTotal > 0 ? `Split · ${formatMoney(owedTotal)} owed to you` : "Split with people"}
-                </AppText>
-                <Icon name={splitOpen ? "chevronDown" : "chevronRight"} size={20} color="inkDim" />
-              </PressableScale>
+              />
 
               {splitOpen && (
                 <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(120)} style={styles.stack}>
@@ -869,46 +846,33 @@ const AddTransaction = () => {
               exiting={FadeOut.duration(120)}
               style={styles.stack}
             >
-              <PressableScale style={styles.selRow} onPress={() => accountRef.current?.present()} scaleTo={0.98} accessibilityLabel={`From, ${account?.name ?? "Select account"}`}>
-                <Icon name="wallet" size={18} color="inkDim" />
-                <View style={styles.selText}>
-                  <Caps>From</Caps>
-                  <AppText size="sm" weight="bold">{account?.name ?? "Select account"}</AppText>
-                </View>
-                <Icon name="chevronRight" size={20} color="inkDim" />
-              </PressableScale>
+              <FieldRow label="From" value={account?.name} placeholder="Select account" icon="wallet" onPress={() => accountRef.current?.present()} accessibilityHint="Picks the account" />
 
-              <PressableScale
-                style={styles.selRow}
+              <FieldRow
+                label={isRedeem ? "Redeem to" : type === "invest" ? "Invest in" : "To"}
+                value={toAccount?.name}
+                placeholder={type === "invest" ? "Select an investment" : "Select destination"}
+                icon={type === "invest" ? "investments" : "activity"}
                 onPress={() => toAccountRef.current?.present()}
-                scaleTo={0.98}
-                accessibilityLabel={`${isRedeem ? "Redeem to" : type === "invest" ? "Invest in" : "To"}, ${toAccount?.name ?? (type === "invest" ? "Select an investment" : "Select destination")}`}
-              >
-                <Icon name={type === "invest" ? "investments" : "activity"} size={18} color="inkDim" />
-                <View style={styles.selText}>
-                  <Caps>{isRedeem ? "Redeem to" : type === "invest" ? "Invest in" : "To"}</Caps>
-                  <AppText size="sm" weight="bold" color={toAccount ? "ink" : "inkDim"}>
-                    {toAccount?.name ?? (type === "invest" ? "Select an investment" : "Select destination")}
-                  </AppText>
-                </View>
-                <Icon name="chevronRight" size={20} color="inkDim" />
-              </PressableScale>
+                accessibilityHint="Picks the account"
+              />
 
               {/* Redeeming books at the recorded value — offer to correct it first, since a
                   holding that grew since the last update would otherwise redeem low (and the
                   guard in onSubmit blocks redeeming more than what's recorded). */}
               {isRedeem && redeemHolding && (
-                <PressableScale style={styles.selRow} onPress={() => revalueRef.current?.present()} scaleTo={0.98} accessibilityLabel={`Worth now, ${formatMoney(account!.balance)}. Tap to update if it's grown`}>
-                  <Icon name="investments" size={18} color="inkDim" />
-                  <View style={styles.selText}>
-                    <Caps>Worth now</Caps>
+                <FieldRow
+                  label="Worth now"
+                  value={
                     <AppText size="sm" weight="bold">
                       {formatMoney(account!.balance)}
                       <AppText size="xs" weight="semibold" color="inkDim"> · tap to update if it's grown</AppText>
                     </AppText>
-                  </View>
-                  <Icon name="chevronRight" size={20} color="inkDim" />
-                </PressableScale>
+                  }
+                  icon="investments"
+                  onPress={() => revalueRef.current?.present()}
+                  accessibilityLabel={`Worth now, ${formatMoney(account!.balance)}. Tap to update if it's grown`}
+                />
               )}
             </Animated.View>
           )}
@@ -917,19 +881,15 @@ const AddTransaction = () => {
           <DateField label="When" mode="datetime" value={occurredAt} onChange={setOccurredAt} maximumDate={new Date()} />
 
           {/* Progressive disclosure — tap to reveal note + location fields. */}
-          <PressableScale
-            style={[styles.selRow, !extrasOpen && styles.selRowDim]}
+          <FieldRow
+            value={extrasOpen ? "Note & location" : "Add note · location"}
+            icon="add"
             onPress={() => setExtrasOpen((open) => !open)}
-            scaleTo={0.98}
-            accessibilityState={{ expanded: extrasOpen }}
+            chevron={extrasOpen ? "down" : "right"}
+            dim={!extrasOpen}
+            expanded={extrasOpen}
             accessibilityLabel={extrasOpen ? "Note and location" : "Add note or location"}
-          >
-            <Icon name="add" size={18} color="inkDim" />
-            <AppText size="sm" weight="semibold" color={extrasOpen ? "ink" : "inkDim"} style={styles.selValue}>
-              {extrasOpen ? "Note & location" : "Add note · location"}
-            </AppText>
-            <Icon name={extrasOpen ? "chevronDown" : "chevronRight"} size={20} color="inkDim" />
-          </PressableScale>
+          />
 
           {extrasOpen && (
             // Fades in, so the two fields read as revealed by the row above rather than
@@ -1159,27 +1119,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
     elevation: 4,
   },
-  // Spec .selrow — glass strip with icon · value · chevron
-  selRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.13)",
-  },
-  selRowDim: {
-    opacity: 0.75,
-  },
   selValue: {
     flex: 1,
-  },
-  selText: {
-    flex: 1,
-    gap: 2,
   },
   numpad: {
     flexDirection: "row",

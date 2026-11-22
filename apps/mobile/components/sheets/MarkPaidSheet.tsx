@@ -7,7 +7,6 @@ import Caps from "@/components/ui/Caps";
 import AccountPickerSheet from "./AccountPickerSheet";
 import Button from "@/components/ui/Button";
 import Icon from "@/components/ui/Icon";
-import PressableScale from "@/components/ui/PressableScale";
 import { AppText } from "@/components/ui/AppText";
 import { useCategoryById } from "@/lib/categories";
 import { useAccountById, useDefaultAccount } from "@/lib/accounts";
@@ -15,7 +14,6 @@ import { useAccountStore } from "@/store/accounts";
 import { holdingLook } from "@/lib/investments";
 import { post } from "@/lib/api";
 import { holderFor } from "@/lib/idempotency";
-import { haptics } from "@/lib/haptics";
 import { toast } from "@/store/toast";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
@@ -26,6 +24,7 @@ import { useOnlineGate } from "@/lib/onlineGate";
 import { errorText } from "@/lib/apiError";
 import { useFormError } from "@/lib/useFormError";
 import FormError from "@/components/ui/FormError";
+import FieldRow from "@/components/ui/FieldRow";
 
 type Props = {
   bill: IBill | null;
@@ -157,16 +156,14 @@ const MarkPaidSheet = forwardRef<BottomSheetModal, Props>(({ bill, onChanged }, 
             )}
           </View>
 
-          <PressableScale style={styles.selRow} onPress={() => accountRef.current?.present()} scaleTo={0.98}>
-            <Icon name="wallet" size={18} color="inkDim" />
-            <View style={styles.selText}>
-              <Caps>{isSip ? "Invest from" : "Pay from"}</Caps>
-              <AppText size="sm" weight="semibold">
-                {payFrom?.name ?? "Default account"}
-              </AppText>
-            </View>
-            <Icon name="chevronRight" size={20} color="inkDim" />
-          </PressableScale>
+          <FieldRow
+            label={isSip ? "Invest from" : "Pay from"}
+            value={payFrom?.name}
+            placeholder="Default account"
+            icon="wallet"
+            onPress={() => accountRef.current?.present()}
+            accessibilityHint="Picks the account"
+          />
 
           <FormError message={error} />
 
@@ -216,21 +213,6 @@ const styles = StyleSheet.create({
   fxText: {
     flex: 1,
     lineHeight: 20,
-  },
-  selRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
-    backgroundColor: "rgba(255,255,255,0.05)",
-  },
-  selText: {
-    flex: 1,
-    gap: 2,
   },
 });
 

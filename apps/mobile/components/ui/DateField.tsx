@@ -2,13 +2,11 @@ import { useState } from "react";
 import { Modal, Platform, Pressable, StyleSheet, View } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import type { DateTimePickerEvent } from "@react-native-community/datetimepicker";
-import { AppText } from "./AppText";
 import Caps from "./Caps";
-import Icon from "./Icon";
 import Button from "./Button";
-import PressableScale from "./PressableScale";
 import { colors } from "@/theme";
 import { formatCalendar, formatClock, localCalendar } from "@/lib/format/date";
+import FieldRow from "./FieldRow";
 
 type Mode = "date" | "datetime";
 
@@ -21,6 +19,7 @@ type Props = {
   maximumDate?: Date;
   /** "datetime" adds a time step, so the row shows and sets both date and time. */
   mode?: Mode;
+  error?: string | null;
 };
 
 // Deliberately zone-less, unlike every other date label in the app: `value` is the
@@ -39,7 +38,7 @@ const withTime = (date: Date, time: Date): Date => {
   return merged;
 };
 
-const DateField = ({ label, value, onChange, minimumDate, maximumDate, mode = "date" }: Props) => {
+const DateField = ({ label, value, onChange, minimumDate, maximumDate, mode = "date", error }: Props) => {
   const [show, setShow] = useState(false);
   // Android has no combined datetime dialog — we chain date → time ourselves.
   const [androidStep, setAndroidStep] = useState<"date" | "time">("date");
@@ -78,17 +77,7 @@ const DateField = ({ label, value, onChange, minimumDate, maximumDate, mode = "d
 
   return (
     <>
-      {/* Same squeeze as every other selrow it sits among in the add forms. */}
-      <PressableScale style={styles.row} onPress={open} scaleTo={0.98} accessibilityLabel={`${label}, ${display}`}>
-        <Icon name="date" size={18} color="inkDim" />
-        <View style={styles.text}>
-          <Caps>{label}</Caps>
-          <AppText size="sm" weight="bold">
-            {display}
-          </AppText>
-        </View>
-        <Icon name="chevronRight" size={20} color="inkDim" />
-      </PressableScale>
+      <FieldRow label={label} value={display} icon="date" onPress={open} error={error} />
 
       {Platform.OS === "android" && show && (
         <DateTimePicker
@@ -126,21 +115,6 @@ const DateField = ({ label, value, onChange, minimumDate, maximumDate, mode = "d
 };
 
 const styles = StyleSheet.create({
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.13)",
-  },
-  text: {
-    flex: 1,
-    gap: 2,
-  },
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(8,6,15,0.55)",

@@ -1,21 +1,17 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet } from "react-native";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { TripMemberBalance } from "@save-n-spend/types";
 import AppSheet from "./AppSheet";
 import AccountPickerSheet from "./AccountPickerSheet";
 import { AppText } from "@/components/ui/AppText";
-import Caps from "@/components/ui/Caps";
 import AmountHeroInput from "@/components/ui/AmountHeroInput";
 import Button from "@/components/ui/Button";
-import Icon from "@/components/ui/Icon";
-import PressableScale from "@/components/ui/PressableScale";
 import { useAccountById, useDefaultAccount } from "@/lib/accounts";
 import formatMoney, { parseMoney, paiseToInput, usePrivacyMask } from "@/lib/money";
 import { settleTrip } from "@/lib/trips";
 import { holderFor } from "@/lib/idempotency";
 import { toast } from "@/store/toast";
-import { spacing } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { errorText } from "@/lib/apiError";
 import { useFormError } from "@/lib/useFormError";
@@ -23,6 +19,7 @@ import SheetFooter from "./SheetFooter";
 import FieldError from "@/components/ui/FieldError";
 import { settleFormSchema } from "@/lib/formSchemas";
 import { useSchemaForm } from "@/lib/useSchemaForm";
+import FieldRow from "@/components/ui/FieldRow";
 
 type Props = {
   tripId: string;
@@ -104,21 +101,15 @@ const SettleSheet = forwardRef<BottomSheetModal, Props>(({ tripId, member, onSav
             </AppText>
             <AmountHeroInput value={amount} onChangeText={setAmount} />
             <FieldError message={fieldError("amount")} />
-            <PressableScale
-              style={styles.selRow}
+            <FieldRow
+              label={theyOwe ? "Received into" : "Paid from"}
+              value={account?.name}
+              placeholder="Choose an account"
+              icon="wallet"
               onPress={() => accountRef.current?.present()}
-              scaleTo={0.98}
-              accessibilityLabel={`${theyOwe ? "Received into" : "Paid from"}, ${account?.name ?? "no account yet"}`}
               accessibilityHint="Picks the account"
-            >
-              <Icon name="wallet" size={18} color="inkDim" />
-              <View style={styles.grow}>
-                <Caps>{theyOwe ? "Received into" : "Paid from"}</Caps>
-                <AppText size="sm" weight="semibold">{account?.name ?? "Choose an account"}</AppText>
-              </View>
-              <Icon name="chevronRight" size={20} color="inkDim" />
-            </PressableScale>
-            <FieldError message={fieldError("account")} />
+              error={fieldError("account")}
+            />
             {value > 0 && value < owed && (
               <AppText size="xs" color="inkDim">{formatMoney(owed - value)} will still be open.</AppText>
             )}
@@ -135,7 +126,6 @@ SettleSheet.displayName = "SettleSheet";
 
 const styles = StyleSheet.create({
   grow: { flex: 1 },
-  selRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.13)", marginTop: spacing.xs },
 });
 
 export default SettleSheet;

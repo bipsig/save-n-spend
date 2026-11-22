@@ -27,36 +27,7 @@ import AccountPickerSheet from "@/components/sheets/AccountPickerSheet";
 import { convertToInvestment, holdingLook } from "@/lib/investments";
 import { holderFor } from "@/lib/idempotency";
 import { useTrip } from "@/lib/trips";
-
-// Spec .selrow — boxed glass strip: leading icon · (caps label over bold value) · optional ›
-const SelRow = ({
-  icon,
-  label,
-  value,
-  valueColor = "ink",
-  chevron = false,
-}: {
-  icon: IconName
-  label: string
-  value: string
-  valueColor?: ColorToken
-  chevron?: boolean
-}) => (
-  <View style={styles.selRow}>
-    <Icon name={icon} size={19} color="inkDim" />
-    <View style={styles.selCol}>
-      <Caps size="sm">{label}</Caps>
-      <AppText size="sm" weight="bold" color={valueColor}>
-        {value}
-      </AppText>
-    </View>
-    {chevron && (
-      <AppText size="sm" weight="bold" color="inkDim">
-        ›
-      </AppText>
-    )}
-  </View>
-);
+import FieldRow from "@/components/ui/FieldRow";
 
 type Props = {
   transaction: ITransaction | null,
@@ -261,21 +232,21 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
             <View style={styles.rows}>
               {isTransfer ? (
                 <>
-                  <SelRow icon="wallet" label="From" value={account?.name ?? "—"} />
-                  <SelRow icon={toInvestment ? "investments" : "transfer"} label={toInvestment ? "Invested in" : "To"} value={toAccount?.name ?? "—"} />
+                  <FieldRow icon="wallet" label="From" value={account?.name ?? "—"} />
+                  <FieldRow icon={toInvestment ? "investments" : "transfer"} label={toInvestment ? "Invested in" : "To"} value={toAccount?.name ?? "—"} />
                 </>
               ) : (
-                <SelRow icon="wallet" label="Account" value={account?.name ?? "—"} />
+                <FieldRow icon="wallet" label="Account" value={account?.name ?? "—"} />
               )}
-              <SelRow icon="date" label="Date" value={formatFullDate(transaction.occurredAt)} />
+              <FieldRow icon="date" label="Date" value={formatFullDate(transaction.occurredAt)} />
               {!!transaction.note && (
-                <SelRow icon="note" label="Note" value={transaction.note} />
+                <FieldRow icon="note" label="Note" value={transaction.note} />
               )}
               {!!transaction.location && (
-                <SelRow icon="location" label="Location" value={transaction.location} />
+                <FieldRow icon="location" label="Location" value={transaction.location} />
               )}
               {!!transaction.receiptUrl && (
-                <SelRow icon="receipt" label="Receipt" value="View receipt" valueColor="primary" chevron />
+                <FieldRow icon="receipt" label="Receipt" value={<AppText size="sm" weight="bold" color="primary">View receipt</AppText>} valueText="View receipt" chevron="right" />
               )}
             </View>
 
@@ -450,22 +421,6 @@ const styles = StyleSheet.create({
   },
   rows: {
     gap: spacing.md,
-  },
-  // Spec .selrow ×1.25 — glass strip, hairline, 16 radius
-  selRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 13,
-    paddingHorizontal: 15,
-    borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
-  },
-  selCol: {
-    flex: 1, // fills the middle so a trailing › lands at the far edge
-    gap: 2,
   },
   actions: {
     flexDirection: "row",

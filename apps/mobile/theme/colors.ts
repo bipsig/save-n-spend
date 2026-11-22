@@ -25,6 +25,7 @@ export const colors = {
   surface2: 'rgba(255,255,255,0.06)',   // subtle glass (inputs, chips, search)
   glass: 'rgba(255,255,255,0.10)',      // card glass fill
   glassBorder: 'rgba(255,255,255,0.14)',
+  fieldBorder: 'rgba(255,255,255,0.13)', // the tap-to-pick row and inputs (FieldRow)
   darkBg: '#0C0A16',
   onGradientDim: 'rgba(255,255,255,0.72)', // captions and subs on a gradient card
 

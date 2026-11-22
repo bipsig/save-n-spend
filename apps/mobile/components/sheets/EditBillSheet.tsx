@@ -13,9 +13,7 @@ import AccountPickerSheet from "./AccountPickerSheet";
 import BackButton from "@/components/shell/BackButton";
 import Button from "@/components/ui/Button";
 import Chip from "@/components/ui/Chip";
-import Icon from "@/components/ui/Icon";
 import { KEYBOARD_DONE_ID } from "@/components/ui/KeyboardDoneBar";
-import PressableScale from "@/components/ui/PressableScale";
 import Toggle from "@/components/ui/Toggle";
 import DateField from "@/components/ui/DateField";
 import AmountHeroInput from "@/components/ui/AmountHeroInput";
@@ -40,6 +38,7 @@ import { editWithUndo, previousValues } from "@/lib/undo";
 import SheetFooter from "./SheetFooter";
 import FieldError from "@/components/ui/FieldError";
 import { useFormError } from "@/lib/useFormError";
+import FieldRow from "@/components/ui/FieldRow";
 
 /** The lead time the "remind me" switch stands for. 0 is how the server says "don't". */
 const REMIND_DAYS = 3;
@@ -337,41 +336,25 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, draft, onChan
       </View>
 
       {fundsInvestment ? (
-        <PressableScale style={styles.selRow} onPress={() => investmentPickerRef.current?.present()} scaleTo={0.98}>
-          <Icon
-            name={(investment?.icon ?? "investments") as IconName}
-            size={17}
-            containerSize={34}
-            containerRadius={11}
-            container="square"
-            gradient={chipTintFor(investment?.color)}
-          />
-          <View style={styles.selText}>
-            <Caps>Invest in</Caps>
-            <AppText size="sm" weight="semibold" color={investment ? "ink" : "inkDim"}>
-              {investment?.name ?? "Choose an investment"}
-            </AppText>
-          </View>
-          <Icon name="chevronRight" size={20} color="inkDim" />
-        </PressableScale>
+        <FieldRow
+          label="Invest in"
+          value={investment?.name}
+          placeholder="Choose an investment"
+          chip={{ icon: (investment?.icon ?? "investments") as IconName, gradient: chipTintFor(investment?.color) }}
+          onPress={() => investmentPickerRef.current?.present()}
+          accessibilityHint="Picks the holding"
+          error={errors.toInvestment?.message}
+        />
       ) : (
-        <PressableScale style={styles.selRow} onPress={() => pickerRef.current?.present()} scaleTo={0.98}>
-          <Icon
-            name={(category?.icon ?? "add") as IconName}
-            size={17}
-            containerSize={34}
-            containerRadius={11}
-            container="square"
-            gradient={(category?.color ?? "accent") as ColorToken}
-          />
-          <View style={styles.selText}>
-            <Caps>Category</Caps>
-            <AppText size="sm" weight="semibold" color={category ? "ink" : "inkDim"}>
-              {category?.name ?? "Choose a category"}
-            </AppText>
-          </View>
-          <Icon name="chevronRight" size={20} color="inkDim" />
-        </PressableScale>
+        <FieldRow
+          label="Category"
+          value={category?.name}
+          placeholder="Choose a category"
+          chip={{ icon: (category?.icon ?? "add") as IconName, gradient: (category?.color ?? "accent") as ColorToken }}
+          onPress={() => pickerRef.current?.present()}
+          accessibilityHint="Picks the category"
+          error={errors.category?.message}
+        />
       )}
 
       <Controller
@@ -392,7 +375,6 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, draft, onChan
         )}
       />
 
-      <FieldError message={errors.category?.message ?? errors.toInvestment?.message} />
     </AppSheet>
 
     <CategoryPickerSheet
@@ -436,21 +418,6 @@ const styles = StyleSheet.create({
   segRow: {
     flexDirection: "row",
     gap: 8,
-  },
-  selRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.13)",
-  },
-  selText: {
-    flex: 1,
-    gap: 2,
   },
   remindRow: {
     flexDirection: "row",
