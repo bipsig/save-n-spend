@@ -1,11 +1,8 @@
 import { z } from "./z";
-import { objectId, positiveMoney } from "./fields";
+import { lenientDate as day, objectId, positiveMoney } from "./fields";
+import { BILL_FREQUENCIES } from "../constants";
 
-/** Any text or number `new Date()` reads, as before; `null` and unreadable text are refused
- *  (`z.coerce.date()` turned `null` into 1 January 1970). */
-const day = z.preprocess((v) => (typeof v === "string" || typeof v === "number" ? new Date(v) : v), z.date());
-
-const frequency = z.enum(["monthly", "yearly"]);
+const frequency = z.enum(BILL_FREQUENCIES);
 
 /** The rule a bill must meet as a whole, after create or after an update is applied. */
 export const billProblems = (bill: { recurring?: boolean | null; frequency?: string | null }): { path: string; message: string }[] =>

@@ -1,4 +1,5 @@
 import mongoose, { Document, Schema } from "mongoose";
+import { ACCOUNT_TYPES, INVESTED_HOW } from "../constants";
 
 export interface IAccount extends Document {
     userId: mongoose.Types.ObjectId;
@@ -31,7 +32,7 @@ export interface IAccount extends Document {
 const AccountSchema = new Schema<IAccount>({
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     name: { type: String, required: true, trim: true },
-    type: { type: String, enum: ["bank", "credit_card", "cash", "wallet", "person", "investment" ], required: true },
+    type: { type: String, enum: [...ACCOUNT_TYPES], required: true },
     balance: { type: Number, required: true, default: 0 },
     startingBalance: { type: Number, required: true, default: 0 },
     icon: { type: String },
@@ -39,7 +40,7 @@ const AccountSchema = new Schema<IAccount>({
     // Only meaningful for type "investment" — the hub's grouping key (SIP / Mutual Fund / …).
     investmentKind: { type: String },
     investedSince: { type: Schema.Types.Date, default: null },
-    investedHow: { type: String, enum: ["sip", "lump", null], default: null },
+    investedHow: { type: String, enum: [...INVESTED_HOW, null], default: null },
     isArchived: { type: Boolean, default: false },
     lastSyncedAt: { type: Schema.Types.Date, default: null },
     order: { type: Number, default: 0 }

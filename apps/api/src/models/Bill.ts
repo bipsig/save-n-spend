@@ -1,4 +1,5 @@
 import mongoose, { Document, Schema } from "mongoose";
+import { BILL_FREQUENCIES } from "../constants";
 
 export interface IBill extends Document {
     userId: mongoose.Types.ObjectId;
@@ -32,7 +33,7 @@ const BillSchema = new Schema<IBill>({
     lastPaidAt: { type: Date, default: null },
     status: { type: String, enum: ["pending", "paid"], default: "pending" },
     recurring: { type: Boolean, default: false },
-    frequency: { type: String, enum: ["monthly", "yearly"] },
+    frequency: { type: String, enum: [...BILL_FREQUENCIES] },
     reminderDays: { type: Number, min: 0 }
 }, { timestamps: true })
 

@@ -578,6 +578,7 @@ export const listTrips = async (userId: string, zone: string): Promise<TripsPayl
 
     const years = new Map<number, { myShare: number; trips: number }>();
     for (const t of items) {
+        // Trip dates are calendar days stored at UTC midnight, so the UTC year is the trip's own.
         const y = new Date(t.startDate).getUTCFullYear();
         const cur = years.get(y) ?? { myShare: 0, trips: 0 };
         cur.myShare += t.totals.myShare;

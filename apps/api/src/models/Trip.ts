@@ -1,4 +1,5 @@
 import mongoose, { Document, Schema } from "mongoose";
+import { TRIP_STATUSES } from "../constants";
 
 // A trip: a stretch of dates, the people on it, and optionally a budget. Everything spent on
 // it is ordinary transactions tagged with its id (see TripExpense) — so balances, cash flow and
@@ -39,7 +40,7 @@ const TripSchema = new Schema<ITrip>({
     endDate: { type: Date, required: true },
     members: [{ type: Schema.Types.ObjectId, ref: "Account" }],
     budget: { type: Number, default: null, min: 0 },
-    status: { type: String, enum: ["active", "closed"], default: "active" },
+    status: { type: String, enum: [...TRIP_STATUSES], default: "active" },
     closedAt: { type: Date, default: null },
     closedOn: { type: String, default: undefined },
     plan: {

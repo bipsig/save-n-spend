@@ -1,5 +1,6 @@
 import { z } from "./z";
 import { objectId } from "./fields";
+import { CATEGORY_KINDS } from "../constants";
 
 // No maximum length: categories never had one on the server, and stored names aren't checked
 // against one.
@@ -16,7 +17,7 @@ export const listCategoriesSchemas = {
 export const createCategorySchemas = {
     body: z.object({
         name: categoryName,
-        kind: z.enum(["expense", "income"]),
+        kind: z.enum(CATEGORY_KINDS),
         parent: objectId("Parent category", "categories").optional(),
         icon: z.string().optional(),
         color: z.string().optional(),

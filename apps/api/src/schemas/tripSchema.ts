@@ -1,10 +1,7 @@
 import { z } from "./z";
-import { calendarDay, money, objectId, positiveMoney } from "./fields";
+import { calendarDay, lenientDate as day, money, objectId, positiveMoney } from "./fields";
+import { TRIP_SETTLE_DIRECTIONS } from "../constants";
 
-/** Any text or number `new Date()` reads, as before; `null` and unreadable text are refused
- *  (`z.coerce.date()` turned `null` into 1 January 1970).
- *  shortcut: a third copy of W2's local `day` (bills, goals); move it to fields.ts when W0 adds a shared lenient date. */
-const day = z.preprocess((v) => (typeof v === "string" || typeof v === "number" ? new Date(v) : v), z.date());
 
 const tripId = z.object({ id: objectId("Trip") });
 const expenseIds = z.object({ id: objectId("Trip"), expenseId: objectId("Expense") });
@@ -51,7 +48,7 @@ export const settleSchemas = {
         person: objectId("Person", "people"),
         account: objectId("Account", "accounts"),
         amount: positiveMoney,
-        direction: z.enum(["received", "paid"]),
+        direction: z.enum(TRIP_SETTLE_DIRECTIONS),
         occurredAt: day.optional(),
         /** Makes a resend of the same settle-up land once (the transaction clientId index). */
         clientId: z.string().min(8).max(64).refine((v) => !SERVER_KEY.test(v), "This request had something the server didn't expect. Please update the app").optional(),

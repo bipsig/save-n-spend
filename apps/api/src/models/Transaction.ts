@@ -3,6 +3,7 @@
 // which hides every `getTime`/`toISOString` the date helpers do with it.
 import mongoose, { Document } from "mongoose";
 import { Schema } from "mongoose";
+import { PAYMENT_MODES, TRANSACTION_TYPES } from "../constants";
 
 export interface ITransaction extends Document {
     userId: mongoose.Types.ObjectId;
@@ -32,7 +33,7 @@ export interface ITransaction extends Document {
 
 const TransactionSchema = new Schema<ITransaction>({
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-    type: { type: String, enum: ["expense", "income", "transfer", "positiveAdjustment", "negativeAdjustment"], required: true },
+    type: { type: String, enum: [...TRANSACTION_TYPES], required: true },
     amount: { type: Number, required: true, min: 0 },
     account: { type: Schema.Types.ObjectId, ref: "Account", required: true },
     toAccount: { type: Schema.Types.ObjectId, ref: "Account" },
@@ -41,7 +42,7 @@ const TransactionSchema = new Schema<ITransaction>({
     note: { type: String },
     location: { type: String },
     receiptUrl: { type: String },
-    paymentMode: { type: String, enum: ["cash", "card", "upi", "transfer"] },
+    paymentMode: { type: String, enum: [...PAYMENT_MODES] },
     occurredAt: { type: Schema.Types.Date, required: true },
     // Shared by every member of a split expense — the expense (the user's share) and one
     // transfer per person owed. Deleting the expense deletes the group by this key.

@@ -33,6 +33,16 @@ export const calendarDay = z.iso.date();
 /** A moment, as the app sends it (`Date.toISOString()`); an offset is accepted too. Parsed to a Date. */
 export const instant = z.iso.datetime({ offset: true }).transform((s) => new Date(s));
 
+/** A date field the app already sends (bills, goals, trips): any text or number `new Date()`
+ *  reads, as before, so every body from 2.8.5 and older still parses; the app sends
+ *  `toISOString()`. Parsed to a Date. `null` and unreadable text are refused (`z.coerce.date()`
+ *  turned `null` into 1 January 1970). A new field takes `instant` or `calendarDay`. */
+export const lenientDate = z.preprocess((v) => (typeof v === "string" || typeof v === "number" ? new Date(v) : v), z.date());
+
+/** A transaction's `occurredAt`: the same rule as `lenientDate`, kept as text (the controller
+ *  makes the Date and compares the stored one). */
+export const lenientDateText = z.string().refine((v) => !Number.isNaN(new Date(v).getTime()), "Date isn't a valid date");
+
 /** `YYYY-MM`. */
 export const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 

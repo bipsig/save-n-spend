@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { z } from "./z";
-import { NAME_MAX, NAME_MIN, calendarDay, instant, limit, money, month, name, objectId, page, positiveMoney, timeZone } from "./fields";
+import { NAME_MAX, NAME_MIN, calendarDay, instant, lenientDate, lenientDateText, limit, money, month, name, objectId, page, positiveMoney, timeZone } from "./fields";
 import { styleProblems } from "../utils/messages";
 
 const fail = (schema: z.ZodType, input: unknown) => {
@@ -26,6 +26,22 @@ test("money and positiveMoney are whole paise", () => {
     assert.equal(firstMessage(z.object({ amount: money }), { amount: 1.5 }), "Amount must be a whole number");
     assert.equal(firstMessage(z.object({ amount: positiveMoney }), { amount: 0 }), "Amount must be more than zero");
     assert.equal(firstMessage(z.object({ amount: positiveMoney }), { amount: "10" }), "Amount must be a number");
+});
+
+test("lenientDate and lenientDateText take every date 2.8.5 sends, and refuse null and unreadable text", () => {
+    // What 2.8.5 sends: toISOString() for transactions, trip expenses and settle-ups, and a zoned
+    // day's midnight (toZonedDayISO) for bills, goals and trips.
+    for (const sent of ["2026-11-14T21:41:31.897Z", "2026-11-13T18:30:00.000Z"]) {
+        assert.equal(lenientDate.parse(sent).toISOString(), sent);
+        assert.equal(lenientDateText.parse(sent), sent);
+    }
+    // Older forms the 2.6/2.7 apps could send keep working.
+    assert.equal(lenientDate.parse("2026-11-14").toISOString(), "2026-11-14T00:00:00.000Z");
+    assert.equal(lenientDate.parse(1763156491897).toISOString(), "2025-11-14T21:41:31.897Z");
+    assert.equal(lenientDate.safeParse(null).success, false);
+    assert.equal(lenientDate.nullable().parse(null), null);
+    assert.equal(lenientDate.safeParse("soon").success, false);
+    assert.equal(firstMessage(z.object({ occurredAt: lenientDateText }), { occurredAt: "soon" }), "Date isn't a valid date");
 });
 
 test("calendarDay, instant and month", () => {

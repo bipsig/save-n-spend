@@ -1,12 +1,10 @@
 import { z } from "./z";
-import { calendarDay, limit, objectId, page, positiveMoney } from "./fields";
+import { calendarDay, lenientDateText as moment, limit, objectId, page, positiveMoney } from "./fields";
+import { ADJUSTMENT_TYPES, LISTED_TYPES, PAYMENT_MODES } from "../constants";
 import { invalidReference } from "../utils/messages";
 
 const OBJECT_ID = /^[a-f0-9]{24}$/i;
 
-/** Anything `new Date()` reads, as before: the app sends `toISOString()`. Kept as text; the
- *  controller makes the Date. */
-const moment = z.string().refine((v) => !Number.isNaN(new Date(v).getTime()), "Date isn't a valid date");
 
 /** The list filters' comma-separated ids (the filter sheet multi-selects). Empty stays allowed. */
 const idList = (label: string, things: string, extra?: string) => z.string().refine(
@@ -17,7 +15,7 @@ const idList = (label: string, things: string, extra?: string) => z.string().ref
 const account = objectId("Account", "accounts");
 const toAccount = objectId("The account it goes to", "accounts");
 const category = objectId("Category", "categories");
-const paymentMode = z.enum(["cash", "upi", "card", "transfer"]);
+const paymentMode = z.enum(PAYMENT_MODES);
 
 const baseTransaction = z.object({
     amount: positiveMoney,
@@ -59,7 +57,7 @@ const transferTransaction = baseTransaction.extend({
 }).strict().refine((t) => t.account.toLowerCase() !== t.toAccount.toLowerCase(), { message: "Pick two different accounts", path: ["toAccount"] });
 
 const adjustmentTransaction = baseTransaction.extend({
-    type: z.enum(["positiveAdjustment", "negativeAdjustment"]),
+    type: z.enum(ADJUSTMENT_TYPES),
     account,
     title: z.string().min(1).optional(),
 }).strict();
@@ -81,7 +79,7 @@ const filterFields = {
     // `trips` is the built-in Trips category: with `trips=entries` it picks the closed trips.
     category: idList("A category in the filter", "categories", "trips").optional(),
     account: idList("An account in the filter", "accounts").optional(),
-    type: z.enum(["expense", "income", "transfer"]).optional(),
+    type: z.enum(LISTED_TYPES).optional(),
     // Capped because the term becomes a `$regex` the database has to run against every
     // candidate title. Escaping (see `escapeRegex` in services/transactionFilter) removes the
     // pathological-backtracking risk; the cap removes the merely-expensive one. 80 is

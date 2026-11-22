@@ -1,13 +1,11 @@
 // The account-type groups every figure reads (gaps row 7). Net worth counts every live
 // account of any type, so it needs no list.
 
-/** Money that can pay a bill today. A card's balance is debt, and neither a holding nor a
- *  friend pays the rent. */
-export const SPENDABLE_TYPES: readonly string[] = ["bank", "cash", "wallet"];
+import { OWN_TYPES as OWN, SPENDABLE_TYPES as SPENDABLE } from "../constants";
 
-/** Your own accounts that money is paid from: the spendable ones and cards (a trip expense
- *  can go on a card). */
-export const OWN_TYPES: readonly string[] = [...SPENDABLE_TYPES, "credit_card"];
+/** Defined in constants.ts; widened here because callers test any stored type against them. */
+export const SPENDABLE_TYPES: readonly string[] = SPENDABLE;
+export const OWN_TYPES: readonly string[] = OWN;
 
 export const isSpendable = (type: string): boolean => SPENDABLE_TYPES.includes(type);
 

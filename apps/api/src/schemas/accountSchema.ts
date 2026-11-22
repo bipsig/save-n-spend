@@ -1,7 +1,7 @@
 import { z } from "./z";
 import { money, objectId } from "./fields";
 
-const ACCOUNT_TYPES = ["bank", "credit_card", "cash", "wallet", "person", "investment"] as const;
+import { ACCOUNT_TYPES, INVESTED_HOW } from "../constants";
 
 // shortcut: no length cap (fields.ts's `name()` caps at 60), because people added from a
 // Splitwise import carry full names and the edit sheet sends the name back on every save.
@@ -36,7 +36,7 @@ const createAccountSchema = z.object({
     // worth ₹90k. Omitted means worth exactly what went in.
     currentValue: money.min(0).optional(),
     investedSince: pastDate.optional(),
-    investedHow: z.enum(["sip", "lump"]).optional(),
+    investedHow: z.enum(INVESTED_HOW).optional(),
 }).strict().superRefine((body, ctx) => {
     if (body.type === "investment") return;
     for (const key of INVESTMENT_ONLY) {
@@ -78,7 +78,7 @@ const syncAccountBalanceSchema = z.object({
 const investmentBasisSchema = z.object({
     invested: money.min(0).optional(),
     investedSince: pastDate.nullable().optional(),
-    investedHow: z.enum(["sip", "lump"]).nullable().optional(),
+    investedHow: z.enum(INVESTED_HOW).nullable().optional(),
 }).strict();
 
 // Deleting a holding outright. `undo` reverses every money move into and out of it (they

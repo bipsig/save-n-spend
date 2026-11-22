@@ -1,4 +1,5 @@
 import mongoose, { Document, Schema } from "mongoose";
+import { CATEGORY_KINDS } from "../constants";
 
 export interface ICategory extends Document {
     userId: mongoose.Types.ObjectId,
@@ -21,7 +22,7 @@ const CategorySchema = new Schema<ICategory>({
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     name: { type: String, required: true, trim: true },
     parent: { type: Schema.Types.ObjectId, ref: "Category", default: null },
-    kind: { type: String, enum: ["expense", "income" ], required: true },
+    kind: { type: String, enum: [...CATEGORY_KINDS], required: true },
     icon: { type: String },
     color: { type: String },
     isArchived: { type: Boolean, default: false },
