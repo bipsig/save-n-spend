@@ -290,10 +290,12 @@ export const createTrip = async (userId: string, body: TripBody) => {
     return trip;
 };
 
-/** Allowed on a closed trip, as before (gaps row 190 is a decision still open). */
+/** Refused on a closed trip until it's reopened (gaps row 190), like its expenses. The close
+ *  date has its own route, which a closed trip allows. */
 export const updateTrip = (userId: string, tripId: string, body: Partial<TripBody>, since: Date | null = null) =>
     inTransaction(async (session) => {
         const trip = await loadTrip(userId, tripId, session);
+        requireOpen(trip);
         requireUnchanged(trip, since);
         const start = body.startDate ?? trip.startDate;
         const end = body.endDate ?? trip.endDate;
@@ -324,6 +326,7 @@ export const updateTrip = (userId: string, tripId: string, body: Partial<TripBod
 export const deleteTrip = (userId: string, tripId: string) =>
     inTransaction(async (session) => {
         const trip = await loadTrip(userId, tripId, session);
+        requireOpen(trip);
         const rows = await Transaction.find({ userId, tripId: trip._id }).session(session);
         for (const row of rows) {
             await applyEffects(row, "revert", session);

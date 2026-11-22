@@ -146,7 +146,8 @@ test("refusals: ids in the URL are 404, body references 400 invalid_reference, s
     r = await send("POST", `/trips/${t}/close`, { letGo: [] }); show("close twice", r); refused(r, 409, "conflict", "This trip is already closed");
     r = await send("POST", `/trips/${t}/expenses`, youPaid(bank, 2_000, [asha])); show("expense on a closed trip", r); refused(r, 409, "conflict", CLOSED);
     r = await send("POST", `/trips/${t}/import/preview`, { csv: "x" }); show("import preview on a closed trip", r); refused(r, 409, "conflict", CLOSED);
-    assert.equal((await send("PATCH", `/trips/${t}`, { name: "Renamed while closed" })).status, 200);
+    r = await send("PATCH", `/trips/${t}`, { name: "Renamed while closed" }); show("edit a closed trip", r); refused(r, 409, "conflict", CLOSED);
+    r = await send("DELETE", `/trips/${t}`); show("delete a closed trip", r); refused(r, 409, "conflict", CLOSED);
     assert.equal((await send("POST", `/trips/${t}/reopen`)).status, 200);
     assert.equal((await send("POST", `/trips/${t}/reopen`)).status, 200);
     r = await send("POST", `/trips/${t}/import/preview`, { csv: "Name,Amount\nx,1" }); show("import preview, not Splitwise", r); refused(r, 400, "invalid_input", /doesn't look like a Splitwise export/, "csv");
