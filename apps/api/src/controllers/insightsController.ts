@@ -261,9 +261,14 @@ export type CategoryBreakdown = {
  * Archived categories are included in the name lookup on purpose: spend filed under one before
  * it was archived still needs something to be called.
  */
-export const getCategoryBreakDown = async (startTime: Date, endTime: Date, req: Request, rule?: TripRule): Promise<CategoryBreakdown> => {
+export const getCategoryBreakDown = (startTime: Date, endTime: Date, req: Request, rule?: TripRule): Promise<CategoryBreakdown> =>
+    categoryBreakdown(req.user!.userId, startTime, endTime, rule);
+
+/** The same breakdown for a user id, for callers with no request (the monthly digest). */
+export const categoryBreakdown = async (userId: string | mongoose.Types.ObjectId, startTime: Date, endTime: Date, rule?: TripRule): Promise<CategoryBreakdown> => {
+    const uid = new mongoose.Types.ObjectId(String(userId));
     const categories = await Category.find({
-        userId: req.user?.userId
+        userId: uid
     })
         .select("_id name parent")
         .lean();
@@ -271,7 +276,6 @@ export const getCategoryBreakDown = async (startTime: Date, endTime: Date, req: 
     const byId = new Map(categories.map((c) => [c._id.toString(), c]));
     const nameOf = (id: string) => byId.get(id)?.name ?? "Uncategorised";
 
-    const uid = new mongoose.Types.ObjectId(req.user!.userId);
     // Everyday spend by category; trip spend separately, by trip. A trip's food is shown under
     // Trips, not Food — see the Trips slice below.
     const [categorySpend, tripSpend] = await Promise.all([

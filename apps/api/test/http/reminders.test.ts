@@ -4,7 +4,7 @@ import { randomBytes } from "crypto";
 import { ObjectId } from "mongodb";
 import { useTestApi, sentPushes, type TestUser } from "../harness";
 import { resetClock, setClock, tripWithExpense, txn } from "./readHelpers";
-import { flowLine, runReminders } from "../../src/jobs/reminderJob";
+import { flowLine, runReminders, topCategoryLine, topSpendCategory } from "../../src/jobs/reminderJob";
 
 // The hourly reminder job's logic, run directly with `runReminders(now)` (no cron, no timers)
 // over this file's own users. Monday 1 June 2026 in Kolkata: a bill day, a Monday and the 1st.
@@ -194,4 +194,23 @@ test("digests count a closed trip as one expense on its close day, and an open t
     assert.equal(await digest(mixed.u), "Spent ₹86,090.20, earned ₹1,20,000.00 — ₹33,909.80 put aside. 3 transactions.");
     assert.equal(await digest(tripOnly.u), "Spent ₹6,450.00, earned ₹0.00 — ₹6,450.00 more than you earned. 1 transaction.");
     assert.equal(await digest(openTrip.u), undefined);
+});
+
+test("the monthly digest names Insights' top slice and its biggest sub-category; Trips has none (gaps row 177)", async () => {
+    const u = await api.user("reminders-top");
+    const cat: Record<string, string> = {};
+    for (const c of (await u.send("GET", "/categories")).json.data as { _id: string; name: string }[]) cat[c.name] = c._id;
+    const bank = await u.account("Bank", { startingBalance: 10_000_000 });
+    await txn(u, "expense", 2_500_000, bank, "2026-05-03T06:30:00Z", { category: cat.Rent, title: "Rent" });
+    await txn(u, "expense", 825_000, bank, "2026-05-09T06:30:00Z", { category: cat.Electricity, title: "Power" });
+    await txn(u, "expense", 2_800_000, bank, "2026-05-10T06:30:00Z", { category: cat.Groceries, title: "Big shop" });
+    await txn(u, "expense", 400_000, bank, "2026-05-11T06:30:00Z", { category: cat.Restaurants, title: "Dinner" });
+    const start = new Date("2026-04-30T18:30:00Z");
+    const end = new Date("2026-05-31T18:30:00Z");
+    const top = await topSpendCategory(new ObjectId(u.id) as never, start, end, "Asia/Kolkata");
+    // Groceries alone is the biggest child, but Bills & Utilities is the biggest slice.
+    assert.deepEqual(top, { name: "Bills & Utilities", total: 3_325_000, mostly: "Rent" });
+    assert.equal(topCategoryLine(top), " Most went to Bills & Utilities — ₹33,250.00, mostly Rent.");
+    assert.equal(topCategoryLine({ name: "Trips", total: 1_840_000, mostly: null }), " Most went to Trips — ₹18,400.00.");
+    assert.equal(topCategoryLine(null), "");
 });

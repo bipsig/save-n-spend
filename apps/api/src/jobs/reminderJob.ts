@@ -9,7 +9,8 @@ import { billState, daysUntilDue } from "../services/billService";
 import { getRecurringSuggestions, keysSignature } from "../services/recurringService";
 import { notify, wantsNotification, type NotifiableUser } from "../services/notificationService";
 import { summaryTotals, type SummaryGroup } from "../services/transactionFilter";
-import { entryStages, TRIPS_CATEGORY, TRIPS_NAME } from "../services/tripEntries";
+import { entryStages, tripRule, TRIPS_CATEGORY } from "../services/tripEntries";
+import { categoryBreakdown } from "../controllers/insightsController";
 import { formatAmount } from "../utils/money";
 import { log } from "../utils/logger";
 import {
@@ -243,29 +244,25 @@ const sendWeeklySummary = async (user: ReminderUser, zone: string, now: Date): P
     });
 };
 
-/** Where the most of it went. Deliberately NOT rolled up to a parent category, unlike the
- *  insights breakdown — "Groceries" says more in a push than "Food & Dining". */
-const topSpendCategory = async (
+/** Where the most of it went: the top slice the Insights screen this opens shows (a parent
+ *  category, or Trips), and its biggest sub-category (gaps row 177). */
+export const topSpendCategory = async (
     userId: mongoose.Types.ObjectId,
     start: Date,
     end: Date,
     zone: string,
-): Promise<{ name: string; total: number } | null> => {
-    const [top] = await Transaction.aggregate<{ _id: unknown; total: number; category?: { name?: string }[] }>([
-        // A trip's food isn't everyday Groceries: each closed trip is one expense in Trips.
-        ...entryStages({ userId, type: "expense", category: { $ne: null }, occurredAt: { $gte: start, $lt: end } }, zone),
-        { $group: { _id: "$category", total: { $sum: "$amount" } } },
-        { $sort: { total: -1 } },
-        { $limit: 1 },
-        // After the limit, so exactly one category document is ever read.
-        { $lookup: { from: "categories", localField: "_id", foreignField: "_id", as: "category" } },
-        { $project: { total: 1, "category.name": 1 } },
-    ]);
-
-    const name = top?._id === TRIPS_CATEGORY ? TRIPS_NAME : top?.category?.[0]?.name;
-    // Dropped if the category was deleted since; the rest of the digest still sends.
-    return name ? { name, total: top.total } : null;
+): Promise<{ name: string; total: number; mostly: string | null } | null> => {
+    const { slices } = await categoryBreakdown(userId, start, end, tripRule("entries", zone));
+    const top = slices[0];
+    if (!top) return null;
+    // A trip isn't a sub-category, so Trips has no "mostly".
+    const child = top.categoryId === TRIPS_CATEGORY ? undefined : top.children?.[0];
+    return { name: top.name, total: top.total, mostly: child?.name ?? null };
 };
+
+/** " Most went to Bills & Utilities — ₹33,250.00, mostly Rent." */
+export const topCategoryLine = (top: { name: string; total: number; mostly: string | null } | null): string =>
+    top ? ` Most went to ${top.name} — ${formatAmount(top.total)}${top.mostly ? `, mostly ${top.mostly}` : ""}.` : "";
 
 const sendMonthlySummary = async (user: ReminderUser, zone: string, now: Date): Promise<void> => {
     if (!wantsNotification(user.prefs?.notifications, "monthlySummary")) return;
@@ -286,8 +283,7 @@ const sendMonthlySummary = async (user: ReminderUser, zone: string, now: Date): 
     await notify(user as NotifiableUser, {
         type: "monthlySummary",
         title: `${monthName} in review`,
-        body: flowLine(flows)
-            + (top ? ` Most went to ${top.name} — ${formatAmount(top.total)}.` : ""),
+        body: flowLine(flows) + topCategoryLine(top),
         // The label carries the year, so this cannot collide with the same month next year.
         dedupeKey: `monthly:${monthLabelInZone(start, zone)}`,
         link: { screen: "insights" },
