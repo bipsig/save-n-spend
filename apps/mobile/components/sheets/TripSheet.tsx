@@ -15,14 +15,14 @@ import { createAccount, useAccounts } from "@/lib/accounts";
 import { haptics } from "@/lib/haptics";
 import { parseMoney, paiseToInput } from "@/lib/money";
 import { startOfToday } from "@/lib/date";
-import { TRIP_EMOJIS, TRIP_GRADIENTS, createTrip, pickerToTripDay, reloadAfterTripDelete, reloadTripNames, tripDayToPicker, updateTrip } from "@/lib/trips";
+import { TRIP_EMOJIS, TRIP_GRADIENTS, createTrip, pickerToTripDay, reloadAfterTripDelete, reloadTripNames, reopenTrip, tripDayToPicker, updateTrip } from "@/lib/trips";
 import { deleteTarget, deletedMessage, deleteWithUndo, editWithUndo, previousValues } from "@/lib/undo";
 import { holderFor } from "@/lib/idempotency";
 import { recoverCreated, sameName } from "@/lib/replayed";
 import { useAccountStore } from "@/store/accounts";
 import { useTripNameStore } from "@/store/tripNames";
 import { toast } from "@/store/toast";
-import { colors, spacing } from "@/theme";
+import { colors, spacing, withAlpha } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { errorText, splitIssues } from "@/lib/apiError";
 import { useFormError } from "@/lib/useFormError";
@@ -142,6 +142,25 @@ const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDelete
 
   const gradient = TRIP_GRADIENTS[color] ?? TRIP_GRADIENTS.teal;
 
+  // A closed trip can't be edited or deleted until it's reopened (gaps row 190); the API
+  // refuses both. The sheet shows it read-only, with Reopen where Save would be.
+  const closed = trip?.status === "closed";
+  const reopen = async () => {
+    if (!trip) return;
+    setBusy(true);
+    clearError();
+    try {
+      await reopenTrip(trip._id);
+      toast.info(`${trip.name} reopened`);
+    }
+    catch (err) {
+      fail(errorText(err, "Couldn't reopen the trip"));
+    }
+    finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <>
       <AppSheet
@@ -151,13 +170,25 @@ const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDelete
         onDismiss={resetForm}
         footer={
           <SheetFooter error={error}>
-            <Button label={trip ? "Save changes" : "Start trip"} icon={gate.icon} hint={gate.hint} loading={busy} disabled={!gate.allowed} onPress={save} />
+            {closed
+              ? <Button label="Reopen trip" icon={gate.icon} hint={gate.hint} loading={busy} disabled={!gate.allowed} onPress={reopen} />
+              : <Button label={trip ? "Save changes" : "Start trip"} icon={gate.icon} hint={gate.hint} loading={busy} disabled={!gate.allowed} onPress={save} />}
           </SheetFooter>
         }
       >
         <LinearGradient colors={gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.band}>
           <AppText size="lg" weight="black" numberOfLines={1}>{emoji} {name.trim() || (trip ? "Edit trip" : "New trip")}</AppText>
         </LinearGradient>
+
+        {closed && (
+          <View style={styles.closedNote}>
+            <AppText size="xs" weight="semibold">
+              This trip is closed. Reopen it to edit or delete it. Settling up and the close date still work from the trip page.
+            </AppText>
+          </View>
+        )}
+
+        <View style={[styles.form, closed && styles.locked]} pointerEvents={closed ? "none" : "auto"} accessibilityElementsHidden={closed} importantForAccessibility={closed ? "no-hide-descendants" : "auto"}>
 
         <Input label="Name" placeholder="e.g. Kerala" value={name} onChangeText={(v) => { setName(v); clearError(); }} autoCapitalize="words" InputComponent={BottomSheetTextInput} error={fieldError("name")} />
 
@@ -209,7 +240,18 @@ const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDelete
           <AppText size="xs" color="inkDim">Your own share you'd like to stay under. Leave blank for none.</AppText>
         </View>
 
-        {trip && <Button label="Delete trip" variant="dangerGhost" icon={gate.icon ?? "delete"} hint={gate.hint} disabled={!gate.allowed} onPress={() => deleteRef.current?.present()} />}
+        </View>
+
+        {trip && (
+          <Button
+            label="Delete trip"
+            variant="dangerGhost"
+            icon={gate.icon ?? "delete"}
+            hint={closed ? "Reopen the trip to delete it" : gate.hint}
+            disabled={closed || !gate.allowed}
+            onPress={() => deleteRef.current?.present()}
+          />
+        )}
       </AppSheet>
 
       <ConfirmSheet
@@ -239,6 +281,10 @@ TripSheet.displayName = "TripSheet";
 
 const styles = StyleSheet.create({
   band: { borderRadius: 18, paddingVertical: 18, paddingHorizontal: 16 },
+  closedNote: { borderRadius: 16, paddingVertical: 12, paddingHorizontal: 14, backgroundColor: colors.warningSoft, borderWidth: 1, borderColor: withAlpha(colors.warning, 0.35) },
+  // The form's own gap, so wrapping it in one view for the closed state changes nothing.
+  form: { gap: spacing.lg },
+  locked: { opacity: 0.55 },
   field: { gap: spacing.sm },
   wrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   emoji: { width: 42, height: 42, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.line },
