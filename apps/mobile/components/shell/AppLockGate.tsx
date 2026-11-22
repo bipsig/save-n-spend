@@ -10,6 +10,7 @@ import Icon from "@/components/ui/Icon";
 import GlowBackground from "./GlowBackground";
 import { haptics } from "@/lib/haptics";
 import { authenticate } from "@/lib/lock";
+import { coversScreen } from "@/lib/appCover";
 import { useSession } from "@/store/session";
 import { useSettings } from "@/store/settings";
 import { spacing } from "@/theme";
@@ -36,6 +37,8 @@ const AppLockGate = ({ children }: Props) => {
   const autoLockSeconds = useSettings((s) => s.autoLockSeconds);
 
   const [locked, setLocked] = useState(false);
+  // The plain cover drawn while the app is inactive or in the background (lib/appCover).
+  const [covered, setCovered] = useState(false);
   const [prompting, setPrompting] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -105,6 +108,9 @@ const AppLockGate = ({ children }: Props) => {
     const onChange = (next: AppStateStatus) => {
       if (promptingRef.current) return;
 
+      const { appLock: lockOn, privacyMode } = useSettings.getState();
+      setCovered(coversScreen(next, { authed: useSession.getState().status === "authed", appLock: lockOn, privacyMode, prompting: false }));
+
       if (next === "background" || next === "inactive") {
         if (backgroundedAt.current === null) backgroundedAt.current = Date.now();
         return;
@@ -144,7 +150,7 @@ const AppLockGate = ({ children }: Props) => {
   return (
     <View style={styles.fill}>
       {children}
-      {locked && (
+      {(locked || covered) && (
         <LockLayer key={raised}>
           {/* Not faded in, unlike every other appearing surface: a fade is a few frames of
               the user's balances showing through a half-opaque overlay. */}
@@ -167,18 +173,22 @@ const AppLockGate = ({ children }: Props) => {
               <AppText size="xl" weight="black">
                 Save n Spend
               </AppText>
-              <AppText size="sm" color="inkDim" style={styles.blurb}>
-                {failed
-                  ? "We couldn't verify it was you. Try again to see your money."
-                  : "Locked. Verify it's you to continue."}
-              </AppText>
-              <View style={styles.action}>
-                <Button
-                  label={prompting ? "Verifying…" : "Unlock"}
-                  loading={prompting}
-                  onPress={unlock}
-                />
-              </View>
+              {locked && (
+                <>
+                  <AppText size="sm" color="inkDim" style={styles.blurb}>
+                    {failed
+                      ? "We couldn't verify it was you. Try again to see your money."
+                      : "Locked. Verify it's you to continue."}
+                  </AppText>
+                  <View style={styles.action}>
+                    <Button
+                      label={prompting ? "Verifying…" : "Unlock"}
+                      loading={prompting}
+                      onPress={unlock}
+                    />
+                  </View>
+                </>
+              )}
             </View>
           </LinearGradient>
         </LockLayer>
