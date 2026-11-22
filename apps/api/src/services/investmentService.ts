@@ -139,13 +139,14 @@ export const getInvestments = async (userId: string, zone: string): Promise<Inve
 
 // One holding's full ledger — contributions, redemptions, AND value-updates. The general
 // transactions feed drops adjustments (they aren't spending), so it can't show the value
-// changes that are the whole point of a holding's history; this returns them.
+// changes that are the whole point of a holding's history; this returns them. Every row, because
+// the app sums them for what's invested (gaps row 131).
+// shortcut: no paging; a monthly SIP is 12 rows a year, so page it if a holding nears ~5,000 rows.
 export const getInvestmentHistory = async (userId: string, accountId: string) => {
     const oid = new mongoose.Types.ObjectId(userId);
     const aid = new mongoose.Types.ObjectId(accountId);
     return Transaction.find({ userId: oid, $or: [{ account: aid }, { toAccount: aid }] })
         .sort({ occurredAt: -1 })
-        .limit(200)
         .lean();
 };
 
