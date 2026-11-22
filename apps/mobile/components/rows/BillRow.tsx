@@ -40,7 +40,7 @@ const BillRow = ({ bill, onPress, onEdit, onDelete }: Props) => {
 
   const dueLabel = formatDueLabel(bill.dueDate, bill.status, bill.lastPaidAt);
   const meta = bill.pausedAt
-    ? "Paused · its holding was deleted, pick another"
+    ? "Paused · its holding is archived, pick another"
     : isSip
     ? [dueLabel, investment?.name ?? "SIP", bill.frequency].filter(Boolean).join(" · ")
     : bill.recurring && bill.frequency ? `${dueLabel} · ${bill.frequency}` : dueLabel;
