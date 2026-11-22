@@ -47,4 +47,4 @@ export const pillarColor = (score: number | null): ColorToken => {
   return "danger";
 };
 
-export const useHealthScore = () => useApiQuery<HealthScore>("/dashboard/health");
+export const useHealthScore = () => useApiQuery<HealthScore>("/dashboard/health?trips=entries");
