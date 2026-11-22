@@ -29,6 +29,7 @@ import { spacing } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { editUndoAllowed, editWithUndo, previousValues } from "@/lib/undo";
 import { useAccountStore } from "@/store/accounts";
+import { ACCOUNT_TYPE_LABEL } from "@/lib/accountLabels";
 
 type Props = {
   /** The account being edited, or `null` to create a new one. */
@@ -43,14 +44,9 @@ type Props = {
 
 // Each type gets a default glyph, so a new account looks right before the icon
 // picker is touched at all.
-const TYPES: { key: AccountType; label: string; icon: IconName }[] = [
-  { key: "bank", label: "Bank", icon: "bank" },
-  { key: "credit_card", label: "Credit card", icon: "card" },
-  { key: "cash", label: "Cash", icon: "payments" },
-  { key: "wallet", label: "Wallet", icon: "wallet" },
-  { key: "person", label: "Person", icon: "person" },
-  { key: "investment", label: "Investment", icon: "investments" },
-];
+const TYPES: { key: AccountType; label: string; icon: IconName }[] = ([
+  ["bank", "bank"], ["credit_card", "card"], ["cash", "payments"], ["wallet", "wallet"], ["person", "person"], ["investment", "investments"],
+] as [AccountType, IconName][]).map(([key, icon]) => ({ key, label: ACCOUNT_TYPE_LABEL[key], icon }));
 
 // Preset grouping keys for an investment account. Free-text too — a kind not in this list
 // is stored verbatim, so a new one never needs a code change (see `investmentKind`). Blank

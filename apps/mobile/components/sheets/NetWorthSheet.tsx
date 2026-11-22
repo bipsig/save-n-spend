@@ -2,7 +2,7 @@ import { forwardRef, useImperativeHandle, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
-import type { AccountType, IAccount } from "@save-n-spend/types";
+import type { IAccount } from "@save-n-spend/types";
 import AppSheet from "./AppSheet";
 import Caps from "@/components/ui/Caps";
 import { AppText } from "@/components/ui/AppText";
@@ -18,15 +18,7 @@ import { screenTitles } from "@/data/menu";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { spacing } from "@/theme";
-
-const TYPE_LABEL: Record<AccountType, string> = {
-  bank: "Bank account",
-  credit_card: "Credit card",
-  cash: "Cash",
-  wallet: "Wallet",
-  person: "Owes you",
-  investment: "Investment",
-};
+import { accountSubline } from "@/lib/accountLabels";
 
 // Biggest holding first, which also drops anything owed (a used credit card carries a
 // negative balance) to the bottom — the order the total is read in.
@@ -91,7 +83,7 @@ const NetWorthSheet = forwardRef<BottomSheetModal, Props>(({ netWorth, trend }, 
             key={account._id}
             style={styles.row}
             accessible
-            accessibilityLabel={`${account.name}, ${TYPE_LABEL[account.type]}, ${formatMoney(account.balance)}`}
+            accessibilityLabel={`${account.name}, ${accountSubline(account)}, ${formatMoney(account.balance)}`}
           >
             <Icon
               name={(account.icon ?? "wallet") as IconName}
@@ -105,7 +97,7 @@ const NetWorthSheet = forwardRef<BottomSheetModal, Props>(({ netWorth, trend }, 
                 {account.name}
               </AppText>
               <AppText size="xs" color="inkDim">
-                {TYPE_LABEL[account.type]}
+                {accountSubline(account)}
               </AppText>
             </View>
             {/* Red only when the account is in the red: a negative balance is money owed,

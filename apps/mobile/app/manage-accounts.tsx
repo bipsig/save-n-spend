@@ -3,7 +3,7 @@ import { StyleSheet, View } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
 import Animated, { LinearTransition } from "react-native-reanimated";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
-import type { AccountType, IAccount } from "@save-n-spend/types";
+import type { IAccount } from "@save-n-spend/types";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import Card from "@/components/data/Card";
 import ManageRow from "@/components/rows/ManageRow";
@@ -15,7 +15,7 @@ import PressableScale from "@/components/ui/PressableScale";
 import DragList from "@/components/ui/DragList";
 import EmptyState from "@/components/states/EmptyState";
 import ScreenStates from "@/components/states/ScreenStates";
-import { ACCOUNT_GROUPS, reorderAccounts, useAccounts } from "@/lib/accounts";
+import { ACCOUNT_GROUPS, ACCOUNT_TYPE_LABEL, reorderAccounts, useAccounts } from "@/lib/accounts";
 import { archiveNotice } from "@/lib/archiveNotice";
 import { useBills } from "@/lib/bills";
 import { mergeSectionOrder } from "@/lib/accountOrder";
@@ -31,15 +31,6 @@ import { deleteTarget, deleteWithUndo } from "@/lib/undo";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { spacing } from "@/theme";
-
-const TYPE_LABELS: Record<AccountType, string> = {
-  bank: "Bank",
-  credit_card: "Credit card",
-  cash: "Cash",
-  wallet: "Wallet",
-  person: "Person",
-  investment: "Investment",
-};
 
 const ManageAccountsScreen = () => {
   usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
@@ -186,7 +177,7 @@ const ManageAccountsScreen = () => {
                             sub={
                               (account.type === "person"
                                 ? formatBalance(account.balance, account.type)
-                                : `${TYPE_LABELS[account.type]} · ${formatBalance(account.balance, account.type)}`) +
+                                : `${ACCOUNT_TYPE_LABEL[account.type]} · ${formatBalance(account.balance, account.type)}`) +
                               (account._id === defaultAccountId ? " · Default" : "")
                             }
                             onEdit={() => openEdit(account)}

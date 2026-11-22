@@ -7,6 +7,8 @@ import { applyOrder, persistOrder } from "@/lib/reorder";
 import formatMoney from "@/lib/money";
 import type { AccountType, IAccount, InvestedHow } from "@save-n-spend/types";
 
+export { ACCOUNT_TYPE_LABEL, accountSubline } from "@/lib/accountLabels";
+
 // Filtered here, not just at the manage-accounts screen, so a "deleted" account
 // disappears from every picker built on this hook (Add Transaction, split rows) the
 // instant it's confirmed — not just from its own list. `useAccountById`/`accountById`
