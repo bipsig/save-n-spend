@@ -29,8 +29,12 @@ export const updateProfile = async (body: ProfilePatch): Promise<IUser> =>
 export const updatePrefs = async (prefs: PrefsPatch): Promise<IUser> =>
   applyUser(await patch<IUser>("/users/me", { prefs }));
 
-export const changePassword = (currentPassword: string, newPassword: string): Promise<null> =>
-  post<null>("/auth/change-password", { currentPassword, newPassword });
+// Since 2.8.6 a password change ends every other login and answers with a fresh token for
+// this phone, kept like a sign-in's. An older API answers null; the current token stays.
+export const changePassword = async (currentPassword: string, newPassword: string): Promise<void> => {
+  const data = await post<{ accessToken?: string } | null>("/auth/change-password", { currentPassword, newPassword });
+  if (data?.accessToken) await useSession.getState().signIn(data.accessToken);
+};
 
 // Deactivates rather than erases. The server keeps the user and everything they own
 // and only stamps them as gone, so signing in again with the same credentials restores
