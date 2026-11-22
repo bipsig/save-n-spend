@@ -2,6 +2,7 @@ import { StyleSheet, View } from "react-native";
 import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import type { CategoryKind, ICategory } from "@save-n-spend/types";
 import { AppText } from "@/components/ui/AppText";
+import Caps from "@/components/ui/Caps";
 import Badge from "@/components/ui/Badge";
 import ColorPicker from "@/components/ui/ColorPicker";
 import Icon from "@/components/ui/Icon";
@@ -92,9 +93,7 @@ const CategoryForm = ({
       />
 
       <View style={styles.field}>
-        <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>
-          TYPE
-        </AppText>
+        <Caps>Type</Caps>
         {editing || nesting || kindNote ? (
           // Locked for one of three reasons. Editing: every transaction filed here counts
           // as this kind, so flipping it restates history. Nesting: an income child under
@@ -119,16 +118,12 @@ const CategoryForm = ({
       </View>
 
       <View style={styles.field}>
-        <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>
-          ICON
-        </AppText>
+        <Caps>Icon</Caps>
         <IconPicker value={value.icon} onChange={(icon) => onChange({ icon })} />
       </View>
 
       <View style={styles.field}>
-        <AppText size="xs" weight="bold" color="inkDim" style={styles.fieldLabel}>
-          COLOUR
-        </AppText>
+        <Caps>Colour</Caps>
         <ColorPicker value={value.color} onChange={(color) => onChange({ color })} />
       </View>
 
@@ -152,10 +147,6 @@ const styles = StyleSheet.create({
   },
   field: {
     gap: spacing.sm,
-  },
-  // spec .flabel — tiny caps, wide tracking
-  fieldLabel: {
-    letterSpacing: 1.3,
   },
   lockedKind: {
     gap: spacing.xs,

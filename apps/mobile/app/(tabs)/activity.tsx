@@ -420,7 +420,7 @@ const ActivityScreen = () => {
           ListHeaderComponent={
             <>
             <SummaryCard
-              label={narrowed ? `${rangeLabel(range, offset)} · FILTERED` : rangeLabel(range, offset)}
+              label={narrowed ? `${rangeLabel(range, offset)} · Filtered` : rangeLabel(range, offset)}
               income={summary.data?.income ?? 0}
               expense={summary.data?.expenses ?? 0}
               savings={summary.data?.savings ?? 0}

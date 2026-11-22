@@ -203,14 +203,15 @@ const TransactionDetailSheet = forwardRef<BottomSheetModal, Props>(({
                     <View
                       style={[styles.badge, categoryLabel.isArchived && styles.badgeSplit, { backgroundColor: colors[categoryBg(category?.color)] }]}
                     >
-                      <AppText
+                      <Caps
+                        size="sm"
                         weight="black"
                         color={(category?.color ?? "accent") as ColorToken}
                         numberOfLines={1}
-                        style={[styles.badgeText, categoryLabel.isArchived && styles.badgeTextSplit]}
+                        style={categoryLabel.isArchived && styles.badgeTextSplit}
                       >
                         {categoryLabel.name}
-                      </AppText>
+                      </Caps>
                       {categoryLabel.isArchived && <ArchivedBadgeSegment />}
                     </View>
                   </View>
@@ -398,12 +399,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 999,
     flexShrink: 1,
-  },
-  // Capitals from the style, so VoiceOver reads the name rather than spelling it.
-  badgeText: {
-    fontSize: 11,
-    letterSpacing: 1, // spec .08em caps tracking
-    textTransform: "uppercase",
   },
   // Archived: the badge becomes two segments, the name and ArchivedBadgeSegment.
   badgeSplit: {

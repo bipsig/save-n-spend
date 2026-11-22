@@ -73,8 +73,9 @@ export const rangeBounds = (key: RangeKey, offset = 0): RangeBounds => {
   }
 };
 
-// Concrete caps label for the summary card and exported report headers
-// ("AUGUST 2026", "4–10 AUG 2026", "2025", "ALL TIME").
+// Concrete label for the summary card and exported report headers ("August 2026", "4–10 Aug
+// 2026", "2025", "All time"). Sentence case: both screens show it in Caps and the PDF letterhead
+// uppercases it in CSS, so VoiceOver reads the words.
 export const rangeLabel = (key: RangeKey, offset = 0): string => {
   const now = calendarToday(appZone());
   const y = now.getUTCFullYear();
@@ -83,20 +84,20 @@ export const rangeLabel = (key: RangeKey, offset = 0): string => {
   switch (key) {
     case "day": {
       const dd = new Date(Date.UTC(y, m, d + offset));
-      return formatCalendar(dd, "dayYear").toUpperCase();
+      return formatCalendar(dd, "dayYear");
     }
     case "week": {
       const start = weekStartDate(now, offset);
       const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate() + 6));
-      return formatSpan(start, end, { year: "always" }).toUpperCase();
+      return formatSpan(start, end, { year: "always" });
     }
     case "month": {
-      return formatCalendar(new Date(Date.UTC(y, m + offset, 1)), "monthLong").toUpperCase();
+      return formatCalendar(new Date(Date.UTC(y, m + offset, 1)), "monthLong");
     }
     case "year":
       return `${y + offset}`;
     case "all":
-      return "ALL TIME";
+      return "All time";
   }
 };
 

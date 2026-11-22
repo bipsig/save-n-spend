@@ -71,15 +71,3 @@ export const startOfToday = (): Date => {
   return d;
 };
 
-// Day-group header for the Activity list: "TODAY" / "YESTERDAY", else the
-// weekday + date ("SAT, 8 AUG", with the year once it's a different one).
-export const dayGroupLabel = (iso: string): string => {
-  const zone = appZone();
-  const distance = calendarDaysBetween(calendarDate(new Date(iso), zone), calendarToday(zone));
-  if (distance === 0) return "TODAY";
-  if (distance === 1) return "YESTERDAY";
-  return formatInstant(iso, "weekday", zone).toUpperCase();
-};
-
-// Month-break header ("AUGUST 2026") for longer, multi-month Activity lists.
-export const monthGroupLabel = (iso: string): string => formatInstant(iso, "monthLong").toUpperCase();

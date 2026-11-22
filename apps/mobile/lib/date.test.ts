@@ -62,12 +62,6 @@ test("a picked day becomes that day's midnight in the account's zone", () => {
 });
 
 test("Activity headers", () => {
-  assert.equal(date.dayGroupLabel("2026-11-15T18:45:00Z"), "TODAY");
-  assert.equal(date.dayGroupLabel("2026-11-15T10:00:00Z"), "YESTERDAY");
-  assert.equal(date.dayGroupLabel("2026-11-07T10:00:00Z"), "SAT, 7 NOV");
-  assert.equal(date.dayGroupLabel("2026-09-01T10:00:00Z"), "TUE, 1 SEP");
-  assert.equal(date.dayGroupLabel("2025-11-07T10:00:00Z"), "FRI, 7 NOV 2025");
-  assert.equal(date.monthGroupLabel("2026-11-30T19:00:00Z"), "DECEMBER 2026");
   assert.equal(date.formatFullDate("2026-11-30T19:00:00Z"), "1 Dec 2026");
   assert.equal(date.formatFullDate("2026-09-12T06:00:00Z"), "12 Sep 2026");
 });
@@ -92,14 +86,15 @@ test("week, month and year windows: Monday start, past ones whole, the current o
 });
 
 test("range labels for the summary card and the navigator", () => {
-  assert.equal(range.rangeLabel("day"), "16 NOV 2026");
-  assert.equal(range.rangeLabel("week", -1), "9–15 NOV 2026");
-  assert.equal(range.rangeLabel("week", -3), "26 OCT – 1 NOV 2026");
-  assert.equal(range.rangeLabel("week", -11), "31 AUG – 6 SEP 2026");
-  assert.equal(range.rangeLabel("month", -2), "SEPTEMBER 2026");
-  assert.equal(range.rangeLabel("month"), "NOVEMBER 2026");
+  // Sentence case: the capitals come from Caps and the PDF's CSS (gaps row 147).
+  assert.equal(range.rangeLabel("day"), "16 Nov 2026");
+  assert.equal(range.rangeLabel("week", -1), "9–15 Nov 2026");
+  assert.equal(range.rangeLabel("week", -3), "26 Oct – 1 Nov 2026");
+  assert.equal(range.rangeLabel("week", -11), "31 Aug – 6 Sep 2026");
+  assert.equal(range.rangeLabel("month", -2), "September 2026");
+  assert.equal(range.rangeLabel("month"), "November 2026");
   assert.equal(range.rangeLabel("year", -1), "2025");
-  assert.equal(range.rangeLabel("all"), "ALL TIME");
+  assert.equal(range.rangeLabel("all"), "All time");
 
   assert.equal(range.rangeNavLabel("day"), "Today");
   assert.equal(range.rangeNavLabel("day", -1), "Yesterday");

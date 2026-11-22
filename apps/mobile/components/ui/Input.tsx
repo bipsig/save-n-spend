@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { StyleSheet, TextInput, View } from 'react-native'
 import type { TextInputProps } from 'react-native'
 import { AppText } from './AppText'
+import Caps from './Caps'
 import { KEYBOARD_DONE_ID } from './KeyboardDoneBar'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
@@ -45,9 +46,7 @@ const Input = ({
   return (
     <View style={styles.wrapper}>
       {label && (
-        <AppText weight="bold" size="xs" color="inkDim" style={styles.label} accessibilityLabel={label}>
-          {label.toUpperCase()}
-        </AppText>
+        <Caps>{label}</Caps>
       )}
 
       <View style={styles.field}>
@@ -74,8 +73,6 @@ const Input = ({
 
 const styles = StyleSheet.create({
   wrapper: { gap: spacing.sm, width: '100%' },
-  // Spec .flabel — tiny caps, wide tracking, dim ink.
-  label: { letterSpacing: 1.3 },
   // Spec .finput × device scale — radius 16, faint white fill, hairline border.
   input: {
     borderWidth: 1,
