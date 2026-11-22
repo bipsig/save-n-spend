@@ -37,6 +37,8 @@ test("no hex or tinted rgba outside theme/ and the PDF palette", () => {
     if (ALLOWED.has(rel)) continue;
     const text = withoutComments(readFileSync(file, "utf8"));
     for (const m of text.matchAll(HEX)) found.push(`${rel}: ${m[0]}`);
+    // A token written inside a plain string is the text "${colors.x}", not a colour.
+    for (const m of text.matchAll(/["']\$\{(?:colors|withAlpha)[^}]*\}["']/g)) found.push(`${rel}: ${m[0]}`);
     for (const m of text.matchAll(RGBA)) {
       const rgb = [m[1], m[2], m[3]].join(",");
       if (rgb !== "255,255,255" && rgb !== "0,0,0") found.push(`${rel}: ${m[0]}`);
