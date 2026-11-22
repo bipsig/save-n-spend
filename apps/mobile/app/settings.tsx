@@ -25,7 +25,7 @@ import { formatFullDate } from "@/lib/date";
 import { count } from "@/lib/format/count";
 import { screenTitles } from "@/data/menu";
 import { lockCapability, authenticate } from "@/lib/lock";
-import { detachPush, registerForPush } from "@/lib/push";
+import { registerForPush } from "@/lib/push";
 import {
   FALLBACK_PREFS,
   deleteAccount,
@@ -39,11 +39,11 @@ import { useAccountStore } from "@/store/accounts";
 import { useCategoryStore } from "@/store/categories";
 import { useSession } from "@/store/session";
 import { AUTO_LOCK_DELAYS, autoLockLabel, useSettings, type AutoLockSeconds } from "@/store/settings";
-import { useOutbox } from "@/store/outbox";
 import { APP_VERSION, useWhatsNewState } from "@/store/whatsNew";
 import { toast } from "@/store/toast";
 import { spacing } from "@/theme";
 import type { BillReminderLead } from "@save-n-spend/types";
+import LogoutSheet from "@/components/sheets/LogoutSheet";
 
 // 1 → "1st", 2 → "2nd", 22 → "22nd". Only ever 1–28 here, but general anyway.
 const ordinal = (n: number): string => {
@@ -92,11 +92,6 @@ const SettingsScreen = () => {
   // sheet's body states concrete facts from (dated, counted), and what onConfirm
   // below actually restores.
   const [picked, setPicked] = useState<PickedBackup | null>(null);
-
-  // Signing out clears the in-memory queue but leaves the file on disk (see
-  // store/outbox.ts) — real, but worth naming before someone signs out mid-flight and
-  // wonders where a transaction went.
-  const pendingSync = useOutbox((s) => s.items.length);
 
   // Account settings are saved on the server and don't queue: offline those rows are locked
   // and say why. Privacy mode, App Lock and Auto-lock live on the phone and stay usable.
@@ -563,23 +558,7 @@ const SettingsScreen = () => {
 
       <ExportSheet ref={exportRef} defaultRange="all" />
 
-      <ConfirmSheet
-        ref={logoutRef}
-        icon="logout"
-        title="Log out?"
-        body={
-          pendingSync > 0
-            ? `${count(pendingSync, "transaction")} ${pendingSync === 1 ? "hasn't" : "haven't"} synced yet — they'll sync once you're signed back in. Your data stays on the server. You'll need your password to sign back in.`
-            : "Your data stays on the server. You'll need your password to sign back in."
-        }
-        confirmLabel="Log out"
-        // detachPush first, while the request is still authenticated: a token left on the
-        // account keeps pushing this user's reminders to whoever signs in next.
-        onConfirm={async () => {
-          await detachPush();
-          await useSession.getState().signOut();
-        }}
-      />
+      <LogoutSheet ref={logoutRef} />
 
       <ConfirmSheet
         ref={deleteRef}

@@ -2,6 +2,8 @@ import type { IUser, IUserPrefs, INotificationPrefs } from "@save-n-spend/types"
 import { del, patch, post } from "@/lib/api";
 import { deviceZone } from "@/lib/zone";
 import { useSession } from "@/store/session";
+import { usePendingDeletes } from "@/store/pendingDeletes";
+import { detachPush } from "@/lib/push";
 
 // The account-level half of Settings. Every write returns the whole updated user,
 // which goes straight back into the session store — so a preference changed here
@@ -36,14 +38,24 @@ export const changePassword = async (currentPassword: string, newPassword: strin
   if (data?.accessToken) await useSession.getState().signIn(data.accessToken);
 };
 
-// Deactivates rather than erases. The server keeps the user and everything they own
-// and only stamps them as gone, so signing in again with the same credentials restores
-// the lot (see `userController.deleteMe` on the API). Signing out afterwards is what
-// returns the app to the login screen — which is also where the way back in starts.
-export const deleteAccount = async (): Promise<void> => {
-  await del<null>("/users/me");
+/**
+ * The one way out (gaps row 105), for More, Settings and account deletion, in this order while
+ * the token still works: send any delete still in its undo window (a confirmed delete must not
+ * quietly come back), detach push (a token left on the account keeps pushing this user's
+ * reminders to whoever signs in next), deactivate when deleting, then sign out. A failed
+ * flush or detach never blocks the sign-out; a failed deactivation does, so the sheet says so.
+ *
+ * Deleting deactivates rather than erases: signing in again with the same credentials
+ * restores everything (see `userController.deleteMe` on the API).
+ */
+export const logOut = async ({ deleteAccount = false }: { deleteAccount?: boolean } = {}): Promise<void> => {
+  await usePendingDeletes.getState().flushAll().catch(() => {});
+  await detachPush().catch(() => {});
+  if (deleteAccount) await del<null>("/users/me");
   await useSession.getState().signOut();
 };
+
+export const deleteAccount = (): Promise<void> => logOut({ deleteAccount: true });
 
 // The prefs a screen can rely on before the user document has loaded. `timeZone`
 // comes off the device rather than repeating the schema's Asia/Kolkata: for the one

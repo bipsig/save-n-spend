@@ -5,7 +5,6 @@ import { router } from "expo-router";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import ScreenScaffold from "@/components/shell/ScreenScaffold";
 import Card from "@/components/data/Card";
-import ConfirmSheet from "@/components/sheets/ConfirmSheet";
 import Avatar from "@/components/ui/Avatar";
 import Caps from "@/components/ui/Caps";
 import Icon from "@/components/ui/Icon";
@@ -19,10 +18,10 @@ import { goalsSummary, useGoals } from "@/lib/goals";
 import { initialsOf } from "@/lib/profile";
 import { mergeScreenStates } from "@/lib/screenStates";
 import { formatPct } from "@/lib/format/pct";
-import { detachPush } from "@/lib/push";
 import { useSession } from "@/store/session";
 import { spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
+import LogoutSheet from "@/components/sheets/LogoutSheet";
 
 // One destination row (spec .srow): 28px gradient chip · 12.5/700 label ·
 // live status value + chevron on the right. Rows stack inside ONE glass card,
@@ -203,21 +202,7 @@ const MoreScreen = () => {
         </PressableScale>
       </Card>
 
-      {/* signOut() clears the token + resets the session; the root gate then
-          redirects to Login. detachPush goes first — it is an authenticated request,
-          and a token left on the account would keep pushing this user's reminders to a
-          phone somebody else is now signed in on. */}
-      <ConfirmSheet
-        ref={logoutRef}
-        icon="logout"
-        title="Log out?"
-        body="Your data stays on the server. You'll need your password to sign back in."
-        confirmLabel="Log out"
-        onConfirm={async () => {
-          await detachPush();
-          await useSession.getState().signOut();
-        }}
-      />
+      <LogoutSheet ref={logoutRef} />
     </ScreenScaffold>
   );
 };
