@@ -28,6 +28,7 @@ import type { IconName } from "@/lib/icons";
 import { spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
+import { editWithUndo } from "@/lib/undo";
 
 type Props = {
   month: string;
@@ -106,9 +107,10 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
   const onSave = async (data: FormValues) => {
     setSaving(true);
     setError(null);
+    let saved: { updatedAt?: string } | null = null;
     try {
       if (summary) {
-        await patch(`/budgets/${summary.budget._id}`, { limit: parseMoney(data.limit) });
+        saved = await patch<{ updatedAt?: string }>(`/budgets/${summary.budget._id}`, { limit: parseMoney(data.limit) });
       }
       else {
         const body = { category: categoryId, month, limit: parseMoney(data.limit) };
@@ -118,12 +120,17 @@ const BudgetLimitSheet = forwardRef<BottomSheetModal, Props>(({ month, summary, 
       }
       dismiss();
       onChanged?.();
-      const name = category?.name ?? "Budget";
       // Warned rather than plain success when the limit is already blown: the sheet
       // said so before saving, and the tone has to carry that through instead of
       // congratulating the user on a budget they're over.
-      if (over) toast.warning(`${name} limit set to ${formatMoney(parseMoney(data.limit))} — already ${formatMoney(spent - entered)} over`);
-      else toast.success(`${name} limit ${isEdit ? "updated" : "set"} to ${formatMoney(parseMoney(data.limit))}`);
+      const receipt = over
+        ? `${name} limit set to ${formatMoney(parseMoney(data.limit))} — already ${formatMoney(spent - entered)} over`
+        : `${name} limit ${isEdit ? "updated" : "set"} to ${formatMoney(parseMoney(data.limit))}`;
+      if (summary) {
+        editWithUndo({ path: `/budgets/${summary.budget._id}`, previous: { limit: summary.budget.limit }, saved, message: receipt, tone: over ? "warning" : "success" });
+      }
+      else if (over) toast.warning(receipt);
+      else toast.success(receipt);
     }
     catch (err) {
       // Kept in the sheet: the limit is still in the field beside the meter that

@@ -92,9 +92,10 @@ export const createAccount = async (draft: AccountDraft, opts?: RequestOptions):
 export const updateAccount = async (
   id: string,
   patchBody: { name?: string; type?: AccountType; icon?: string; color?: string; investmentKind?: string }
-): Promise<void> => {
-  await patch<IAccount>(`/accounts/${id}`, patchBody);
+): Promise<IAccount> => {
+  const saved = await patch<IAccount>(`/accounts/${id}`, patchBody);
   await useAccountStore.getState().load();
+  return saved;
 };
 
 // Reconcile against what the bank actually says. `balance` is the TARGET figure in

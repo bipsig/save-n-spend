@@ -18,7 +18,7 @@ import { pendingDeletes, usePendingDeletes } from "@/store/pendingDeletes";
 import { toast, type ToastTone } from "@/store/toast";
 import { UNDO_COPY, undoOutcome, type DeleteTarget } from "@/lib/undoCopy";
 
-export { UNDO_COPY, deleteTarget, deletedMessage, undoOutcome } from "@/lib/undoCopy";
+export { UNDO_COPY, deleteTarget, deletedMessage, previousValues, undoOutcome } from "@/lib/undoCopy";
 
 export type DeleteWithUndo = DeleteTarget & {
   /** Named in "Couldn't delete <label> — it's back". */
@@ -75,13 +75,16 @@ export type EditWithUndo = {
   /** The old value of every key the save sent. */
   previous: Record<string, unknown>;
   /** The save's reply; its `updatedAt` goes in `If-Match`. */
-  saved: { updatedAt?: string } | null | undefined;
+  saved: object | null | undefined;
   /** The toast the screen already shows: "Changes saved — ₹450.00". */
   message: string;
   tone?: ToastTone;
   /** The same reloads the save did, after the undo lands. */
   reload?: () => Promise<unknown>;
 };
+
+/** The types don't all name it, but every edited record's reply carries `updatedAt`. */
+const updatedAtOf = (saved: object | null | undefined): string | undefined => (saved as { updatedAt?: string } | null | undefined)?.updatedAt;
 
 /** Sends the previous values back. Exported for the tests. */
 export const undoEdit = async (o: Pick<EditWithUndo, "path" | "previous" | "saved" | "reload">): Promise<void> => {
@@ -90,7 +93,7 @@ export const undoEdit = async (o: Pick<EditWithUndo, "path" | "previous" | "save
     return;
   }
   try {
-    await patch(o.path, o.previous, { ifMatch: o.saved?.updatedAt, idempotencyKey: makeIdempotencyKey() });
+    await patch(o.path, o.previous, { ifMatch: updatedAtOf(o.saved), idempotencyKey: makeIdempotencyKey() });
   }
   catch (err) {
     const outcome = undoOutcome(err);
@@ -105,7 +108,7 @@ export const undoEdit = async (o: Pick<EditWithUndo, "path" | "previous" | "save
 /** "Changes saved · Undo". Without an `updatedAt` to send (an older API), just the toast. */
 export const editWithUndo = (o: EditWithUndo): void => {
   const tone = o.tone ?? "success";
-  if (!o.saved?.updatedAt) {
+  if (!updatedAtOf(o.saved)) {
     toast[tone](o.message);
     return;
   }

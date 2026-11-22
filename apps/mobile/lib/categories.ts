@@ -130,9 +130,10 @@ export const createCategory = async (draft: CategoryDraft, opts?: RequestOptions
 export const updateCategory = async (
   id: string,
   patchBody: { name?: string; icon?: string; color?: string }
-): Promise<void> => {
-  await patch<ICategory>(`/categories/${id}`, patchBody);
+): Promise<ICategory> => {
+  const saved = await patch<ICategory>(`/categories/${id}`, patchBody);
   await useCategoryStore.getState().load();
+  return saved;
 };
 
 /**

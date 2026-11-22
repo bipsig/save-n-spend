@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createStore } from "zustand/vanilla";
 import { fake, memoryFileSystem, relaunch } from "../test/node";
 import type { PersistedDelete } from "./pendingDeleteReplay";
-import { UNDO_COPY, deleteTarget, deletedMessage, undoOutcome } from "./undoCopy";
+import { UNDO_COPY, deleteTarget, deletedMessage, previousValues, undoOutcome } from "./undoCopy";
 import { ApiError, offlineError } from "./apiError";
 
 // Run from apps/api: TS_NODE_TRANSPILE_ONLY=true node --require ts-node/register --test ../mobile/lib/undo.test.ts
@@ -202,4 +202,14 @@ test("undoOutcome reads each answer", () => {
   assert.equal(undoOutcome(new ApiError(UNDO_COPY.changed, 409, null, { code: "conflict", reason: UNDO_COPY.changed })), "changed");
   assert.equal(undoOutcome(new ApiError("This trip is closed. Reopen it to make changes", 409, null, { code: "conflict" })), "failed");
   assert.equal(undoOutcome(new Error("x")), "failed");
+});
+
+test("previousValues: the old value of each key the save sent, blanks for what the record lacked", () => {
+  const before = { _id: "x", title: "Zepto", amount: 45_000, category: "c1", occurredAt: "2026-11-14T10:00:00.000Z", updatedAt: "t" };
+  const sent = { title: "Zepto 2", amount: 50_000, category: "c1", occurredAt: "2026-11-14T10:00:00.000Z", note: "late", paymentMode: "upi" };
+  assert.deepEqual(previousValues(before, sent, { note: "", location: "" }), {
+    title: "Zepto", amount: 45_000, category: "c1", occurredAt: "2026-11-14T10:00:00.000Z", note: "",
+  });
+  // null is a value: a cleared deadline goes back to null, not left out.
+  assert.deepEqual(previousValues({ deadline: null }, { deadline: "2026-12-01T00:00:00.000Z" }), { deadline: null });
 });

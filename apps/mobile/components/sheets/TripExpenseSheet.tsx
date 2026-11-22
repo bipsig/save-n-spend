@@ -20,7 +20,7 @@ import { useCategoryById } from "@/lib/categories";
 import { haptics } from "@/lib/haptics";
 import formatMoney, { parseMoney, paiseToInput, usePrivacyMask } from "@/lib/money";
 import { addTripExpense, reloadAfterTripRowsDelete, splitEvenly, updateTripExpense } from "@/lib/trips";
-import { deleteTarget, deleteWithUndo } from "@/lib/undo";
+import { deleteTarget, deleteWithUndo, editWithUndo } from "@/lib/undo";
 import { holderFor } from "@/lib/idempotency";
 import { toast } from "@/store/toast";
 import type { IconName } from "@/lib/icons";
@@ -155,8 +155,9 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
     setError(null);
     try {
       const idem = holderFor(`trip:${tripId}:expense:${expense?._id ?? "new"}`);
+      let saved: { updatedAt?: string } | null = null;
       if (expense) {
-        await updateTripExpense(tripId, expense._id, draft, {
+        saved = await updateTripExpense(tripId, expense._id, draft, {
           idempotencyKey: idem.keyFor("PATCH", `/trips/${tripId}/expenses/${expense._id}`, draft),
         });
       }
@@ -164,7 +165,19 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
       idem.reset();
       innerRef.current?.dismiss();
       onSaved?.();
-      toast.success(expense ? `${draft.title} updated` : `${draft.title} added · your share ${formatMoney(myShare)}`);
+      if (expense) {
+        editWithUndo({
+          path: `/trips/${tripId}/expenses/${expense._id}`,
+          previous: {
+            title: expense.title, occurredAt: expense.occurredAt, category: expense.category, cost: expense.cost,
+            paidBy: expense.paidBy, paidFrom: expense.paidFrom, shares: expense.shares.map((s) => ({ account: s.account, amount: s.amount })),
+          },
+          saved,
+          message: `${draft.title} updated`,
+          reload: reloadAfterTripRowsDelete,
+        });
+      }
+      else toast.success(`${draft.title} added · your share ${formatMoney(myShare)}`);
     }
     catch (err) {
       haptics.error();

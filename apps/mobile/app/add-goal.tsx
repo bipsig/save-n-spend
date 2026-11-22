@@ -30,10 +30,11 @@ import { splitIssues } from "@/lib/apiError";
 import { useIdempotencyKey } from "@/lib/useIdempotencyKey";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { toast } from "@/store/toast";
-import { NAME_MAX, NAME_MIN } from "@save-n-spend/types";
+import { NAME_MAX, NAME_MIN, type IGoal } from "@save-n-spend/types";
 import type { IconName } from "@/lib/icons";
 import { radius, spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
+import { editWithUndo, previousValues } from "@/lib/undo";
 
 const schema = z.object({
   name: z.string().min(NAME_MIN, "Name is required").max(NAME_MAX, `Keep it to ${NAME_MAX} characters`),
@@ -91,6 +92,7 @@ const AddGoal = () => {
   usePrivacyMask(); // subscribe: a peek has to re-render the amounts computed below
   const { id } = useLocalSearchParams<{ id?: string }>();
   const editing = Boolean(id);
+  const [original, setOriginal] = useState<IGoal | null>(null);
 
   const [deadline, setDeadline] = useState<Date | null>(null);
   const [saved, setSaved] = useState(0);
@@ -133,6 +135,7 @@ const AddGoal = () => {
           setNotFound(true);
           return;
         }
+        setOriginal(goal);
         reset({
           name: goal.name,
           amount: (goal.target / 100).toFixed(2).replace(/\.00$/, ""),
@@ -211,7 +214,11 @@ const AddGoal = () => {
     try {
       // Explicitly null on a PATCH, so switching the deadline off clears the one stored —
       // a PATCH ignores what it isn't sent. Create has nothing to clear and rejects null.
-      if (id) await updateGoal(id, { ...fields, deadline: iso });
+      let undo: { saved: object | null; sent: Record<string, unknown> } | null = null;
+      if (id) {
+        const sent = { ...fields, deadline: iso };
+        undo = { saved: await updateGoal(id, sent), sent };
+      }
       else {
         const body = { ...fields, ...(iso ? { deadline: iso } : {}) };
         await post("/goals", body, { idempotencyKey: idem.keyFor("POST", "/goals", body) });
@@ -219,15 +226,17 @@ const AddGoal = () => {
       idem.reset();
       goBackOrHome();
       // The receipt repeats the pace: the screen that worked it out is gone by now.
-      toast.success(
-        editing
-          ? deadline
-            ? `${name} updated — ${formatMoney(perMonth)} a month`
-            : `${name} updated`
-          : deadline
-            ? `${name} started — ${formatMoney(perMonth)} a month`
-            : `${name} started — ${formatMoney(remaining)} to go`
-      );
+      const receipt = editing
+        ? deadline
+          ? `${name} updated — ${formatMoney(perMonth)} a month`
+          : `${name} updated`
+        : deadline
+          ? `${name} started — ${formatMoney(perMonth)} a month`
+          : `${name} started — ${formatMoney(remaining)} to go`;
+      if (id && undo && original) {
+        editWithUndo({ path: `/goals/${id}`, previous: previousValues(original, undo.sent, { deadline: null }), saved: undo.saved, message: receipt });
+      }
+      else toast.success(receipt);
     }
     catch (err) {
       // Kept on the screen, beside the name, target, icon and colour just chosen. The buzz

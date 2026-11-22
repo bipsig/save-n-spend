@@ -45,6 +45,7 @@ import { useTitleSuggestionStore } from "@/store/titleSuggestions";
 import { useTitleMatches } from "@/lib/titleSuggestions";
 import { useOutbox } from "@/store/outbox";
 import type { ITransaction } from "@save-n-spend/types";
+import { editWithUndo, previousValues } from "@/lib/undo";
 
 const schema = z.object({
   title: z.string(),
@@ -156,6 +157,8 @@ const AddTransaction = () => {
   // When the transaction being edited was fetched; null until it has loaded, so the form
   // (and its Save) stays hidden behind a skeleton rather than offering a blank record.
   const [editFetchedAt, setEditFetchedAt] = useState<number | null>(null);
+  // The record as loaded, so "Changes saved · Undo" can send its old values back.
+  const [editOriginal, setEditOriginal] = useState<ITransaction | null>(null);
 
   // Shared by editing a transaction and repeating one — everything is the same except
   // which moment it lands on: the original's own timestamp for an edit, right now for a
@@ -184,6 +187,7 @@ const AddTransaction = () => {
       try {
         const { data: transaction, fetchedAt } = await getFetched<ITransaction>(`/transactions/${id}`);
         applyTransactionToForm(transaction, transaction.occurredAt ? new Date(transaction.occurredAt) : new Date());
+        setEditOriginal(transaction);
         setEditFetchedAt(fetchedAt);
       }
       catch (err) {
@@ -546,13 +550,15 @@ const AddTransaction = () => {
 
     setSubmitting(true);
     setSubmitError(null);
+    let edited: { path: string; sent: Record<string, unknown>; saved: { updatedAt?: string } | null } | null = null;
     try {
       if (isEdit) {
         // Account moves are deferred in edit; patch only the editable fields per type.
         const editPayload = data.type === "transfer"
           ? { amount: parseMoney(data.amount), occurredAt: occurredAt.toISOString(), ...extras }
           : { title: data.title, amount: parseMoney(data.amount), category: data.category, occurredAt: occurredAt.toISOString(), ...extras };
-        await patch(`/transactions/${id}`, editPayload, { idempotencyKey: idem.keyFor("PATCH", `/transactions/${id}`, editPayload) });
+        const saved = await patch<{ updatedAt?: string } | null>(`/transactions/${id}`, editPayload, { idempotencyKey: idem.keyFor("PATCH", `/transactions/${id}`, editPayload) });
+        edited = { path: `/transactions/${id}`, sent: editPayload, saved };
       }
       else {
         await post("/transactions", payload, { idempotencyKey: clientId });
@@ -573,7 +579,18 @@ const AddTransaction = () => {
       // The screen is already gone by the time this shows, so it is the only receipt —
       // hence naming the amount and direction rather than just "Saved".
       const amount = formatMoney(parseMoney(data.amount));
-      if (isEdit) toast.success(`Changes saved — ${amount}`);
+      // No Undo on a split (the expense or an owed transfer): rescaling the shares back can
+      // land a paisa off.
+      if (isEdit && edited && editOriginal && !editOriginal.splitGroupId) {
+        editWithUndo({
+          path: edited.path,
+          previous: previousValues(editOriginal, edited.sent, { note: "", location: "" }),
+          saved: edited.saved,
+          message: `Changes saved — ${amount}`,
+          reload: () => useAccountStore.getState().load(),
+        });
+      }
+      else if (isEdit) toast.success(`Changes saved — ${amount}`);
       else if (data.type === "invest") toast.success(`${amount} invested in ${toAccount!.name}`);
       else if (data.type === "transfer" && account.type === "investment") toast.success(`${amount} redeemed from ${account.name}`);
       else if (data.type === "transfer") toast.success(`${amount} moved to ${toAccount!.name}`);

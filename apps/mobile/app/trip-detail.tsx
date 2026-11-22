@@ -37,6 +37,7 @@ import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { chartPalette, colors, radius, spacing } from "@/theme";
 import { useTripWhilePending } from "@/lib/tripPending";
+import { editWithUndo } from "@/lib/undo";
 
 const BAR_COLORS = [colors.primary, colors.warning, colors.info, colors.success, colors.teal];
 
@@ -432,8 +433,10 @@ const TripDetailScreen = () => {
           expenseDays={data.expenses.map((e) => dayKey(new Date(e.occurredAt), zone))}
           initial={closedOn}
           onConfirm={async (day) => {
-            await changeCloseDate(trip._id, day);
-            toast.success(`${trip.name} now counts on ${formatCalendar(day)}`);
+            const saved = await changeCloseDate(trip._id, day);
+            const message = `${trip.name} now counts on ${formatCalendar(day)}`;
+            if (closedOn) editWithUndo({ path: `/trips/${trip._id}/close-date`, previous: { closedOn }, saved, message });
+            else toast.success(message);
           }}
         />
       )}

@@ -12,6 +12,8 @@ import type { IconName } from "@/lib/icons";
 import { toast } from "@/store/toast";
 import type { ColorToken } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
+import { editWithUndo, previousValues } from "@/lib/undo";
+import { useCategoryStore } from "@/store/categories";
 
 type Props = {
   /** The category being edited, or `null` to create a new one. */
@@ -86,7 +88,11 @@ const EditCategorySheet = forwardRef<BottomSheetModal, Props>(({ category, paren
     setBusy(true);
     setError(null);
     try {
-      if (editing) await updateCategory(category._id, { name: trimmed, icon: form.icon, color: form.color });
+      let undo: { saved: object; sent: Record<string, unknown> } | null = null;
+      if (editing) {
+        const sent = { name: trimmed, icon: form.icon, color: form.color };
+        undo = { saved: await updateCategory(category._id, sent), sent };
+      }
       else {
         const draft = {
           name: trimmed,
@@ -103,11 +109,16 @@ const EditCategorySheet = forwardRef<BottomSheetModal, Props>(({ category, paren
       dismiss();
       // Names the category, not the action: after closing the sheet the list behind
       // may have scrolled, and "Groceries saved" is findable where "Saved" isn't.
-      toast.success(
-        editing ? `${trimmed} updated`
-          : parent ? `${trimmed} added under ${parent.name}`
-            : `${trimmed} added`
-      );
+      if (editing && undo) {
+        editWithUndo({
+          path: `/categories/${category._id}`,
+          previous: previousValues(category, undo.sent),
+          saved: undo.saved,
+          message: `${trimmed} updated`,
+          reload: () => useCategoryStore.getState().load(),
+        });
+      }
+      else toast.success(parent ? `${trimmed} added under ${parent.name}` : `${trimmed} added`);
     }
     catch (err) {
       haptics.error();

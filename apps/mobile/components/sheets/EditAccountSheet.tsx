@@ -27,6 +27,8 @@ import { toast } from "@/store/toast";
 import type { ColorToken } from "@/theme";
 import { spacing } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
+import { editWithUndo, previousValues } from "@/lib/undo";
+import { useAccountStore } from "@/store/accounts";
 
 type Props = {
   /** The account being edited, or `null` to create a new one. */
@@ -210,8 +212,10 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
     try {
       // Blank kind on an investment falls back to "Other" so the hub always has a group.
       const kind = type === "investment" ? (investmentKind.trim() || "Other") : undefined;
+      let undo: { saved: object; sent: Record<string, unknown> } | null = null;
       if (editing) {
-        await updateAccount(account._id, { name: trimmed, type, icon, color, investmentKind: kind });
+        const sent = { name: trimmed, type, icon, color, investmentKind: kind };
+        undo = { saved: await updateAccount(account._id, sent), sent };
         if (isInvestment) {
           const basis: InvestmentBasis = {};
           if (investedPaise !== null) basis.invested = investedPaise;
@@ -219,7 +223,10 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
             basis.investedSince = startDate.toISOString();
             basis.investedHow = how;
           }
-          if (Object.keys(basis).length > 0) await updateInvestmentBasis(account._id, basis);
+          if (Object.keys(basis).length > 0) {
+            await updateInvestmentBasis(account._id, basis);
+            undo = null;
+          }
         }
         // A second call, skipped when the field was blank, so renaming an account never
         // sends anything that could move money. The server records the difference as an
@@ -232,6 +239,8 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
             idempotencyKey: idem.keyFor("PATCH", path, noteText ? { balance: target, note: noteText } : { balance: target }),
           });
           idem.reset();
+          // Undoing would leave the correction's adjustment and add another.
+          undo = null;
         }
       }
       else {
@@ -254,6 +263,15 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
       // Names the correction when there was one — the bigger of the two things that just
       // happened, which a bare "updated" would hide.
       if (editing && delta !== 0) toast.success(`${trimmed} balance updated`);
+      else if (editing && undo) {
+        editWithUndo({
+          path: `/accounts/${account._id}`,
+          previous: previousValues(account, undo.sent),
+          saved: undo.saved,
+          message: `${trimmed} updated`,
+          reload: () => useAccountStore.getState().load(),
+        });
+      }
       else toast.success(editing ? `${trimmed} updated` : `${trimmed} added`);
     }
     catch (err) {

@@ -36,6 +36,7 @@ import type { IconName } from "@/lib/icons";
 import { colors, spacing } from "@/theme";
 import type { ColorToken } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
+import { editWithUndo, previousValues } from "@/lib/undo";
 
 /** The lead time the "remind me" switch stands for. 0 is how the server says "don't". */
 const REMIND_DAYS = 3;
@@ -199,7 +200,8 @@ const EditBillSheet = forwardRef<BottomSheetModal, Props>(({ bill, draft, onChan
       onSaved?.(saved ?? null);
       // Named, not just "Bill added": the sheet closes onto a list the row may have
       // scrolled out of, and the name is what makes it findable.
-      toast.success(editing ? `${name} updated` : `${name} added to your bills`);
+      if (bill) editWithUndo({ path: `/bills/${bill._id}`, previous: previousValues(bill, body, { category: null, toInvestment: null }), saved, message: `${name} updated` });
+      else toast.success(`${name} added to your bills`);
     }
     catch (err) {
       // Kept in the sheet rather than toasted: the amount and name the user typed are

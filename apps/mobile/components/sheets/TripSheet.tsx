@@ -15,8 +15,8 @@ import { createAccount, useAccounts } from "@/lib/accounts";
 import { haptics } from "@/lib/haptics";
 import { parseMoney, paiseToInput } from "@/lib/money";
 import { startOfToday } from "@/lib/date";
-import { TRIP_EMOJIS, TRIP_GRADIENTS, createTrip, pickerToTripDay, reloadAfterTripDelete, tripDayToPicker, updateTrip } from "@/lib/trips";
-import { deleteTarget, deletedMessage, deleteWithUndo } from "@/lib/undo";
+import { TRIP_EMOJIS, TRIP_GRADIENTS, createTrip, pickerToTripDay, reloadAfterTripDelete, reloadTripNames, tripDayToPicker, updateTrip } from "@/lib/trips";
+import { deleteTarget, deletedMessage, deleteWithUndo, editWithUndo, previousValues } from "@/lib/undo";
 import { holderFor } from "@/lib/idempotency";
 import { recoverCreated, sameName } from "@/lib/replayed";
 import { useAccountStore } from "@/store/accounts";
@@ -116,7 +116,8 @@ const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDelete
         members, budget: budgetPaise && budgetPaise > 0 ? budgetPaise : null,
       };
       let id = trip?._id ?? "";
-      if (trip) await updateTrip(trip._id, draft);
+      let saved: { updatedAt?: string } | null = null;
+      if (trip) saved = await updateTrip(trip._id, draft);
       else {
         const idem = holderFor("trip:new");
         const reply = await createTrip(draft, { idempotencyKey: idem.keyFor("POST", "/trips", draft) });
@@ -128,7 +129,8 @@ const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDelete
       }
       innerRef.current?.dismiss();
       onSaved?.(id);
-      toast.success(trip ? `${draft.name} updated` : `${draft.name} started`);
+      if (trip) editWithUndo({ path: `/trips/${trip._id}`, previous: previousValues(trip, draft), saved, message: `${draft.name} updated`, reload: reloadTripNames });
+      else toast.success(`${draft.name} started`);
     }
     catch (err) {
       haptics.error();

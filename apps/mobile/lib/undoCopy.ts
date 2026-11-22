@@ -45,6 +45,23 @@ export const deletedMessage = (name: string, parts: [number, string, string][] =
   return `${name} deleted with ${list}`;
 };
 
+/** What an edit's undo sends: for every key the save sent, the record's value before it. A
+ *  key the record didn't have takes `blank` (an emptied note), or is left out when the API
+ *  can't clear it. */
+export const previousValues = (
+  before: object,
+  sent: Record<string, unknown>,
+  blank: Record<string, unknown> = {},
+): Record<string, unknown> => {
+  const old = before as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(sent)) {
+    if (old[key] !== undefined) out[key] = old[key];
+    else if (key in blank) out[key] = blank[key];
+  }
+  return out;
+};
+
 export type UndoOutcome = "undone" | "changed" | "offline" | "failed";
 
 /** What an undo's answer means: null is success. */

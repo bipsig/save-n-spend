@@ -48,9 +48,11 @@ export const createTrip = async (draft: TripDraft, opts?: RequestOptions): Promi
   return trip ?? null;
 };
 export const updateTrip = async (id: string, draft: Partial<TripDraft>) => {
-  await patch(`/trips/${id}`, draft);
+  const saved = await patch<{ updatedAt?: string }>(`/trips/${id}`, draft);
   void reloadTripNames();
+  return saved;
 };
+export { reloadTripNames };
 /** What a trip delete reloads beyond the screens' reads: balances and Activity's trip names. */
 export const reloadAfterTripDelete = () => Promise.all([reloadAccounts(), reloadTripNames()]);
 
@@ -59,8 +61,9 @@ export const addTripExpense = async (tripId: string, draft: TripExpenseDraft, op
   await reloadAccounts();
 };
 export const updateTripExpense = async (tripId: string, expenseId: string, draft: TripExpenseDraft, opts?: RequestOptions) => {
-  await patch(`/trips/${tripId}/expenses/${expenseId}`, draft, opts);
+  const saved = await patch<{ updatedAt?: string }>(`/trips/${tripId}/expenses/${expenseId}`, draft, opts);
   await reloadAccounts();
+  return saved;
 };
 /** What a trip expense or plan delete reloads beyond the screens' reads. */
 export const reloadAfterTripRowsDelete = reloadAccounts;
@@ -76,7 +79,8 @@ export const closeTrip = async (tripId: string, letGo: string[], closedOn: strin
   await reloadAccounts();
 };
 /** Moves a closed trip's one entry to another day; the trip stays closed. */
-export const changeCloseDate = (tripId: string, closedOn: string) => patch(`/trips/${tripId}/close-date`, { closedOn });
+/** Answers the trip (2.8.7 API; null before), whose `updatedAt` an Undo sends back. */
+export const changeCloseDate = (tripId: string, closedOn: string) => patch<{ updatedAt?: string } | null>(`/trips/${tripId}/close-date`, { closedOn });
 export const reopenTrip = (tripId: string) => post(`/trips/${tripId}/reopen`);
 
 /** Saves what each person pays you after Splitwise's "simplify debts" — signed paise, positive
