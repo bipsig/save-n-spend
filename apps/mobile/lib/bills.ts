@@ -27,23 +27,6 @@ export const isActionable = (bill: IBill): boolean => {
   return true;
 };
 
-const isSamePeriod = (a: Date, b: Date, zone: string, frequency?: BillFrequency): boolean => {
-  const da = calendarDate(a, zone);
-  const db = calendarDate(b, zone);
-  if (frequency === "yearly") return da.getUTCFullYear() === db.getUTCFullYear();
-  return da.getUTCFullYear() * 12 + da.getUTCMonth() === db.getUTCFullYear() * 12 + db.getUTCMonth();
-};
-
-// A recurring bill is never marked paid — its due date rolls forward instead — so the only
-// evidence this period's rent is dealt with is `lastPaidAt` falling in the same period as
-// now. Mirrors the API's billService.isSettledForPeriod, used by the local reminder
-// scheduler to skip a bill the reminder job would also skip.
-export const isSettledForPeriod = (
-  bill: Pick<IBill, "lastPaidAt" | "frequency">,
-  now: Date,
-  zone: string,
-): boolean => !!bill.lastPaidAt && isSamePeriod(new Date(bill.lastPaidAt), now, zone, bill.frequency);
-
 // Whole zone-local days until `dueDate`: 0 = today, negative = overdue. Rounded rather than
 // divided exactly, same reason as the API's billService.daysUntilDue — a local day is 23 or
 // 25 hours across a DST change.

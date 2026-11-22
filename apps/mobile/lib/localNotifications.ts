@@ -17,7 +17,7 @@ import {
 } from "@/lib/bannerCopy";
 import { useSettings } from "@/store/settings";
 import { calendarDate, calendarDaysBetween, dayKey, instantInZone, zonedParts } from "@/lib/zone";
-import { daysUntilDue, isSettledForPeriod } from "@/lib/bills";
+import { daysUntilDue } from "@/lib/bills";
 import { readJson, writeJson } from "@/lib/deviceStore";
 
 // Banners on the lock screen, scheduled by the phone rather than pushed to it.
@@ -337,8 +337,9 @@ const scheduleBillReminders = async (
 
   const now = new Date();
   for (const bill of bills) {
-    if (bill.status === "paid") continue;
-    if (isSettledForPeriod(bill, now, zone)) continue;
+    // As the reminder job: a paid one-off is done; a recurring bill is reminded of by its due
+    // date, which paying rolls forward, so "paid" on its row doesn't silence the next one.
+    if (bill.status === "paid" && !bill.recurring) continue;
 
     const due = new Date(bill.dueDate);
     const days = daysUntilDue(due, now, zone);

@@ -61,7 +61,6 @@ const world = (summary: Record<string, number> = { income: 0, expenses: 6_350_00
   const zone = require("./zone") as typeof import("./zone");
   fake("@/lib/bills", {
     daysUntilDue: (due: Date, now: Date, z: string) => zone.calendarDaysBetween(zone.calendarDate(now, z), zone.calendarDate(due, z)),
-    isSettledForPeriod: () => false,
   });
 
   const local = require("./localNotifications") as typeof import("./localNotifications");
