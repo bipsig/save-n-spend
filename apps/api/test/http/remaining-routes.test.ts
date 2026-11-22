@@ -69,20 +69,41 @@ test("GET /users/me: the profile, the same as /auth/me, with no internal fields"
     assert.equal((await other.send("GET", "/users/me")).json.data.email, other.email);
 });
 
-test("change-password: the new password signs in, the old one doesn't, and sessions already open keep working", async () => {
+test("change-password: the new password signs in, the old one doesn't; every other login ends, this phone stays signed in (gaps row 42)", async () => {
     const before = await storedPassword(me);
+    const elsewhere = (await api.send("POST", "/auth/login", { email: me.email, password: PASSWORD })).json.data.accessToken as string;
     const r = await me.send("POST", "/auth/change-password", { currentPassword: PASSWORD, newPassword: "a-new-pass-5678" });
     assert.equal(r.status, 200, r.text);
-    assert.deepEqual([r.json.success, r.json.message, r.json.data], [true, "Password changed", null]);
+    assert.deepEqual([r.json.success, r.json.message, Object.keys(r.json.data)], [true, "Password changed", ["accessToken"]]);
     const after = await storedPassword(me);
     assert.notEqual(after, before);
     assert.match(after, /^\$2[aby]\$/, "stored as a bcrypt hash");
 
+    failed(await api.send("GET", "/users/me", undefined, { token: elsewhere }), 401, "unauthenticated", { message: "Your session has ended. Please sign in again" });
+    // The phone that changed it: its old token (what 2.8.5 keeps using) and the fresh one both work.
+    assert.equal((await me.send("GET", "/users/me")).status, 200, "the token that made the change");
+    assert.equal((await api.send("GET", "/users/me", undefined, { token: r.json.data.accessToken })).status, 200);
+
     failed(await api.send("POST", "/auth/login", { email: me.email, password: PASSWORD }), 401, "invalid_credentials");
     const login = await api.send("POST", "/auth/login", { email: me.email, password: "a-new-pass-5678" });
     assert.equal(login.status, 200, login.text);
-    assert.equal((await me.send("GET", "/users/me")).status, 200, "the token from before the change");
     assert.equal((await api.send("GET", "/users/me", undefined, { token: login.json.data.accessToken })).status, 200);
+    const stored = (await api.ro.col("users").find<Record<string, unknown>>({ email: me.email }))[0];
+    assert.ok(stored.tokensValidAfter instanceof Date);
+    for (const f of ["tokensValidAfter", "tokenKept"]) assert.ok(!(f in (await me.send("GET", "/users/me")).json.data), `GET /users/me sends ${f}`);
+    api.resetLimits();
+});
+
+test("deactivation ends every token; signing in again reopens the account, and only the new token works (gaps row 42)", async () => {
+    const u = await api.user("revoke-close");
+    const old = (await api.send("POST", "/auth/login", { email: u.email, password: PASSWORD })).json.data.accessToken as string;
+    assert.equal((await u.send("DELETE", "/users/me")).status, 200);
+    const back = await api.send("POST", "/auth/login", { email: u.email, password: PASSWORD });
+    assert.equal(back.status, 200, back.text);
+    for (const token of [old, u.token]) {
+        failed(await api.send("GET", "/accounts", undefined, { token }), 401, "unauthenticated", { message: "Your session has ended. Please sign in again" });
+    }
+    assert.equal((await api.send("GET", "/accounts", undefined, { token: back.json.data.accessToken })).status, 200);
     api.resetLimits();
 });
 

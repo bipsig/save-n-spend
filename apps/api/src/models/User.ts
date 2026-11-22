@@ -48,6 +48,15 @@ export interface IUser extends Document {
    */
   deactivatedAt?: Date | null;
 
+  /**
+   * Token revocation (gaps row 42). `protect` turns away any token issued before this
+   * moment: set on password change and on deactivation.
+   */
+  tokensValidAfter?: Date | null;
+  /** The `loginTime` of the session that changed the password, which stays signed in past
+   *  `tokensValidAfter` (the 2.8.5 app ignores the fresh token it is sent). */
+  tokenKept?: string | null;
+
   // timestamps
   createdAt: Date;
   updatedAt: Date;
@@ -103,6 +112,8 @@ const UserSchema = new Schema<IUser>(
     totpEnabled: { type: Boolean, default: false },
 
     deactivatedAt: { type: Schema.Types.Date, default: null },
+    tokensValidAfter: { type: Schema.Types.Date, default: null },
+    tokenKept: { type: String, default: null },
   },
   { timestamps: true }
 );
@@ -114,6 +125,8 @@ UserSchema.set('toJSON', {
     delete ret.resetToken;
     delete ret.resetTokenExpiry;
     delete ret.totpSecret;
+    delete ret.tokensValidAfter;
+    delete ret.tokenKept;
     return ret;
   },
 });

@@ -33,9 +33,9 @@ export const protect = async (req: Request, _res: Response, next: NextFunction):
     return next(new Error("JWT_SECRET is not defined"));
   }
 
-  let payload: Express.Request["user"];
+  let payload: (Express.Request["user"] & { iat?: number }) | undefined;
   try {
-    payload = jwt.verify(token, secret) as Express.Request["user"];
+    payload = jwt.verify(token, secret) as typeof payload;
   }
   catch {
     return next(unauthenticated(AUTH_MESSAGES.sessionEnded));
@@ -45,9 +45,9 @@ export const protect = async (req: Request, _res: Response, next: NextFunction):
     return next(unauthenticated(AUTH_MESSAGES.sessionEnded));
   }
 
-  let user: { deactivatedAt?: Date | null } | null;
+  let user: { deactivatedAt?: Date | null; tokensValidAfter?: Date | null; tokenKept?: string | null } | null;
   try {
-    user = await User.findById(payload.userId).select("deactivatedAt").lean();
+    user = await User.findById(payload.userId).select("deactivatedAt tokensValidAfter tokenKept").lean();
   }
   catch (err) {
     return next(err);
@@ -59,7 +59,33 @@ export const protect = async (req: Request, _res: Response, next: NextFunction):
   if (user.deactivatedAt) {
     return next(unauthenticated(AUTH_MESSAGES.closed));
   }
+  if (isRevoked(payload, user)) {
+    return next(unauthenticated(AUTH_MESSAGES.sessionEnded));
+  }
 
   req.user = payload;
   next();
 }
+
+/** When a token was issued: its signed `loginTime` (to the millisecond, set by
+ *  generateAccessToken in every token since 2.6), else `iat` (whole seconds). */
+const issuedAt = (token: { iat?: number; loginTime?: string }): number => {
+  const login = typeof token.loginTime === "string" ? Date.parse(token.loginTime) : NaN;
+  if (!Number.isNaN(login)) return login;
+  return typeof token.iat === "number" ? token.iat * 1000 : NaN;
+};
+
+/**
+ * A token issued before the user's cutoff (password change, deactivation), unless it is the
+ * session that changed the password. Fails closed: once a cutoff exists, a token with no
+ * readable issue time is revoked.
+ */
+export const isRevoked = (
+  token: { iat?: number; loginTime?: string },
+  user: { tokensValidAfter?: Date | null; tokenKept?: string | null },
+): boolean => {
+  if (!user.tokensValidAfter) return false;
+  if (user.tokenKept && token.loginTime === user.tokenKept) return false;
+  const issued = issuedAt(token);
+  return Number.isNaN(issued) || issued < new Date(user.tokensValidAfter).getTime();
+};

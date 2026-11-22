@@ -178,9 +178,11 @@ export const changePassword = async (req: Request, res: Response): Promise<void>
   const saltRounds: number = Number(process.env.SALT_ROUNDS) || 12;
   user.password = await bcrypt.hash(newPassword, saltRounds);
 
-  // Existing tokens stay valid — stateless JWTs with no server-side record to revoke — so
-  // sessions on other devices survive the change.
+  // Every other login ends (gaps row 42). This phone keeps its session: it gets a fresh token
+  // (2.8.6 stores it), and the token it sent stays valid too, since 2.8.5 ignores the reply.
+  user.tokensValidAfter = new Date();
+  user.tokenKept = req.user?.loginTime ?? null;
   await user.save();
 
-  reply.ok(res, null, "Password changed");
+  reply.ok(res, { accessToken: generateAccessToken(user) }, "Password changed");
 }

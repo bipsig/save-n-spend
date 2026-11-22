@@ -185,6 +185,6 @@ test("a closed account is 401 on every route, not only /auth/me; signing in reop
     assert.equal(back.status, 200);
     a.token = back.json.data.accessToken;
     assert.equal((await as(a)("GET", "/accounts")).status, 200);
-    // The token from before the close works again too: the account is open.
-    assert.equal((await send("GET", "/accounts")).status, 200);
+    // The token from before the close stays ended (gaps row 42): only the new sign-in counts.
+    failed(await send("GET", "/accounts"), 401, "unauthenticated", "Your session has ended. Please sign in again");
 });

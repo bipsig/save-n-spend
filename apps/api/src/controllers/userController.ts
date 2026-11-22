@@ -104,6 +104,10 @@ export const deleteMe = async (req: Request, res: Response): Promise<void> => {
 
   user.deactivatedAt = new Date();
   user.set("pushToken", undefined);
+  // Every token ends here, this one too: signing in again (which reopens the account) is the
+  // only way back (gaps row 42).
+  user.tokensValidAfter = user.deactivatedAt;
+  user.tokenKept = null;
 
   await user.save();
 
