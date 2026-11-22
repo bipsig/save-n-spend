@@ -26,10 +26,6 @@ describe("formatAmount", () => {
         assert.equal(formatAmount(-0.4), "₹0.00");
     });
 
-    it("falls back to INR for a currency code Intl doesn't know", () => {
-        assert.equal(formatAmount(100_000, "NOT-A-CODE"), "₹1,000.00");
-        assert.match(formatAmount(100_000, "USD"), /^\$1,000\.00$|^US\$1,000\.00$/);
-    });
 });
 
 describe("formatPercent", () => {

@@ -80,7 +80,6 @@ export const computeCurrentStreak = async (
 export const buildSnapshot = async (
     userId: string | mongoose.Types.ObjectId,
     zone: string,
-    currency: string,
     now: Date,
     firstTxnAt: Date,
     streakDays: number,
@@ -217,7 +216,6 @@ export const buildSnapshot = async (
     }
 
     return {
-        currency,
         monthLabel: label,
         daysElapsed: window.daysElapsed,
         daysInMonth: window.daysInMonth,

@@ -27,7 +27,6 @@ const SEVERITY_KIND: Record<string, ReviewMoment["kind"]> = {
 export const buildTimeline = async (
     userId: string,
     zone: string,
-    currency: string,
     period: "week" | "month",
     start: Date,
     end: Date,
@@ -66,7 +65,7 @@ export const buildTimeline = async (
         moments.push({
             date: new Date(occurredAt).toISOString(),
             kind: "neutral",
-            text: `Biggest expense of the period: ${title ?? "an expense"}, ${formatAmount(amount, currency)}`,
+            text: `Biggest expense of the period: ${title ?? "an expense"}, ${formatAmount(amount)}`,
         });
     }
 
@@ -95,7 +94,7 @@ export const buildTimeline = async (
             moments.push({
                 date: new Date(contributions[0].createdAt).toISOString(),
                 kind: "win",
-                text: `${formatAmount(contributions[0].amount, currency)} added to ${goal.name}`,
+                text: `${formatAmount(contributions[0].amount)} added to ${goal.name}`,
             });
         }
     }
@@ -111,8 +110,8 @@ export const buildTimeline = async (
                 date: new Date(standout.startDate).toISOString(),
                 kind: standout.kind === "low" ? "win" : "warn",
                 text: standout.kind === "low"
-                    ? `Your lightest week this period — ${formatAmount(standout.total, currency)} spent`
-                    : `Your heaviest week this period — ${formatAmount(standout.total, currency)} spent`,
+                    ? `Your lightest week this period — ${formatAmount(standout.total)} spent`
+                    : `Your heaviest week this period — ${formatAmount(standout.total)} spent`,
             });
         }
     }
@@ -120,7 +119,7 @@ export const buildTimeline = async (
     moments.push({
         date: end.toISOString(),
         kind: saved >= 0 ? "win" : "neutral",
-        text: `Period closes: ${formatAmount(saved, currency)} saved`,
+        text: `Period closes: ${formatAmount(saved)} saved`,
     });
 
     return moments.sort((a, b) => a.date.localeCompare(b.date));

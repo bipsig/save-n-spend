@@ -64,10 +64,10 @@ test("snapshot: one user's month as the rules see it, cut in their zone", async 
     const now = new Date(NOW);
     const streak = await computeCurrentStreak(me.id, ZONE, now);
     assert.equal(streak, 3, "12, 13 and 14 April");
-    const snap = await buildSnapshot(me.id, ZONE, "INR", now, new Date("2026-01-05T06:30:00Z"), streak);
+    const snap = await buildSnapshot(me.id, ZONE, now, new Date("2026-01-05T06:30:00Z"), streak);
     const health = await healthScore(me.id, ZONE, now);
 
-    assert.deepEqual([snap.currency, snap.monthLabel, snap.daysElapsed, snap.daysInMonth, snap.currentStreak], ["INR", "2026-04", 15, 30, 3]);
+    assert.deepEqual([snap.monthLabel, snap.daysElapsed, snap.daysInMonth, snap.currentStreak], ["2026-04", 15, 30, 3]);
     // Sign-up's Cash account and the person account are in; the archived card is not.
     const cash = snap.accounts[0];
     assert.deepEqual(snap.accounts, [
@@ -112,7 +112,7 @@ test("highlights: past the gate, the ranked list (max 4) and every fired rule lo
     assert.equal(r.json.message, "Highlights fetched");
     const d = r.json.data;
     assert.deepEqual([d.generatedAt, d.timeZone, "warmingUp" in d], ["2026-04-15T06:30:00.000Z", ZONE, false]);
-    const snap = await buildSnapshot(me.id, ZONE, "INR", new Date(NOW), new Date("2026-01-05T06:30:00Z"), 3);
+    const snap = await buildSnapshot(me.id, ZONE, new Date(NOW), new Date("2026-01-05T06:30:00Z"), 3);
     const ranked = rankHighlightRules(snap);
     assert.ok(ranked.length > 4, `expected more than 4 rules to fire, got ${ranked.map((h) => h.ruleId)}`);
     // Same top four as the rules give (ties on materiality may come in either order).

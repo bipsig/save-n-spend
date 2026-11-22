@@ -8,35 +8,19 @@
 /** U+2212, as the app prints it. */
 export const MINUS = "\u2212";
 
-const formatters = new Map<string, Intl.NumberFormat>();
+// INR only (gaps row 172): the app prints "₹" itself, so a second currency here would put
+// "$84" next to "₹84". User.currency stays on the document for older apps to read.
+const INR = new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+});
 
-const formatterFor = (currency: string): Intl.NumberFormat => {
-    const cached = formatters.get(currency);
-    if (cached) return cached;
-
-    const formatter = new Intl.NumberFormat("en-IN", {
-        style: "currency",
-        currency,
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-    });
-    formatters.set(currency, formatter);
-    return formatter;
-};
-
-/** `839_950` → `"₹8,399.50"`, `-45_000` → `"−₹450.00"`. Falls back to INR for a currency `Intl` doesn't know. */
-export const formatAmount = (paise: number, currency = "INR"): string => {
+/** `839_950` → `"₹8,399.50"`, `-45_000` → `"−₹450.00"`. */
+export const formatAmount = (paise: number): string => {
     const rounded = Math.round(paise);
-    const rupees = Math.abs(rounded) / 100;
-    let text: string;
-    try {
-        text = formatterFor(currency).format(rupees);
-    }
-    catch {
-        // A bad currency code on a user document must not take a notification down
-        // with it — the figure still carries the message.
-        text = formatterFor("INR").format(rupees);
-    }
+    const text = INR.format(Math.abs(rounded) / 100);
     return rounded < 0 ? `${MINUS}${text}` : text;
 };
 

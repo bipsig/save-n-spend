@@ -26,7 +26,7 @@ export const exportAccountData = async (userId: string) => {
     const uid = new mongoose.Types.ObjectId(userId);
 
     const [user, accounts, categories, transactions, budgets, bills, goals, trips, tripExpenses, goalContributionLogs] = await Promise.all([
-        User.findById(uid).select("currency prefs").lean(),
+        User.findById(uid).select("prefs").lean(),
         Account.find({ userId: uid }).lean(),
         Category.find({ userId: uid }).lean(),
         Transaction.find({ userId: uid }).lean(),
@@ -42,7 +42,7 @@ export const exportAccountData = async (userId: string) => {
         version: BACKUP_VERSION,
         exportedAt: new Date().toISOString(),
         preferences: {
-            currency: user?.currency,
+            currency: "INR",
             timeZone: user?.prefs.timeZone,
             notifications: user?.prefs.notifications,
             defaultAccount: user?.prefs.defaultAccount ?? null,

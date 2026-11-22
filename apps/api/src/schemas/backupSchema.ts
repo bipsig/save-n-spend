@@ -12,7 +12,8 @@ export const backupPayloadSchema = z.object({
     version: z.literal(1),
     exportedAt: z.iso.datetime(),
     preferences: z.looseObject({
-        currency: z.string(),
+        // INR only (gaps row 172); every backup written so far says "INR".
+        currency: z.literal("INR"),
         timeZone: z.string(),
         notifications: z.looseObject({}),
         defaultAccount: objectId.nullable().optional(),

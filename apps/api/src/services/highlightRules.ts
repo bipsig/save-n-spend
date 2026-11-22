@@ -83,7 +83,6 @@ export type MonthTotals = {
 };
 
 export type Snapshot = {
-    currency: string;
     monthLabel: string;
     /** Zone-local days of the current month, elapsed including today. Always ≥ 1. */
     daysElapsed: number;
@@ -220,8 +219,8 @@ const budgetPace: Rule = {
             ruleId: "budget_pace",
             key: `budget_pace:${fact.categoryId}:${snap.monthLabel}`,
             severity: "warning",
-            title: `${fact.categoryName} is on pace to finish ${formatAmount(overrun, snap.currency)} over`,
-            body: `${formatAmount(fact.spent, snap.currency)} of ${formatAmount(fact.limit, snap.currency)} spent with ${days(left)} left — about ${formatAmount(perDay(fact.spent, snap), snap.currency)} a day in it.`,
+            title: `${fact.categoryName} is on pace to finish ${formatAmount(overrun)} over`,
+            body: `${formatAmount(fact.spent)} of ${formatAmount(fact.limit)} spent with ${days(left)} left — about ${formatAmount(perDay(fact.spent, snap))} a day in it.`,
             materiality: overrun,
             screen: "budgets",
         };
@@ -257,8 +256,8 @@ const budgetComfortable: Rule = {
             ruleId: "budget_comfortable",
             key: `budget_comfortable:${fact.categoryId}:${snap.monthLabel}`,
             severity: "win",
-            title: `${fact.categoryName} is on track to finish ${formatAmount(headroom, snap.currency)} under`,
-            body: `After going over last month, you're pacing about ${formatAmount(perDay(fact.spent, snap), snap.currency)} a day in it.`,
+            title: `${fact.categoryName} is on track to finish ${formatAmount(headroom)} under`,
+            body: `After going over last month, you're pacing about ${formatAmount(perDay(fact.spent, snap))} a day in it.`,
             materiality: headroom,
             screen: "budgets",
         };
@@ -291,8 +290,8 @@ const billVsBalance: Rule = {
             ruleId: "bill_vs_balance",
             key: `bill_vs_balance:${bill.name}:${snap.monthLabel}`,
             severity: "urgent",
-            title: `${bill.name} is ${duePhrase(bill.daysUntilDue)} and ${account.name} is ${formatAmount(short, snap.currency)} short`,
-            body: `The bill is ${formatAmount(bill.amount, snap.currency)}; ${account.name} has ${formatAmount(Math.max(0, account.balance), snap.currency)}.`,
+            title: `${bill.name} is ${duePhrase(bill.daysUntilDue)} and ${account.name} is ${formatAmount(short)} short`,
+            body: `The bill is ${formatAmount(bill.amount)}; ${account.name} has ${formatAmount(Math.max(0, account.balance))}.`,
             materiality: bill.amount,
             screen: "bills",
         };
@@ -327,7 +326,7 @@ const billCluster: Rule = {
             ruleId: "bill_cluster",
             key: `bill_cluster:${snap.monthLabel}`,
             severity: "warning",
-            title: `${formatAmount(total, snap.currency)} of bills land in the next ${days(DUE_WINDOW_DAYS)}`,
+            title: `${formatAmount(total)} of bills land in the next ${days(DUE_WINDOW_DAYS)}`,
             body: `${named.join(" and ")}${rest > 0 ? ` and ${rest} more` : ""} — worth checking the balances they'll draw from.`,
             materiality: total,
             screen: "bills",
@@ -370,8 +369,8 @@ const categorySpike: Rule = {
             ruleId: "category_spike",
             key: `category_spike:${move.current.categoryId}:${snap.monthLabel}`,
             severity: "warning",
-            title: `${move.current.name} is pacing ${formatAmount(move.delta, snap.currency)} above its usual month`,
-            body: `${formatAmount(move.current.total, snap.currency)} so far, against a typical ${formatAmount(move.average, snap.currency)} for a whole month.`,
+            title: `${move.current.name} is pacing ${formatAmount(move.delta)} above its usual month`,
+            body: `${formatAmount(move.current.total)} so far, against a typical ${formatAmount(move.average)} for a whole month.`,
             materiality: move.delta,
             screen: "activity",
         };
@@ -387,8 +386,8 @@ const categoryDrop: Rule = {
             ruleId: "category_drop",
             key: `category_drop:${move.current.categoryId}:${snap.monthLabel}`,
             severity: "win",
-            title: `${move.current.name} is pacing ${formatAmount(move.delta, snap.currency)} below its usual month`,
-            body: `${formatAmount(move.current.total, snap.currency)} so far, where a typical month runs ${formatAmount(move.average, snap.currency)}.`,
+            title: `${move.current.name} is pacing ${formatAmount(move.delta)} below its usual month`,
+            body: `${formatAmount(move.current.total)} so far, where a typical month runs ${formatAmount(move.average)}.`,
             materiality: move.delta,
             screen: "activity",
         };
@@ -418,7 +417,7 @@ const savingsRateMove: Rule = {
             severity: up ? "win" : "notice",
             title: `Your savings rate went from ${pct(prevRate)} to ${pct(lastRate)}`,
             body: up
-                ? `You kept ${formatAmount(last.income - last.expense, snap.currency)} of what came in last month${trips ? ", including trips" : ""}.`
+                ? `You kept ${formatAmount(last.income - last.expense)} of what came in last month${trips ? ", including trips" : ""}.`
                 : `Spending${trips ? ", including trips," : ""} grew faster than income last month — worth a look at where.`,
             materiality: Math.round(Math.abs(move) * last.income),
             screen: "activity",
@@ -451,8 +450,8 @@ const goalPace: Rule = {
             ruleId: "goal_pace",
             key: `goal_pace:${goal.name}:${snap.monthLabel}`,
             severity: "warning",
-            title: `${goal.name} is set to miss its deadline by ${formatAmount(shortfall, snap.currency)}`,
-            body: `${formatAmount(goal.saved, snap.currency)} saved of ${formatAmount(goal.target, snap.currency)}. ${pace}`,
+            title: `${goal.name} is set to miss its deadline by ${formatAmount(shortfall)}`,
+            body: `${formatAmount(goal.saved)} saved of ${formatAmount(goal.target)}. ${pace}`,
             materiality: shortfall,
             screen: "goals",
         };
@@ -497,7 +496,7 @@ const catchAllHeavy: Rule = {
             key: `catch_all_heavy:${catchAll.categoryId}:${snap.monthLabel}`,
             severity: "notice",
             title: `${pct(share)} of this month's spending is in ${catchAll.name}`,
-            body: `That's ${formatAmount(catchAll.total, snap.currency)} the breakdown can't explain. Filing those under real categories makes every other number here sharper.`,
+            body: `That's ${formatAmount(catchAll.total)} the breakdown can't explain. Filing those under real categories makes every other number here sharper.`,
             materiality: catchAll.total,
             screen: "activity",
         };
@@ -573,8 +572,8 @@ const investmentMilestone: Rule = {
             ruleId: "investment_milestone",
             key: `investment_milestone:${bucket}`,
             severity: "win",
-            title: `Your investments crossed ${formatAmount(bucket, snap.currency)}`,
-            body: `Your portfolio is now worth ${formatAmount(v, snap.currency)}.`,
+            title: `Your investments crossed ${formatAmount(bucket)}`,
+            body: `Your portfolio is now worth ${formatAmount(v)}.`,
             materiality: 0,
             screen: "investments",
         };
@@ -617,8 +616,8 @@ const recurringFound: Rule = {
                 ? `${r.topTitle} looks like a monthly payment`
                 : `${r.count} payments look like they repeat every month`,
             body: r.count === 1
-                ? `About ${formatAmount(r.topAmount, snap.currency)} each month. Turn it into a bill to get reminded and see it coming.`
-                : `Including ${r.topTitle} (about ${formatAmount(r.topAmount, snap.currency)}). Turn them into bills to get reminded and see them coming.`,
+                ? `About ${formatAmount(r.topAmount)} each month. Turn it into a bill to get reminded and see it coming.`
+                : `Including ${r.topTitle} (about ${formatAmount(r.topAmount)}). Turn them into bills to get reminded and see them coming.`,
             materiality: r.monthlyTotal * 12,
             screen: "bills",
         };

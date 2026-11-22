@@ -31,7 +31,7 @@ export const checkGoalMilestone = async (
         if (!crossed) return;
 
         const user = await User.findById(goal.userId)
-            .select("currency pushToken prefs.notifications")
+            .select("pushToken prefs.notifications")
             .lean();
         if (!user) return;
 
@@ -41,8 +41,8 @@ export const checkGoalMilestone = async (
             type: "goalMilestone",
             title: done ? `${goal.name} is fully funded 🎉` : `${goal.name} is ${crossed}% there`,
             body: done
-                ? `You've saved the whole ${formatAmount(goal.target, user.currency)}.`
-                : `${formatAmount(goal.saved, user.currency)} of ${formatAmount(goal.target, user.currency)} saved.`,
+                ? `You've saved the whole ${formatAmount(goal.target)}.`
+                : `${formatAmount(goal.saved)} of ${formatAmount(goal.target)} saved.`,
             dedupeKey: `goal:${String(goal._id)}:milestone:${crossed}`,
             link: { screen: "goals", id: String(goal._id) },
         });

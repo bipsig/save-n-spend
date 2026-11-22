@@ -76,8 +76,8 @@ const weekLabel = (start: Date, end: Date, zone: string): string => {
     return `${startFmt} – ${endFmt}`;
 };
 
-const composeVerdict = (saved: number, previousSaved: number, currency: string) => {
-    const headline = `${formatAmount(saved, currency)} saved this period`;
+const composeVerdict = (saved: number, previousSaved: number) => {
+    const headline = `${formatAmount(saved)} saved this period`;
     if (previousSaved === 0) {
         return { headline, detail: "No prior period with any saving to compare against yet." };
     }
@@ -93,7 +93,6 @@ const composeVerdict = (saved: number, previousSaved: number, currency: string) 
 export const buildReview = async (
     userId: string,
     zone: string,
-    currency: string,
     period: "week" | "month",
     offset: number,
     req: Request,
@@ -205,7 +204,7 @@ export const buildReview = async (
         };
     }
 
-    const timeline = await buildTimeline(userId, zone, currency, period, start, end, saved, req, rule);
+    const timeline = await buildTimeline(userId, zone, period, start, end, saved, req, rule);
 
     return {
         period,
@@ -215,7 +214,7 @@ export const buildReview = async (
             : weekLabel(start, end, zone),
         periodStart: start.toISOString(),
         periodEnd: end.toISOString(),
-        verdict: composeVerdict(saved, previous.income - previous.expense, currency),
+        verdict: composeVerdict(saved, previous.income - previous.expense),
         income,
         expenses,
         tripExpenses: current.tripExpense,

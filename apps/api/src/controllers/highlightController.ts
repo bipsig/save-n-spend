@@ -66,11 +66,8 @@ export const getHighlights = async (req: Request, res: Response): Promise<void> 
     const userId = req.user!.userId;
     const now = new Date();
 
-    // One read covers both request-shaped facts: the zone every day-count below is
-    // cut in, and the currency the rule copy is rendered in.
-    const user = await User.findById(userId).select("currency prefs.timeZone").lean();
+    const user = await User.findById(userId).select("prefs.timeZone").lean();
     const zone = normalizeZone(user?.prefs?.timeZone);
-    const currency = user?.currency ?? "INR";
 
     const [first, expenseCount, streakDays] = await Promise.all([
         Transaction.findOne({ userId }).sort({ occurredAt: 1 }).select("occurredAt").lean(),
@@ -101,7 +98,7 @@ export const getHighlights = async (req: Request, res: Response): Promise<void> 
     }
 
     const trips = (req.valid as Valid<typeof highlightsSchemas> | undefined)?.query.trips;
-    const snapshot = await buildSnapshot(userId, zone, currency, now, first.occurredAt, streakDays, tripRule(trips, zone));
+    const snapshot = await buildSnapshot(userId, zone, now, first.occurredAt, streakDays, tripRule(trips, zone));
     // Every rule that fired gets a permanent record, not just the four shown live — see
     // logHighlights. `runHighlightRules` (used for the actual response) is just this same
     // ranking, capped.

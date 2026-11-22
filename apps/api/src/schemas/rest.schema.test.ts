@@ -125,6 +125,12 @@ test("restore refuses a file that isn't a backup with one sentence", async () =>
     assert.equal(noConfirm.status, 400);
 });
 
+test("restore accepts only INR", async () => {
+    const file = backupFile(true);
+    const usd = await refuses(restoreSchemas, { body: { ...file, preferences: { ...file.preferences, currency: "USD" }, confirm: true } });
+    assert.equal(usd.message, "That doesn't look like a Save n Spend backup file");
+});
+
 test("the crash report the app sends is accepted", async () => {
     await accepts(clientErrorSchemas, { body: { message: "boom", stack: "Error: boom\n at x", screen: "/settings", requestId: "7K2QXB", appVersion: "2.6.0" } });
     await accepts(clientErrorSchemas, { body: { message: "boom" } });

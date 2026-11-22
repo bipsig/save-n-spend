@@ -27,7 +27,7 @@ export const checkBudgetAlerts = async (
         if (!categoryId) return;
 
         const user = await User.findById(userId)
-            .select("currency pushToken prefs.timeZone prefs.notifications")
+            .select("pushToken prefs.timeZone prefs.notifications")
             .lean();
         if (!user) return;
 
@@ -68,7 +68,7 @@ export const checkBudgetAlerts = async (
             : (await Category.findById(budget.category).select("name").lean())?.name;
         const label = name ?? "Budget";
 
-        const limitText = formatAmount(budget.limit, user.currency);
+        const limitText = formatAmount(budget.limit);
 
         // With the limit on the parent, the expense that tripped it was filed under
         // another name — so say which sub-category fed it.
@@ -83,8 +83,8 @@ export const checkBudgetAlerts = async (
                 // Floored to a tenth, so a warning never reads "100.0%".
                 : `${label} is at ${formatPercent(Math.floor(ratio * 1000 + 1e-9) / 1000)}`,
             body: exceeded
-                ? `${formatAmount(spent, user.currency)} spent against a ${limitText} limit.${rollUp}`
-                : `${formatAmount(budget.limit - spent, user.currency)} left of your ${limitText} limit.${rollUp}`,
+                ? `${formatAmount(spent)} spent against a ${limitText} limit.${rollUp}`
+                : `${formatAmount(budget.limit - spent)} left of your ${limitText} limit.${rollUp}`,
             dedupeKey: `budget:${String(budget._id)}:${month}:${exceeded ? "over" : "warn"}`,
             link: { screen: "budget", id: String(budget._id) },
         });

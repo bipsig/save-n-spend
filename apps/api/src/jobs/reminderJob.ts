@@ -66,7 +66,6 @@ const dateLabel = shortDay;
 /** The lean projection every reminder below works from. */
 type ReminderUser = {
     _id: mongoose.Types.ObjectId;
-    currency?: string;
     pushToken?: string;
     prefs?: {
         timeZone?: string;
@@ -111,12 +110,12 @@ export const flowsBetween = async (
 
 /** The one sentence all three digests end with, so they read consistently. "Spent" includes
  *  each closed trip as one expense, as every total does. */
-export const flowLine = (flows: PeriodFlows, currency?: string): string => {
+export const flowLine = (flows: PeriodFlows): string => {
     const net = flows.income - flows.expense;
-    return `Spent ${formatAmount(flows.expense, currency)}, earned ${formatAmount(flows.income, currency)}`
+    return `Spent ${formatAmount(flows.expense)}, earned ${formatAmount(flows.income)}`
         + (net >= 0
-            ? ` — ${formatAmount(net, currency)} put aside.`
-            : ` — ${formatAmount(-net, currency)} more than you earned.`);
+            ? ` — ${formatAmount(net)} put aside.`
+            : ` — ${formatAmount(-net)} more than you earned.`);
 };
 
 const remindBills = async (user: ReminderUser, zone: string, now: Date): Promise<void> => {
@@ -128,7 +127,7 @@ const remindBills = async (user: ReminderUser, zone: string, now: Date): Promise
         const state = billState(bill, now, zone);
         if (state.paused) continue;
         const days = state.daysUntilDue;
-        const amount = formatAmount(bill.amount, user.currency);
+        const amount = formatAmount(bill.amount);
         // Keyed by the DUE DATE, not by today: one nudge per occasion, and a recurring
         // bill's next period is a new key without any state to reset.
         const due = dayKeyInZone(bill.dueDate, zone);
@@ -187,7 +186,7 @@ const remindGoalDeadlines = async (user: ReminderUser, zone: string, now: Date):
         const days = daysUntilDue(goal.deadline, now, zone);
         if (days < 0 || days > DEADLINE_WINDOW_DAYS) continue;
 
-        const short = formatAmount(goal.target - goal.saved, user.currency);
+        const short = formatAmount(goal.target - goal.saved);
 
         await notify(user as NotifiableUser, {
             type: "goalDeadline",
@@ -218,7 +217,7 @@ const sendDailySummary = async (user: ReminderUser, zone: string, now: Date): Pr
         type: "dailySummary",
         // The date, not "Yesterday", which stops being true if the push is read late.
         title: `${dateLabel(start, zone)} in review`,
-        body: `${flowLine(flows, user.currency)} ${plural(flows.count, "transaction")}.`,
+        body: `${flowLine(flows)} ${plural(flows.count, "transaction")}.`,
         // Keyed by the day COVERED, not today, so a re-run lands on the same key.
         dedupeKey: `daily:${dayKeyInZone(start, zone)}`,
         link: { screen: "insights" },
@@ -239,7 +238,7 @@ const sendWeeklySummary = async (user: ReminderUser, zone: string, now: Date): P
     await notify(user as NotifiableUser, {
         type: "weeklySummary",
         title: "Your week in review",
-        body: flowLine(flows, user.currency),
+        body: flowLine(flows),
         dedupeKey: `weekly:${dayKeyInZone(end, zone)}`,
         link: { screen: "insights" },
     });
@@ -288,8 +287,8 @@ const sendMonthlySummary = async (user: ReminderUser, zone: string, now: Date): 
     await notify(user as NotifiableUser, {
         type: "monthlySummary",
         title: `${monthName} in review`,
-        body: flowLine(flows, user.currency)
-            + (top ? ` Most went to ${top.name} — ${formatAmount(top.total, user.currency)}.` : ""),
+        body: flowLine(flows)
+            + (top ? ` Most went to ${top.name} — ${formatAmount(top.total)}.` : ""),
         // The label carries the year, so this cannot collide with the same month next year.
         dedupeKey: `monthly:${monthLabelInZone(start, zone)}`,
         link: { screen: "insights" },
@@ -347,7 +346,7 @@ export const runReminders = async (now: Date = new Date()): Promise<void> => {
     // `deactivatedAt: null` matches a live account and one written before the field existed.
     // A deleted account must stop hearing from us even though its data is still there.
     const users = await User.find({ deactivatedAt: null })
-        .select("currency pushToken prefs.timeZone prefs.notifications")
+        .select("pushToken prefs.timeZone prefs.notifications")
         .lean();
 
     for (const user of users) {

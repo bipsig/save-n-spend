@@ -15,7 +15,6 @@ import { goalPace } from "./goalPace";
 
 // Mid-month, so the pace rules are past their minimum-days gate by default.
 const BASE: Snapshot = {
-    currency: "INR",
     monthLabel: "2026-09",
     daysElapsed: 15,
     daysInMonth: 30,
