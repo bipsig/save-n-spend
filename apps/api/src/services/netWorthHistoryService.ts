@@ -115,8 +115,10 @@ export const netWorthTrend = async (
     const totals = reconstructTrend(currentNetWorth, deltasOf(rows), boundaries.map((boundary) => ymKey(boundary, zone)));
 
     boundaries.forEach((boundary, i) => {
-      points.push({ label: monthLabel(boundary, zone), total: totals[i] });
+      // A boundary is the instant a month closed, so it is named for that month (gaps row 26):
+      // the 1 April point is March's closing figure, "Mar 2026", not a second "Apr 2026".
       const month = addMonthsInZone(boundary, zone, -1);
+      points.push({ label: monthLabel(month, zone), total: totals[i] });
       const flow = flowByMonth.get(ymKey(month, zone));
       monthlyFlow.push({ label: monthLabel(month, zone), income: flow?.income ?? 0, expense: flow?.expense ?? 0, tripExpense: flow?.tripExpense ?? 0 });
     });

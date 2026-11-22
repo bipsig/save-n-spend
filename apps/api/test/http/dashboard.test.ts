@@ -81,10 +81,11 @@ test("summary: net-worth history walks back from today over the accounts today's
     // net to zero): Feb −350,000, Mar −250,000, Apr +875,000. The archived wallet's −30,000
     // coffee is left out, as its balance is left out of today's figure; 2.8.1 counted it, which
     // put every past point 30,000 higher (8,030,000, 7,680,000, 7,430,000).
+    // Each boundary point is named for the month that closed there (gaps row 26), then today.
     assert.deepEqual(d.netWorthTrend, [
-        { label: "Feb 2026", total: 8_000_000 },
-        { label: "Mar 2026", total: 7_650_000 },
-        { label: "Apr 2026", total: 7_400_000 },
+        { label: "Jan 2026", total: 8_000_000 },
+        { label: "Feb 2026", total: 7_650_000 },
+        { label: "Mar 2026", total: 7_400_000 },
         { label: "Apr 2026", total: NET_WORTH },
     ]);
     // Each point is the complete month before the boundary, then this month once, last. The flow
@@ -119,9 +120,9 @@ test("summary: flowTrend across a year end, cut at Kolkata midnight; one complet
         { label: "2026-01", income: 100_000, expense: 40_000, tripExpense: 0 },
     ]);
     assert.deepEqual(d.netWorthTrend, [
-        { label: "Nov 2025", total: 997_000 },
-        { label: "Dec 2025", total: 1_497_000 },
-        { label: "Jan 2026", total: 1_467_000 },
+        { label: "Oct 2025", total: 997_000 },
+        { label: "Nov 2025", total: 1_497_000 },
+        { label: "Dec 2025", total: 1_467_000 },
         { label: "Jan 2026", total: 1_527_000 },
     ]);
 
@@ -131,7 +132,7 @@ test("summary: flowTrend across a year end, cut at Kolkata midnight; one complet
     await txn(v, "expense", 7_000, vb, "2026-01-05T06:30:00Z");
     const y = (await v.send("GET", "/dashboard/summary")).json.data;
     assert.deepEqual(y.flowTrend, [{ label: "Dec 2025", income: 0, expense: 5_000, tripExpense: 0 }, { label: "2026-01", income: 0, expense: 7_000, tripExpense: 0 }]);
-    assert.deepEqual(y.netWorthTrend, [{ label: "Jan 2026", total: 95_000 }, { label: "Jan 2026", total: 88_000 }]);
+    assert.deepEqual(y.netWorthTrend, [{ label: "Dec 2025", total: 95_000 }, { label: "Jan 2026", total: 88_000 }]);
 });
 
 test("summary: a past month and `since`; the history still ends today", async () => {
@@ -229,11 +230,11 @@ test("summary: another user sees none of this user's money", async () => {
 test("netWorthTrend: capped at three boundaries, and none before the first row", async () => {
     const oid = new mongoose.Types.ObjectId(me.id);
     const full = await netWorthTrend(oid, "Asia/Kolkata", new Date("2026-07-15T06:30:00Z"), NET_WORTH, new Date("2026-01-10T06:30:00Z"));
-    assert.deepEqual(full.points.map((p) => p.label), ["May 2026", "Jun 2026", "Jul 2026", "Jul 2026"]);
-    // Nothing moved after April, so every boundary from May on is today's total.
+    assert.deepEqual(full.points.map((p) => p.label), ["Apr 2026", "May 2026", "Jun 2026", "Jul 2026"]);
+    // Nothing moved after April, so every month-end from April's on is today's total.
     assert.deepEqual(full.points.map((p) => p.total), [NET_WORTH, NET_WORTH, NET_WORTH, NET_WORTH]);
     const short = await netWorthTrend(oid, "Asia/Kolkata", new Date("2026-02-15T06:30:00Z"), NET_WORTH, new Date("2026-01-10T06:30:00Z"));
-    assert.deepEqual(short.points.map((p) => p.label), ["Feb 2026", "Feb 2026"]);
+    assert.deepEqual(short.points.map((p) => p.label), ["Jan 2026", "Feb 2026"]);
 });
 
 test("netWorthAtBoundaries: a month's opening and closing net worth; null before the first row", async () => {
@@ -263,7 +264,7 @@ test("net-worth history (D24): an archived account's own rows and its transfers'
     assert.equal(d.netWorth, 1_400_000);
     // Bank on 1 April was 1,200,000: April moved it −100,000 (the transfer out) + 300,000.
     // 2.8.1 skipped transfers and gave 1,100,000.
-    assert.deepEqual(d.netWorthTrend, [{ label: "Apr 2026", total: 1_200_000 }, { label: "Apr 2026", total: 1_400_000 }]);
+    assert.deepEqual(d.netWorthTrend, [{ label: "Mar 2026", total: 1_200_000 }, { label: "Apr 2026", total: 1_400_000 }]);
 
     // On 1 March, Bank's 1,000,000: March brought in the 200,000 transfer; the archived account's
     // 50,000 expense never touched it. 2.8.1 counted the expense and not the transfer: 1,150,000.
