@@ -6,7 +6,7 @@ import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
 import PressableScale from "@/components/ui/PressableScale";
 import Button from "@/components/ui/Button";
-import { ACCOUNT_GROUPS, createAccount, useAccounts } from "@/lib/accounts";
+import { createAccount, groupAccounts, useAccounts } from "@/lib/accounts";
 import { useConnectivity } from "@/store/connectivity";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { toast } from "@/store/toast";
@@ -90,19 +90,9 @@ const AccountPickerSheet = forwardRef<BottomSheetModal, Props>((
 
   const groups = useMemo(() => {
     const matching = term ? accounts.filter((a) => a.name.toLowerCase().includes(term)) : accounts;
-    return ACCOUNT_GROUPS
-      .map(({ label, types }) => {
-        const rows = matching.filter((a) => types.includes(a.type));
-        // Whoever there is still money between comes first: a trip leaves behind people who
-        // are settled up, and those are exactly the rows nobody is looking for.
-        if (types.includes("person")) {
-          const open = rows.filter((a) => a.balance !== 0);
-          const settled = rows.filter((a) => a.balance === 0);
-          return { label, rows: [...open, ...settled], settledFrom: open.length };
-        }
-        return { label, rows, settledFrom: -1 };
-      })
-      .filter((g) => g.rows.length > 0);
+    // Whoever there is still money between comes first: a trip leaves behind people who are
+    // settled up, and those are exactly the rows nobody is looking for.
+    return groupAccounts(matching, { openFirst: true });
   }, [accounts, term]);
 
   // One group needs no heading — the sheet's own title already says what the list is.

@@ -15,7 +15,7 @@ import PressableScale from "@/components/ui/PressableScale";
 import DragList from "@/components/ui/DragList";
 import EmptyState from "@/components/states/EmptyState";
 import ScreenStates from "@/components/states/ScreenStates";
-import { ACCOUNT_GROUPS, ACCOUNT_TYPE_LABEL, reorderAccounts, useAccounts } from "@/lib/accounts";
+import { ACCOUNT_TYPE_LABEL, groupAccounts, reorderAccounts, useAccounts } from "@/lib/accounts";
 import { archiveNotice } from "@/lib/archiveNotice";
 import { useBills } from "@/lib/bills";
 import { mergeSectionOrder } from "@/lib/accountOrder";
@@ -50,29 +50,16 @@ const ManageAccountsScreen = () => {
   // people — and the ones there's no money left between are the deadest weight of all, so
   // they're folded away behind a count until asked for. Reordering shows everyone: a row
   // that's hidden can't be dragged, and the positions sent must cover the whole list.
-  const groups = useMemo(() => {
-    const expanded = showSettled || reordering;
-    return ACCOUNT_GROUPS
-      .map(({ label, types }) => {
-        const all = accounts.filter((a) => types.includes(a.type));
-        const people = types.includes("person");
-        const settled = people ? all.filter((a) => a.balance === 0) : [];
-        const rows = people && !expanded ? all.filter((a) => a.balance !== 0) : all;
-        const open = people ? all.length - settled.length : 0;
-        return {
-          label,
-          rows,
-          // The count of foldable rows, whether or not they are showing — the toggle has to
-          // stay put once expanded, or there is no way back.
-          hidden: settled.length,
-          note: people
-            ? `${all.length} · ${open > 0 ? `${open} open` : "all settled"}`
-            : `${all.length} · ${formatMoney(all.reduce((sum, a) => sum + a.balance, 0))}`,
-        };
-      })
-      // A group with nothing in it and nothing folded away has no heading to show.
-      .filter((g) => g.rows.length > 0 || g.hidden > 0);
-  }, [accounts, showSettled, reordering]);
+  const groups = useMemo(() =>
+    groupAccounts(accounts, { fold: !(showSettled || reordering) }).map((g) => ({
+      label: g.label,
+      rows: g.rows,
+      hidden: g.settled,
+      note: g.people
+        ? `${g.all.length} · ${g.open > 0 ? `${g.open} open` : "all settled"}`
+        : `${g.all.length} · ${formatMoney(g.all.reduce((sum, a) => sum + a.balance, 0))}`,
+    })),
+  [accounts, showSettled, reordering]);
 
   const editRef = useRef<BottomSheetModal>(null);
   const deleteRef = useRef<BottomSheetModal>(null);

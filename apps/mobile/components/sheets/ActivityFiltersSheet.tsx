@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useMemo, useRef } from "react";
+import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { ICategory } from "@save-n-spend/types";
@@ -10,7 +10,8 @@ import Chip from "@/components/ui/Chip";
 import Button from "@/components/ui/Button";
 import SegmentedControl from "@/components/ui/SegmentedControl";
 import { useCategories } from "@/lib/categories";
-import { useAccounts } from "@/lib/accounts";
+import { groupAccounts, useAccounts } from "@/lib/accounts";
+import Caps from "@/components/ui/Caps";
 import type { IconName } from "@/lib/icons";
 import { count } from "@/lib/format/count";
 import type { FeedType } from "@/lib/transactions";
@@ -89,6 +90,11 @@ const ActivityFiltersSheet = forwardRef<BottomSheetModal, Props>(({
 
   const categories = useCategories();
   const accounts = useAccounts();
+  const [showSettled, setShowSettled] = useState(false);
+  const accountGroups = useMemo(
+    () => groupAccounts(accounts, { openFirst: true, fold: !showSettled, keep: activeAccounts }),
+    [accounts, showSettled, activeAccounts],
+  );
 
   // Scoped to the active type, since a category only ever belongs to one kind —
   // filtering Income by "Groceries" can only ever return nothing.
@@ -186,18 +192,35 @@ const ActivityFiltersSheet = forwardRef<BottomSheetModal, Props>(({
 
       <GroupHeader icon="wallet" tint="blue" label="Account" current={accountSummary} />
       {accounts.length > 0 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-          <Chip label="All" selected={activeAccounts.length === 0} onPress={onClearAccounts} />
-          {accounts.map((acc) => (
-            <Chip
-              key={acc._id}
-              label={acc.name}
-              icon={acc.icon as IconName | undefined}
-              selected={activeAccounts.includes(acc._id)}
-              onPress={() => onToggleAccount(acc._id)}
-            />
+        <>
+          <View style={styles.chipRow}>
+            <Chip label="All" selected={activeAccounts.length === 0} onPress={onClearAccounts} />
+          </View>
+          {/* Grouped like the account picker; settled people fold behind one chip (gaps row 166). */}
+          {accountGroups.map((group) => (
+            <View key={group.label}>
+              <Caps style={styles.subLabel}>{group.label}</Caps>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+                {group.rows.map((acc) => (
+                  <Chip
+                    key={acc._id}
+                    label={acc.name}
+                    icon={acc.icon as IconName | undefined}
+                    selected={activeAccounts.includes(acc._id)}
+                    onPress={() => onToggleAccount(acc._id)}
+                  />
+                ))}
+                {(showSettled ? group.settled > 0 : group.all.length > group.rows.length) && (
+                  <Chip
+                    label={showSettled ? "Hide settled" : `+${group.all.length - group.rows.length} settled`}
+                    selected={false}
+                    onPress={() => setShowSettled((on) => !on)}
+                  />
+                )}
+              </ScrollView>
+            </View>
           ))}
-        </ScrollView>
+        </>
       )}
     </AppSheet>
   );

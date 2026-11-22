@@ -8,6 +8,7 @@ import formatMoney from "@/lib/money";
 import type { AccountType, IAccount, InvestedHow } from "@save-n-spend/types";
 
 export { ACCOUNT_TYPE_LABEL, accountSubline } from "@/lib/accountLabels";
+export { ACCOUNT_GROUPS, groupAccounts, type AccountGroup } from "@/lib/accountGroups";
 
 // Filtered here, not just at the manage-accounts screen, so a "deleted" account
 // disappears from every picker built on this hook (Add Transaction, split rows) the
@@ -23,19 +24,6 @@ export const owedLine = (balance: number): string => {
   if (balance === 0) return "Settled up";
   return balance > 0 ? `Owes you ${formatMoney(balance)}` : `You owe ${formatMoney(-balance)}`;
 };
-
-/**
- * The three kinds of thing an account list holds, in the order they're shown. Money you spend
- * from, holdings, and people you owe or who owe you are different enough to be looked for
- * separately — and `person` accounts grow with every trip, so they sit last rather than
- * through the middle of the list. Shared by the picker sheet and Manage accounts so the two
- * can't drift apart.
- */
-export const ACCOUNT_GROUPS: { label: string; types: AccountType[] }[] = [
-  { label: "Accounts", types: ["bank", "cash", "wallet", "credit_card"] },
-  { label: "Investments", types: ["investment"] },
-  { label: "People", types: ["person"] },
-];
 
 export const useAccounts = () : IAccount[] => {
   const list = useAccountStore((s) => s.list);
