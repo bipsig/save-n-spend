@@ -9,6 +9,7 @@ import { billState, daysUntilDue } from "../services/billService";
 import { getRecurringSuggestions, keysSignature } from "../services/recurringService";
 import { notify, wantsNotification, type NotifiableUser } from "../services/notificationService";
 import { summaryTotals, type SummaryGroup } from "../services/transactionFilter";
+import { entryStages, TRIPS_CATEGORY, TRIPS_NAME } from "../services/tripEntries";
 import { formatAmount } from "../utils/money";
 import { log } from "../utils/logger";
 import {
@@ -84,23 +85,18 @@ type ReminderUser = {
 };
 
 /** The money that moved in a closed period, and how many times. Transfers and adjustments
- *  are excluded exactly as insights excludes them. `expense` counts trips; `tripExpense` is the
- *  part of it on trips, by the same rule as /transactions/summary's `tripExpenses`. */
+ *  are excluded exactly as insights excludes them. Each closed trip is one expense on its close
+ *  day (2.8.6); `tripExpense` is that part of `expense`. */
 type PeriodFlows = { income: number; expense: number; tripExpense: number; count: number };
 
 export const flowsBetween = async (
     userId: mongoose.Types.ObjectId,
     start: Date,
     end: Date,
+    zone: string,
 ): Promise<PeriodFlows> => {
     const rows = await Transaction.aggregate<SummaryGroup & { count: number }>([
-        {
-            $match: {
-                userId,
-                type: { $in: ["income", "expense"] },
-                occurredAt: { $gte: start, $lt: end },
-            },
-        },
+        ...entryStages({ userId, type: { $in: ["income", "expense"] }, occurredAt: { $gte: start, $lt: end } }, zone),
         { $group: { _id: { type: "$type", trip: { $gt: ["$tripId", null] } }, total: { $sum: "$amount" }, count: { $sum: 1 } } },
     ]);
     const totals = summaryTotals(rows, undefined);
@@ -113,14 +109,11 @@ export const flowsBetween = async (
     };
 };
 
-/** The one sentence all three digests end with, so they read consistently. "Spent" is everyday
- *  spending and trips get their own clause; what was put aside still counts them (D21 A+, Q1). */
+/** The one sentence all three digests end with, so they read consistently. "Spent" includes
+ *  each closed trip as one expense, as every total does. */
 export const flowLine = (flows: PeriodFlows, currency?: string): string => {
     const net = flows.income - flows.expense;
-    const spent = flows.tripExpense > 0
-        ? `${formatAmount(flows.expense - flows.tripExpense, currency)} plus ${formatAmount(flows.tripExpense, currency)} on trips`
-        : formatAmount(flows.expense, currency);
-    return `Spent ${spent}, earned ${formatAmount(flows.income, currency)}`
+    return `Spent ${formatAmount(flows.expense, currency)}, earned ${formatAmount(flows.income, currency)}`
         + (net >= 0
             ? ` — ${formatAmount(net, currency)} put aside.`
             : ` — ${formatAmount(-net, currency)} more than you earned.`);
@@ -215,7 +208,7 @@ const sendDailySummary = async (user: ReminderUser, zone: string, now: Date): Pr
     const end = startOfDayInZone(now, zone);
     const start = addDaysInZone(end, zone, -1);
 
-    const flows = await flowsBetween(user._id, start, end);
+    const flows = await flowsBetween(user._id, start, end, zone);
 
     // An empty day is the most common day there is; silence is the correct digest.
     if (flows.count === 0) return;
@@ -238,7 +231,7 @@ const sendWeeklySummary = async (user: ReminderUser, zone: string, now: Date): P
     const end = startOfWeekInZone(now, zone);
     const start = addDaysInZone(end, zone, -7);
 
-    const flows = await flowsBetween(user._id, start, end);
+    const flows = await flowsBetween(user._id, start, end, zone);
 
     if (flows.count === 0) return;
 
@@ -257,18 +250,11 @@ const topSpendCategory = async (
     userId: mongoose.Types.ObjectId,
     start: Date,
     end: Date,
+    zone: string,
 ): Promise<{ name: string; total: number } | null> => {
-    const [top] = await Transaction.aggregate<{ total: number; category?: { name?: string }[] }>([
-        {
-            $match: {
-                userId,
-                type: "expense",
-                category: { $ne: null },
-                // A trip's food isn't everyday Groceries — same split as the breakdown.
-                tripId: null,
-                occurredAt: { $gte: start, $lt: end },
-            },
-        },
+    const [top] = await Transaction.aggregate<{ _id: unknown; total: number; category?: { name?: string }[] }>([
+        // A trip's food isn't everyday Groceries: each closed trip is one expense in Trips.
+        ...entryStages({ userId, type: "expense", category: { $ne: null }, occurredAt: { $gte: start, $lt: end } }, zone),
         { $group: { _id: "$category", total: { $sum: "$amount" } } },
         { $sort: { total: -1 } },
         { $limit: 1 },
@@ -277,7 +263,7 @@ const topSpendCategory = async (
         { $project: { total: 1, "category.name": 1 } },
     ]);
 
-    const name = top?.category?.[0]?.name;
+    const name = top?._id === TRIPS_CATEGORY ? TRIPS_NAME : top?.category?.[0]?.name;
     // Dropped if the category was deleted since; the rest of the digest still sends.
     return name ? { name, total: top.total } : null;
 };
@@ -290,8 +276,8 @@ const sendMonthlySummary = async (user: ReminderUser, zone: string, now: Date): 
     const start = addMonthsInZone(end, zone, -1);
 
     const [flows, top] = await Promise.all([
-        flowsBetween(user._id, start, end),
-        topSpendCategory(user._id, start, end),
+        flowsBetween(user._id, start, end, zone),
+        topSpendCategory(user._id, start, end, zone),
     ]);
 
     if (flows.count === 0) return;
