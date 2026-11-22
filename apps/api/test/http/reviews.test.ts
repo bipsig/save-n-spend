@@ -90,6 +90,7 @@ test("month: March's figures, habits, net worth, goals, bills and investments", 
             { categoryId: cat.Shopping, name: "Shopping", total: 50_000, pct: 17, share: 27.1 },
         ],
         uncategorised: { total: 32_000, share: 17.3 },
+        other: null,
         biggestExpense: { title: "Groceries", amount: 100_000, occurredAt: "2026-03-03T06:30:00.000Z" },
         // Days with a row: 1, 3, 8, 9, 10, 13, 14, 15, 18, 20, 31. The 25th and 26th are adjustments only.
         habits: { streakAtEnd: 1, activeDays: 11, totalDays: 31, noSpendDays: 20 },
@@ -170,4 +171,20 @@ test("reviews: the running period, other periods and bad offsets are 400; signed
     const other = await api.user("reviews-other");
     const theirs = (await other.send("GET", "/reviews")).json.data;
     assert.deepEqual([theirs.income, theirs.expenses, theirs.categories, theirs.goals, theirs.bills.paidCount], [0, 0, [], [], 0]);
+});
+
+test("past five categories the rest is one Other row, and the shares add up to 100.0 (gaps row 209)", async () => {
+    const u = await api.user("reviews-other");
+    const c: Record<string, string> = {};
+    for (const x of (await u.send("GET", "/categories")).json.data as { _id: string; name: string; parent: string | null }[]) if (!x.parent) c[x.name] = x._id;
+    const bank = await u.account("Bank", { startingBalance: 10_000_000 });
+    const spend: [string, number][] = [["Bills & Utilities", 40_000], ["Food & Dining", 25_000], ["Shopping", 12_000], ["Transportation", 9_000], ["Entertainment", 6_000], ["Healthcare", 5_000], ["Others", 3_000]];
+    for (const [name, amount] of spend) await txn(u, "expense", amount, bank, "2026-03-10T06:30:00Z", { category: c[name], title: name });
+    await txn(u, "expense", 1_000, bank, "2026-03-11T06:30:00Z", { title: "No category" });
+    setClock(NOW);
+    const d = (await u.send("GET", "/reviews?period=month&offset=-1&trips=entries")).json.data;
+    assert.equal(d.categories.length, 5);
+    assert.deepEqual(d.other, { total: 8_000, share: 8, count: 2 });
+    const sum = d.categories.reduce((s: number, x: { share: number }) => s + x.share, 0) + d.uncategorised.share + d.other.share;
+    assert.equal(Math.round(sum * 10) / 10, 100);
 });

@@ -136,6 +136,15 @@ export const buildReview = async (
         // Trips expands to the trips closed in the period (2.8.6 only).
         ...(rule?.entries && c.categoryId === TRIPS_CATEGORY && c.children ? { children: c.children } : {}),
     }));
+    // Everything after the fifth as one row, so the shares add up (gaps row 209). Its own field,
+    // so the apps before 2.8.8 keep showing five rows. Trips' share is absent without
+    // `trips=entries`, where it isn't part of the everyday shares either.
+    const rest = categorySlices.slice(5);
+    const other = rest.length === 0 ? null : {
+        total: rest.reduce((sum, c) => sum + c.total, 0),
+        share: Math.round(rest.reduce((sum, c) => sum + (c.share ?? 0), 0) * 10) / 10,
+        count: rest.length,
+    };
 
     const biggestExpense = biggestExpenseRows[0]
         ? { title: biggestExpenseRows[0].title as string, amount: biggestExpenseRows[0].amount as number, occurredAt: new Date(biggestExpenseRows[0].occurredAt).toISOString() }
@@ -225,6 +234,7 @@ export const buildReview = async (
         previousSaved: previous.income - previous.expense,
         categories,
         uncategorised: breakdown.uncategorised,
+        other,
         biggestExpense,
         timeline,
         habits: { streakAtEnd, activeDays, totalDays, noSpendDays: noSpendDays(totalDays, activeDays) },

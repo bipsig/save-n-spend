@@ -831,6 +831,16 @@ export interface UncategorisedSpend {
   share: number
 }
 
+/** Review: every category after the five sent, as one "Other" row (2.8.8 API on), so the rows
+ *  with `uncategorised` add up to 100%. Null when there are five or fewer. */
+export interface ReviewOtherSpend {
+  total: number        // paise
+  /** Same scale as the slices' `share`. */
+  share: number
+  /** How many categories it holds. */
+  count: number
+}
+
 /** Only goals with a real logged contribution this period — see GoalContributionLog. */
 export interface ReviewGoalContribution {
   goalId: string
@@ -873,6 +883,8 @@ export interface ReviewPayload {
   previousSaved: number
   categories: ReviewCategorySlice[]
   uncategorised: UncategorisedSpend
+  /** Absent from APIs before 2.8.8. */
+  other?: ReviewOtherSpend | null
   biggestExpense: { title: string; amount: number; occurredAt: string } | null
   /** Dated and sorted; short is expected — only what's real, never padded out. */
   timeline: ReviewMoment[]
