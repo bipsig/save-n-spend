@@ -1,5 +1,6 @@
 import type { LedgerEntry, MonthPoint, GrowthPoint, UpdateEntry, HoldingTrend, PortfolioPoint, PortfolioGrowth, PortfolioTrend } from "@save-n-spend/types";
 import { addMonthsInZone, partsInZone, startOfMonthInZone } from "../utils/timezone";
+import { shortMonth } from "../utils/dateLabel";
 
 // A holding's value at the end of each month, worked out from records the app already keeps —
 // nothing is stored for it. Pure, so it can be tested without a database.
@@ -43,7 +44,7 @@ const monthKey = (instant: Date, zone: string): string => {
 
 /** "Sep", with the year when it is the first point or a January. */
 const labelOf = (instant: Date, zone: string, withYear: boolean): string => {
-    const text = new Intl.DateTimeFormat("en-IN", { timeZone: zone, month: "short" }).format(instant);
+    const text = shortMonth(instant, zone);
     if (!withYear) return text;
     const { year } = partsInZone(instant, zone);
     return `${text} ’${String(year).slice(2)}`;

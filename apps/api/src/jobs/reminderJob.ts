@@ -23,6 +23,7 @@ import {
     startOfMonthInZone,
     startOfWeekInZone,
 } from "../utils/timezone";
+import { shortDay } from "../utils/dateLabel";
 
 // The scheduled half of notifications: the nudges nobody's action triggers — a bill due on
 // Friday, a goal deadline next week, yesterday's spending, last month's wrap-up.
@@ -60,8 +61,7 @@ const plural = (count: number, word: string): string =>
     `${count} ${word}${count === 1 ? "" : "s"}`;
 
 /** "12 Sep", read in the user's zone — the date they'd see on the bill itself. */
-const dateLabel = (instant: Date, zone: string): string =>
-    new Intl.DateTimeFormat("en-IN", { timeZone: zone, day: "numeric", month: "short" }).format(instant);
+const dateLabel = shortDay;
 
 /** The lean projection every reminder below works from. */
 type ReminderUser = {

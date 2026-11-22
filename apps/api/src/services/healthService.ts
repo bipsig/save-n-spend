@@ -11,6 +11,7 @@ import { budgetProgress } from "./budgetService";
 import { rowsFor, type TripRule } from "./tripEntries";
 import { formatAmount, formatPercent } from "../utils/money";
 import { partsInZone, startOfDayInZone, startOfMonthInZone, addMonthsInZone, addDaysInZone } from "../utils/timezone";
+import { shortMonthYear } from "../utils/dateLabel";
 
 // The financial health score: a weighted sum of five pillars, each reporting its own
 // measurement and verdict so every point is attributable.
@@ -120,8 +121,7 @@ const CRITICAL_CEILING = BANDS[0].min - 1;
 const wholeDaysBetween = (from: Date, to: Date, zone: string): number =>
     Math.round((startOfDayInZone(to, zone).getTime() - startOfDayInZone(from, zone).getTime()) / MS_PER_DAY);
 
-const monthYearLabel = (instant: Date, zone: string): string =>
-    new Intl.DateTimeFormat("en-IN", { timeZone: zone, month: "short", year: "numeric" }).format(instant);
+const monthYearLabel = shortMonthYear;
 
 const pct = formatPercent;
 

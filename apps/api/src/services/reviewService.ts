@@ -16,6 +16,7 @@ import { addDaysInZone, partsInZone } from "../utils/timezone";
 import { formatAmount, formatPercent } from "../utils/money";
 import type { ReviewPayload } from "@save-n-spend/types";
 import { everydayMatch, rowsFor, TRIPS_CATEGORY, type TripRule } from "./tripEntries";
+import { shortDay } from "../utils/dateLabel";
 
 const FLOW_TYPES = ["income", "expense"];
 
@@ -67,11 +68,11 @@ const weekLabel = (start: Date, end: Date, zone: string): string => {
     const lastDay = new Date(end.getTime() - 1);
     const startParts = partsInZone(start, zone);
     const endParts = partsInZone(lastDay, zone);
-    const startFmt = new Intl.DateTimeFormat("en-IN", { month: "short", day: "numeric", timeZone: zone }).format(start);
+    const startFmt = shortDay(start, zone);
     if (startParts.month === endParts.month && startParts.year === endParts.year) {
         return `${startFmt} – ${endParts.day}`;
     }
-    const endFmt = new Intl.DateTimeFormat("en-IN", { month: "short", day: "numeric", timeZone: zone }).format(lastDay);
+    const endFmt = shortDay(lastDay, zone);
     return `${startFmt} – ${endFmt}`;
 };
 

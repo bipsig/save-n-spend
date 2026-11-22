@@ -4,6 +4,7 @@ import Transaction from "../models/Transaction";
 import { addMonthsInZone, startOfMonthInZone, partsInZone } from "../utils/timezone";
 import { monthOrdinal, AVERAGE_MONTHS } from "./highlightSnapshotMath";
 import { reconstructTrend, type MonthDelta } from "./netWorthMath";
+import { shortMonthYear } from "../utils/dateLabel";
 
 // Account.balance is a live running total (mutated by $inc as transactions land) — there
 // is no stored balance history anywhere. Reconstructing past net worth means walking
@@ -22,8 +23,7 @@ const ymKey = (instant: Date, zone: string): string => {
   return `${year}-${String(month).padStart(2, "0")}`;
 };
 
-const monthLabel = (instant: Date, zone: string): string =>
-  new Intl.DateTimeFormat("en-IN", { timeZone: zone, month: "short", year: "numeric" }).format(instant);
+const monthLabel = shortMonthYear;
 
 export type NetWorthPoint = { label: string; total: number };
 /** `tripExpense` is the part of `expense` that is your trip shares. */
