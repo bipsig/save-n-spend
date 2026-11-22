@@ -1,5 +1,5 @@
 import { z } from "./z";
-import { money, objectId, positiveMoney } from "./fields";
+import { calendarDay, money, objectId, positiveMoney } from "./fields";
 
 /** Any text or number `new Date()` reads, as before; `null` and unreadable text are refused
  *  (`z.coerce.date()` turned `null` into 1 January 1970).
@@ -71,8 +71,12 @@ export const closeTripSchemas = {
     body: z.object({
         /** People whose leftover balance is let go rather than kept. */
         letGo: z.array(objectId("A person to let go", "people")).max(30).default([]),
+        /** The day the trip counts on (2.8.6 on); without it, the last expense day. */
+        closedOn: calendarDay.optional(),
     }).strict(),
 };
+
+export const closeDateSchemas = { params: tripId, body: z.object({ closedOn: calendarDay }).strict() };
 
 /** The 2.6.0 app sends no body. */
 export const reopenTripSchemas = { params: tripId, body: z.object({}).strict() };

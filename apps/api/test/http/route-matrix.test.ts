@@ -362,6 +362,7 @@ const SPECS: Record<string, Spec> = {
         keyed: async (c) => ({ path: `/trips/${await created(c.user, "/trips", tripDraft(c))}/close`, body: { letGo: [] }, other: { body: { letGo: [c.person] } } }),
     },
     "POST /api/v1/trips/:id/reopen": { body: () => ({}) },
+    "PATCH /api/v1/trips/:id/close-date": { body: () => ({ closedOn: "2026-01-01" }) },
     "POST /api/v1/trips/:id/import/preview": { body: () => ({ csv: CSV("Test Runner", "Matrix Asha") }) },
     "POST /api/v1/trips/:id/import/commit": {
         body: (c) => ({ csv: CSV("Test Runner", "Matrix Asha"), mapping: { "Test Runner": "me", "Matrix Asha": c.person }, decisions: [] }),

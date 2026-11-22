@@ -4,12 +4,12 @@ import { resolveZone } from "../utils/userZone";
 import { toDTO } from "../utils/dto";
 import type { Valid } from "../middleware/validate";
 import type {
-    addExpenseSchemas, closeTripSchemas, createTripSchemas, editExpenseSchemas, expenseIdSchemas, importCommitSchemas,
+    addExpenseSchemas, closeDateSchemas, closeTripSchemas, createTripSchemas, editExpenseSchemas, expenseIdSchemas, importCommitSchemas,
     importPreviewSchemas, planSchemas, settleSchemas, tripIdSchemas, updateTripSchemas,
 } from "../schemas/tripSchema";
 import { commitImport, previewImport } from "../services/tripImportService";
 import {
-    addTripExpense, clearPlan, closeTrip, createTrip, deleteTrip, deleteTripExpense, getTripDetail, listTrips,
+    addTripExpense, changeCloseDate, clearPlan, closeTrip, createTrip, deleteTrip, deleteTripExpense, getTripDetail, listTrips,
     reopenTrip, savePlan, settleUp, updateTrip, updateTripExpense,
 } from "../services/tripService";
 
@@ -19,7 +19,7 @@ import {
 
 const uid = (req: Request) => req.user!.userId;
 
-export const list = async (req: Request, res: Response) => reply.ok(res, await listTrips(uid(req)), "Trips fetched");
+export const list = async (req: Request, res: Response) => reply.ok(res, await listTrips(uid(req), await resolveZone(req)), "Trips fetched");
 
 export const detail = async (req: Request, res: Response) => {
     const { params } = req.valid as Valid<typeof tripIdSchemas>;
@@ -66,8 +66,14 @@ export const settle = async (req: Request, res: Response) => {
 
 export const close = async (req: Request, res: Response) => {
     const { params, body } = req.valid as Valid<typeof closeTripSchemas>;
-    await closeTrip(uid(req), params.id, body.letGo);
+    await closeTrip(uid(req), params.id, body.letGo, await resolveZone(req), body.closedOn);
     reply.ok(res, null, "Trip closed");
+};
+
+export const closeDate = async (req: Request, res: Response) => {
+    const { params, body } = req.valid as Valid<typeof closeDateSchemas>;
+    await changeCloseDate(uid(req), params.id, body.closedOn, await resolveZone(req));
+    reply.ok(res, null, "Close date saved");
 };
 
 export const reopen = async (req: Request, res: Response) => {

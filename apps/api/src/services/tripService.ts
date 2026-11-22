@@ -11,6 +11,7 @@ import { applyEffects, getEffectOf, type Movable } from "./transactionService";
 import { categoryQuery, keepsCategory, requireCategory } from "./ownership";
 import { OWN_TYPES } from "./accountGroups";
 import { dayKeyInZone } from "../utils/timezone";
+import { closedOnOf } from "./tripEntries";
 import {
     expensesSignature, isReroute, memberBalances, myShareOf, planLedger, planLetGo, planReroute, planSettlement,
     validatePlan, validateTripExpense, PLAN_PREFIX,
@@ -35,6 +36,7 @@ const oid = (id: string | Oid) => new mongoose.Types.ObjectId(String(id));
 
 export const TRIP_CLOSED = conflict("This trip is closed", "Reopen it to make changes");
 const ALREADY_CLOSED = conflict("This trip is already closed");
+const NOT_CLOSED = conflict("This trip isn't closed", "Close it to pick the day it counts on");
 const MEMBER_IN_USE = conflict("Someone you're removing is already in this trip's expenses");
 const ON_TRIP = "people on this trip";
 
@@ -390,14 +392,17 @@ export const settleUp = async (userId: string, tripId: string, body: SettleBody 
 /** Closes a trip. Balances in `letGo` are cleared (see planLetGo); the rest stay on each
  *  person's account, to be settled whenever. The claim (status active → closed) and the
  *  balances it lets go are one transaction, so a second close lets nobody go twice. */
-export const closeTrip = (userId: string, tripId: string, letGo: string[]) =>
+export const closeTrip = (userId: string, tripId: string, letGo: string[], zone: string, closedOn?: string) =>
     inTransaction(async (session) => {
         const now = new Date();
-        const trip = await Trip.findOneAndUpdate({ _id: tripId, userId, status: "active" }, { $set: { status: "closed", closedAt: now } }, { session, new: true });
-        if (!trip) {
-            if (await Trip.exists({ _id: tripId, userId }).session(session)) throw AppError.conflict(ALREADY_CLOSED);
-            throw tripNotFound();
-        }
+        const open = await Trip.findOne({ _id: tripId, userId }).session(session);
+        if (!open) throw tripNotFound();
+        if (open.status === "closed") throw AppError.conflict(ALREADY_CLOSED);
+        const range = closeRange(open, now, zone);
+        if (closedOn) checkCloseDay(closedOn, range);
+        const day = closedOn ?? defaultCloseDay(await lastExpenseDay(userId, open._id as Oid, zone, session), range);
+        const trip = await Trip.findOneAndUpdate({ _id: tripId, userId, status: "active" }, { $set: { status: "closed", closedAt: now, closedOn: day } }, { session, new: true });
+        if (!trip) throw AppError.conflict(ALREADY_CLOSED);
         const members = trip.members.map(String);
         const people = [...new Set(letGo.map((p) => p.toLowerCase()))];
         const stranger = letGo.findIndex((p) => !members.includes(p.toLowerCase()));
@@ -415,10 +420,43 @@ export const closeTrip = (userId: string, tripId: string, letGo: string[]) =>
         await writeRows(userId, trip._id as Oid, null, rows, session);
     });
 
-/** Reopening an active trip is a no-op that answers like the first reopen. */
+/** Reopening an active trip is a no-op that answers like the first reopen. Its one entry in
+ *  Trips goes until it is closed again. */
 export const reopenTrip = async (userId: string, tripId: string) => {
-    const trip = await Trip.findOneAndUpdate({ _id: tripId, userId }, { $set: { status: "active", closedAt: null } });
+    const trip = await Trip.findOneAndUpdate({ _id: tripId, userId }, { $set: { status: "active", closedAt: null }, $unset: { closedOn: 1 } });
     if (!trip) throw tripNotFound();
+};
+
+/** The days a trip may be closed on: its start day to today, in the user's zone. */
+export const closeRange = (trip: { startDate: Date }, now: Date, zone: string) => {
+    const today = dayKeyInZone(now, zone);
+    const first = dayKeyInZone(new Date(trip.startDate), zone);
+    return { first: first < today ? first : today, today };
+};
+
+/** Closing defaults to the last day with a trip expense, kept inside the allowed range. */
+export const defaultCloseDay = (lastExpense: string | null, { first, today }: { first: string; today: string }): string =>
+    !lastExpense ? today : lastExpense < first ? first : lastExpense > today ? today : lastExpense;
+
+export const checkCloseDay = (day: string, { first, today }: { first: string; today: string }) => {
+    if (day < first) throw invalidInput("closedOn", "Pick a day from the trip's start");
+    if (day > today) throw invalidInput("closedOn", "Pick a day up to today");
+};
+
+const lastExpenseDay = async (userId: string, tripId: Oid, zone: string, session: ClientSession): Promise<string | null> => {
+    const last = await TripExpense.findOne({ userId, tripId }).sort({ occurredAt: -1 }).select("occurredAt").session(session).lean();
+    return last ? dayKeyInZone(new Date(last.occurredAt), zone) : null;
+};
+
+/** Moves a closed trip's one entry to another day without reopening it (the one change a
+ *  closed trip allows). */
+export const changeCloseDate = async (userId: string, tripId: string, closedOn: string, zone: string) => {
+    const trip = await Trip.findOne({ _id: tripId, userId });
+    if (!trip) throw tripNotFound();
+    if (trip.status !== "closed") throw AppError.conflict(NOT_CLOSED);
+    checkCloseDay(closedOn, closeRange(trip, new Date(), zone));
+    const saved = await Trip.findOneAndUpdate({ _id: tripId, userId, status: "closed" }, { $set: { closedOn } });
+    if (!saved) throw AppError.conflict(NOT_CLOSED);
 };
 
 // ---- Matching Splitwise's simplified debts ---------------------------------------------------
@@ -480,7 +518,7 @@ export const clearPlan = (userId: string, tripId: string) =>
 
 // ---- Reading -------------------------------------------------------------------------------
 
-const toTripDTO = (t: ITrip | (ITrip & { createdAt?: Date })): TripDTO => ({
+const toTripDTO = (t: ITrip | (ITrip & { createdAt?: Date }), zone: string): TripDTO => ({
     _id: String(t._id),
     name: t.name,
     emoji: t.emoji,
@@ -491,6 +529,7 @@ const toTripDTO = (t: ITrip | (ITrip & { createdAt?: Date })): TripDTO => ({
     budget: t.budget ?? null,
     status: t.status,
     closedAt: t.closedAt ? new Date(t.closedAt).toISOString() : null,
+    closedOn: t.status === "closed" ? closedOnOf(t, zone) : null,
     createdAt: new Date((t as unknown as { createdAt: Date }).createdAt ?? Date.now()).toISOString(),
 });
 
@@ -507,7 +546,7 @@ const totalsFor = (trip: ITrip, txns: LeanTxn[], expenses: ITripExpense[]): { to
     return { totals, balances };
 };
 
-export const listTrips = async (userId: string): Promise<TripsPayload> => {
+export const listTrips = async (userId: string, zone: string): Promise<TripsPayload> => {
     const uid = oid(userId);
     const [trips, txns, expenses] = await Promise.all([
         Trip.find({ userId: uid }).sort({ startDate: -1 }).lean(),
@@ -531,7 +570,7 @@ export const listTrips = async (userId: string): Promise<TripsPayload> => {
     const items: TripListItem[] = trips.map((trip) => {
         const { totals, balances } = totalsFor(trip as unknown as ITrip, txnsBy.get(String(trip._id)) ?? [], expBy.get(String(trip._id)) ?? []);
         openBy.set(String(trip._id), [...balances.values()].reduce((s, b) => s + Math.abs(b), 0));
-        return { ...toTripDTO(trip as unknown as ITrip), totals, openBalances: [...balances.values()].filter((b) => b !== 0).length };
+        return { ...toTripDTO(trip as unknown as ITrip, zone), totals, openBalances: [...balances.values()].filter((b) => b !== 0).length };
     });
 
     // Active first, then newest first.
@@ -629,7 +668,7 @@ export const getTripDetail = async (userId: string, tripId: string, zone: string
     ].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
 
     return {
-        trip: toTripDTO(trip),
+        trip: toTripDTO(trip, zone),
         totals,
         members: trip.members.map((m) => {
             const balance = balances.get(String(m)) ?? 0;

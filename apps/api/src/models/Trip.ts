@@ -16,6 +16,9 @@ export interface ITrip extends Document {
     budget: number | null;
     status: "active" | "closed";
     closedAt: Date | null;
+    /** The day (`YYYY-MM-DD`, the user's zone) the closed trip counts as one expense in Trips.
+     *  Absent on trips closed before 2.8.6: read it with `closedOnOf`. */
+    closedOn?: string | null;
     /** What each person actually pays you, when it differs from the exact split — see
      *  tripLedger's planReroute. Absent on a trip nobody has matched. */
     plan?: {
@@ -38,6 +41,7 @@ const TripSchema = new Schema<ITrip>({
     budget: { type: Number, default: null, min: 0 },
     status: { type: String, enum: ["active", "closed"], default: "active" },
     closedAt: { type: Date, default: null },
+    closedOn: { type: String, default: undefined },
     plan: {
         type: new Schema({
             savedAt: { type: Date, required: true },

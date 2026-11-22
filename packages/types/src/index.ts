@@ -320,6 +320,9 @@ export interface ITrip {
   budget: number | null
   status: TripStatus
   closedAt: string | null
+  /** `YYYY-MM-DD` in your zone: the day a closed trip counts as one expense in Trips (2.8.6 API
+   *  on; absent from older APIs). Null while open. */
+  closedOn?: string | null
   createdAt: string
 }
 

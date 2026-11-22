@@ -4,7 +4,7 @@ import { validate } from "../../middleware/validate";
 import { withIdempotency } from "../../middleware/idempotency";
 import * as trips from "../../controllers/tripController";
 import {
-    addExpenseSchemas, closeTripSchemas, createTripSchemas, editExpenseSchemas, expenseIdSchemas, importCommitSchemas,
+    addExpenseSchemas, closeDateSchemas, closeTripSchemas, createTripSchemas, editExpenseSchemas, expenseIdSchemas, importCommitSchemas,
     importPreviewSchemas, planSchemas, reopenTripSchemas, settleSchemas, tripIdSchemas, updateTripSchemas,
 } from "../../schemas/tripSchema";
 
@@ -22,6 +22,7 @@ router.post("/:id/settle", protect, validate(settleSchemas), withIdempotency({ m
 router.put("/:id/plan", protect, validate(planSchemas), withIdempotency({ money: true }), trips.putPlan);
 router.delete("/:id/plan", protect, validate(tripIdSchemas), withIdempotency({ money: true }), trips.removePlan);
 router.post("/:id/close", protect, validate(closeTripSchemas), withIdempotency({ money: true }), trips.close);
+router.patch("/:id/close-date", protect, validate(closeDateSchemas), trips.closeDate);
 router.post("/:id/reopen", protect, validate(reopenTripSchemas), trips.reopen);
 router.post("/:id/import/preview", protect, validate(importPreviewSchemas), trips.importPreview);
 router.post("/:id/import/commit", protect, validate(importCommitSchemas), withIdempotency({ money: true }), trips.importCommit);
