@@ -1,20 +1,22 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { ICategory } from "@save-n-spend/types";
-import { NAME_MIN } from "@save-n-spend/types";
 import AppSheet from "./AppSheet";
 import Button from "@/components/ui/Button";
 import CategoryForm, { categoryCtaLabel, type CategoryFormValue } from "@/components/ui/CategoryForm";
 import { categoryCreateBody, createCategory, updateCategory, useCategoryById } from "@/lib/categories";
 import { holderFor } from "@/lib/idempotency";
-import { haptics } from "@/lib/haptics";
 import type { IconName } from "@/lib/icons";
 import { toast } from "@/store/toast";
 import type { ColorToken } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { editWithUndo, previousValues } from "@/lib/undo";
 import { useCategoryStore } from "@/store/categories";
-import { errorText } from "@/lib/apiError";
+import { splitIssues } from "@/lib/apiError";
+import { categoryFormSchema } from "@/lib/formSchemas";
+import { useSchemaForm } from "@/lib/useSchemaForm";
+import { useFormError } from "@/lib/useFormError";
+import SheetFooter from "./SheetFooter";
 
 type Props = {
   /** The category being edited, or `null` to create a new one. */
@@ -54,7 +56,8 @@ const EditCategorySheet = forwardRef<BottomSheetModal, Props>(({ category, paren
     color: "accent",
   });
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { error, fail, clear: clearError } = useFormError();
+  const { fieldError, submit, setFieldError } = useSchemaForm(categoryFormSchema, { name: form.name });
 
   const patch = (next: Partial<CategoryFormValue>) => setForm((prev) => ({ ...prev, ...next }));
 
@@ -72,22 +75,17 @@ const EditCategorySheet = forwardRef<BottomSheetModal, Props>(({ category, paren
       icon: (category?.icon as IconName) ?? (parent?.icon as IconName) ?? "food",
       color: (category?.color as ColorToken) ?? (parent?.color as ColorToken) ?? "accent",
     });
-    setError(null);
+    clearError();
   }, [category, parent]);
 
   // Also on dismiss: adding a second new category opens on the same props, and must not
   // show the first one's name.
   useEffect(() => { resetForm(); }, [resetForm]);
 
-  const save = async () => {
+  const save = () => submit(async () => {
     const trimmed = form.name.trim();
-    if (trimmed.length < NAME_MIN) {
-      haptics.error();
-      setError("Give the category a name");
-      return;
-    }
     setBusy(true);
-    setError(null);
+    clearError();
     try {
       let undo: { saved: object; sent: Record<string, unknown> } | null = null;
       if (editing) {
@@ -122,13 +120,15 @@ const EditCategorySheet = forwardRef<BottomSheetModal, Props>(({ category, paren
       else toast.success(parent ? `${trimmed} added under ${parent.name}` : `${trimmed} added`);
     }
     catch (err) {
-      haptics.error();
-      setError(errorText(err, "Couldn't save the category. Try again."));
+      // A duplicate or reserved name goes under the name; anything else above the button.
+      const { byField, rest } = splitIssues(err, { name: "name" } as const, "Couldn't save the category. Try again.");
+      if (byField.name) setFieldError("name", { message: byField.name });
+      fail(rest);
     }
     finally {
       setBusy(false);
     }
-  };
+  });
 
   return (
     <AppSheet
@@ -137,14 +137,16 @@ const EditCategorySheet = forwardRef<BottomSheetModal, Props>(({ category, paren
       snapPoints={["78%"]}
       onDismiss={resetForm}
       footer={
-        <Button
-          label={categoryCtaLabel(editing, editing ? null : parent?._id ?? null)}
-          icon={gate.icon}
-          hint={gate.hint}
-          loading={busy}
-          disabled={!gate.allowed}
-          onPress={save}
-        />
+        <SheetFooter error={error}>
+          <Button
+            label={categoryCtaLabel(editing, editing ? null : parent?._id ?? null)}
+            icon={gate.icon}
+            hint={gate.hint}
+            loading={busy}
+            disabled={!gate.allowed}
+            onPress={save}
+          />
+        </SheetFooter>
       }
     >
       <CategoryForm
@@ -152,7 +154,7 @@ const EditCategorySheet = forwardRef<BottomSheetModal, Props>(({ category, paren
         onChange={patch}
         editing={editing}
         parent={shownParent}
-        error={error}
+        nameError={fieldError("name")}
       />
     </AppSheet>
   );

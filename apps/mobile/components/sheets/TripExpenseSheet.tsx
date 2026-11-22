@@ -27,9 +27,12 @@ import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { colors, spacing } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
-import { errorText } from "@/lib/apiError";
+import { splitIssues } from "@/lib/apiError";
 import { useFormError } from "@/lib/useFormError";
 import SheetFooter from "./SheetFooter";
+import FieldError from "@/components/ui/FieldError";
+import { tripExpenseFormSchema } from "@/lib/formSchemas";
+import { useSchemaForm } from "@/lib/useSchemaForm";
 
 type Props = {
   tripId: string;
@@ -139,19 +142,19 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
     setInSplit((cur) => (cur.includes(w) ? cur.filter((x) => x !== w) : [...cur, w]));
   };
 
-  const save = async () => {
-    if (!(cost > 0)) { fail("Enter the amount."); return; }
-    if (!title.trim()) { fail("Give it a name."); return; }
-    if (shares.length === 0) { fail("Tick who it's split between."); return; }
-    if (assigned !== cost) { fail(`The shares add up to ${formatMoney(assigned)} — they need to make ${formatMoney(cost)}.`); return; }
-    if (payer === ME && !fromAccount) { fail("Pick the account you paid from."); return; }
+  const schema = useMemo(() => tripExpenseFormSchema(formatMoney), []);
+  const { fieldError, submit, setFieldError } = useSchemaForm(schema, {
+    title, cost, shares: shares.map((s) => ({ amount: s.amount })), paidByMe: payer === ME, paidFrom: fromAccount?._id ?? null,
+  });
+
+  const save = () => submit(async () => {
     const draft = {
       title: title.trim(),
       occurredAt: date.toISOString(),
       category,
       cost,
       paidBy: payer === ME ? null : payer,
-      paidFrom: payer === ME ? fromAccount!._id : null,
+      paidFrom: payer === ME ? fromAccount?._id ?? null : null,
       shares: shares.map((s) => ({ account: s.who === ME ? null : s.who, amount: s.amount })),
     };
     setBusy(true);
@@ -183,12 +186,14 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
       else toast.success(`${draft.title} added · your share ${formatMoney(myShare)}`);
     }
     catch (err) {
-      fail(errorText(err, "Couldn't save it"));
+      const { byField, rest } = splitIssues(err, { title: "title", cost: "cost", shares: "shares", paidFrom: "paidFrom" } as const, "Couldn't save it");
+      for (const [field, message] of Object.entries(byField)) setFieldError(field, { message });
+      fail(rest);
     }
     finally {
       setBusy(false);
     }
-  };
+  });
 
   const tintFor = (w: Who) => (w === ME ? "teal" : AVATAR_TINTS[members.findIndex((m) => m.account === w) % AVATAR_TINTS.length]);
 
@@ -204,7 +209,8 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
         <AppText size="md" weight="black">{expense ? "Edit expense" : "Add expense"}</AppText>
 
         <AmountHeroInput value={amount} onChangeText={setAmount} />
-        <Input placeholder="What was it? e.g. Dinner at the beach" value={title} onChangeText={setTitle} InputComponent={BottomSheetTextInput} />
+        <FieldError message={fieldError("cost")} />
+        <Input placeholder="What was it? e.g. Dinner at the beach" value={title} onChangeText={setTitle} InputComponent={BottomSheetTextInput} error={fieldError("title")} />
 
         <View style={styles.pair}>
           <View style={styles.grow}><DateField label="When" value={date} onChange={setDate} maximumDate={new Date()} /></View>
@@ -243,6 +249,7 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
             <Icon name="chevronRight" size={20} color="inkDim" />
           </PressableScale>
         )}
+        <FieldError message={fieldError("paidFrom")} />
 
         <View style={styles.splitHead}>
           <Caps>Split between</Caps>
@@ -280,7 +287,9 @@ const TripExpenseSheet = forwardRef<BottomSheetModal, Props>(({ tripId, members,
             );
           })}
         </View>
-        {mode === "custom" && cost > 0 && assigned !== cost && (
+        {fieldError("shares") ? (
+          <FieldError message={fieldError("shares")} />
+        ) : mode === "custom" && cost > 0 && assigned !== cost && (
           <AppText size="xs" weight="bold" color="warning">
             {assigned < cost ? `${formatMoney(cost - assigned)} still to assign` : `${formatMoney(assigned - cost)} too much`}
           </AppText>

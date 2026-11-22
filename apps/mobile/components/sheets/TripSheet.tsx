@@ -24,9 +24,12 @@ import { useTripNameStore } from "@/store/tripNames";
 import { toast } from "@/store/toast";
 import { colors, spacing } from "@/theme";
 import { useOnlineGate } from "@/lib/onlineGate";
-import { errorText } from "@/lib/apiError";
+import { errorText, splitIssues } from "@/lib/apiError";
 import { useFormError } from "@/lib/useFormError";
-import FormError from "@/components/ui/FormError";
+import FieldError from "@/components/ui/FieldError";
+import SheetFooter from "./SheetFooter";
+import { tripFormSchema } from "@/lib/formSchemas";
+import { useSchemaForm } from "@/lib/useSchemaForm";
 
 type Props = {
   /** The trip being edited, or null for a new one. */
@@ -98,15 +101,9 @@ const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDelete
     }
   };
 
-  const save = async () => {
-    if (name.trim().length === 0) {
-      fail("Give the trip a name.");
-      return;
-    }
-    if (end < start) {
-      fail("The trip can't end before it starts.");
-      return;
-    }
+  const { fieldError, submit, setFieldError } = useSchemaForm(tripFormSchema, { name, start, end });
+
+  const save = () => submit(async () => {
     const budgetPaise = budget.trim() ? parseMoney(budget) : null;
     setBusy(true);
     clearError();
@@ -134,12 +131,14 @@ const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDelete
       else toast.success(`${draft.name} started`);
     }
     catch (err) {
-      fail(errorText(err, "Couldn't save the trip"));
+      const { byField, rest } = splitIssues(err, { name: "name", endDate: "end", startDate: "end" } as const, "Couldn't save the trip");
+      for (const [field, message] of Object.entries(byField)) setFieldError(field as "name" | "end", { message });
+      fail(rest);
     }
     finally {
       setBusy(false);
     }
-  };
+  });
 
   const gradient = TRIP_GRADIENTS[color] ?? TRIP_GRADIENTS.teal;
 
@@ -151,18 +150,16 @@ const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDelete
         snapPoints={["88%"]}
         onDismiss={resetForm}
         footer={
-          // Above the button, since the body is long enough that the end of it is off-screen.
-          <View style={styles.footer}>
-            <FormError message={error} />
+          <SheetFooter error={error}>
             <Button label={trip ? "Save changes" : "Start trip"} icon={gate.icon} hint={gate.hint} loading={busy} disabled={!gate.allowed} onPress={save} />
-          </View>
+          </SheetFooter>
         }
       >
         <LinearGradient colors={gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.band}>
           <AppText size="lg" weight="black" numberOfLines={1}>{emoji} {name.trim() || (trip ? "Edit trip" : "New trip")}</AppText>
         </LinearGradient>
 
-        <Input label="Name" placeholder="e.g. Kerala" value={name} onChangeText={(v) => { setName(v); clearError(); }} autoCapitalize="words" InputComponent={BottomSheetTextInput} />
+        <Input label="Name" placeholder="e.g. Kerala" value={name} onChangeText={(v) => { setName(v); clearError(); }} autoCapitalize="words" InputComponent={BottomSheetTextInput} error={fieldError("name")} />
 
         <View style={styles.field}>
           <Caps>Look</Caps>
@@ -184,6 +181,7 @@ const TripSheet = forwardRef<BottomSheetModal, Props>(({ trip, onSaved, onDelete
 
         <DateField label="Starts" value={start} onChange={(d) => { setStart(d); if (end < d) setEnd(d); }} />
         <DateField label="Ends" value={end} onChange={setEnd} minimumDate={start} />
+        <FieldError message={fieldError("end")} />
 
         <View style={styles.field}>
           <Caps>Who's going (besides you)</Caps>
@@ -252,7 +250,6 @@ const styles = StyleSheet.create({
   checkOn: { backgroundColor: colors.primary, borderColor: colors.primary },
   grow: { flex: 1 },
   addRow: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm },
-  footer: { gap: spacing.sm },
 });
 
 export default TripSheet;

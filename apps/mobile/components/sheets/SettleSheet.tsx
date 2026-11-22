@@ -20,6 +20,9 @@ import { useOnlineGate } from "@/lib/onlineGate";
 import { errorText } from "@/lib/apiError";
 import { useFormError } from "@/lib/useFormError";
 import SheetFooter from "./SheetFooter";
+import FieldError from "@/components/ui/FieldError";
+import { settleFormSchema } from "@/lib/formSchemas";
+import { useSchemaForm } from "@/lib/useSchemaForm";
 
 type Props = {
   tripId: string;
@@ -59,10 +62,10 @@ const SettleSheet = forwardRef<BottomSheetModal, Props>(({ tripId, member, onSav
 
   const account = useAccountById(accountId) ?? defaultAccount;
   const value = parseMoney(amount);
+  const { fieldError, submit } = useSchemaForm(settleFormSchema, { amount: value, account: account?._id ?? null });
 
-  const save = async () => {
-    if (!member || !(value > 0)) { fail("Enter the amount."); return; }
-    if (!account) { fail("Pick the account."); return; }
+  const save = () => submit(async () => {
+    if (!member || !account) return;
     setBusy(true);
     clearError();
     try {
@@ -80,7 +83,7 @@ const SettleSheet = forwardRef<BottomSheetModal, Props>(({ tripId, member, onSav
     finally {
       setBusy(false);
     }
-  };
+  });
 
   return (
     <>
@@ -100,6 +103,7 @@ const SettleSheet = forwardRef<BottomSheetModal, Props>(({ tripId, member, onSav
               {theyOwe ? `${member.name} owes you ${formatMoney(owed)} on this trip.` : `You owe ${member.name} ${formatMoney(owed)} on this trip.`} Paying part of it is fine.
             </AppText>
             <AmountHeroInput value={amount} onChangeText={setAmount} />
+            <FieldError message={fieldError("amount")} />
             <PressableScale
               style={styles.selRow}
               onPress={() => accountRef.current?.present()}
@@ -114,6 +118,7 @@ const SettleSheet = forwardRef<BottomSheetModal, Props>(({ tripId, member, onSav
               </View>
               <Icon name="chevronRight" size={20} color="inkDim" />
             </PressableScale>
+            <FieldError message={fieldError("account")} />
             {value > 0 && value < owed && (
               <AppText size="xs" color="inkDim">{formatMoney(owed - value)} will still be open.</AppText>
             )}

@@ -3,7 +3,6 @@ import { StyleSheet, View } from "react-native";
 import { BottomSheetModal, BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { useRouter } from "expo-router";
 import type { AccountType, IAccount, InvestedHow } from "@save-n-spend/types";
-import { NAME_MIN } from "@save-n-spend/types";
 import AppSheet from "./AppSheet";
 import { AppText } from "@/components/ui/AppText";
 import Caps from "@/components/ui/Caps";
@@ -29,9 +28,12 @@ import { useOnlineGate } from "@/lib/onlineGate";
 import { editUndoAllowed, editWithUndo, previousValues } from "@/lib/undo";
 import { useAccountStore } from "@/store/accounts";
 import { ACCOUNT_TYPE_LABEL } from "@/lib/accountLabels";
-import { errorText } from "@/lib/apiError";
+import { splitIssues } from "@/lib/apiError";
 import { useFormError } from "@/lib/useFormError";
 import SheetFooter from "./SheetFooter";
+import FieldError from "@/components/ui/FieldError";
+import { accountFormSchema, rupeesToPaise } from "@/lib/formSchemas";
+import { useSchemaForm } from "@/lib/useSchemaForm";
 
 type Props = {
   /** The account being edited, or `null` to create a new one. */
@@ -68,14 +70,7 @@ const SIGN_LABELS: Partial<Record<AccountType, { positive: string; negative: str
   person: { positive: "Owes you", negative: "You owe" },
 };
 
-// Rupees typed by a human → integer paise, the only unit the API accepts.
-const toPaise = (rupees: string): number | null => {
-  const trimmed = rupees.trim();
-  if (trimmed === "") return 0; // an unfilled opening balance means zero, not an error
-  const value = Number(trimmed);
-  if (!Number.isFinite(value) || value < 0) return null;
-  return Math.round(value * 100);
-};
+const toPaise = rupeesToPaise;
 
 // Spec §08 — New / Edit account (Tier-2). One sheet for both; `account === null` is the only
 // branch. Creating sets an opening balance, which can never be edited again; editing offers
@@ -181,26 +176,13 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
   // Start date and how only matter once there's money that went in before tracking began.
   const needsStart = isInvestment && (editing ? (investedPaise ?? account?.startingBalance ?? 0) > 0 || !!account?.investedSince : (openingPaise ?? 0) > 0);
 
-  const save = async () => {
+  const { fieldError, submit, setFieldError } = useSchemaForm(accountFormSchema, {
+    name, opening, actual: editing ? actual : "", isInvestment, worth, invested: investedInput,
+  });
+
+  const save = () => submit(async () => {
     const trimmed = name.trim();
-    if (trimmed.length < NAME_MIN) {
-      fail("Give the account a name");
-      return;
-    }
-    const startingBalance = toPaise(opening);
-    if (startingBalance === null) {
-      fail("Enter the opening balance as a number, or leave it blank for zero.");
-      return;
-    }
-    if (target === undefined) {
-      fail("Enter the balance as a number, or leave it blank to keep the one you have.");
-      return;
-    }
-    // `toPaise` answers null for a typo; a blank field is already null above and means "keep".
-    if (isInvestment && ((worth.trim() !== "" && worthPaise === null) || (investedInput.trim() !== "" && investedPaise === null))) {
-      fail("Enter amounts as numbers, or leave them blank.");
-      return;
-    }
+    const startingBalance = toPaise(opening) ?? 0;
     setBusy(true);
     clearError();
     try {
@@ -227,7 +209,7 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
         // A second call, skipped when the field was blank, so renaming an account never
         // sends anything that could move money. The server records the difference as an
         // adjustment; see `syncAccountBalance`.
-        if (target !== null) {
+        if (typeof target === "number") {
           const path = `/accounts/${account._id}/balance`;
           const noteText = note.trim() || undefined;
           const idem = holderFor(`account:${account._id}:balance`);
@@ -270,12 +252,14 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
       else toast.success(editing ? `${trimmed} updated` : `${trimmed} added`);
     }
     catch (err) {
-      fail(errorText(err, "Couldn't save the account. Try again."));
+      const { byField, rest } = splitIssues(err, { name: "name", type: "name", balance: "actual", startingBalance: "opening", currentValue: "worth", invested: "invested" } as const, "Couldn't save the account. Try again.");
+      for (const [field, message] of Object.entries(byField)) setFieldError(field, { message });
+      fail(rest);
     }
     finally {
       setBusy(false);
     }
-  };
+  });
 
   return (
     <AppSheet
@@ -330,6 +314,7 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
         onChangeText={setName}
         autoCapitalize="words"
         InputComponent={BottomSheetTextInput}
+        error={fieldError("name")}
       />
 
       <View style={styles.field}>
@@ -396,6 +381,7 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
           <View style={styles.field}>
             <Caps>Invested so far</Caps>
             <AmountHeroInput value={investedInput} onChangeText={setInvestedInput} />
+            <FieldError message={fieldError("invested")} />
             <AppText size="xs" color="inkDim" style={styles.note}>
               We have {formatMoney(invested ?? 0)} recorded as invested. Enter the real total to correct it — this changes your gain, not what it&apos;s worth. Leave blank to keep it.
             </AppText>
@@ -403,6 +389,7 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
           <View style={styles.field}>
             <Caps>Worth today</Caps>
             <AmountHeroInput value={actual} onChangeText={setActual} />
+          <FieldError message={fieldError("actual")} />
             <AppText size="xs" color="inkDim" style={styles.note}>
               Recorded as {formatMoney(account.balance)}. Leave blank to keep it.
             </AppText>
@@ -437,6 +424,7 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
           )}
 
           <AmountHeroInput value={actual} onChangeText={setActual} />
+          <FieldError message={fieldError("actual")} />
 
           <AppText size="xs" color="inkDim" style={styles.note}>
             {/* The recorded figure goes through `formatBalance`, so privacy mode still
@@ -481,6 +469,7 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
           <View style={styles.field}>
             <Caps>Invested so far</Caps>
             <AmountHeroInput value={opening} onChangeText={setOpening} />
+          <FieldError message={fieldError("opening")} />
             <AppText size="xs" color="inkDim" style={styles.note}>
               What you&apos;ve put in until now. Leave blank if you&apos;re just starting.
             </AppText>
@@ -490,6 +479,7 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
               <View style={styles.field}>
                 <Caps>Worth today</Caps>
                 <AmountHeroInput value={worth} onChangeText={setWorth} />
+                <FieldError message={fieldError("worth")} />
                 <AppText size="xs" color="inkDim" style={styles.note}>
                   What it&apos;s worth right now. Leave blank if it&apos;s the same as what you put in.
                 </AppText>
@@ -503,6 +493,7 @@ const EditAccountSheet = forwardRef<BottomSheetModal, Props>(({ account, default
         <View style={styles.field}>
           <Caps>Opening balance</Caps>
           <AmountHeroInput value={opening} onChangeText={setOpening} />
+          <FieldError message={fieldError("opening")} />
           <AppText size="xs" color="inkDim" style={styles.note}>
             What&apos;s in the account today. Leave blank for zero.
           </AppText>

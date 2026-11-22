@@ -11,7 +11,6 @@ import SegmentedControl from "@/components/ui/SegmentedControl";
 import type { IconName } from "@/lib/icons";
 import type { ColorToken } from "@/theme";
 import { spacing } from "@/theme";
-import FormError from "@/components/ui/FormError";
 
 export type CategoryFormValue = {
   name: string;
@@ -34,7 +33,8 @@ type Props = {
   /** Why type isn't editable, when the caller fixed it. Nesting and editing supply their
    *  own reasons and take precedence. */
   kindNote?: string;
-  error?: string | null;
+  /** The name's own problem, shown under it. */
+  nameError?: string | null;
 };
 
 const KINDS: { key: CategoryKind; label: string }[] = [
@@ -52,7 +52,7 @@ const CategoryForm = ({
   editing = false,
   parent = null,
   kindNote,
-  error,
+  nameError,
 }: Props) => {
   const parentName = parent?.name;
   const nesting = !editing && parent !== null;
@@ -88,6 +88,7 @@ const CategoryForm = ({
         onChangeText={(name) => onChange({ name })}
         autoCapitalize="words"
         InputComponent={BottomSheetTextInput}
+        error={nameError ?? undefined}
       />
 
       <View style={styles.field}>
@@ -131,7 +132,6 @@ const CategoryForm = ({
         <ColorPicker value={value.color} onChange={(color) => onChange({ color })} />
       </View>
 
-      <FormError message={error} />
     </>
   );
 };
