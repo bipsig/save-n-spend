@@ -273,7 +273,7 @@ export const commitImport = async (
         for (const [name, target] of Object.entries(mapping)) {
             if (target === "me") { resolved[name] = null; continue; }
             if (target === "new") {
-                const [created] = await Account.create([{ userId, name, type: "person", balance: 0, startingBalance: 0, icon: "person", color: "info" }], { session });
+                const [created] = await Account.create([{ userId, name, type: "person", balance: 0, startingBalance: 0 }], { session });
                 resolved[name] = String(created._id);
             }
             else resolved[name] = target.toLowerCase();

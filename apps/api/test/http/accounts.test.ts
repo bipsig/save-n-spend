@@ -42,8 +42,12 @@ test("create: every type, with its balance in paise and the defaults", async () 
         assert.equal(a.balance, body.type === "investment" ? 1_12_500_00 : body.startingBalance);
         ids.push(a._id);
     }
-    const [bank, , , , , fund] = await Promise.all(ids.map(stored));
-    assert.deepEqual([bank.icon, bank.color, bank.investedSince, bank.investedHow, bank.lastSyncedAt], ["wallet", "success", null, null, null]);
+    const [bank, card, cash, wallet, person, fund] = await Promise.all(ids.map(stored));
+    assert.deepEqual([bank.icon, bank.color, bank.investedSince, bank.investedHow, bank.lastSyncedAt], ["bank", "info", null, null, null]);
+    // Each type's own look when the app sends none (gaps row 129), sign-up's Cash too.
+    assert.deepEqual([card.icon, cash.icon, wallet.icon, person.icon], ["card", "payments", "wallet", "person"]);
+    const [signUpCash] = await api.ro.col("accounts").find<Record<string, unknown>>({ userId: new ObjectId(u.id), name: "Cash" });
+    assert.deepEqual([signUpCash.icon, signUpCash.color], ["payments", "info"]);
     assert.equal(fund.name, "Nifty");
     assert.deepEqual([fund.icon, fund.color, fund.investmentKind, fund.investedHow], ["chart", "violet", "Index fund", "sip"]);
     assert.equal((fund.investedSince as Date).toISOString(), cases[5].investedSince);

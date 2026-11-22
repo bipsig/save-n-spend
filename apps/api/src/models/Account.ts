@@ -1,5 +1,5 @@
 import mongoose, { Document, Schema } from "mongoose";
-import { ACCOUNT_TYPES, INVESTED_HOW } from "../constants";
+import { ACCOUNT_LOOK, ACCOUNT_TYPES, INVESTED_HOW } from "../constants";
 
 export interface IAccount extends Document {
     userId: mongoose.Types.ObjectId;
@@ -45,6 +45,16 @@ const AccountSchema = new Schema<IAccount>({
     lastSyncedAt: { type: Schema.Types.Date, default: null },
     order: { type: Number, default: 0 }
 }, { timestamps: true })
+
+// On create only, not as a schema `default`: Mongoose applies those to every document it
+// reads back too, which would change what GET returns for accounts stored without them.
+AccountSchema.pre("validate", function () {
+    if (!this.isNew) return;
+    const look = ACCOUNT_LOOK[this.type as keyof typeof ACCOUNT_LOOK];
+    if (!look) return;
+    this.icon ??= look.icon;
+    this.color ??= look.color;
+});
 
 AccountSchema.index({ userId: 1, isArchived: 1 });
 

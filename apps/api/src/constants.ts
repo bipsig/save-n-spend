@@ -16,6 +16,20 @@ export const TRIP_STATUSES = ["active", "closed"] as const;
 export const INVESTED_HOW = ["sip", "lump"] as const;
 export const TRIP_SETTLE_DIRECTIONS = ["received", "paid"] as const;
 
+/** The icon and colour an account gets when it's created without them: the app's own picks
+ *  for each type (EditAccountSheet's TYPES), so the Cash account made at sign-up looks like one
+ *  made in the app. */
+export const ACCOUNT_LOOK: Record<(typeof ACCOUNT_TYPES)[number], { icon: string; color: string }> = {
+    bank: { icon: "bank", color: "info" },
+    credit_card: { icon: "card", color: "info" },
+    cash: { icon: "payments", color: "info" },
+    wallet: { icon: "wallet", color: "info" },
+    person: { icon: "person", color: "info" },
+    investment: { icon: "investments", color: "info" },
+};
+/** A category's, matching what the app draws for one without them. */
+export const CATEGORY_LOOK = { icon: "more", color: "accent" } as const;
+
 /** Money that can pay a bill today. A card's balance is debt, and neither a holding nor a
  *  friend pays the rent. */
 export const SPENDABLE_TYPES = ["bank", "cash", "wallet"] as const;

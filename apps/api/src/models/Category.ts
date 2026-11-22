@@ -1,5 +1,5 @@
 import mongoose, { Document, Schema } from "mongoose";
-import { CATEGORY_KINDS } from "../constants";
+import { CATEGORY_KINDS, CATEGORY_LOOK } from "../constants";
 
 export interface ICategory extends Document {
     userId: mongoose.Types.ObjectId,
@@ -29,6 +29,13 @@ const CategorySchema = new Schema<ICategory>({
     order: { type: Number, default: 0 }
 }, {
     timestamps: true
+});
+
+// On create only, as Account's (see there).
+CategorySchema.pre("validate", function () {
+    if (!this.isNew) return;
+    this.icon ??= CATEGORY_LOOK.icon;
+    this.color ??= CATEGORY_LOOK.color;
 });
 
 CategorySchema.index({

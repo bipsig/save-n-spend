@@ -46,8 +46,8 @@ export const createAccount = async (req: Request, res: Response): Promise<void> 
         type: body.type,
         balance: investment && body.currentValue !== undefined ? body.currentValue : body.startingBalance,
         startingBalance: body.startingBalance,
-        icon: body.icon ?? "wallet",
-        color: body.color ?? "success",
+        icon: body.icon,
+        color: body.color,
         investmentKind: body.investmentKind,
         ...(investment ? { investedSince: body.investedSince ?? null, investedHow: body.investedHow ?? null } : {}),
         order: existing

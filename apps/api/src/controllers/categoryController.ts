@@ -96,8 +96,8 @@ export const createCategory = async (req: Request, res: Response): Promise<void>
             name: body.name,
             kind: body.kind,
             parent: body.parent ?? null,
-            icon: body.icon ?? "wallet",
-            color: body.color ?? "success",
+            icon: body.icon,
+            color: body.color,
             order: siblings
         }], { session }));
     }
