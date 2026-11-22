@@ -538,6 +538,13 @@ const toTripDTO = (t: ITrip | (ITrip & { createdAt?: Date }), zone: string): Tri
     createdAt: new Date((t as unknown as { createdAt: Date }).createdAt ?? Date.now()).toISOString(),
 });
 
+/** What a trip write answers (gaps row 134): the list's shape, plus the `updatedAt` an edit's
+ *  undo sends back in If-Match. */
+export const tripReply = (t: ITrip, zone: string): TripDTO & { updatedAt: string } => ({
+    ...toTripDTO(t, zone),
+    updatedAt: new Date((t as unknown as { updatedAt: Date }).updatedAt).toISOString(),
+});
+
 type LeanTxn = { _id: Oid; clientId?: string | null; type: string; amount: number; account: Oid; toAccount?: Oid | null; category?: Oid | null; title?: string | null; note?: string | null; occurredAt: Date; tripId?: Oid | null; tripExpenseId?: Oid | null };
 
 const totalsFor = (trip: ITrip, txns: LeanTxn[], expenses: ITripExpense[]): { totals: TripTotals; balances: Map<string, number> } => {

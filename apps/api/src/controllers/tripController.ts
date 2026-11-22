@@ -10,13 +10,12 @@ import type {
 import { commitImport, previewImport } from "../services/tripImportService";
 import {
     addTripExpense, changeCloseDate, clearPlan, closeTrip, createTrip, deleteTrip, deleteTripExpense, getTripDetail, listTrips,
-    reopenTrip, savePlan, settleUp, updateTrip, updateTripExpense,
+    reopenTrip, savePlan, settleUp, tripReply, updateTrip, updateTripExpense,
 } from "../services/tripService";
 import { ifMatch } from "../utils/precondition";
 
-// The 2.6.0 app reads `_id` from a created trip and nothing else from any write here, so create
-// and update return the stored document (minus internal fields), as before; list and detail
-// keep their own DTOs.
+// Create, update and close-date answer the list's trip shape plus `updatedAt` (tripReply). What
+// the apps read from them: `_id` from a create (2.6.0 on), `updatedAt` for an edit's undo (2.8.7).
 
 const uid = (req: Request) => req.user!.userId;
 
@@ -29,12 +28,14 @@ export const detail = async (req: Request, res: Response) => {
 
 export const create = async (req: Request, res: Response) => {
     const { body } = req.valid as Valid<typeof createTripSchemas>;
-    reply.created(res, toDTO(await createTrip(uid(req), body)), "Trip created");
+    const trip = await createTrip(uid(req), body);
+    reply.created(res, tripReply(trip, await resolveZone(req)), "Trip created");
 };
 
 export const update = async (req: Request, res: Response) => {
     const { params, body } = req.valid as Valid<typeof updateTripSchemas>;
-    reply.ok(res, toDTO(await updateTrip(uid(req), params.id, body, ifMatch(req))), "Trip updated");
+    const trip = await updateTrip(uid(req), params.id, body, ifMatch(req));
+    reply.ok(res, tripReply(trip, await resolveZone(req)), "Trip updated");
 };
 
 export const remove = async (req: Request, res: Response) => {
@@ -76,7 +77,7 @@ export const closeDate = async (req: Request, res: Response) => {
     const since = ifMatch(req);
     const trip = await changeCloseDate(uid(req), params.id, body.closedOn, await resolveZone(req), since);
     // `data` was null before 2.8.7; the trip is sent now for its `updatedAt` (the app's Undo).
-    reply.ok(res, toDTO(trip), "Close date saved");
+    reply.ok(res, tripReply(trip, await resolveZone(req)), "Close date saved");
 };
 
 export const reopen = async (req: Request, res: Response) => {
