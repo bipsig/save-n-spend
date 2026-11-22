@@ -40,7 +40,7 @@ const BillRow = ({ bill, onPress, onEdit, onDelete }: Props) => {
 
   const dueLabel = formatDueLabel(bill.dueDate, bill.status, bill.lastPaidAt);
   const meta = bill.pausedAt
-    ? "Paused · its holding is archived, pick another"
+    ? "Holding archived · pick another"
     : isSip
     ? [dueLabel, investment?.name ?? "SIP", bill.frequency].filter(Boolean).join(" · ")
     : bill.recurring && bill.frequency ? `${dueLabel} · ${bill.frequency}` : dueLabel;
@@ -88,6 +88,8 @@ const BillRow = ({ bill, onPress, onEdit, onDelete }: Props) => {
               Mark paid
             </AppText>
           </PressableScale>
+        ) : bill.pausedAt ? (
+          <Badge label="Paused" tone="info" size="sm" />
         ) : scheduled ? (
           <Badge label="Scheduled" tone="info" size="sm" />
         ) : (
