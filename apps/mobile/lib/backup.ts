@@ -25,9 +25,11 @@ export type PickedBackup = {
 export type RestoreResult = { counts: BackupCounts; user: IUser };
 
 // Fetch the account's full backup and hand it to the OS share sheet as a JSON file —
-// the same write-then-share mechanism `lib/export.ts` uses for CSV/PDF.
+// the same write-then-share mechanism `lib/export.ts` uses for CSV/PDF. Never from the saved
+// copy (gaps row 8): a file named for today holding Monday's data, restored later, would wipe
+// everything since. No answer, or a waking server, fails instead.
 export const exportBackup = async (): Promise<void> => {
-  const backup = await get<BackupPayload>("/backup");
+  const backup = await get<BackupPayload>("/backup", { cache: false });
   const uri = `${FileSystem.cacheDirectory}save-n-spend-backup-${dayStamp(new Date())}.json`;
   await FileSystem.writeAsStringAsync(uri, JSON.stringify(backup), {
     encoding: FileSystem.EncodingType.UTF8,
