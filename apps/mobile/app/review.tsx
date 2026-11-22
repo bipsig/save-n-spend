@@ -17,7 +17,7 @@ import Icon from "@/components/ui/Icon";
 import NotFoundState from "@/components/states/NotFoundState";
 import ScreenStates, { ListSkeleton } from "@/components/states/ScreenStates";
 import { useReview } from "@/lib/reviews";
-import { isTrips, reviewRows } from "@/lib/everydaySpend";
+import { OTHER_ID, isTrips, reviewRows } from "@/lib/everydaySpend";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { count } from "@/lib/format/count";
 import { formatPct, percentOf } from "@/lib/format/pct";
@@ -25,7 +25,7 @@ import { rangeLabel } from "@/lib/dateRange";
 import { chartSummary } from "@/lib/chartSummary";
 import { barGradients } from "@/theme/gradients";
 import { colors, spacing } from "@/theme";
-import { tripsColor } from "@/theme/charts";
+import { chartOthers, tripsColor } from "@/theme/charts";
 import { signTone } from "@/lib/signTone";
 
 /** "+6.8% vs last month" / "Same as last month" / null. Null when there's no real previous
@@ -119,7 +119,7 @@ const ReviewScreen = () => {
                             {trips && <Icon name={tripsOpen ? "chevronUp" : "chevronDown"} size={14} color="inkDim" />}
                           </View>
                           <View style={styles.catBarTrack}>
-                            <View style={[styles.catBarFill, { width: `${cat.pct}%`, backgroundColor: trips ? tripsColor : barGradients.violet[1] }]} />
+                            <View style={[styles.catBarFill, { width: `${cat.pct}%`, backgroundColor: trips ? tripsColor : cat.id === OTHER_ID ? chartOthers : barGradients.violet[1] }]} />
                           </View>
                           <AppText size="xs" weight="bold" color="inkDim">
                             {formatPct(cat.pct)}

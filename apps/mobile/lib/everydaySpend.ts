@@ -1,4 +1,4 @@
-import type { InsightsCategorySlice, UncategorisedSpend } from "@save-n-spend/types";
+import type { InsightsCategorySlice, ReviewOtherSpend, UncategorisedSpend } from "@save-n-spend/types";
 import { TRIPS_CATEGORY_ID } from "@save-n-spend/types";
 import { chartOthers, chartPalette, tripsColor } from "@/theme/charts";
 
@@ -83,14 +83,20 @@ export const categoryShares = (
 export type ReviewInput = {
   categories: { categoryId: string; name: string; total: number; pct: number; share?: number }[];
   uncategorised?: UncategorisedSpend;
+  other?: ReviewOtherSpend | null;
 };
+
+/** Review's row for every category past the fifth (gaps row 209). Not a category: no tap. */
+export const OTHER_ID = "other";
 
 export type ReviewRow = { id: string; name: string; total: number; pct: number };
 
 /** Month in review's "Where it went": each row's share of all spending (Trips ranked among
- *  them), then uncategorised spend when there is any. An older API sends only `pct`. */
+ *  them), the rest as one Other row, then uncategorised spend when there is any, so the rows
+ *  add up to 100%. An older API sends only `pct`, and no Other. */
 export const reviewRows = (r: ReviewInput): ReviewRow[] => {
   const rows: ReviewRow[] = r.categories.map((c) => ({ id: c.categoryId, name: c.name, total: c.total, pct: typeof c.share === "number" ? c.share : c.pct }));
+  if (r.other && r.other.total > 0) rows.push({ id: OTHER_ID, name: "Other", total: r.other.total, pct: r.other.share });
   if (r.uncategorised && r.uncategorised.total > 0) {
     rows.push({ id: UNCATEGORISED_ID, name: "Uncategorised", total: r.uncategorised.total, pct: r.uncategorised.share });
   }

@@ -62,3 +62,13 @@ test("Review rows: shares with Trips ranked, older API's pct, uncategorised last
   assert.deepEqual(e.reviewRows({ categories: [{ categoryId: "x", name: "X", total: 1, pct: 40 }] }).map((r) => r.pct), [40]);
   assert.equal(e.isTrips("trips"), true);
 });
+
+test("Review rows: the rest as one Other row before uncategorised, so they add to 100 (gaps row 209)", () => {
+  const rows = e.reviewRows({
+    categories: [{ categoryId: "bills", name: "Bills & Utilities", total: 9000, pct: 90, share: 90.0 }],
+    other: { total: 900, share: 9.0, count: 3 },
+    uncategorised: { total: 100, share: 1.0 },
+  });
+  assert.deepEqual(rows.map((r) => [r.id, r.name, r.pct]), [["bills", "Bills & Utilities", 90], [e.OTHER_ID, "Other", 9], ["uncategorised", "Uncategorised", 1]]);
+  assert.equal(e.reviewRows({ categories: [], other: null }).length, 0);
+});
