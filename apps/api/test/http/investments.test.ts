@@ -182,13 +182,13 @@ test("history: only a holding of mine; malformed, missing, a bank or another use
     const fund = await holding(u, { name: "Fund", startingBalance: 0 });
     const bank = await u.account("Bank");
     for (const id of [bank, theirFund, MISSING, MALFORMED]) failed(await u.send("GET", `/investments/${id}/history`), 404, "not_found", { message: "That holding doesn't exist any more" });
-    // The latest 200 only. Rows written straight to the database: 205 requests would say nothing more.
+    // Every row, newest first (gaps row 131: it stopped at 200). Rows written straight to the database: 205 requests would say nothing more.
     const rows = Array.from({ length: 205 }, (_, i) => ({ userId: new ObjectId(u.id), type: "positiveAdjustment", amount: 1, account: new ObjectId(fund), title: `u${i}`, occurredAt: new Date(Date.now() - i * 60_000), createdAt: new Date(), updatedAt: new Date() }));
     await api.db().collection("transactions").insertMany(rows);
     await api.db().collection("accounts").updateOne({ _id: new ObjectId(fund) }, { $inc: { balance: 205 } });
     const r = await u.send("GET", `/investments/${fund}/history`);
-    assert.equal(r.json.data.length, 200);
-    assert.deepEqual([r.json.data[0].title, r.json.data[199].title], ["u0", "u199"]);
+    assert.equal(r.json.data.length, 205);
+    assert.deepEqual([r.json.data[0].title, r.json.data[204].title], ["u0", "u204"]);
     await signedOut(api, "GET", `/investments/${fund}/history`);
 });
 
@@ -317,7 +317,7 @@ test("delete a holding, undo: every transfer reversed, its bills and default cle
     await signedOut(api, "DELETE", `/investments/${fund}?mode=undo`);
 });
 
-test("delete a holding, keep: the other side's balance stays; archived holdings too; all or nothing", async () => {
+test("delete a holding, keep: the other side's balance stays; an archived holding is refused; all or nothing", async () => {
     const u = await api.user("t3-inv-keep");
     const bank = await u.account("Bank", { startingBalance: 10_00_000 });
     const fund = await holding(u, { name: "Kept", startingBalance: 0 });
@@ -337,11 +337,17 @@ test("delete a holding, keep: the other side's balance stays; archived holdings 
     }
     assert.deepEqual([await balanceOf(api, bank), await balanceOf(api, fund), (await rowsOn(api, fund)).length], [9_75_000, 30_000, 3]);
 
-    assert.equal((await u.send("DELETE", `/accounts/${fund}`)).status, 200, "archived first: delete still finds it");
+    // Archived, it is refused like re-base (gaps row 168), and nothing moves.
+    const old = await holding(u, { name: "Old", startingBalance: 0 });
+    await post(u, { type: "transfer", amount: 1_000, account: bank, toAccount: old });
+    assert.equal((await u.send("DELETE", `/accounts/${old}`)).status, 200);
+    failed(await u.send("DELETE", `/investments/${old}?mode=keep`), 404, "not_found", { message: "That holding doesn't exist any more" });
+    assert.deepEqual([await balanceOf(api, bank), await balanceOf(api, old)], [9_74_000, 1_000]);
+
     const r = await u.send("DELETE", `/investments/${fund}?mode=keep`);
     assert.deepEqual([r.status, r.json.data], [200, { removedTransactions: 1, removedBills: 0 }]);
-    assert.equal(await balanceOf(api, bank), 9_75_000);
-    const left = (await rowsOn(api, bank)).map((t) => [t.type, t.amount, t.note]).sort();
+    assert.equal(await balanceOf(api, bank), 9_74_000);
+    const left = (await rowsOn(api, bank)).filter((t) => t.toAccount === null || t.toAccount === undefined).map((t) => [t.type, t.amount, t.note]).sort();
     assert.deepEqual(left, [["negativeAdjustment", 40_000, "Moved into Kept (deleted)"], ["positiveAdjustment", 15_000, "Redeemed from Kept (deleted)"]]);
 });
 

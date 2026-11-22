@@ -93,7 +93,9 @@ export const deleteInvestment = async (req: Request, res: Response): Promise<voi
     const userId = req.user!.userId;
 
     const result = await inTransaction(async (session) => {
-        const account = await Account.findOne({ _id: id, userId, type: "investment" }).session(session);
+        // An archived holding is refused here as re-base refuses it (gaps row 168): no screen
+        // shows one, and nothing unarchives it.
+        const account = await Account.findOne({ _id: id, userId, type: "investment", isArchived: false }).session(session);
         if (!account) throw missing();
         const holdingId = String(account._id);
         // Counted per attempt, so a retried transaction doesn't add its first try's rows.
