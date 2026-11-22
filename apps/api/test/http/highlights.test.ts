@@ -82,7 +82,11 @@ test("snapshot: one user's month as the rules see it, cut in their zone", async 
         { name: "Electricity", amount: 50_000, daysUntilDue: 3, accountId: bank },
         { name: "Gym", amount: 200_000, daysUntilDue: 5, accountId: null },
     ]);
-    assert.deepEqual(snap.goals, [{ name: "Holiday", target: 500_000, saved: 100_000, monthsSinceCreated: 0, monthsUntilDeadline: 6 }]);
+    // goalPace (gaps row 27): created today, ₹1,000 in, 183 days to the deadline.
+    assert.deepEqual(snap.goals, [{ name: "Holiday", target: 500_000, saved: 100_000, pace: {
+        done: false, young: true, ratePerMonth: 100_000, monthsNeeded: 4, monthsLeft: 183 / (365.25 / 12),
+        requiredPerMonth: 400_000 / (183 / (365.25 / 12)), shortfall: 0,
+    } }]);
     assert.deepEqual(snap.healthFocus, health.focus ? { label: health.focus.label, hint: health.focus.hint } : null);
     // Totals keep the 40,000 trip share and say how much of them it is; the per-category spend leaves it out.
     const { byCategory, ...flows } = snap.thisMonth;

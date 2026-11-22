@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { rankHighlightRules, runHighlightRules } from "./highlightRules";
 import type { Highlight, Snapshot } from "./highlightRules";
+import { goalPace } from "./goalPace";
 
 // The rules are pure functions from a snapshot to sentences, so every test here is
 // a fixture literal and an assertion — no database, no clock, no Express. That is
@@ -309,24 +310,30 @@ describe("savings_rate_move", () => {
 });
 
 describe("goal_pace", () => {
-    it("projects a miss from the saved-per-month rate", () => {
-        const out = runHighlightRules(snap({
-            // ₹34,000 of ₹80,000 in 8 months → ₹4,250/month → ~11 more needed, 6 left.
-            goals: [{ name: "Laptop fund", target: 8_000_000, saved: 3_400_000, monthsSinceCreated: 8, monthsUntilDeadline: 6 }],
-        }));
-        const hit = byRule(out, "goal_pace");
+    const NOW = new Date("2026-11-22T06:30:00Z");
+    const goal = (name: string, target: number, saved: number, created: string, deadline: string | null) =>
+        ({ name, target, saved, pace: goalPace({ target, saved, createdAt: new Date(created), deadline: deadline ? new Date(deadline) : null }, NOW, "Asia/Kolkata") });
+
+    it("names the shortfall at the current rate, not everything still to save (gaps row 27)", () => {
+        // ₹34,000 of ₹80,000 in 245 days (8.05 months) → ₹4,224/month → 11 more months needed;
+        // 181 days (5.95 months) left, so it lands about ₹20,882 short, not ₹46,000.
+        const laptop = goal("Laptop fund", 8_000_000, 3_400_000, "2026-03-22T06:30:00Z", "2027-05-22T06:30:00Z");
+        const hit = byRule(runHighlightRules(snap({ goals: [laptop] })), "goal_pace");
         assert.ok(hit);
-        assert.ok(hit.title.includes("Laptop fund"));
-        assert.ok(hit.body.includes("11 more months"));
-        assert.equal(hit.materiality, 4_600_000);
+        assert.equal(hit.title, "Laptop fund is set to miss its deadline by ₹20,881.63");
+        assert.equal(hit.body, "₹34,000.00 saved of ₹80,000.00. At the current pace it needs about 11 more months; the deadline is 6 away.");
+        assert.equal(hit.materiality, laptop.pace.shortfall);
     });
 
-    it("leaves alone a goal that is on pace, brand new, or undated", () => {
+    it("leaves alone a goal that is on pace, brand new, undated, past its date, or less than a month's saving short", () => {
         const out = runHighlightRules(snap({
             goals: [
-                { name: "On pace", target: 1_200_000, saved: 600_000, monthsSinceCreated: 6, monthsUntilDeadline: 12 },
-                { name: "New", target: 1_000_000, saved: 0, monthsSinceCreated: 0, monthsUntilDeadline: 3 },
-                { name: "Undated", target: 1_000_000, saved: 10_000, monthsSinceCreated: 12, monthsUntilDeadline: null },
+                goal("On pace", 1_200_000, 600_000, "2026-05-22T06:30:00Z", "2027-11-22T06:30:00Z"),
+                goal("New", 1_000_000, 0, "2026-11-10T06:30:00Z", "2027-02-22T06:30:00Z"),
+                goal("Undated", 1_000_000, 10_000, "2025-11-22T06:30:00Z", null),
+                goal("Passed", 1_000_000, 10_000, "2025-11-22T06:30:00Z", "2026-10-22T06:30:00Z"),
+                // ₹1,000 a month for 6 months, ₹6,500 left with 6 months to go: ₹500 short.
+                goal("Near miss", 1_250_000, 600_000, "2026-05-22T06:30:00Z", "2027-05-22T06:30:00Z"),
             ],
         }));
         assert.equal(byRule(out, "goal_pace"), undefined);

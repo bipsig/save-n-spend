@@ -7,13 +7,13 @@ import Transaction from "../models/Transaction";
 import { budgetProgress } from "./budgetService";
 import { healthScore } from "./healthService";
 import { billState } from "./billService";
+import { goalPace } from "./goalPace";
 import { addDaysInZone } from "../utils/timezone";
 import { currentStreak, STREAK_LOOKBACK_DAYS } from "./streakMath";
 import { getRecurringSuggestions, keysSignature } from "./recurringService";
 import {
     categoryRoller,
     contributionStreak,
-    monthOrdinal,
     rollUpFlows,
     snapshotWindow,
     wholeDays,
@@ -174,8 +174,7 @@ export const buildSnapshot = async (
         name: goal.name,
         target: goal.target,
         saved: goal.saved,
-        monthsSinceCreated: Math.max(0, monthOrdinal(now, zone) - monthOrdinal(goal.createdAt, zone)),
-        monthsUntilDeadline: goal.deadline ? monthOrdinal(goal.deadline, zone) - monthOrdinal(now, zone) : null,
+        pace: goalPace(goal, now, zone),
     }));
 
     // Investment facts for the investment highlight rules. Reuses the accounts already

@@ -11,6 +11,7 @@ import { resolveZone } from "../utils/userZone";
 import { startOfWeekInZone, addDaysInZone, addMonthsInZone, startOfMonthInZone, partsInZone } from "../utils/timezone";
 import { monthOrdinal, wholeDays, AVERAGE_MONTHS } from "../services/highlightSnapshotMath";
 import { healthScore } from "../services/healthService";
+import { goalPace } from "../services/goalPace";
 import { computeCurrentStreak } from "../services/highlightSnapshotService";
 import { netWorthTrend } from "../services/netWorthHistoryService";
 import { averageByDayOfMonth } from "../services/paceMath";
@@ -193,11 +194,8 @@ export const getDashboardInsights = async (req: Request, res: Response): Promise
   let goalWatch: { goalName: string; monthsNeeded: number; projectedDate: string; saved: number; target: number } | null = null;
   let bestMonthsNeeded = Infinity;
   for (const goal of goals) {
-    if (goal.saved >= goal.target) continue;
-    const monthsRunning = Math.max(1, monthOrdinal(now, zone) - monthOrdinal(goal.createdAt, zone));
-    const rate = goal.saved / monthsRunning;
-    if (rate <= 0) continue;
-    const monthsNeeded = Math.ceil((goal.target - goal.saved) / rate);
+    const { done, monthsNeeded } = goalPace(goal, now, zone);
+    if (done || monthsNeeded === null) continue;
     if (monthsNeeded < bestMonthsNeeded) {
       bestMonthsNeeded = monthsNeeded;
       const projected = new Date(now);

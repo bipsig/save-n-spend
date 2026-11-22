@@ -1,5 +1,6 @@
 import { formatAmount, formatPercent } from "../utils/money";
 import { isSpendable } from "./accountGroups";
+import type { GoalPace } from "./goalPace";
 
 // The highlight rules — the deterministic half of the "assistant". See docs/insights-engine.md.
 //
@@ -62,11 +63,7 @@ export type GoalFact = {
     name: string;
     target: number;
     saved: number;
-    /** Whole zone-local months since creation — the denominator of its saving rate, same
-     *  convention as the health score's goals pillar. */
-    monthsSinceCreated: number;
-    /** Whole months from now to the deadline, or null when none is set. */
-    monthsUntilDeadline: number | null;
+    pace: GoalPace;
 };
 
 export type CategoryTotal = {
@@ -429,37 +426,34 @@ const savingsRateMove: Rule = {
     },
 };
 
-/** A goal saving too slowly for its deadline. Rate is saved-per-month-since-created, matching
- *  the health score's goals pillar so the two never disagree. */
+/** A goal saving too slowly for its deadline, read through goalPace like Goal watch and the
+ *  health score's goals pillar, and named by the shortfall at the current rate. */
 const goalPace: Rule = {
     id: "goal_pace",
     run: (snap) => {
-        let worst: { goal: GoalFact; monthsNeeded: number } | null = null;
+        let worst: GoalFact | null = null;
         for (const goal of snap.goals) {
-            if (goal.monthsUntilDeadline === null || goal.monthsSinceCreated < 1) continue;
-            const remaining = goal.target - goal.saved;
-            if (remaining <= 0) continue;
-
-            const rate = goal.saved / goal.monthsSinceCreated;
-            const monthsNeeded = rate > 0 ? Math.ceil(remaining / rate) : Infinity;
-            // A whole month or more: an estimate, not a schedule, so a near miss is no alarm.
-            if (monthsNeeded < goal.monthsUntilDeadline + 1) continue;
-            if (remaining > (worst ? worst.goal.target - worst.goal.saved : 0)) worst = { goal, monthsNeeded };
+            const { pace } = goal;
+            if (pace.done || pace.young || pace.shortfall === null || (pace.monthsLeft ?? 0) < 0) continue;
+            // A month's saving or more: an estimate, not a schedule, so a near miss is no alarm.
+            if (pace.shortfall === 0 || pace.shortfall < pace.ratePerMonth) continue;
+            if (pace.shortfall > (worst?.pace.shortfall ?? 0)) worst = goal;
         }
         if (!worst) return null;
 
-        const { goal, monthsNeeded } = worst;
-        const remaining = goal.target - goal.saved;
-        const pace = Number.isFinite(monthsNeeded)
-            ? `At the current pace it needs about ${monthsNeeded} more months; the deadline is ${goal.monthsUntilDeadline} away.`
+        const goal = worst;
+        const shortfall = goal.pace.shortfall ?? 0;
+        const monthsLeft = Math.round(goal.pace.monthsLeft ?? 0);
+        const pace = goal.pace.monthsNeeded !== null
+            ? `At the current pace it needs about ${goal.pace.monthsNeeded} more months; the deadline is ${monthsLeft} away.`
             : `Nothing has gone into it yet.`;
         return {
             ruleId: "goal_pace",
             key: `goal_pace:${goal.name}:${snap.monthLabel}`,
             severity: "warning",
-            title: `${goal.name} is set to miss its deadline by ${formatAmount(remaining, snap.currency)}`,
+            title: `${goal.name} is set to miss its deadline by ${formatAmount(shortfall, snap.currency)}`,
             body: `${formatAmount(goal.saved, snap.currency)} saved of ${formatAmount(goal.target, snap.currency)}. ${pace}`,
-            materiality: remaining,
+            materiality: shortfall,
             screen: "goals",
         };
     },

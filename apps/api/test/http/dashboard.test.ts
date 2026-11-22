@@ -348,8 +348,8 @@ test("health: every pillar failing, with its hint, and the focus on the heaviest
         hint: `${foodName} is running at 225.0% of its pace for this point in the month. Either the limit is wrong or the spending is — both are worth knowing.` });
     // Phone done (100), Car at 0 of pace, weighted by target: 1,000,000 / 1,210,000.
     assert.deepEqual(by.goals, { key: "goals", label: "Goals", score: 1, weight: 10, value: "1.0% of pace", verdict: "Off track",
-        // 1,200,000 over 183 days (6.1 months) is 196,721.3 paise a month.
-        hint: "Car needs about ₹1,967.21 a month to land by Dec 2026. You have been adding roughly ₹0.00." });
+        // 1,200,000 over 183 days (6.01 average months of 30.44 days, goalPace) is 199,590.2 paise a month.
+        hint: "Car needs about ₹1,995.90 a month to land by Dec 2026. You have been adding roughly ₹0.00." });
     // (40 × 20 + 1 × 10) / 100 = 8.1.
     assert.deepEqual([d.score, d.band, d.rating, d.runwayMonths], [8, "risk", "At risk", 0]);
     assert.deepEqual(d.focus, { key: "savings", label: "Savings rate", hint: by.savings.hint });

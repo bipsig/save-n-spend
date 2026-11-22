@@ -6,6 +6,7 @@ import Goal, { type IGoal } from "../models/Goal";
 import Transaction from "../models/Transaction";
 import { billState } from "./billService";
 import { liquidBalance } from "./accountGroups";
+import { goalPace } from "./goalPace";
 import { budgetProgress } from "./budgetService";
 import { formatAmount, formatPercent } from "../utils/money";
 import { partsInZone, startOfDayInZone, startOfMonthInZone, addMonthsInZone, addDaysInZone } from "../utils/timezone";
@@ -312,21 +313,17 @@ const goalsPillar = (goals: GoalFacts[], now: Date, zone: string): Pillar | null
         let score: number;
         let hint = "";
 
-        if (goal.saved >= goal.target) {
+        const pace = goalPace(goal, now, zone);
+        if (pace.done) {
             score = 100;
         }
         else {
-            const daysLeft = wholeDaysBetween(now, goal.deadline as Date, zone);
-            // Floored at half a month, so a deadline days away yields a high required rate
-            // and a low score — the honest answer for an unfunded goal due Friday.
-            const monthsLeft = Math.max(0.5, daysLeft / 30);
-            const monthsRunning = Math.max(1, wholeDaysBetween(goal.createdAt, now, zone) / 30);
+            const passed = (pace.monthsLeft ?? 0) < 0;
+            const required = pace.requiredPerMonth ?? 0;
+            const achieved = pace.ratePerMonth;
 
-            const required = (goal.target - goal.saved) / monthsLeft;
-            const achieved = goal.saved / monthsRunning;
-
-            score = daysLeft < 0 ? 0 : points((achieved / required) * 100);
-            hint = daysLeft < 0
+            score = passed ? 0 : points((achieved / required) * 100);
+            hint = passed
                 ? `${goal.name} passed its date at ${pct(goal.saved / goal.target)} funded. Move the deadline or lower the target — a goal you have already missed stops being a plan.`
                 : `${goal.name} needs about ${formatAmount(required)} a month to land by ${monthYearLabel(goal.deadline as Date, zone)}. You have been adding roughly ${formatAmount(achieved)}.`;
         }
