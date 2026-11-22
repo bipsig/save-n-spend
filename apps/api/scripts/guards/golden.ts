@@ -48,6 +48,7 @@ export const AGREED = {
         [/^GET \/dashboard\/insights data\.everyday$/, "2.8.4 D21: everyday no-spend days, heatmap and pace"],
         [/^GET \/insights\?.* data\.((trend|previousTrend)\.\d+\.tripAmount|avgDailyEverydaySpend(Current|Previous))$/, "2.8.4 D21: trip part of the trend, everyday averages"],
         [/^GET \/trips(\/[a-f0-9]{24})? data\.(trips\.\d+|trip)\.closedOn$/, "2.8.6: a closed trip's close day (derived from closedAt when not stored)"],
+        [/^GET \/goals data\.\d+\.isArchived$/, "2.8.7 row 159: a deleted goal is archived; live goals say false"],
     ] as [RegExp, string][],
     /** Values a later release changes on purpose, with the reason. */
     changed: [
@@ -59,6 +60,8 @@ export const AGREED = {
         [/^GET \/dashboard\/health data\.(score|band|rating|runwayMonths|pillars\.\d+\.(score|verdict)|focus\.(key|label))$/, "2.8.4 D21: the buffer is measured on everyday spending"],
         [/^GET \/highlights data\.highlights\.\d+\.(title|body)$/, "2.8.4 Q3: exact paise, one decimal"],
         [/^GET \/dashboard\/summary(\?.*)? data\.netWorthTrend\.\d+\.label$/, "2.8.6 row 26: each point is named for the month that closed"],
+        [/^GET \/dashboard\/summary(\?.*)? data\.(netWorthTrend|flowTrend)\.\d+\.label$/, "2.8.7 row 59: Sep, not Intl's Sept"],
+        [/^GET \/investments\/(trend|report) data\.(trend\.)?((points|growth)|holdings\.\d+\.(points|growth))\.\d+\.label$/, "2.8.7 row 59: Sep, not Intl's Sept"],
     ] as [RegExp, string][],
     /** R2 (B5): paged lists answer {items, page, limit, hasNextPage, total}. */
     paged: /^GET \/(transactions|highlights\/history|notifications)(\?|$)/,
