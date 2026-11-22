@@ -4,15 +4,15 @@ import { buildQuery, feedFilters, summaryPath } from "./transactionQuery";
 
 const RANGE = { startDate: "2026-11-01", endDate: "2026-11-30" };
 
-test("with no filters the card asks for exactly what 2.8.0 did, so its offline cache still answers", () => {
-  assert.equal(summaryPath(RANGE), "/transactions/summary?startDate=2026-11-01&endDate=2026-11-30&trips=exclude");
-  assert.equal(summaryPath({}), "/transactions/summary?trips=exclude");
+test("with no filters the card asks for the range alone under the trips rule", () => {
+  assert.equal(summaryPath(RANGE), "/transactions/summary?startDate=2026-11-01&endDate=2026-11-30&trips=entries");
+  assert.equal(summaryPath({}), "/transactions/summary?trips=entries");
   assert.equal(summaryPath({ ...RANGE, category: [], account: [], search: "" }), summaryPath(RANGE));
 });
 
 test("every list filter reaches the card's request", () => {
   const path = summaryPath({ ...RANGE, category: ["c1", "c2"], account: ["a1"], type: "expense", search: "big basket" });
-  assert.equal(path, "/transactions/summary?startDate=2026-11-01&endDate=2026-11-30&category=c1%2Cc2&account=a1&type=expense&search=big%20basket&trips=exclude");
+  assert.equal(path, "/transactions/summary?startDate=2026-11-01&endDate=2026-11-30&category=c1%2Cc2&account=a1&type=expense&search=big%20basket&trips=entries");
 });
 
 test("the card and the list send the same filters", () => {

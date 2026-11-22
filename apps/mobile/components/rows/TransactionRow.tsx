@@ -1,4 +1,6 @@
 import { StyleSheet, View } from "react-native"
+import { router } from "expo-router"
+import { LinearGradient } from "expo-linear-gradient"
 import PressableScale from "../ui/PressableScale"
 import { useAccountById } from "@/lib/accounts"
 import { useCategoryById } from "@/lib/categories"
@@ -9,6 +11,8 @@ import { holdingLook } from "@/lib/investments"
 import { useTripName } from "@/store/tripNames"
 import { spacing } from "@/theme"
 import { formatTxnDate } from "@/lib/date"
+import { formatCalendar } from "@/lib/format/date"
+import { count } from "@/lib/format/count"
 import formatMoney, { usePrivacyMask } from "@/lib/money"
 import Icon from "../ui/Icon"
 import CategoryName from "../ui/CategoryName"
@@ -56,7 +60,47 @@ const MetaItem = ({
 
 // Spec .rowcard: gradient category chip · name 15/700 · sub 12 dim ·
 // tiny meta row · signed amount 15/800 colored by type. Flat glass, no shadow.
-const TransactionRow = ({ transaction, onPress, pending = false, failed = false }: Props) => {
+// A closed trip's one row (`kind: "trip"`): its emoji, name, the Trips category, the close day
+// and your whole share. It has no account, and a tap opens the trip page, the only place its
+// expenses show.
+const TripEntryRow = ({ transaction }: { transaction: ITransaction }) => {
+  usePrivacyMask() // subscribe: the accessibility label reads formatMoney() directly
+  const day = transaction.closedOn ? formatCalendar(transaction.closedOn) : formatTxnDate(transaction.occurredAt)
+  const inside = transaction.insideMatches ? `Matches ${count(transaction.insideMatches, "expense")} inside` : null
+  const label = `${transaction.title}, trip, Trips, closed ${day}${inside ? `, ${inside.toLowerCase()}` : ""}. Minus ${formatMoney(transaction.amount)}, your share.`
+  return (
+    <PressableScale
+      onPress={() => transaction.tripId && router.push({ pathname: "/trip-detail", params: { id: transaction.tripId } })}
+      scaleTo={0.98}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint="Opens the trip"
+    >
+      <Card style={[styles.card, styles.tripCard]}>
+        <LinearGradient colors={["#5EEAD4", "#14B8A6"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.tripEmoji}>
+          <AppText size="lg">{transaction.emoji ?? "🧳"}</AppText>
+        </LinearGradient>
+        <View style={styles.details}>
+          <View style={styles.titleRow}>
+            <AppText size="md" weight="bold" numberOfLines={1} style={styles.shrink}>{transaction.title}</AppText>
+            <View style={styles.tripBadge}><AppText size="xs" weight="black" color="ink">TRIP</AppText></View>
+          </View>
+          <AppText size="sm" color="inkDim">Trips · closed · your share</AppText>
+          <View style={styles.metaRow}>
+            <MetaItem icon="date" label={day} />
+            {inside && <MetaItem icon="search" label={inside} shrink />}
+          </View>
+        </View>
+        <Money value={-transaction.amount} sign="always" size="md" weight="black" color="danger" />
+      </Card>
+    </PressableScale>
+  )
+}
+
+const TransactionRow = (props: Props) =>
+  props.transaction.kind === "trip" ? <TripEntryRow transaction={props.transaction} /> : <EverydayRow {...props} />
+
+const EverydayRow = ({ transaction, onPress, pending = false, failed = false }: Props) => {
   const category = useCategoryById(transaction.category)
   const trip = useTripName(transaction.tripId)
   const isIncome = transaction.type === "income"
@@ -218,6 +262,31 @@ const styles = StyleSheet.create({
   tripTag: {
     flexShrink: 0,
     maxWidth: 110,
+  },
+  tripCard: {
+    borderColor: "rgba(45,212,191,0.40)",
+    backgroundColor: "rgba(45,212,191,0.10)",
+  },
+  tripEmoji: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  shrink: {
+    flexShrink: 1,
+  },
+  tripBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+    backgroundColor: "rgba(45,212,191,0.22)",
   },
 })
 

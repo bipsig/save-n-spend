@@ -31,8 +31,8 @@ export const feedFilters = (params: FeedParams): Record<string, string | undefin
   account: params.account?.length ? params.account.join(",") : undefined,
   type: params.type,
   search: params.search,
-  // A trip's rows are read on the trip, never among daily spending.
-  trips: "exclude",
+  // Everyday rows and one row per closed trip on its close day, never a trip's own rows.
+  trips: "entries",
 });
 
 /** The summary card's request. The path is also its offline-cache key (lib/api.ts), so each

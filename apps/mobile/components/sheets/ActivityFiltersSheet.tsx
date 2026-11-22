@@ -2,6 +2,7 @@ import { forwardRef, useImperativeHandle, useMemo, useRef } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { ICategory } from "@save-n-spend/types";
+import { TRIPS_CATEGORY_ID } from "@save-n-spend/types";
 import AppSheet from "./AppSheet";
 import { AppText } from "@/components/ui/AppText";
 import Icon from "@/components/ui/Icon";
@@ -108,7 +109,7 @@ const ActivityFiltersSheet = forwardRef<BottomSheetModal, Props>(({
 
   const categorySummary = activeSubCategories.length > 0
     ? summarize(activeSubCategories, (id) => categories.find((c) => c._id === id)?.name)
-    : (activeCategory ? categories.find((c) => c._id === activeCategory)?.name : undefined);
+    : activeCategory === TRIPS_CATEGORY_ID ? "Trips" : (activeCategory ? categories.find((c) => c._id === activeCategory)?.name : undefined);
   const accountSummary = summarize(activeAccounts, (id) => accounts.find((a) => a._id === id)?.name);
 
   const clearAll = () => {
@@ -151,6 +152,15 @@ const ActivityFiltersSheet = forwardRef<BottomSheetModal, Props>(({
                 onPress={() => onChangeCategory(parent._id)}
               />
             ))}
+            {/* The built-in Trips: only the closed trips, one row each. */}
+            {activeType !== "income" && (
+              <Chip
+                label="Trips"
+                icon="flight"
+                selected={activeCategory === TRIPS_CATEGORY_ID}
+                onPress={() => onChangeCategory(TRIPS_CATEGORY_ID)}
+              />
+            )}
           </ScrollView>
 
           {visibleChildren.length > 0 && (

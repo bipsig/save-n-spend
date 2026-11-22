@@ -14,6 +14,7 @@ import { formatMoneyExact as formatMoney } from "@/lib/money";
 import { appZone, dayKey, zonedParts } from "@/lib/zone";
 import { htmlEscape, kpiCard, kpiRow, pdfDocument } from "@/lib/pdfShell";
 import { count } from "@/lib/format/count";
+import { formatSpan } from "@/lib/format/period";
 
 export { htmlEscape };
 
@@ -28,8 +29,8 @@ const fetchAllInRange = async (bounds: { startDate?: string; endDate?: string })
   let page = 1;
 
   for (;;) {
-    // `trips=exclude`, as on the Activity screen: a trip's rows are read on the trip.
-    const params = [`page=${page}`, "limit=100", "trips=exclude"];
+    // As on the Activity screen: everyday rows and one row per closed trip on its close day.
+    const params = [`page=${page}`, "limit=100", "trips=entries"];
     if (bounds.startDate) params.push(`startDate=${bounds.startDate}`);
     if (bounds.endDate) params.push(`endDate=${bounds.endDate}`);
     const res = await get<Paginated<ITransaction>>(`/transactions?${params.join("&")}`, { cache: false });
@@ -80,6 +81,16 @@ const catColumns = (id: string | null): [category: string, sub: string] => {
 /** The one-line form, for the PDF where there is no second column to give it. */
 const catPath = (id: string | null) => (id ? categoryLabel(id).path : "");
 
+// A closed trip's one row (trips=entries): an Expense in Trips on its close day, no time and no
+// account, its whole share.
+const isTripRow = (tx: ITransaction) => tx.kind === "trip";
+const tripDay = (tx: ITransaction) => tx.closedOn ?? dayStamp(new Date(tx.occurredAt));
+const tripNote = (tx: ITransaction) => {
+  const zone = appZone();
+  const span = tx.startDate && tx.endDate ? formatSpan(dayKey(new Date(tx.startDate), zone), dayKey(new Date(tx.endDate), zone), { year: "always" }) : null;
+  return `${span ? `Trip ${span} · ` : ""}your share`;
+};
+
 // CSV.
 
 const CSV_HEADERS = [
@@ -92,6 +103,10 @@ export const csvEscape = (value: string): string =>
 
 const buildCsv = (txns: ITransaction[]): string => {
   const lines = txns.map((tx) => {
+    if (isTripRow(tx)) {
+      return [tripDay(tx), "", TYPE_LABEL.expense, tx.title ?? "", "Trips", "", "", "", (-tx.amount / 100).toFixed(2), "", tripNote(tx), ""]
+        .map((v) => csvEscape(String(v))).join(",");
+    }
     const d = new Date(tx.occurredAt);
     return [
       dayStamp(d),
@@ -117,14 +132,23 @@ const buildCsv = (txns: ITransaction[]): string => {
 const buildHtml = (txns: ITransaction[], range: RangeKey, offset: number): string => {
   let income = 0;
   let expense = 0;
+  let trips = 0;
   for (const tx of txns) {
     if (tx.type === "income" || tx.type === "positiveAdjustment") income += tx.amount;
     else if (tx.type === "expense" || tx.type === "negativeAdjustment") expense += tx.amount;
+    if (isTripRow(tx)) trips += tx.amount;
   }
   const net = income - expense;
 
   const rows = txns
     .map((tx) => {
+      if (isTripRow(tx)) {
+        return `<tr class="trip">
+        <td class="date">${htmlEscape(tripDay(tx))}</td>
+        <td><div class="desc">${htmlEscape(tx.title ?? "Trip")}</div><div class="sub">${htmlEscape(`Trips · ${tripNote(tx)}`)}</div></td>
+        <td class="amt neg">${htmlEscape(formatMoney(-tx.amount))}</td>
+      </tr>`;
+      }
       const d = new Date(tx.occurredAt);
       const desc = tx.title || catPath(tx.category) || TYPE_LABEL[tx.type] || "—";
       const sub = tx.type === "transfer"
@@ -149,8 +173,8 @@ const buildHtml = (txns: ITransaction[], range: RangeKey, offset: number): strin
     meta: count(txns.length, "transaction"),
     body: `${kpiRow([
       kpiCard("Income", htmlEscape(formatMoney(income)), "pos"),
-      kpiCard("Expenses", htmlEscape(formatMoney(expense)), "neg"),
-      kpiCard("Net", htmlEscape(formatMoney(net)), net >= 0 ? "pos" : "neg"),
+      kpiCard("Expenses", htmlEscape(formatMoney(expense)), "neg", trips > 0 ? `incl. Trips ${formatMoney(trips)}` : ""),
+      kpiCard("Net", htmlEscape(formatMoney(net)), net >= 0 ? "pos" : "neg", "= saved"),
     ])}
     <table>
       <thead><tr><th>Date</th><th>Transaction</th><th class="amt">Amount</th></tr></thead>
@@ -164,7 +188,8 @@ const buildHtml = (txns: ITransaction[], range: RangeKey, offset: number): strin
     .desc { font-weight: 600; }
     .sub { color: #6b6880; font-size: 11px; margin-top: 2px; }
     td.amt { font-weight: 700; white-space: nowrap; }
-    td.amt.pos { color: #0f9d63; } td.amt.neg { color: #1a1730; }`,
+    td.amt.pos { color: #0f9d63; } td.amt.neg { color: #1a1730; }
+    tr.trip td { background: #e9fbf8; }`,
   });
 };
 

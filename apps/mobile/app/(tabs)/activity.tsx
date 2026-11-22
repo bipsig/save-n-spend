@@ -23,11 +23,9 @@ import EmptyState from "@/components/states/EmptyState";
 import ErrorState from "@/components/states/ErrorState";
 import SkeletonState from "@/components/states/SkeletonState";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
-import { count } from "@/lib/format/count";
 import { screenTitles } from "@/data/menu";
 import { useCategories } from "@/lib/categories";
-import { useTransactionFeed, useTransactionSummary, useTripMatches, type TripMatches } from "@/lib/transactions";
-import { useTripName } from "@/store/tripNames";
+import { useTransactionFeed, useTransactionSummary } from "@/lib/transactions";
 import { RANGES, rangeBounds, rangeLabel, rangeNavLabel, isRangeKey, type RangeKey } from "@/lib/dateRange";
 import { dayHeaderLabel, monthHeaderLabel } from "@/lib/activityHeaders";
 import { dayKey, monthKeyOf, useAppZone } from "@/lib/zone";
@@ -66,8 +64,6 @@ const SummaryCard = ({
   expense,
   savings,
   blank = false,
-  tripExpenses,
-  onOpenTrips,
 }: {
   label: string;
   income: number;
@@ -77,10 +73,6 @@ const SummaryCard = ({
    *  transfers only, which are never income or expense. A dash rather than money the card
    *  doesn't describe — and it holds the space the number will occupy, so nothing reflows. */
   blank?: boolean;
-  /** Trip spending in the range. Named under the everyday totals, which leave it out, so the
-   *  month never reads cheaper than it was. Tapping it opens the Trips page. */
-  tripExpenses?: number;
-  onOpenTrips?: () => void;
 }) => {
   const money = (paise: number) => (blank ? "—" : formatMoney(paise));
 
@@ -119,38 +111,7 @@ const SummaryCard = ({
         </AppText>
       </View>
 
-      {!blank && !!tripExpenses && tripExpenses > 0 && (
-        <PressableScale
-          onPress={onOpenTrips}
-          scaleTo={0.98}
-          style={styles.tripNote}
-          accessibilityLabel={`Plus ${formatMoney(tripExpenses)} on trips, counted in savings. See trips`}
-        >
-          <Icon name="flight" size={14} color="inkDim" />
-          <AppText color="inkDim" size="xs" style={styles.tripNoteText}>
-            {`Plus ${formatMoney(tripExpenses)} on trips · counted in savings`}
-          </AppText>
-          <AppText size="xs" weight="black" color="primary">See trips</AppText>
-        </PressableScale>
-      )}
     </GradientCard>
-  );
-};
-
-// A search that matches trip expenses, which this list leaves out. One trip → straight to it,
-// several → the Trips page. Without it a search for "AirBnB" reads as finding nothing.
-const TripMatchHint = ({ matches, onOpen }: { matches: TripMatches; onOpen: () => void }) => {
-  const single = matches.tripIds.length === 1;
-  const trip = useTripName(single ? matches.tripIds[0] : null);
-  const where = single ? (trip?.name ?? "a trip") : count(matches.tripIds.length, "trip");
-  return (
-    <PressableScale onPress={onOpen} scaleTo={0.98} style={styles.tripHint} accessibilityRole="button">
-      <Icon name="flight" size={16} color="primary" />
-      <AppText size="sm" weight="semibold" color="inkSecondary" style={styles.tripNoteText}>
-        {`${count(matches.count, "match", "matches")} in ${where}`}
-      </AppText>
-      <Icon name="chevronRight" size={18} color="inkDim" />
-    </PressableScale>
   );
 };
 
@@ -256,7 +217,6 @@ const ActivityScreen = () => {
   };
   const feed = useTransactionFeed(feedParams);
   const summary = useTransactionSummary(feedParams);
-  const tripMatches = useTripMatches({ search: debouncedQuery, startDate: bounds.startDate, endDate: bounds.endDate });
 
   const detailRef = useRef<BottomSheetModal>(null);
   const exportRef = useRef<BottomSheetModal>(null);
@@ -467,19 +427,7 @@ const ActivityScreen = () => {
               expense={summary.data?.expenses ?? 0}
               savings={summary.data?.savings ?? 0}
               blank={!summary.data || activeType === "transfer"}
-              tripExpenses={summary.data?.tripExpenses}
-              onOpenTrips={() => router.push("/trips")}
             />
-            {tripMatches && (
-              <TripMatchHint
-                matches={tripMatches}
-                onOpen={() => router.push(
-                  tripMatches.tripIds.length === 1
-                    ? { pathname: "/trip-detail", params: { id: tripMatches.tripIds[0] } }
-                    : "/trips",
-                )}
-              />
-            )}
             </>
           }
           ListFooterComponent={
@@ -627,27 +575,7 @@ const styles = StyleSheet.create({
   summaryColRight: {
     alignItems: "flex-end",
   },
-  tripNote: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    marginTop: spacing.xs,
-  },
-  tripNoteText: {
-    flex: 1,
-  },
-  tripHint: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    marginBottom: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: "rgba(155,140,255,0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(155,140,255,0.35)",
-  },
+
   summaryDivider: {
     height: 1,
     backgroundColor: "rgba(255,255,255,0.2)",

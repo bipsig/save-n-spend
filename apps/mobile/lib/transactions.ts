@@ -1,5 +1,4 @@
 import type { ITransaction, Paginated } from "@save-n-spend/types";
-import { useMemo } from "react";
 import { get } from "@/lib/api";
 import { useApiPages, useApiQuery } from "@/lib/query/useApiQuery";
 import { buildQuery, feedFilters, summaryPath, type FeedParams } from "@/lib/transactionQuery";
@@ -12,8 +11,8 @@ const rangeKeyOf = (params: FeedParams): string => `${params.startDate ?? ""}|${
 
 
 export const useTransactions = () => {
-  // Everyday rows only — a trip's are read on the trip.
-  const { data, ...rest } = useApiQuery<Paginated<ITransaction>>("/transactions?trips=exclude");
+  // Everyday rows and one row per closed trip; a trip's own rows are read on the trip.
+  const { data, ...rest } = useApiQuery<Paginated<ITransaction>>("/transactions?trips=entries");
   return { items: data?.items ?? [], ...rest };
 };
 
@@ -49,7 +48,7 @@ export type TransactionSummary = {
   income: number;
   expenses: number;
   savings: number;
-  /** Trip spending in the range — what the everyday totals leave out. */
+  /** The closed trips in the range, part of `expenses`. */
   tripExpenses?: number;
 };
 
@@ -61,21 +60,3 @@ export type TransactionSummary = {
 export const useTransactionSummary = (params: FeedParams) =>
   useApiQuery<TransactionSummary>(summaryPath(params), { keepPreviousWithin: rangeKeyOf(params) });
 
-
-export type TripMatches = { count: number; tripIds: string[] };
-
-// What a search turns up among trip expenses, which Activity's list leaves out — so a search for
-// "AirBnB" can say where it went instead of looking like it found nothing. Same date range as the
-// list; a failure just means no hint.
-export const useTripMatches = (params: { search?: string; startDate?: string; endDate?: string }): TripMatches | null => {
-  const term = params.search?.trim() ?? "";
-  const path = term.length < 2
-    ? null
-    : `/transactions${buildQuery({ search: term, startDate: params.startDate, endDate: params.endDate, trips: "only", limit: 50 })}`;
-  const { data, error } = useApiQuery<Paginated<ITransaction>>(path);
-  return useMemo(() => {
-    if (!path || error || !data || data.total === 0) return null;
-    const tripIds = [...new Set(data.items.map((t) => t.tripId).filter((id): id is string => !!id))];
-    return { count: data.total, tripIds };
-  }, [path, error, data]);
-};
