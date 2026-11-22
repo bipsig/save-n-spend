@@ -75,10 +75,13 @@ export const settleTrip = async (tripId: string, body: { person: string; account
   await reloadAccounts();
 };
 
-export const closeTrip = async (tripId: string, letGo: string[], opts?: RequestOptions) => {
-  await post(`/trips/${tripId}/close`, { letGo }, opts);
+/** `closedOn` is the day the trip counts on, as one expense in Trips. */
+export const closeTrip = async (tripId: string, letGo: string[], closedOn: string, opts?: RequestOptions) => {
+  await post(`/trips/${tripId}/close`, { letGo, closedOn }, opts);
   await reloadAccounts();
 };
+/** Moves a closed trip's one entry to another day; the trip stays closed. */
+export const changeCloseDate = (tripId: string, closedOn: string) => patch(`/trips/${tripId}/close-date`, { closedOn });
 export const reopenTrip = (tripId: string) => post(`/trips/${tripId}/reopen`);
 
 /** Saves what each person pays you after Splitwise's "simplify debts" — signed paise, positive

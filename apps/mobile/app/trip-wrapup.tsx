@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { StyleSheet, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { goBackOrHome } from "@/lib/navigation";
@@ -13,17 +14,20 @@ import Money from "@/components/ui/Money";
 import Caps from "@/components/ui/Caps";
 import { AppText } from "@/components/ui/AppText";
 import SkeletonState from "@/components/states/SkeletonState";
+import CloseDateSheet from "@/components/sheets/CloseDateSheet";
 import ScreenStates from "@/components/states/ScreenStates";
 import { useCategoryById } from "@/lib/categories";
 import { haptics } from "@/lib/haptics";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { count } from "@/lib/format/count";
-import { formatInstant } from "@/lib/format/date";
+import { formatCalendar, formatInstant } from "@/lib/format/date";
 import { formatPct, percentOf } from "@/lib/format/pct";
 import { closeTrip, tripDays, useTrip } from "@/lib/trips";
 import { holderFor } from "@/lib/idempotency";
 import { useOnlineGate } from "@/lib/onlineGate";
 import { toast } from "@/store/toast";
+import { closeRange, defaultCloseDay } from "@/lib/tripClose";
+import { dayKey, useAppZone } from "@/lib/zone";
 import { radius, spacing } from "@/theme";
 
 /** Balances at or under this (paise) start on "Let go" — ₹50, as agreed. */
@@ -62,7 +66,8 @@ const TripWrapUpScreen = () => {
   const state = { ...q, hasData: data != null, notFound: !id || q.errorStatus === 404 };
   const closeGate = useOnlineGate("Close trip");
   const [choice, setChoice] = useState<Record<string, "keep" | "letGo">>({});
-  const [busy, setBusy] = useState(false);
+  const sheet = useRef<BottomSheetModal>(null);
+  const zone = useAppZone();
 
   // Small balances start on "Let go"; the rest on "Keep".
   useEffect(() => {
@@ -87,25 +92,19 @@ const TripWrapUpScreen = () => {
   const top = byCategory[0];
   const topPct = formatPct(top ? percentOf(top.total, totals.myShare) : 0);
 
-  const close = async () => {
-    setBusy(true);
-    try {
-      const letGo = open.filter((m) => choice[m.account] === "letGo").map((m) => m.account);
-      // The choices start from the same balances on every open, so the key outlives the screen.
-      const idem = holderFor(`trip:${trip._id}:close`);
-      await closeTrip(trip._id, letGo, { idempotencyKey: idem.keyFor("POST", `/trips/${trip._id}/close`, { letGo }) });
-      idem.reset();
-      haptics.success();
-      toast.success(`${trip.name} closed · your share ${formatMoney(totals.myShare)}`);
-      goBackOrHome();
-    }
-    catch (err) {
-      haptics.error();
-      toast.error(err instanceof Error ? err.message : "Couldn't close the trip");
-    }
-    finally {
-      setBusy(false);
-    }
+  const range = closeRange(dayKey(new Date(trip.startDate), zone), dayKey(new Date(), zone));
+  const expenseDays = expenses.map((e) => dayKey(new Date(e.occurredAt), zone));
+
+  // The sheet keeps itself open with the reason when this throws.
+  const close = async (closedOn: string) => {
+    const letGo = open.filter((m) => choice[m.account] === "letGo").map((m) => m.account);
+    // The choices start from the same balances on every open, so the key outlives the screen.
+    const idem = holderFor(`trip:${trip._id}:close`);
+    await closeTrip(trip._id, letGo, closedOn, { idempotencyKey: idem.keyFor("POST", `/trips/${trip._id}/close`, { letGo, closedOn }) });
+    idem.reset();
+    haptics.success();
+    toast.success(`${trip.name} closed · ${formatMoney(totals.myShare)} in Trips on ${formatCalendar(closedOn)}`);
+    goBackOrHome();
   };
 
   return (
@@ -158,8 +157,18 @@ const TripWrapUpScreen = () => {
         </View>
       </LinearGradient>
 
-      <Button label={closeGate.label} icon={closeGate.icon} hint={closeGate.hint} disabled={!closeGate.allowed} loading={busy} onPress={close} />
+      <Button label={closeGate.label} icon={closeGate.icon} hint={closeGate.hint} disabled={!closeGate.allowed} onPress={() => sheet.current?.present()} />
       <Button label="Not yet" variant="ghost" onPress={goBackOrHome} />
+      <CloseDateSheet
+        ref={sheet}
+        mode="close"
+        tripName={trip.name}
+        amount={totals.myShare}
+        range={range}
+        expenseDays={expenseDays}
+        initial={defaultCloseDay(expenseDays, range)}
+        onConfirm={close}
+      />
     </ScreenScaffold>
   );
 };

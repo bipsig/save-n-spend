@@ -20,9 +20,11 @@ import TripSheet from "@/components/sheets/TripSheet";
 import TripExpenseSheet from "@/components/sheets/TripExpenseSheet";
 import SettleSheet from "@/components/sheets/SettleSheet";
 import MatchSplitwiseSheet from "@/components/sheets/MatchSplitwiseSheet";
+import CloseDateSheet from "@/components/sheets/CloseDateSheet";
 import { useCategoryById } from "@/lib/categories";
 import { useAccountById } from "@/lib/accounts";
-import { reopenTrip, tripDayNumber, tripDays, useTrip } from "@/lib/trips";
+import { changeCloseDate, reopenTrip, tripDayNumber, tripDays, useTrip } from "@/lib/trips";
+import { closeRange, monthTitle } from "@/lib/tripClose";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { count } from "@/lib/format/count";
 import { formatCalendar, formatInstant } from "@/lib/format/date";
@@ -115,6 +117,8 @@ const TripDetailScreen = () => {
   const expenseRef = useRef<BottomSheetModal>(null);
   const settleRef = useRef<BottomSheetModal>(null);
   const matchRef = useRef<BottomSheetModal>(null);
+  const closeDateRef = useRef<BottomSheetModal>(null);
+  const changeGate = useOnlineGate("Change date");
   const [editing, setEditing] = useState<ITripExpense | null>(null);
   const [settling, setSettling] = useState<TripMemberBalance | null>(null);
   const [openDay, setOpenDay] = useState<string | null>(null);
@@ -163,6 +167,7 @@ const TripDetailScreen = () => {
 
   const { trip, totals, members, byCategory, byDay, plan } = data;
   const active = trip.status === "active";
+  const closedOn = trip.closedOn ?? null;
   const dayNo = active ? tripDayNumber(trip.startDate, trip.endDate) : null;
   const length = tripDays(trip.startDate, trip.endDate);
   const nameOf = (acc?: string | null) => members.find((m) => m.account === acc)?.name ?? "Someone";
@@ -209,7 +214,25 @@ const TripDetailScreen = () => {
       {!active && (
         <Card style={styles.closedBanner}>
           <Icon name="check" size={16} color="success" />
-          <AppText size="xs" color="inkSecondary" style={styles.grow}>Closed{trip.closedAt ? ` on ${formatInstant(trip.closedAt, "day")}` : ""}. Balances still open can be settled any time.</AppText>
+          <View style={styles.grow}>
+            <AppText size="xs" weight="bold">{closedOn ? `Closed ${formatCalendar(closedOn)}` : `Closed${trip.closedAt ? ` on ${formatInstant(trip.closedAt, "day")}` : ""}`}</AppText>
+            {closedOn && (
+              <AppText size="xs" color="inkSecondary">Counts as one expense in Trips on {formatCalendar(closedOn, "weekday")} ({monthTitle(closedOn.slice(0, 7))}). Balances still open can be settled any time.</AppText>
+            )}
+          </View>
+          {closedOn && (
+            <PressableScale
+              onPress={() => closeDateRef.current?.present()}
+              disabled={!changeGate.allowed}
+              style={!changeGate.allowed && styles.gated}
+              scaleTo={0.95}
+              accessibilityRole="button"
+              accessibilityLabel={hintedLabel(changeGate.label, changeGate.hint)}
+            >
+              <AppText size="xs" weight="black" color="primary">{changeGate.label}</AppText>
+              {changeGate.hint && <AppText size="xs" color="inkDim">{changeGate.hint}</AppText>}
+            </PressableScale>
+          )}
           <PressableScale
             onPress={async () => {
               try { await reopenTrip(trip._id); toast.info(`${trip.name} reopened`); }
@@ -397,6 +420,21 @@ const TripDetailScreen = () => {
       )}
 
       <TripSheet ref={editTripRef} trip={trip} onDeleted={goBackOrHome} />
+      {closedOn && (
+        <CloseDateSheet
+          ref={closeDateRef}
+          mode="change"
+          tripName={trip.name}
+          amount={data.totals.myShare}
+          range={closeRange(dayKey(new Date(trip.startDate), zone), dayKey(new Date(), zone))}
+          expenseDays={data.expenses.map((e) => dayKey(new Date(e.occurredAt), zone))}
+          initial={closedOn}
+          onConfirm={async (day) => {
+            await changeCloseDate(trip._id, day);
+            toast.success(`${trip.name} now counts on ${formatCalendar(day)}`);
+          }}
+        />
+      )}
       <TripExpenseSheet ref={expenseRef} tripId={trip._id} members={members} expense={editing} defaultDate={defaultDate} />
       <MatchSplitwiseSheet ref={matchRef} tripId={trip._id} members={members} plan={plan} />
       <SettleSheet ref={settleRef} tripId={trip._id} member={settling} />
