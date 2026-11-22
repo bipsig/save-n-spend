@@ -84,7 +84,7 @@ const GhostTitleInput = ({ value, onChangeText, onBlur, placeholder, error, ghos
         </View>
       </GestureDetector>
       {error && (
-        <AppText size="xs" color="danger">
+        <AppText size="xs" weight="bold" color="danger">
           {error}
         </AppText>
       )}
