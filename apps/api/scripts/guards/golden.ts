@@ -47,6 +47,7 @@ export const AGREED = {
         [/^GET \/dashboard\/summary(\?.*)? data\.(biggestEverydayExpense|sinceLastOpened\.tripSpent)$/, "2.8.4 D21: everyday biggest expense, trip part of spent"],
         [/^GET \/dashboard\/insights data\.everyday$/, "2.8.4 D21: everyday no-spend days, heatmap and pace"],
         [/^GET \/insights\?.* data\.((trend|previousTrend)\.\d+\.tripAmount|avgDailyEverydaySpend(Current|Previous))$/, "2.8.4 D21: trip part of the trend, everyday averages"],
+        [/^GET \/trips(\/[a-f0-9]{24})? data\.(trips\.\d+|trip)\.closedOn$/, "2.8.6: a closed trip's close day (derived from closedAt when not stored)"],
     ] as [RegExp, string][],
     /** Values a later release changes on purpose, with the reason. */
     changed: [
