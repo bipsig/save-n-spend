@@ -98,7 +98,9 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     throw err;
   }
 
-  reply.created(res, toDTO(createdUser), 'User registered');
+  // The user as before, plus the same token sign-in gives (gaps row 132), so a client can skip
+  // the second request. The apps up to 2.8.8 ignore this body and sign in from Welcome.
+  reply.created(res, { ...toDTO(createdUser), accessToken: generateAccessToken(createdUser) }, 'User registered');
 }
 
 export const login = async (req: Request, res: Response): Promise<void> => {

@@ -11,7 +11,7 @@ import { useTestApi, type Reply } from "../harness";
 // sign-in requests, the auth limiter's whole 15-minute allowance (each test file is its own
 // process, so its own limiter). Stored state is read straight from the database.
 
-type User = { email: string; password: string; token: string; id: string };
+type User = { email: string; password: string; token: string; id: string; registered: Record<string, any> };
 
 const api = useTestApi();
 const call = (method: string, p: string, body?: unknown, token?: string): Promise<Reply> => api.send(method, p, body, { token: token ?? null });
@@ -30,7 +30,7 @@ const signUp = async (tag: string): Promise<User> => {
     assert.equal(reg.status, 201, JSON.stringify(reg.json));
     const login = await call("POST", "/auth/login", { email, password: PASSWORD });
     assert.equal(login.status, 200, JSON.stringify(login.json));
-    return { email, password: PASSWORD, token: login.json.data.accessToken, id: reg.json.data._id };
+    return { email, password: PASSWORD, token: login.json.data.accessToken, id: reg.json.data._id, registered: reg.json.data };
 };
 
 let a: User;
@@ -59,6 +59,13 @@ test("sign-up: duplicate email 409; the user reply has no internal fields", asyn
     const me = await as(a)("GET", "/auth/me");
     assert.equal(me.status, 200);
     for (const f of INTERNAL) assert.ok(!(f in me.json.data), `/auth/me still sends ${f}`);
+});
+
+test("sign-up also answers with a token that works, beside the user (gaps row 132)", async () => {
+    assert.deepEqual([a.registered.email, a.registered.name, a.registered._id], [a.email, "W4 Runner", a.id], "the user object stays");
+    for (const f of INTERNAL) assert.ok(!(f in a.registered), `register still sends ${f}`);
+    const me = await call("GET", "/auth/me", undefined, a.registered.accessToken);
+    assert.deepEqual([me.status, me.json.data.email], [200, a.email]);
 });
 
 test("change-password: a wrong current password is 400 wrong_password, not 401", async () => {
