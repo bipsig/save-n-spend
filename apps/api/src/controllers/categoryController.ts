@@ -7,6 +7,7 @@ import { notFound } from "../utils/messages";
 import { toDTO, toDTOs } from "../utils/dto";
 import * as reply from "../utils/response";
 import { Request, Response } from "express"
+import { TRIPS_NAME } from "../services/tripEntries";
 
 /** The rule scripts/buildCategoryIndex.ts builds its unique index on: one live category per
  *  kind, parent and name, names compared without case. The app-side check below is stricter
@@ -15,6 +16,11 @@ export const CATEGORY_NAME_COLLATION = { locale: "en", strength: 2 } as const;
 
 const duplicateName = () => AppError.duplicate("a category with that name");
 const isDuplicateKey = (err: unknown) => (err as { code?: number } | null)?.code === 11000;
+
+/** Trips is built in: no category may take its name. A category already called that keeps it. */
+export const isReservedName = (name: string) => name.trim().toLowerCase() === TRIPS_NAME.toLowerCase();
+const RESERVED = `${TRIPS_NAME} is a built-in category`;
+const reservedName = () => new AppError(400, RESERVED, { code: "invalid_input", issues: [{ path: "name", message: RESERVED }] });
 
 const sameNameExists = (userId: string, name: string, except?: string) =>
     Category.exists({
@@ -67,6 +73,7 @@ export const createCategory = async (req: Request, res: Response): Promise<void>
         }
     }
 
+    if (isReservedName(body.name)) throw reservedName();
     if (await sameNameExists(userId, body.name)) {
         throw duplicateName();
     }
@@ -132,6 +139,7 @@ export const updateCategory = async (req: Request, res: Response): Promise<void>
         throw AppError.notFound(notFound("category"));
     }
 
+    if (body.name && isReservedName(body.name) && !isReservedName(category.name)) throw reservedName();
     if (body.name && await sameNameExists(userId, body.name, id)) {
         throw duplicateName();
     }
