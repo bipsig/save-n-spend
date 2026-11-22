@@ -14,12 +14,9 @@ import {
 //   • formatInstant: a moment (when you paid, when a value was updated), read in the account zone.
 //   • formatCalendar: a calendar day (a `YYYY-MM-DD` key, a trip's dates), never shifted.
 
-export const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-export const MONTHS_LONG = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-export const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+import { MONTHS, MONTHS_LONG, WEEKDAYS } from "./months";
+
+export { MONTHS, MONTHS_LONG, WEEKDAYS };
 
 /**
  * - `day`: "12 Mar", the year added when it isn't this year ("5 Mar 2025")

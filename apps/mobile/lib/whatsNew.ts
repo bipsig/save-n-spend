@@ -1,16 +1,12 @@
 import { RELEASES } from "../data/releaseNotes";
 import type { NoteKind, Release, ReleaseNote } from "../data/releaseNotes";
+import { MONTHS as MONTHS_SHORT, MONTHS_LONG } from "./format/months";
 
 // Pure: no React, no stores, so it runs under node:test. The store and hook live in
 // store/whatsNew.ts.
 
 const KIND_ORDER: NoteKind[] = ["new", "improved", "fixed"];
 
-const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const MONTHS_LONG = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
 
 /** Negative when `a` is older, positive when newer, 0 when equal. "1.10.0" is newer than "1.9.0". */
 export const compareVersions = (a: string, b: string): number => {

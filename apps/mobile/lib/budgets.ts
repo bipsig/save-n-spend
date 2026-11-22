@@ -1,6 +1,7 @@
 import type { IBudget, ICategory } from "@save-n-spend/types";
 import { appZone, calendarToday } from "@/lib/zone";
 import { useApiQuery } from "@/lib/query/useApiQuery";
+import { MONTHS_LONG } from "@/lib/format/months";
 
 export type BudgetSummary = { budget: IBudget; spent: number };
 
@@ -23,16 +24,12 @@ export const monthKey = (offset = 0): string => {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 };
 
-const MONTHS_FULL = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
 
 // "2026-07" → "July 2026". Always concrete — inside a form, "This Month" reads
 // as a setting you can change rather than the month you're editing.
 export const monthTitle = (month: string): string => {
   const [year, index] = month.split("-");
-  return `${MONTHS_FULL[Number(index) - 1] ?? month} ${year}`;
+  return `${MONTHS_LONG[Number(index) - 1] ?? month} ${year}`;
 };
 
 // A closed month is one that has already ended: its budgets are a record, not a

@@ -19,6 +19,7 @@ import { useSettings } from "@/store/settings";
 import { calendarDate, calendarDaysBetween, dayKey, instantInZone, zonedParts } from "@/lib/zone";
 import { daysUntilDue } from "@/lib/bills";
 import { readJson, writeJson } from "@/lib/deviceStore";
+import { MONTHS_LONG, shortDay } from "@/lib/format/months";
 
 // Banners on the lock screen, scheduled by the phone rather than pushed to it.
 //
@@ -61,14 +62,10 @@ type Summary = { income: number; expenses: number; savings: number; tripExpenses
 /** "11 Sep" from a calendar date, the label the server's digest uses. Formatted in UTC because
  *  that is where a calendar date's fields live (see lib/zone.ts) — reading one back in the
  *  user's own zone names the day before, anywhere west of Greenwich. */
-const dateLabel = (calendar: Date): string =>
-  new Intl.DateTimeFormat("en-IN", { timeZone: "UTC", day: "numeric", month: "short" })
-    .format(calendar);
+const dateLabel = shortDay;
 
 /** "August 2026" from a calendar date, for the monthly digest's title. */
-const monthLabel = (calendar: Date): string =>
-  new Intl.DateTimeFormat("en-IN", { timeZone: "UTC", month: "long", year: "numeric" })
-    .format(calendar);
+const monthLabel = (calendar: Date): string => `${MONTHS_LONG[calendar.getUTCMonth()]} ${calendar.getUTCFullYear()}`;
 
 type Trigger = Notifications.NotificationTriggerInput;
 
@@ -103,9 +100,7 @@ const NUDGE_INTERVAL_DAYS = 7;
 /** "11 Sep" from a real instant, in the account's own zone. Unlike `dateLabel` above, this
  *  is a moment (`Account.updatedAt`), not a calendar marker, so it reads in `zone` rather
  *  than UTC. */
-const sinceLabel = (instant: Date, zone: string): string =>
-  new Intl.DateTimeFormat("en-IN", { timeZone: zone, day: "numeric", month: "short" })
-    .format(instant);
+const sinceLabel = (instant: Date, zone: string): string => shortDay(calendarDate(instant, zone));
 
 /**
  * The one thing to say about a stale person balance tonight, if anything.
