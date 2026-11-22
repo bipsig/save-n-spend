@@ -1,7 +1,7 @@
 import type { GrowthPoint, HoldingTrend, InvestmentReport, LedgerEntry, MonthPoint, PortfolioGrowth, PortfolioPoint } from "@save-n-spend/types";
 import { get } from "@/lib/api";
 import { deliver, dayStamp, type ExportFormat, type ExportResult } from "@/lib/export";
-import { htmlEscape, kpiCard, kpiRow, pdfDocument, PDF_COLORS } from "@/lib/pdfShell";
+import { amountTone, htmlEscape, kpiCard, kpiRow, pdfDate, pdfDocument, PDF_CHART, PDF_COLORS } from "@/lib/pdfShell";
 import { formatCompactExact } from "@/lib/format/compact";
 import { formatPct } from "@/lib/format/pct";
 import { formatCalendar, formatInstant } from "@/lib/format/date";
@@ -28,24 +28,23 @@ export type InvestmentsExportOptions = {
 
 export const fetchInvestmentReport = () => get<InvestmentReport>("/investments/report", { cache: false });
 
-const AXIS = PDF_COLORS.faint;
-const GRID = PDF_COLORS.track;
-const VIOLET = PDF_COLORS.brand;
+const AXIS = PDF_CHART.axis;
+const GRID = PDF_CHART.grid;
+const VIOLET = PDF_CHART.brand;
 const TEAL = PDF_COLORS.teal;
 const UP = PDF_COLORS.up;
 const DOWN = PDF_COLORS.down;
 
 const signed = (n: number) => formatMoney(n, { sign: "always" });
-const tone = (n: number): "pos" | "neg" | "" => (n > 0 ? "pos" : n < 0 ? "neg" : "");
+const tone = amountTone;
 const money = (n: number) => htmlEscape(formatMoney(n));
 const sgn = (n: number) => htmlEscape(signed(n));
 const ret = (pct: number) => formatPct(pct, { kind: "return" });
-// The same day shape the screens print, always with the year: a statement outlives the year.
-const day = (iso: string) => formatInstant(iso, "dayYear");
+const day = pdfDate;
 
 // Charts, as vector SVG.
 
-const W = 540, PAD_L = 8, PAD_R = 44;
+const W = PDF_CHART.width, PAD_L = 8, PAD_R = 44;
 
 const xs = (n: number) => (k: number) => PAD_L + ((W - PAD_L - PAD_R) / n) * (k + 0.5);
 
@@ -193,7 +192,7 @@ const KIND_LABEL: Record<LedgerEntry["kind"], string> = { added: "Added", in: "M
 
 const ledgerHtml = (entries: LedgerEntry[], showHolding: boolean): string => {
   const rows = entries.map((e) => `<tr><td class="nw">${day(e.at)}</td>${showHolding ? `<td>${htmlEscape(e.holdingName)}</td>` : ""}
-    <td>${KIND_LABEL[e.kind]}</td><td class="amt ${e.kind === "added" ? "" : tone(e.amount)}">${e.kind === "added" ? "—" : sgn(e.amount)}</td><td class="amt">${money(e.valueAfter)}</td></tr>`).join("");
+    <td>${KIND_LABEL[e.kind]}</td><td class="amt ${e.kind === "added" ? "" : tone(e.amount)}">${e.kind === "added" ? money(e.amount) : sgn(e.amount)}</td><td class="amt">${money(e.valueAfter)}</td></tr>`).join("");
   return `<div class="pb"><h2>Ledger</h2><table><thead><tr><th>Date</th>${showHolding ? "<th>Holding</th>" : ""}<th>Entry</th><th class="amt">Amount</th><th class="amt">Value after</th></tr></thead><tbody>${rows}</tbody></table>
     <div class="note">Oldest first. "Value after" is the holding's value once the entry was applied.</div></div>`;
 };
@@ -202,12 +201,9 @@ const CSS = `
     td { vertical-align: top; }
     tr { page-break-inside: avoid; }
     .desc { font-weight: 600; } .subl { color: ${PDF_COLORS.muted}; font-size: 10px; margin-top: 2px; }
-    td.amt { font-weight: 600; white-space: nowrap; } td.nw { white-space: nowrap; color: ${PDF_COLORS.muted}; }
-    td.amt.pos { color: ${PDF_COLORS.up}; } td.amt.neg { color: ${PDF_COLORS.down}; }
+    td.nw { white-space: nowrap; color: ${PDF_COLORS.muted}; }
     tr.total td { border-top: 2px solid ${PDF_COLORS.rule}; }
     .stack { display: flex; height: 14px; border-radius: 7px; overflow: hidden; gap: 2px; margin: 8px 0; } .stack span { display: block; }
-    .legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 11px; color: ${PDF_COLORS.muted}; }
-    .ld { display: inline-flex; align-items: center; gap: 6px; } .dot { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
     .note { font-size: 10px; color: ${PDF_COLORS.muted}; line-height: 1.5; border-left: 3px solid ${PDF_COLORS.rule}; padding-left: 10px; margin-top: 16px; }
     .pb { page-break-before: always; } .hh { margin-top: 4px; font-size: 17px; }`;
 

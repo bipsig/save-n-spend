@@ -12,7 +12,7 @@ import { accountById } from "@/lib/accounts";
 // asked for would be a bug.
 import { formatMoneyExact as formatMoney } from "@/lib/money";
 import { appZone, dayKey, zonedParts } from "@/lib/zone";
-import { htmlEscape, kpiCard, kpiRow, pdfDocument, PDF_COLORS } from "@/lib/pdfShell";
+import { htmlEscape, kpiCard, kpiRow, pdfDate, pdfDay, pdfDocument, PDF_COLORS } from "@/lib/pdfShell";
 import { count } from "@/lib/format/count";
 import { formatSpan } from "@/lib/format/period";
 
@@ -144,9 +144,9 @@ const buildHtml = (txns: ITransaction[], range: RangeKey, offset: number): strin
     .map((tx) => {
       if (isTripRow(tx)) {
         return `<tr class="trip">
-        <td class="date">${htmlEscape(tripDay(tx))}</td>
+        <td class="date">${htmlEscape(pdfDay(tripDay(tx)))}</td>
         <td><div class="desc">${htmlEscape(tx.title ?? "Trip")}</div><div class="sub">${htmlEscape(`Trips · ${tripNote(tx)}`)}</div></td>
-        <td class="amt neg">${htmlEscape(formatMoney(-tx.amount))}</td>
+        <td class="amt out">${htmlEscape(formatMoney(-tx.amount))}</td>
       </tr>`;
       }
       const d = new Date(tx.occurredAt);
@@ -159,10 +159,11 @@ const buildHtml = (txns: ITransaction[], range: RangeKey, offset: number): strin
       const isTransfer = tx.type === "transfer";
       const amount = formatMoney(isTransfer ? tx.amount : signedPaise(tx));
       const positive = !isTransfer && signedPaise(tx) >= 0;
+      // Money spent reads in ink, as on Activity; green is money in (the shell's `out`/`pos`).
       return `<tr>
-        <td class="date">${dayStamp(d)}<span class="time">${clockStamp(d)}</span></td>
+        <td class="date">${pdfDate(d)}<span class="time">${clockStamp(d)}</span></td>
         <td><div class="desc">${htmlEscape(desc)}</div><div class="sub">${htmlEscape(sub)}</div></td>
-        <td class="amt ${positive ? "pos" : "neg"}">${htmlEscape(amount)}</td>
+        <td class="amt ${positive ? "pos" : "out"}">${htmlEscape(amount)}</td>
       </tr>`;
     })
     .join("");
@@ -187,8 +188,6 @@ const buildHtml = (txns: ITransaction[], range: RangeKey, offset: number): strin
     td.date .time { display: block; font-size: 10px; opacity: 0.7; }
     .desc { font-weight: 600; }
     .sub { color: ${PDF_COLORS.muted}; font-size: 11px; margin-top: 2px; }
-    td.amt { font-weight: 700; white-space: nowrap; }
-    td.amt.pos { color: ${PDF_COLORS.up}; } td.amt.neg { color: ${PDF_COLORS.ink}; }
     tr.trip td { background: ${PDF_COLORS.tripRow}; }`,
   });
 };

@@ -1,7 +1,7 @@
 import type { InsightsSummary, InsightsPeriod } from "@save-n-spend/types";
 import { deliver, dayStamp, type ExportResult } from "@/lib/export";
 import { get } from "@/lib/api";
-import { htmlEscape, kpiCard, kpiRow, pdfDocument, PDF_COLORS } from "@/lib/pdfShell";
+import { htmlEscape, kpiCard, kpiRow, pdfDocument, PDF_CHART, PDF_COLORS } from "@/lib/pdfShell";
 import {
   buildTrend,
   foldCategories,
@@ -50,13 +50,13 @@ const currentTotals = (data: InsightsSummary) => {
 
 // PDF: the graphs, redrawn as vector SVG.
 
-const AXIS = PDF_COLORS.faint;
-const GRID = PDF_COLORS.track;
-const BRAND = PDF_COLORS.brand;
+const AXIS = PDF_CHART.axis;
+const GRID = PDF_CHART.grid;
+const BRAND = PDF_CHART.brand;
 
 // Chart canvas (viewBox units ≈ points). PAD_L reserves room for the y-axis
 // amount labels; PAD_B for the x-axis category labels.
-const W = 520, H = 150, PAD_L = 48, PAD_B = 22;
+const W = PDF_CHART.width, H = 150, PAD_L = 48, PAD_B = 22;
 const PLOT_W = W - PAD_L;
 const PLOT_H = H - PAD_B;
 
@@ -390,16 +390,12 @@ const buildHtml = (data: InsightsSummary, period: InsightsPeriod, offset: number
     <div class="stack">${stack}</div>
     <div class="legend">${acctLegend}</div>`,
     css: `
-    .legend { display: flex; flex-wrap: wrap; gap: 16px; margin: 6px 0 2px; font-size: 11px; color: ${PDF_COLORS.muted}; }
-    .ld { display: inline-flex; align-items: center; gap: 6px; }
-    .dot { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
     .dashline { display: inline-flex; gap: 3px; width: 14px; }
     .dashline span { width: 5px; height: 3px; border-radius: 2px; display: inline-block; }
     .stack { display: flex; height: 16px; border-radius: 8px; overflow: hidden; gap: 2px; margin: 10px 0; }
     .stack span { display: block; }
     td { vertical-align: middle; }
     .desc { font-weight: 600; }
-    td.amt { font-weight: 700; white-space: nowrap; }
     td.barcell { width: 42%; }
     .bar { width: 100%; height: 8px; border-radius: 4px; background: ${PDF_COLORS.track}; overflow: hidden; }
     .bar span { display: block; height: 100%; }

@@ -1,4 +1,4 @@
-import { formatInstant } from "@/lib/format/date";
+import { formatCalendar, formatInstant } from "@/lib/format/date";
 
 /** The paper palette every PDF uses (gaps row 121): not the app theme, which is dark. */
 export const PDF_COLORS = {
@@ -54,7 +54,33 @@ const SHELL_CSS = `
     th { text-align: left; color: ${PDF_COLORS.muted}; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; padding: 8px; border-bottom: 1px solid ${PDF_COLORS.rule}; }
     td { padding: 8px; border-bottom: 1px solid ${PDF_COLORS.ruleSoft}; }
     th.amt, td.amt { text-align: right; }
+    td.amt { font-weight: 700; white-space: nowrap; }
+    .amt.pos { color: ${PDF_COLORS.up}; } .amt.neg { color: ${PDF_COLORS.down}; } .amt.out { color: ${PDF_COLORS.ink}; }
+    .legend { display: flex; flex-wrap: wrap; gap: 16px; margin: 6px 0 2px; font-size: 11px; color: ${PDF_COLORS.muted}; }
+    .ld { display: inline-flex; align-items: center; gap: 6px; }
+    .dot { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
     .foot { margin-top: 24px; font-size: 10px; color: ${PDF_COLORS.faint}; text-align: center; }`;
+
+// One notation for every PDF (gaps row 163). Amounts: `formatMoneyExact` (two decimals, "−").
+// Dates: "21 Nov 2026", the year always (a statement outlives the year). Amount cells take one
+// class: `pos` money in or a gain, `neg` a loss or a figure below zero, `out` money spent (ink,
+// as Activity draws it). Charts: these colours, this width, and the legend CSS above.
+
+/** "21 Nov 2026": a moment, read in the account zone. */
+export const pdfDate = (at: string | number | Date): string => formatInstant(at, "dayYear");
+/** "21 Nov 2026": a calendar day (`YYYY-MM-DD`), never shifted. */
+export const pdfDay = (key: string): string => formatCalendar(key, "dayYear");
+
+/** Chart canvas (viewBox units ≈ points) and colours, shared by the Insights and Investments PDFs. */
+export const PDF_CHART = {
+  width: 540,
+  axis: PDF_COLORS.faint,
+  grid: PDF_COLORS.track,
+  brand: PDF_COLORS.brand,
+} as const;
+
+/** The amount cell's class for a signed figure. */
+export const amountTone = (n: number): "pos" | "neg" | "" => (n > 0 ? "pos" : n < 0 ? "neg" : "");
 
 type Doc = {
   /** Named after the brand in the letterhead: "Transactions", "Insights". */
