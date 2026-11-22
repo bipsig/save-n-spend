@@ -129,31 +129,42 @@ export const changes = (row: ITransaction, set: Record<string, unknown>, key: ke
 
 /**
  * Gaps row 30, decided as "re-split": when a split expense is edited, each person's owed
- * transfer follows it. The expense's `amount` is the user's own share, so a new share scales
- * every owed amount by the same factor, which keeps each person's proportion of the bill; a
- * new account or moment moves every transfer with it (a split is one event, I2); a transfer
- * whose note was the old title takes the new one, as createTransaction names them.
+ * transfer follows it. A new account or moment moves every transfer with it (a split is one
+ * event, I2); a transfer whose note was the old title takes the new one, as createTransaction
+ * names them.
  *
- * Returns each transfer's `$set` (empty when nothing about it changes). Pure.
+ * Decision 4a (22 Nov): an amount edit scales the whole bill by new share ÷ old share. Each
+ * person's share is rounded down to whole paise (at least one), the bill total to the nearest
+ * paisa, and your own share is the total less theirs, so any remainder lands on you and the
+ * saved `share` can differ from the one typed by a paisa or two.
+ *
+ * Returns your share when an amount edit changes it, and each transfer's `$set` (empty when
+ * nothing about it changes). Pure.
  */
 export const resplit = (
     expense: Pick<ITransaction, "amount" | "account" | "occurredAt" | "title">,
     set: Record<string, unknown>,
     transfers: Pick<ITransaction, "amount" | "note">[],
-): Record<string, unknown>[] => {
-    const share = typeof set.amount === "number" ? set.amount : expense.amount;
-    return transfers.map((t) => {
+): { share?: number; transfers: Record<string, unknown>[] } => {
+    const typed = typeof set.amount === "number" ? set.amount : expense.amount;
+    const scaled = typed !== expense.amount && transfers.length > 0;
+    // BigInt: amount × amount passes 2^53 paise from about ₹9.5 lakh × ₹9.5 lakh.
+    const scale = (amount: number, round: "down" | "nearest"): number => {
+        const num = BigInt(amount) * BigInt(typed);
+        const den = BigInt(expense.amount);
+        return Number(round === "down" ? num / den : (2n * num + den) / (2n * den));
+    };
+    const owed = transfers.map((t) => (scaled ? Math.max(1, scale(t.amount, "down")) : t.amount));
+    const total = expense.amount + transfers.reduce((sum, t) => sum + t.amount, 0);
+    const share = scaled ? Math.max(1, scale(total, "nearest") - owed.reduce((sum, a) => sum + a, 0)) : undefined;
+    return { share, transfers: transfers.map((t, i) => {
         const next: Record<string, unknown> = {};
-        if (share !== expense.amount) {
-            // At least a paisa: a transfer of zero would be a row that says nothing.
-            const amount = Math.max(1, Math.round((t.amount * share) / expense.amount));
-            if (amount !== t.amount) next.amount = amount;
-        }
+        if (owed[i] !== t.amount) next.amount = owed[i];
         // Only what the edit changes: the app sends the moment back on every save, and a group
         // already spread over two days (older data) stays as it is unless the date moves.
         if (set.account !== undefined && String(set.account).toLowerCase() !== String(expense.account).toLowerCase()) next.account = set.account;
         if (set.occurredAt instanceof Date && set.occurredAt.getTime() !== expense.occurredAt.getTime()) next.occurredAt = set.occurredAt;
         if (typeof set.title === "string" && set.title !== expense.title && (t.note ?? null) === (expense.title ?? null)) next.note = set.title;
         return next;
-    });
+    }) };
 };

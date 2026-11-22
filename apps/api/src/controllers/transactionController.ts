@@ -261,7 +261,8 @@ export const updateTransaction = async (req: Request, res: Response): Promise<vo
         const group = splitExpense
             ? await Transaction.find({ userId, splitGroupId: row.splitGroupId, _id: { $ne: row._id }, type: "transfer" }).session(session)
             : [];
-        const groupSets = resplit(row, set, group);
+        const { share, transfers: groupSets } = resplit(row, set, group);
+        if (share !== undefined) set.amount = share;
 
         await applyEffects(row, "revert", session);
         for (const t of group) await applyEffects(t, "revert", session);

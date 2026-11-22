@@ -15,20 +15,34 @@ test("resplit: a new share scales every owed amount by the same factor (each per
     const expense = row({ amount: 30_000 });
     // ₹300 mine, ₹300 and ₹150 owed: a ₹750 bill split 40/40/20.
     const sets = resplit(expense, { amount: 60_000 }, [{ amount: 30_000, note: "Dinner" }, { amount: 15_000, note: "Dinner" }] as ITransaction[]);
-    assert.deepEqual(sets, [{ amount: 60_000 }, { amount: 30_000 }]);
+    assert.deepEqual(sets, { share: 60_000, transfers: [{ amount: 60_000 }, { amount: 30_000 }] });
     const total = 60_000 + 60_000 + 30_000;
     assert.deepEqual([60_000 / total, 30_000 / total], [0.4, 0.2]);
 });
 
 test("resplit: rounds to whole paise and never to zero", () => {
     const expense = row({ amount: 300 });
-    assert.deepEqual(resplit(expense, { amount: 100 }, [{ amount: 100 }, { amount: 1 }] as ITransaction[]), [{ amount: 33 }, {}]);
+    assert.deepEqual(resplit(expense, { amount: 100 }, [{ amount: 100 }, { amount: 1 }] as ITransaction[]), { share: 100, transfers: [{ amount: 33 }, {}] });
+});
+
+test("resplit: the rounding remainder lands on your own share (decision 4a)", () => {
+    // ₹9.99 mine and ₹5.00 + ₹5.00 owed, my share typed as ₹10.00: ×1000/999. Theirs round down
+    // to ₹5.00 each, the ₹19.99 bill becomes ₹20.01, so my share is saved as ₹10.01.
+    const expense = row({ amount: 999 });
+    assert.deepEqual(resplit(expense, { amount: 1_000 }, [{ amount: 500 }, { amount: 500 }] as ITransaction[]), { share: 1_001, transfers: [{}, {}] });
+    // Amounts whose product passes 2^53 still scale exactly.
+    const big = row({ amount: 1_00_00_000_00 });
+    assert.deepEqual(resplit(big, { amount: 2_00_00_000_00 }, [{ amount: 99_99_999_99 }] as ITransaction[]), { share: 2_00_00_000_00, transfers: [{ amount: 1_99_99_999_98 }] });
+});
+
+test("resplit: a split with no transfers left keeps the share typed", () => {
+    assert.deepEqual(resplit(row({ amount: 999 }), { amount: 1_000 }, []), { share: undefined, transfers: [] });
 });
 
 test("resplit: the same share, account and moment change nothing (the app sends them back on every save)", () => {
     const expense = row({ amount: 30_000 });
     const sets = resplit(expense, { amount: 30_000, account: String(expense.account), occurredAt: new Date(at), title: "Dinner" }, [{ amount: 30_000, note: "Dinner" }] as ITransaction[]);
-    assert.deepEqual(sets, [{}]);
+    assert.deepEqual(sets, { share: undefined, transfers: [{}] });
 });
 
 test("resplit: a new account and moment move every transfer; a note that was the old title follows the new one", () => {
@@ -36,7 +50,7 @@ test("resplit: a new account and moment move every transfer; a note that was the
     const bank = String(id());
     const when = new Date("2026-11-02T10:00:00.000Z");
     const sets = resplit(expense, { account: bank, occurredAt: when, title: "Team dinner" }, [{ amount: 30_000, note: "Dinner" }, { amount: 5_000, note: "my own words" }] as ITransaction[]);
-    assert.deepEqual(sets, [{ account: bank, occurredAt: when, note: "Team dinner" }, { account: bank, occurredAt: when }]);
+    assert.deepEqual(sets.transfers, [{ account: bank, occurredAt: when, note: "Team dinner" }, { account: bank, occurredAt: when }]);
 });
 
 test("editedFields: an edit is checked against the create rules for the row's type (gaps row 29)", () => {

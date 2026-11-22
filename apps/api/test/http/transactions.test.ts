@@ -464,3 +464,14 @@ test("one category rule (gaps row 18): own, right kind and live for a new choice
     assert.equal((await me.send("DELETE", `/bills/${bill.json.data._id}`)).status, 200);
     assert.equal((await me.send("PATCH", `/trips/${trip.json.data._id}/expenses/${te.json.data._id}`, { ...tripExpense(old), title: "Kit bag" })).status, 200);
 });
+
+test("split: an amount edit scales every share, the paisa left over on your own (gaps row 30, decision 4a)", async () => {
+    const bank = await me.account("SR bank", { startingBalance: 1_00_000 });
+    const asha = await me.account("SR Asha", { type: "person", startingBalance: 0 });
+    const ravi = await me.account("SR Ravi", { type: "person", startingBalance: 0 });
+    const e = await spend(bank, 999, { title: "Chai", owedBy: [{ account: asha, amount: 500 }, { account: ravi, amount: 500 }] });
+    const r = await me.send("PATCH", `/transactions/${e._id}`, { amount: 1_000 });
+    assert.equal(r.status, 200, r.text);
+    assert.equal(r.json.data.amount, 1_001);
+    assert.deepEqual(await balances(bank, asha, ravi), [1_00_000 - 2_001, 500, 500]);
+});
