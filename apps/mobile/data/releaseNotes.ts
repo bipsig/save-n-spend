@@ -34,6 +34,63 @@ export interface Release {
 /** Newest first. */
 export const RELEASES: Release[] = [
   {
+    version: "2.8.8",
+    build: 26,
+    date: "2026-11-24",
+    headline: "A trip counts once, on the day you close it",
+    notes: [
+      {
+        kind: "new",
+        title: "A closed trip is one expense in Trips, on the day you close it.",
+        detail: "Home, Insights, Month in review, Activity and exports count it once, in the Trips category, so its meals and tickets stay on the trip page instead of in your everyday categories. A trip in progress shows on Home with what you've spent so far, and counts once you close it.",
+        highlight: true,
+        link: "/trips",
+      },
+      {
+        kind: "new",
+        title: "Pick the day a trip counts on.",
+        detail: "Closing a trip starts on its last expense day, and any day from the trip's start to today works. Change date on the trip page moves it without reopening.",
+        highlight: true,
+      },
+      {
+        kind: "new",
+        title: "Undo after you delete or edit something.",
+        detail: "Deleting a transaction, budget, trip, holding or trip expense shows Undo for a few seconds, and so does saving a change. Undo won't overwrite a change made since.",
+        highlight: true,
+      },
+      {
+        kind: "new",
+        title: "Home shows this month, this year or all time.",
+        detail: "A switch above the four tiles. The small charts are gone, and each tile has one plain line instead.",
+      },
+      {
+        kind: "improved",
+        title: "A closed trip stays as it is until you reopen it.",
+        detail: "Edit opens read-only and Delete waits for Reopen. Settling up and changing the close date still work.",
+      },
+      {
+        kind: "improved",
+        title: "Lists load as you scroll and end with \"That's everything\".",
+        detail: "Activity, Category insights, Highlights and Notifications. Activity's account filter groups accounts, investments and people, with settled people folded away.",
+      },
+      {
+        kind: "improved",
+        title: "Forms show each problem under its own field.",
+        detail: "Month in review adds an Other row so its shares add up to 100%. Tap a hidden headline figure to peek, and VoiceOver says \"amount hidden\".",
+      },
+      {
+        kind: "fixed",
+        title: "Bills, goals and archived accounts add up.",
+        detail: "A paid one-off bill no longer counts as late, goals use one pace everywhere, and archiving an account takes it off your default and its bills. The Restaurants category shows its icon.",
+      },
+      {
+        kind: "fixed",
+        title: "Changing your password signs out your other phones.",
+        detail: "Saved offline data belongs to one account only.",
+      },
+    ],
+  },
+  {
     version: "2.8.5",
     build: 25,
     date: "2026-11-18",
