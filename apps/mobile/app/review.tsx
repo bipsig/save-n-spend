@@ -110,11 +110,13 @@ const ReviewScreen = () => {
                   <Card style={styles.card}>
                     {rows.map((cat, i) => {
                       const trips = isTrips(cat.id);
+                      const kids = trips ? review.categories.find((c) => c.categoryId === cat.id)?.children ?? [] : [];
                       const row = (
                         <View style={[styles.catRow, i === rows.length - 1 && !(trips && tripsOpen) && styles.noBorder]}>
                           <View style={[styles.catName, styles.catNameRow]}>
                             <AppText size="sm" weight="semibold" color="inkSecondary" numberOfLines={1} style={styles.shrink}>
                               {cat.name}
+                              {kids.length > 0 && <AppText size="xs" color="inkDim">{` · ${count(kids.length, "trip")}`}</AppText>}
                             </AppText>
                             {trips && <Icon name={tripsOpen ? "chevronUp" : "chevronDown"} size={14} color="inkDim" />}
                           </View>
@@ -127,14 +129,13 @@ const ReviewScreen = () => {
                         </View>
                       );
                       if (!trips) return <View key={cat.id}>{row}</View>;
-                      const kids = review.categories.find((c) => c.categoryId === cat.id)?.children ?? [];
                       return (
                         <View key={cat.id}>
                           <PressableScale
                             onPress={() => setTripsOpen((v) => !v)}
                             scaleTo={0.98}
                             accessibilityRole="button"
-                            accessibilityLabel={`Trips, ${formatPct(cat.pct)}, ${formatMoney(cat.total)}`}
+                            accessibilityLabel={`Trips${kids.length ? `, ${count(kids.length, "trip")}` : ""}, ${formatPct(cat.pct)}, ${formatMoney(cat.total)}`}
                             accessibilityState={{ expanded: tripsOpen }}
                           >
                             {row}

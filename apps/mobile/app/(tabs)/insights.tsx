@@ -356,6 +356,7 @@ const InsightsScreen = () => {
                         style={styles.catName}
                       >
                         {c.name}
+                        {isTrips(c.id) && c.children?.length ? <AppText size="xs" color="inkDim">{` · ${count(c.children.length, "trip")}`}</AppText> : null}
                       </AppText>
                     </View>
                     <View style={styles.catMeta}>
@@ -382,7 +383,7 @@ const InsightsScreen = () => {
                   <View key={c.id} style={styles.catList}>
                     <PressableScale
                       style={styles.catRow}
-                      accessibilityLabel={`${c.name}, ${formatMoney(c.total)}, ${formatPct(c.pct)}`}
+                      accessibilityLabel={`${c.name}${c.children?.length ? `, ${count(c.children.length, "trip")}` : ""}, ${formatMoney(c.total)}, ${formatPct(c.pct)}`}
                       accessibilityState={{ expanded: tripsOpen }}
                       onPress={() => setTripsOpen((v) => !v)}
                     >

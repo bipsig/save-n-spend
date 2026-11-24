@@ -3,7 +3,7 @@ import { get } from "@/lib/api";
 import type { TripsPayload } from "@save-n-spend/types";
 import { create } from "zustand";
 
-type TripName = { name: string; emoji: string };
+type TripName = { name: string; emoji: string; startDate: string; endDate: string };
 
 interface TripNameState {
   byId: Record<string, TripName>;
@@ -12,8 +12,9 @@ interface TripNameState {
   reset: () => void;
 }
 
-// Every trip's name, for tagging rows elsewhere (Activity) that carry only a tripId. Loaded
-// on first use rather than at sign-in — most sessions never show a trip row.
+// Every trip's name and days, for tagging rows elsewhere (Activity, the Trips list in Insights
+// and Review) that carry only a tripId. Loaded on first use rather than at sign-in — most
+// sessions never show a trip row.
 let inFlight: Promise<void> | null = null;
 
 export const useTripNameStore = create<TripNameState>((set) => ({
@@ -22,7 +23,7 @@ export const useTripNameStore = create<TripNameState>((set) => ({
 
   load: () => {
     inFlight ??= get<TripsPayload>("/trips")
-      .then(({ trips }) => set({ byId: Object.fromEntries(trips.map((t) => [t._id, { name: t.name, emoji: t.emoji }])), loaded: true }))
+      .then(({ trips }) => set({ byId: Object.fromEntries(trips.map((t) => [t._id, { name: t.name, emoji: t.emoji, startDate: t.startDate, endDate: t.endDate }])), loaded: true }))
       .finally(() => { inFlight = null; });
     return inFlight;
   },
