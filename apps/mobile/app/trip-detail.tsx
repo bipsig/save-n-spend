@@ -216,40 +216,44 @@ const TripDetailScreen = () => {
       states={state}>
       {!active && (
         <Card style={styles.closedBanner}>
-          <Icon name="check" size={16} color="success" />
-          <View style={styles.grow}>
-            <AppText size="xs" weight="bold">{closedOn ? `Closed ${formatCalendar(closedOn)}` : `Closed${trip.closedAt ? ` on ${formatInstant(trip.closedAt, "day")}` : ""}`}</AppText>
-            {closedOn && (
-              <AppText size="xs" color="inkSecondary">Counts as one expense in Trips on {formatCalendar(closedOn, "weekday")} ({monthTitle(closedOn.slice(0, 7))}). Balances still open can be settled any time.</AppText>
-            )}
+          <View style={styles.closedHead}>
+            <Icon name="check" size={16} color="success" />
+            <View style={styles.grow}>
+              <AppText size="xs" weight="bold">{closedOn ? `Closed ${formatCalendar(closedOn)}` : `Closed${trip.closedAt ? ` on ${formatInstant(trip.closedAt, "day")}` : ""}`}</AppText>
+              {closedOn && (
+                <AppText size="xs" color="inkSecondary">Counts as one expense in Trips on {formatCalendar(closedOn, "weekday")} ({monthTitle(closedOn.slice(0, 7))}). Balances still open can be settled any time.</AppText>
+              )}
+            </View>
           </View>
-          {closedOn && (
+          <View style={styles.closedActions}>
+            {closedOn && (
+              <PressableScale
+                onPress={() => closeDateRef.current?.present()}
+                disabled={!changeGate.allowed}
+                style={!changeGate.allowed && styles.gated}
+                scaleTo={0.95}
+                accessibilityRole="button"
+                accessibilityLabel={hintedLabel(changeGate.label, changeGate.hint)}
+              >
+                <AppText size="xs" weight="black" color="primary">{changeGate.label}</AppText>
+                {changeGate.hint && <AppText size="xs" color="inkDim">{changeGate.hint}</AppText>}
+              </PressableScale>
+            )}
             <PressableScale
-              onPress={() => closeDateRef.current?.present()}
-              disabled={!changeGate.allowed}
-              style={!changeGate.allowed && styles.gated}
+              onPress={async () => {
+                try { await reopenTrip(trip._id); toast.info(`${trip.name} reopened`); }
+                catch (err) { toast.fromError(err, "Couldn't reopen the trip"); }
+              }}
+              disabled={!reopenGate.allowed}
+              style={!reopenGate.allowed && styles.gated}
               scaleTo={0.95}
               accessibilityRole="button"
-              accessibilityLabel={hintedLabel(changeGate.label, changeGate.hint)}
+              accessibilityLabel={hintedLabel(reopenGate.label, reopenGate.hint)}
             >
-              <AppText size="xs" weight="black" color="primary">{changeGate.label}</AppText>
-              {changeGate.hint && <AppText size="xs" color="inkDim">{changeGate.hint}</AppText>}
+              <AppText size="xs" weight="black" color="primary">{reopenGate.label}</AppText>
+              {reopenGate.hint && <AppText size="xs" color="inkDim">{reopenGate.hint}</AppText>}
             </PressableScale>
-          )}
-          <PressableScale
-            onPress={async () => {
-              try { await reopenTrip(trip._id); toast.info(`${trip.name} reopened`); }
-              catch (err) { toast.fromError(err, "Couldn't reopen the trip"); }
-            }}
-            disabled={!reopenGate.allowed}
-            style={!reopenGate.allowed && styles.gated}
-            scaleTo={0.95}
-            accessibilityRole="button"
-            accessibilityLabel={hintedLabel(reopenGate.label, reopenGate.hint)}
-          >
-            <AppText size="xs" weight="black" color="primary">{reopenGate.label}</AppText>
-            {reopenGate.hint && <AppText size="xs" color="inkDim">{reopenGate.hint}</AppText>}
-          </PressableScale>
+          </View>
         </Card>
       )}
 
@@ -456,7 +460,9 @@ const styles = StyleSheet.create({
   center: { textAlign: "center" },
   card: { gap: spacing.sm },
   list: { paddingVertical: 2 },
-  closedBanner: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  closedBanner: { gap: spacing.sm },
+  closedHead: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
+  closedActions: { flexDirection: "row", gap: spacing.lg, paddingLeft: 16 + spacing.sm },
   three: { marginTop: spacing.xs },
   bar: { height: 7, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.08)", overflow: "hidden" },
   barFill: { height: "100%", borderRadius: 4 },
