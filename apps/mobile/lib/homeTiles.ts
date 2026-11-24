@@ -53,10 +53,11 @@ export const homeTiles = (s: Input, { period, startDay, firstDay, signedMoney, m
     ? { text: `${formatPct(percentOf(s.savings, s.income))} saved`, tone: "info" }
     : s.expenses > 0 ? { text: "No income yet", tone: "inkDim" } : null;
   const moved = period !== "all" && startDay && typeof s.netWorthAtStart === "number" ? s.netWorth - s.netWorthAtStart : null;
-  // A masked amount loses its colour, so the colour can't hint at its size.
+  // A masked amount loses its colour, so the colour can't hint at its size. No date after it:
+  // the line under the switch names the period, and a half-width tile has no room for one.
   const netWorth: TileLine = moved === null
     ? null
-    : { text: `${signedMoney(moved)} since ${dayMonth(startDay!)}`, tone: masked ? "inkDim" : toneOf(moved, "up") };
+    : { text: signedMoney(moved), tone: masked ? "inkDim" : toneOf(moved, "up") };
 
   return { scope, savingsLabel: period === "all" ? "Saved" : "Savings", income, expenses, savings, netWorth };
 };

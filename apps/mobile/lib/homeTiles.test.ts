@@ -23,7 +23,7 @@ test("Month: changes against the whole of October; no Income line before any inc
   assert.equal(t.income, null);
   assert.deepEqual(t.expenses, { text: "+37.8% vs Oct", tone: "danger" });
   assert.deepEqual(t.savings, { text: "No income yet", tone: "inkDim" });
-  assert.deepEqual(t.netWorth, { text: "−₹158132.59 since 1 Nov", tone: "danger" });
+  assert.deepEqual(t.netWorth, { text: "−₹158132.59", tone: "danger" });
   assert.equal(t.savingsLabel, "Savings");
 });
 
@@ -44,7 +44,9 @@ test("Year and All time: no comparison before the records start; Saved; masked n
   assert.equal(all.savingsLabel, "Saved");
   assert.equal(all.netWorth, null);
   const masked = h.homeTiles(NOV, { signedMoney: () => "₹ ••••", masked: true, period: "month", startDay: "2026-11-01", firstDay: "2026-09-01" });
-  assert.deepEqual(masked.netWorth, { text: "₹ •••• since 1 Nov", tone: "inkDim" });
+  assert.deepEqual(masked.netWorth, { text: "₹ ••••", tone: "inkDim" });
+  const yearMoved = h.homeTiles({ ...NOV, netWorthAtStart: 50000000 }, { ...ctx, period: "year", startDay: "2026-01-01", firstDay: "2025-06-01" });
+  assert.deepEqual(yearMoved.netWorth, { text: "+₹57172.94", tone: "success" });
 });
 
 test("one size for all four tiles, and where taps go", () => {
