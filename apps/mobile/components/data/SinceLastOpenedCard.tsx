@@ -7,6 +7,7 @@ import PressableScale from "../ui/PressableScale";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { count } from "@/lib/format/count";
 import { relativeTime } from "@/lib/format/date";
+import { sinceCopy } from "@/lib/sinceLastOpened";
 
 type Props = {
   previousOpenedAt: string;
@@ -22,30 +23,32 @@ const SinceLastOpenedCard = ({ previousOpenedAt, transactions, spent }: Props) =
   usePrivacyMask(); // subscribe: the amount below reads formatMoney() directly
 
   // On its own at the right, so it reads "Today" like every row (gaps row 155).
-  const when = relativeTime(previousOpenedAt, { style: "day" });
-  const body = transactions === 0
-    ? "Nothing logged since then"
-    : `${count(transactions, "transaction")} · ${formatMoney(spent)} spent`;
-  const label = `Since you last opened, ${when}: ${body}. Opens Activity.`;
+  const copy = sinceCopy(
+    relativeTime(previousOpenedAt, { style: "day" }),
+    transactions,
+    `${count(transactions, "transaction")} · ${formatMoney(spent)} spent`,
+  );
 
   return (
     <PressableScale
       onPress={() => router.push("/activity")}
       scaleTo={0.98}
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={copy.label}
     >
       <Card style={styles.card}>
         <View style={styles.row}>
           <Icon name="clock" size={14} color="inkDim" />
           <AppText size="sm" weight="semibold" color="inkSecondary" style={styles.grow}>
-            Since you last opened
+            {copy.title}
           </AppText>
-          <AppText size="xs" weight="bold" color="inkDim">{when}</AppText>
+          {copy.when && <AppText size="xs" weight="bold" color="inkDim">{copy.when}</AppText>}
         </View>
-        <AppText size="sm" weight="bold">
-          {body}
-        </AppText>
+        {copy.body && (
+          <AppText size="sm" weight="bold">
+            {copy.body}
+          </AppText>
+        )}
       </Card>
     </PressableScale>
   );
