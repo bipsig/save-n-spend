@@ -49,6 +49,7 @@ export const AGREED = {
         [/^GET \/insights\?.* data\.((trend|previousTrend)\.\d+\.tripAmount|avgDailyEverydaySpend(Current|Previous))$/, "2.8.4 D21: trip part of the trend, everyday averages"],
         [/^GET \/trips(\/[a-f0-9]{24})? data\.(trips\.\d+|trip)\.closedOn$/, "2.8.6: a closed trip's close day (derived from closedAt when not stored)"],
         [/^GET \/goals data\.\d+\.isArchived$/, "2.8.7 row 159: a deleted goal is archived; live goals say false"],
+        [/^GET \/reviews\?.* data\.other$/, "2.8.8 row 209: categories past the fifth as one Other share"],
     ] as [RegExp, string][],
     /** Values a later release changes on purpose, with the reason. */
     changed: [
