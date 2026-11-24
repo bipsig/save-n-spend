@@ -41,6 +41,8 @@ export const iconMap = {
 
   // Spending categories
   food: 'restaurant',
+  // The name the default "Restaurants" category is stored with since 5 Sep (defaultCategories.ts).
+  restaurant: 'restaurant',
   shopping: 'shopping-bag',
   transport: 'directions-car',
   bills: 'receipt-long',
