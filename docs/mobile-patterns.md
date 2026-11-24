@@ -110,6 +110,14 @@ export const useBudgets = (month?: string) => {
 `loadMore()`. A later page with no signal and nothing saved ends the list instead of
 blanking it, and `refetch()` goes back to page one.
 
+**Every paged list loads on scroll and ends the same way** (2.8.8, gaps row 151). Pass
+`onEndReached={loadMore}` to `ScreenScaffold` (Activity's `FlatList` uses its own
+`onEndReached`) and put `<ListEnd hasMore loadingMore pagesLoaded failed onRetry />` after the
+last row. It shows a spinner while a page loads, "Couldn't load more · Try again" when a later
+page failed, and "That's everything" only once a second page has come in; a list that fits on
+one page just ends. `lib/listEnd.ts` holds the rule and `nearEnd()` (one screen from the
+bottom); no list has a "Load more" button.
+
 List hooks still return `items` instead of `data` and `useHighlights` its own fields, so
 screens did not change in 2.8.3 phase 1; phase 2 moves screens onto the shape.
 
@@ -740,6 +748,14 @@ unconditionally. A screen that hides figures without offering the way to reveal 
 dead end. **Home's custom `header` includes `<PeekButton />` itself; any other custom header
 would have to as well.**
 
+### Masked figures and VoiceOver
+
+A masked figure reads "amount hidden" to VoiceOver, its sign kept as a word ("minus amount
+hidden"). `AppText`, `PressableScale` and `Card` pass every `accessibilityLabel` through
+`spoken()` (`lib/maskAmounts.ts`), so a label built with `formatMoney` is covered without the
+screen doing anything. A label built some other way that contains `₹ ••••` is covered too;
+one that hides an amount some other way is not.
+
 ## Days and months: zone helpers
 
 The API buckets every total in the account's stored IANA zone, and the phone must agree
@@ -760,6 +776,13 @@ the API stores and sends. A **calendar date** is also a `Date`, but only its UTC
 anything: `getUTCDate()` and `Date.UTC` arithmetic on it are exact, and its `getTime()` is not a
 moment. `calendarDate()` is the only crossing from one to the other. Never use
 `new Date().getUTCDate()` for "today": in India it is already tomorrow after 6:30 pm.
+
+**How long ago.** `relativeTime(instant, { style })` (`lib/format/date.ts`) is the one label for
+"when", in the account zone. `style: "time"` (feeds and logs: Notifications, Diagnostics) says
+"Just now", "12m ago", "3h ago", then "Yesterday", "3 days ago", then "12 Mar". `style: "day"`
+(since when: Since you last opened, Home's biggest expense) starts at "Today". `daysAgoLabel(n)`
+is the same words from a whole-day count the API already sent. Use them rather than writing a
+new "ago" string.
 
 Exports, labels and range helpers all read the zone this way. `exportTransactions` stamps
 files with `dayStamp`, which reads `appZone()`, so a September statement is not stamped
@@ -949,6 +972,17 @@ Dismissal is the one piece of stored onboarding state, in
 `store/settings`'s `getStartedDismissed` — a list of user ids rather than a
 boolean, because the flag is device-local but the checklist is per-account, and
 the person who would lose theirs is the new user who needs it.
+
+### What the phone remembers per account
+
+Anything the phone keeps about what it has shown (dismissed highlights, the Get started list,
+the net-worth milestone, the last reviewed period, when the app was last opened) is kept per
+account through `lib/perUser.ts` (2.8.8, gaps row 185): `perUser<T>(SEEN_KEYS.x).read(userId)`
+and `.write(userId, value)`. A second account signing in on the same phone starts fresh, and
+`logOut()` calls `clearPerUser(userId)`. Add a new key to `SEEN_KEYS`, never a bare
+`deviceStore` key, so sign-out clears it too. `adoptLegacy` moved 2.8.7's phone-wide values to
+the first account that read them. What must follow the user to another phone (recurring
+dismissals) lives on the server instead.
 
 ## Refetch on focus
 
