@@ -483,7 +483,7 @@ const HomeScreen = () => {
             caption={tiles.netWorth?.text}
             captionColor={tiles.netWorth?.tone}
             onPress={accounts.length > 0 ? () => netWorthRef.current?.present() : undefined}
-            destination="your accounts"
+            destination="your net worth"
           />
         </View>
       </View>
