@@ -68,7 +68,7 @@
               "raw": "{\n  \"name\": \"Test User\",\n  \"email\": \"test@email.com\",\n  \"password\": \"test1234\"\n}"
             },
             "url": { "raw": "{{BASE_URL}}/auth/register", "host": ["{{BASE_URL}}"], "path": ["auth", "register"] },
-            "description": "Body: `name` (min 2 chars), `email`, `password` (min 8 chars).\n\nAtomic register-seeding inside a Mongo transaction: creates the user → a starter **Cash** account → copies the default category set (per-user copies) → sets `prefs.defaultAccount` to the Cash account. All-or-nothing.\n\nDoes NOT return a token — log in afterwards."
+            "description": "Body: `name` (min 2 chars), `email`, `password` (min 8 chars).\n\nAtomic register-seeding inside a Mongo transaction: creates the user → a starter **Cash** account → copies the default category set (per-user copies) → sets `prefs.defaultAccount` to the Cash account. All-or-nothing.\n\n2.8.8 on: `data` is the user plus `accessToken` (the same JWT sign-in gives), so a client can skip the login request. Apps up to 2.8.8 ignore it and sign in from Welcome."
           },
           "response": [
             {
@@ -1531,7 +1531,7 @@
               "raw": "{\n  \"name\": \"Goa\",\n  \"emoji\": \"🏖️\",\n  \"color\": \"info\",\n  \"startDate\": \"2026-12-20\",\n  \"endDate\": \"2026-12-27\",\n  \"members\": [\n    \"{{personId}}\"\n  ],\n  \"budget\": 5000000\n}"
             },
             "url": { "raw": "{{BASE_URL}}/trips", "host": ["{{BASE_URL}}"], "path": ["trips"] },
-            "description": "Strict body. `name` (1-60), `startDate`, `endDate` (not before the start), `members` (up to 30 person-account ids; **every one must be a live person account**), optional `emoji`, `color`, `budget` (paise, min 0, or null). Test script saves `data._id` → `{{tripId}}`."
+            "description": "Strict body. `name` (1-60), `startDate`, `endDate` (not before the start), `members` (up to 30 person-account ids; **every one must be a live person account**), optional `emoji`, `color`, `budget` (paise, min 0, or null). Test script saves `data._id` → `{{tripId}}`. 2.8.8: answers the trip in the list's shape (the same fields as `GET /trips`) plus `updatedAt`; no `plan`."
           },
           "response": []
         },
@@ -1554,7 +1554,7 @@
             ],
             "body": { "mode": "raw", "raw": "{\n  \"budget\": 6000000,\n  \"endDate\": \"2026-12-28\"\n}" },
             "url": { "raw": "{{BASE_URL}}/trips/{{tripId}}", "host": ["{{BASE_URL}}"], "path": ["trips", "{{tripId}}"] },
-            "description": "Any create field, all optional, strict. Removing a member who is already in an expense or settle-up is `400`."
+            "description": "Any create field, all optional, strict. Removing a member who is already in an expense or settle-up is `400`. 2.8.8: answers the trip in the list's shape (the same fields as `GET /trips`) plus `updatedAt`; no `plan`. 2.8.8: 409 `conflict` \"This trip is closed. Reopen it to make changes\" while the trip is closed."
           },
           "response": []
         },
@@ -1564,7 +1564,7 @@
             "method": "DELETE",
             "header": [],
             "url": { "raw": "{{BASE_URL}}/trips/{{tripId}}", "host": ["{{BASE_URL}}"], "path": ["trips", "{{tripId}}"] },
-            "description": "Deletes the trip. `data` is null."
+            "description": "Deletes the trip. `data` is null. 2.8.8: 409 `conflict` \"This trip is closed. Reopen it to make changes\" while the trip is closed."
           },
           "response": []
         },
@@ -1694,7 +1694,7 @@
             ],
             "body": { "mode": "raw", "raw": "{\n  \"closedOn\": \"2026-10-21\"\n}" },
             "url": { "raw": "{{BASE_URL}}/trips/{{tripId}}/close-date", "host": ["{{BASE_URL}}"], "path": ["trips", "{{tripId}}", "close-date"] },
-            "description": "2.8.6. Moves a closed trip's one entry in Trips to another day without reopening it. Body `{ closedOn: \"YYYY-MM-DD\" }`, from the trip's start day to today in your zone (400 `invalid_input` outside). 409 when the trip isn't closed."
+            "description": "2.8.6. Moves a closed trip's one entry in Trips to another day without reopening it. Body `{ closedOn: \"YYYY-MM-DD\" }`, from the trip's start day to today in your zone (400 `invalid_input` outside). 409 when the trip isn't closed. 2.8.8: answers the trip in the list's shape (the same fields as `GET /trips`) plus `updatedAt`; no `plan`."
           },
           "response": []
         },
