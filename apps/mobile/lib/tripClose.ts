@@ -22,6 +22,10 @@ export const defaultCloseDay = (expenseDays: string[], range: CloseRange): strin
   return last < range.first ? range.first : last > range.today ? range.today : last;
 };
 
+/** The day the trip's last expense fell on, so the picker can say so beside it. */
+export const isLastExpenseDay = (day: string, expenseDays: string[]): boolean =>
+  expenseDays.length > 0 && day === [...expenseDays].sort().at(-1);
+
 export const monthOfDay = (day: string): string => day.slice(0, 7);
 
 /** "October 2026" for "2026-10". */

@@ -22,6 +22,9 @@ test("default close day: the last expense day, kept in range; today with no expe
   assert.equal(c.defaultCloseDay(["2026-09-20"], RANGE), "2026-10-01");
   assert.equal(c.defaultCloseDay(["2026-12-01"], RANGE), "2026-11-22");
   assert.equal(c.defaultCloseDay([], RANGE), "2026-11-22");
+  assert.equal(c.isLastExpenseDay("2026-10-21", ["2026-10-09", "2026-10-21", "2026-10-17"]), true);
+  assert.equal(c.isLastExpenseDay("2026-10-17", ["2026-10-09", "2026-10-21", "2026-10-17"]), false);
+  assert.equal(c.isLastExpenseDay("2026-11-22", []), false);
 });
 
 test("month grid: Sunday first, padded weeks; October 2026 starts on a Thursday", () => {

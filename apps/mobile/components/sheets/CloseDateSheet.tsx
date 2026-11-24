@@ -7,7 +7,7 @@ import Icon from "@/components/ui/Icon";
 import { AppText } from "@/components/ui/AppText";
 import formatMoney, { usePrivacyMask } from "@/lib/money";
 import { formatCalendar } from "@/lib/format/date";
-import { inRange, monthGrid, monthOfDay, monthTitle, movesBetween, shiftMonth, type CloseRange } from "@/lib/tripClose";
+import { inRange, isLastExpenseDay, monthGrid, monthOfDay, monthTitle, movesBetween, shiftMonth, type CloseRange } from "@/lib/tripClose";
 import { colors, spacing, withAlpha } from "@/theme";
 import { errorText } from "@/lib/apiError";
 import { useFormError } from "@/lib/useFormError";
@@ -83,6 +83,7 @@ const CloseDateSheet = forwardRef<BottomSheetModal, Props>(({ tripName, amount, 
           <AppText size="xs" color="inkDim">Close date</AppText>
           <AppText size="sm" weight="bold">{formatCalendar(day, "weekday")}</AppText>
         </View>
+        {isLastExpenseDay(day, expenseDays) && <AppText size="xs" color="inkDim">Last expense day</AppText>}
       </View>
 
       <View style={styles.nav}>
