@@ -34,7 +34,7 @@ const TripRow = ({ trip }: { trip: InsightsCategorySlice }) => {
       </LinearGradient>
       <View style={styles.grow}>
         <AppText size="sm" weight="bold" numberOfLines={1}>{trip.name}</AppText>
-        {line ? <AppText size="xs" color="inkDim" numberOfLines={1}>{line}</AppText> : null}
+        {line ? <AppText size="xs" color="inkDim" numberOfLines={2}>{line}</AppText> : null}
       </View>
       <AppText size="sm" weight="black">{formatMoney(trip.total)}</AppText>
       <Icon name="chevronRight" size={16} color="inkDim" />
