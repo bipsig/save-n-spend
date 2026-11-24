@@ -246,7 +246,7 @@ const InsightsScreen = () => {
           <Caps>Spending</Caps>
           <View style={styles.heroRow}>
             <Money value={spend.current} size="xl" weight="black" />
-            <DeltaPill value={spend.deltaPct} goodWhen="down" vs={vsLabel} />
+            {spend.deltaPct !== null && <DeltaPill value={spend.deltaPct} goodWhen="down" vs={vsLabel} />}
           </View>
           <AreaChart
             data={trend.values}

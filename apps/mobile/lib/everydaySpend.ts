@@ -10,7 +10,7 @@ import { chartOthers, chartPalette, tripsColor } from "@/theme/charts";
 export type SeriesInput = { income: number; expense: number };
 
 /** Insights' hero, its change and the income-vs-expense columns, from the six-unit series (last
- *  point = the shown window). */
+ *  point = the shown window). No change against a window with no spending, as category rows. */
 export const insightsSpend = (series: SeriesInput[]) => {
   const cur = series[series.length - 1];
   const prev = series[series.length - 2];
@@ -18,7 +18,7 @@ export const insightsSpend = (series: SeriesInput[]) => {
   const previous = prev?.expense ?? 0;
   return {
     current,
-    deltaPct: previous > 0 ? ((current - previous) / previous) * 100 : 0,
+    deltaPct: previous > 0 ? ((current - previous) / previous) * 100 : null,
     columns: series.map((p) => ({ income: p.income, expense: p.expense })),
   };
 };

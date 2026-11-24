@@ -15,9 +15,10 @@ const OCT = { income: 19584077, expense: 9503270 };
 test("Insights: hero and change include Trips, as the server sends them", () => {
   const s = e.insightsSpend([SEP, OCT]);
   assert.equal(s.current, 9503270);
-  assert.equal(Math.round(s.deltaPct * 10) / 10, 29.9);
+  assert.equal(Math.round(s.deltaPct! * 10) / 10, 29.9);
   assert.deepEqual(s.columns[1], { income: 19584077, expense: 9503270 });
-  assert.deepEqual(e.insightsSpend([]), { current: 0, deltaPct: 0, columns: [] });
+  assert.deepEqual(e.insightsSpend([]), { current: 0, deltaPct: null, columns: [] });
+  assert.equal(e.insightsSpend([{ income: 0, expense: 0 }, OCT]).deltaPct, null);
 });
 
 const slice = (categoryId: string, name: string, total: number, share: number): InsightsCategorySlice => ({ categoryId, name, total, share });
