@@ -101,3 +101,15 @@ test("2.8.6 row 26: the dashboard's net worth month labels may move; other label
     assert.deepEqual(allowed("GET /dashboard/summary"), [["data.netWorthTrend.0.label", true]]);
     assert.deepEqual(allowed("GET /investments/trend"), [["data.netWorthTrend.0.label", false]]);
 });
+
+test("health hints: the goal-pace and overdue wordings have their own lines, ahead of 2.8.4's", () => {
+    const hint = (h: string) => snap({ "GET /dashboard/health": ok({ pillars: [{ hint: h }], focus: { hint: h } }) });
+    const reasons = (a: string, b: string) => compareSnapshots(hint(a), hint(b)).map((d) => d.allowed);
+    const goal = (rs: string) => `Bike needs about ₹${rs} a month to land by Mar 2027. You have been adding roughly ₹0.00.`;
+    assert.deepEqual(reasons(goal("1,53,061.22"), goal("1,55,293.37")), Array(2).fill("2.8.6 row 27: one goal-pace formula, so a goal's monthly need moves"));
+    assert.deepEqual(
+        reasons("Rent is 3 days overdue. This is the quickest thing on the list to fix.", "Rent is overdue by 3 days. This is the quickest thing on the list to fix."),
+        Array(2).fill("2.8.8 row 153: the bills hint says \"is overdue by N days\""),
+    );
+    assert.deepEqual(reasons("Keeping 12.0% of what comes in.", "Keeping 12.5% of what comes in."), Array(2).fill("2.8.4 Q3 wording; D21 buffer on everyday spending"));
+});

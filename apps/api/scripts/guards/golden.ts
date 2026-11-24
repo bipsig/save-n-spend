@@ -24,6 +24,9 @@ dotenv.config({ path: path.join(API_DIR, ".env") });
 
 type Snapshot = { meta: Record<string, unknown>; responses: Record<string, { status: number; body: unknown }> };
 
+const HEALTH_HINT = /^GET \/dashboard\/health data\.(pillars\.\d+\.hint|focus\.hint)$/;
+const GOAL_NEED = /needs about ₹[\d,]+\.\d{2} a month to land by/;
+
 /** Changes agreed in .audit/plan-api-standard.md (R1): these may differ between recordings. */
 export const AGREED = {
     /** Internal fields the DTOs drop. Allowed only as "present before, gone after". */
@@ -51,19 +54,22 @@ export const AGREED = {
         [/^GET \/goals data\.\d+\.isArchived$/, "2.8.7 row 159: a deleted goal is archived; live goals say false"],
         [/^GET \/reviews\?.* data\.other$/, "2.8.8 row 209: categories past the fifth as one Other share"],
     ] as [RegExp, string][],
-    /** Values a later release changes on purpose, with the reason. */
+    /** Values a later release changes on purpose, with the reason. The first match wins; an
+     *  entry with a third element applies only when it accepts the two values. */
     changed: [
         [/^GET \/dashboard\/summary(\?.*)? data\.netWorthTrend\.\d+\.total$/, "2.8.4 D24: history counts today's accounts"],
         [/^GET \/reviews\?period=month.* data\.netWorth\.(total|previousTotal)$/, "2.8.4 D24: history counts today's accounts"],
         [/^GET \/reviews\?.* data\.verdict\.(headline|detail)$/, "2.8.4 Q3: exact paise, one decimal"],
         [/^GET \/reviews\?.* data\.timeline\.\d+\.(date|kind|text)$/, "2.8.4 Q3 wording; D21 timeline's biggest expense is everyday"],
+        [HEALTH_HINT, "2.8.6 row 27: one goal-pace formula, so a goal's monthly need moves", (a, b) => GOAL_NEED.test(String(a)) && GOAL_NEED.test(String(b))],
+        [HEALTH_HINT, "2.8.8 row 153: the bills hint says \"is overdue by N days\"", (a, b) => /is \d+ days? overdue/.test(String(a)) && /is overdue by \d+ days?/.test(String(b))],
         [/^GET \/dashboard\/health data\.(pillars\.\d+\.(value|hint)|focus\.hint)$/, "2.8.4 Q3 wording; D21 buffer on everyday spending"],
         [/^GET \/dashboard\/health data\.(score|band|rating|runwayMonths|pillars\.\d+\.(score|verdict)|focus\.(key|label))$/, "2.8.4 D21: the buffer is measured on everyday spending"],
         [/^GET \/highlights data\.highlights\.\d+\.(title|body)$/, "2.8.4 Q3: exact paise, one decimal"],
         [/^GET \/dashboard\/summary(\?.*)? data\.netWorthTrend\.\d+\.label$/, "2.8.6 row 26: each point is named for the month that closed"],
         [/^GET \/dashboard\/summary(\?.*)? data\.(netWorthTrend|flowTrend)\.\d+\.label$/, "2.8.7 row 59: Sep, not Intl's Sept"],
         [/^GET \/investments\/(trend|report) data\.(trend\.)?((points|growth)|holdings\.\d+\.(points|growth))\.\d+\.label$/, "2.8.7 row 59: Sep, not Intl's Sept"],
-    ] as [RegExp, string][],
+    ] as [RegExp, string, ((before: unknown, after: unknown) => boolean)?][],
     /** R2 (B5): paged lists answer {items, page, limit, hasNextPage, total}. */
     paged: /^GET \/(transactions|highlights\/history|notifications)(\?|$)/,
 };
@@ -97,7 +103,7 @@ export const diffValues = (request: string, a: unknown, b: unknown, at = "", out
         const key = at.split(".").pop() ?? "";
         const close = typeof a === "number" && typeof b === "number" && AGREED.approx.keys.includes(key)
             && Math.abs(a - b) <= AGREED.approx.tolerance * Math.max(1e-9, Math.abs(a), Math.abs(b));
-        if (!close) out.push({ request, path: at || "(value)", before: a, after: b, allowed: AGREED.changed.find(([re]) => re.test(`${request} ${at}`))?.[1] ?? null });
+        if (!close) out.push({ request, path: at || "(value)", before: a, after: b, allowed: AGREED.changed.find(([re, , when]) => re.test(`${request} ${at}`) && (!when || when(a, b)))?.[1] ?? null });
     }
     return out;
 };
